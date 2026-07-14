@@ -71,7 +71,7 @@ export function applyJingleTheme(config: JingleThemeV1): void {
   )
   setThemeVariable(targets, "--status-nominal", theme.semanticColors.diffAdded)
   setThemeVariable(targets, "--status-info", theme.accent)
-  setThemeVariable(targets, "--ow-semantic-skill", theme.semanticColors.skill)
+  setThemeVariable(targets, "--jingle-semantic-skill", theme.semanticColors.skill)
   setThemeVariable(targets, "--sidebar", mix(theme.ink, raisedMix, theme.surface))
   setThemeVariable(targets, "--sidebar-foreground", theme.ink)
   setThemeVariable(targets, "--sidebar-primary", theme.accent)
@@ -84,8 +84,8 @@ export function applyJingleTheme(config: JingleThemeV1): void {
   setThemeVariable(targets, "--window-divider", mix(theme.ink, borderMix, "transparent"))
   setThemeVariable(targets, "--window-chrome-foreground", theme.ink)
   setThemeVariable(targets, "--window-chrome-muted", mix(theme.ink, 52, theme.surface))
-  setThemeVariable(targets, "--ow-font-ui-family", theme.fonts.ui ?? DEFAULT_UI_FONT_FAMILY)
-  setThemeVariable(targets, "--ow-font-code-family", theme.fonts.code ?? DEFAULT_CODE_FONT_FAMILY)
+  setThemeVariable(targets, "--jingle-font-ui-family", theme.fonts.ui ?? DEFAULT_UI_FONT_FAMILY)
+  setThemeVariable(targets, "--jingle-font-code-family", theme.fonts.code ?? DEFAULT_CODE_FONT_FAMILY)
 }
 
 export function applyAppThemeSettings(settings: AppThemeSettings): void {

@@ -141,12 +141,12 @@ function getContextSourceStatusLabel(
 
 function SectionHeader(props: { count?: number; title: string }): React.JSX.Element {
   return (
-    <div className="flex items-center justify-between gap-[var(--ow-gap-md)]">
-      <div className="[font-size:var(--ow-font-label)] font-semibold text-foreground">
+    <div className="flex items-center justify-between gap-[var(--jingle-gap-md)]">
+      <div className="[font-size:var(--jingle-font-label)] font-semibold text-foreground">
         {props.title}
       </div>
       {typeof props.count === "number" ? (
-        <span className="[font-size:var(--ow-font-meta)] text-muted-foreground">{props.count}</span>
+        <span className="[font-size:var(--jingle-font-meta)] text-muted-foreground">{props.count}</span>
       ) : null}
     </div>
   )
@@ -154,7 +154,7 @@ function SectionHeader(props: { count?: number; title: string }): React.JSX.Elem
 
 function MemoryBadge(props: { children: React.ReactNode }): React.JSX.Element {
   return (
-    <span className="inline-flex min-h-[22px] items-center rounded-[var(--ow-radius-sm)] border border-border bg-background px-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-muted-foreground">
+    <span className="inline-flex min-h-[22px] items-center rounded-[var(--jingle-radius-sm)] border border-border bg-background px-[var(--jingle-space-2)] [font-size:var(--jingle-font-meta)] text-muted-foreground">
       {props.children}
     </span>
   )
@@ -172,12 +172,12 @@ function MemorySettingsCard(props: {
   return (
     <div className={settingsCardClassName}>
       <SettingsRow
-        icon={<Brain className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
+        icon={<Brain className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
         title={copy.memory.useMemory}
         description={copy.memory.useMemoryDescription}
       >
-        <div className="flex min-h-[var(--ow-settings-control-h)] items-center justify-between gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1)]">
-          <span className="[font-size:var(--ow-settings-control-font)] text-muted-foreground">
+        <div className="flex min-h-[var(--jingle-settings-control-h)] items-center justify-between gap-[var(--jingle-gap-md)] rounded-[var(--jingle-radius-md)] border border-border bg-background-elevated px-[var(--jingle-space-3)] py-[var(--jingle-space-1)]">
+          <span className="[font-size:var(--jingle-settings-control-font)] text-muted-foreground">
             {getMemoryToggleStatusLabel(settings.useMemory, copy)}
           </span>
           <SettingsSwitch
@@ -191,12 +191,12 @@ function MemorySettingsCard(props: {
       </SettingsRow>
 
       <SettingsRow
-        icon={<Check className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
+        icon={<Check className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
         title={copy.memory.askBeforeSaving}
         description={copy.memory.askBeforeSavingDescription}
       >
-        <div className="flex min-h-[var(--ow-settings-control-h)] items-center justify-between gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1)]">
-          <span className="[font-size:var(--ow-settings-control-font)] text-muted-foreground">
+        <div className="flex min-h-[var(--jingle-settings-control-h)] items-center justify-between gap-[var(--jingle-gap-md)] rounded-[var(--jingle-radius-md)] border border-border bg-background-elevated px-[var(--jingle-space-3)] py-[var(--jingle-space-1)]">
+          <span className="[font-size:var(--jingle-settings-control-font)] text-muted-foreground">
             {copy.extensions.enabled}
           </span>
           <SettingsSwitch
@@ -209,13 +209,13 @@ function MemorySettingsCard(props: {
       </SettingsRow>
 
       <SettingsRow
-        icon={<Database className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
+        icon={<Database className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
         title={copy.memory.showIncludedMemories}
         description={copy.memory.showIncludedMemoriesDescription}
         withBorder={false}
       >
-        <div className="flex min-h-[var(--ow-settings-control-h)] items-center justify-between gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1)]">
-          <span className="[font-size:var(--ow-settings-control-font)] text-muted-foreground">
+        <div className="flex min-h-[var(--jingle-settings-control-h)] items-center justify-between gap-[var(--jingle-gap-md)] rounded-[var(--jingle-radius-md)] border border-border bg-background-elevated px-[var(--jingle-space-3)] py-[var(--jingle-space-1)]">
+          <span className="[font-size:var(--jingle-settings-control-font)] text-muted-foreground">
             {getMemoryToggleStatusLabel(settings.showIncludedMemories, copy)}
           </span>
           <SettingsSwitch
@@ -242,23 +242,23 @@ function NewMemoryCard(props: {
 
   return (
     <div className={settingsCardClassName}>
-      <div className="border-b border-border/70 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
+      <div className="border-b border-border/70 px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)]">
         <SectionHeader title={copy.memory.add} />
       </div>
-      <div className="grid gap-[var(--ow-space-3)] px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
+      <div className="grid gap-[var(--jingle-space-3)] px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)]">
         <textarea
           aria-label={copy.memory.content}
-          className={`${inputClassName} min-h-[var(--ow-settings-textarea-min-h)] resize-y`}
+          className={`${inputClassName} min-h-[var(--jingle-settings-textarea-min-h)] resize-y`}
           placeholder={copy.memory.content}
           value={draft.content}
           onChange={(event) => {
             onDraftChange({ ...draft, content: event.target.value })
           }}
         />
-        <div className="flex flex-wrap items-center gap-[var(--ow-gap-md)]">
+        <div className="flex flex-wrap items-center gap-[var(--jingle-gap-md)]">
           <SettingsSelect
             aria-label={copy.memory.typeLabel}
-            className="max-w-[var(--ow-settings-select-w)]"
+            className="max-w-[var(--jingle-settings-select-w)]"
             value={draft.type}
             onChange={(event) => {
               onDraftChange({
@@ -273,7 +273,7 @@ function NewMemoryCard(props: {
           </SettingsSelect>
           <SettingsSelect
             aria-label={copy.memory.scopeLabel}
-            className="max-w-[var(--ow-settings-select-w)]"
+            className="max-w-[var(--jingle-settings-select-w)]"
             value={draft.scope}
             onChange={(event) => {
               onDraftChange({
@@ -293,11 +293,11 @@ function NewMemoryCard(props: {
               void onCreateMemory()
             }}
           >
-            <Plus className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+            <Plus className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)]" />
             {copy.memory.add}
           </button>
           {status ? (
-            <span className="[font-size:var(--ow-font-body)] text-muted-foreground">
+            <span className="[font-size:var(--jingle-font-body)] text-muted-foreground">
               {status}
             </span>
           ) : null}
@@ -318,10 +318,10 @@ function PendingSuggestionsCard(props: {
 
   return (
     <div className={settingsCardClassName}>
-      <div className="border-b border-border/70 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
+      <div className="border-b border-border/70 px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)]">
         <SectionHeader title={copy.memory.pendingSuggestions} count={suggestions.length} />
       </div>
-      <div className="grid gap-[var(--ow-space-3)] px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
+      <div className="grid gap-[var(--jingle-space-3)] px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)]">
         {suggestions.length === 0 ? (
           <div className={`${settingsInsetCardClassName} border-dashed text-muted-foreground`}>
             {copy.memory.emptySuggestions}
@@ -329,10 +329,10 @@ function PendingSuggestionsCard(props: {
         ) : (
           suggestions.map((suggestion) => (
             <div key={suggestion.suggestionId} className={settingsInsetCardClassName}>
-              <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-foreground">
+              <div className="[font-size:var(--jingle-font-body)] leading-[var(--jingle-line-body)] text-foreground">
                 {suggestion.content}
               </div>
-              <div className="mt-[var(--ow-space-2)] flex flex-wrap items-center gap-[var(--ow-gap-sm)]">
+              <div className="mt-[var(--jingle-space-2)] flex flex-wrap items-center gap-[var(--jingle-gap-sm)]">
                 <MemoryBadge>{getTypeLabel(suggestion.type, copy)}</MemoryBadge>
                 <MemoryBadge>{getScopeLabel(suggestion.scope, copy)}</MemoryBadge>
                 <MemoryBadge>
@@ -340,11 +340,11 @@ function PendingSuggestionsCard(props: {
                 </MemoryBadge>
               </div>
               {suggestion.reason ? (
-                <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-muted-foreground">
+                <div className="mt-[var(--jingle-space-2)] [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-body)] text-muted-foreground">
                   {suggestion.reason}
                 </div>
               ) : null}
-              <div className="mt-[var(--ow-space-3)] flex items-center gap-[var(--ow-gap-sm)]">
+              <div className="mt-[var(--jingle-space-3)] flex items-center gap-[var(--jingle-gap-sm)]">
                 <button
                   type="button"
                   className={secondaryButtonClassName}
@@ -352,7 +352,7 @@ function PendingSuggestionsCard(props: {
                     void onAcceptSuggestion(suggestion)
                   }}
                 >
-                  <Check className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+                  <Check className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)]" />
                   {copy.memory.accept}
                 </button>
                 <button
@@ -362,7 +362,7 @@ function PendingSuggestionsCard(props: {
                     void onRejectSuggestion(suggestion)
                   }}
                 >
-                  <X className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+                  <X className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)]" />
                   {copy.memory.reject}
                 </button>
               </div>
@@ -395,10 +395,10 @@ function MemoriesCard(props: {
 
   return (
     <div className={settingsCardClassName}>
-      <div className="border-b border-border/70 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
+      <div className="border-b border-border/70 px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)]">
         <SectionHeader title={title} count={memories.length} />
       </div>
-      <div className="grid gap-[var(--ow-space-3)] px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
+      <div className="grid gap-[var(--jingle-space-3)] px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)]">
         {memories.length === 0 ? (
           <div className={`${settingsInsetCardClassName} border-dashed text-muted-foreground`}>
             {emptyLabel}
@@ -406,15 +406,15 @@ function MemoriesCard(props: {
         ) : (
           memories.map((memory) => (
             <div key={memory.memoryId} className={settingsInsetCardClassName}>
-              <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-foreground">
+              <div className="[font-size:var(--jingle-font-body)] leading-[var(--jingle-line-body)] text-foreground">
                 {memory.content}
               </div>
-              <div className="mt-[var(--ow-space-2)] flex flex-wrap items-center gap-[var(--ow-gap-sm)]">
+              <div className="mt-[var(--jingle-space-2)] flex flex-wrap items-center gap-[var(--jingle-gap-sm)]">
                 <MemoryBadge>{getTypeLabel(memory.type, copy)}</MemoryBadge>
                 <MemoryBadge>{getScopeLabel(memory.scope, copy)}</MemoryBadge>
                 <MemoryBadge>{getMemorySourceLabel(memory, copy)}</MemoryBadge>
               </div>
-              <div className="mt-[var(--ow-space-3)] flex items-center gap-[var(--ow-gap-sm)]">
+              <div className="mt-[var(--jingle-space-3)] flex items-center gap-[var(--jingle-gap-sm)]">
                 <button
                   type="button"
                   className={secondaryButtonClassName}
@@ -446,21 +446,21 @@ function ContextSourcesCard(props: {
 
   return (
     <div className={settingsCardClassName}>
-      <div className="border-b border-border/70 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
+      <div className="border-b border-border/70 px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)]">
         <SectionHeader title={copy.memory.contextSources} count={contextSources.length} />
       </div>
-      <div className="grid gap-[var(--ow-space-2)] px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
+      <div className="grid gap-[var(--jingle-space-2)] px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)]">
         {contextSources.map((source) => (
           <div
             key={source.id}
-            className="flex min-w-0 items-center gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] border border-border/70 bg-background px-[var(--ow-space-3)] py-[var(--ow-space-2)]"
+            className="flex min-w-0 items-center gap-[var(--jingle-gap-md)] rounded-[var(--jingle-radius-md)] border border-border/70 bg-background px-[var(--jingle-space-3)] py-[var(--jingle-space-2)]"
           >
-            <FileText className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)] shrink-0 text-muted-foreground" />
+            <FileText className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)] shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
-              <div className="[font-size:var(--ow-font-body)] font-medium text-foreground">
+              <div className="[font-size:var(--jingle-font-body)] font-medium text-foreground">
                 {source.sourceLabel}
               </div>
-              <div className="truncate [font-size:var(--ow-font-meta)] text-muted-foreground">
+              <div className="truncate [font-size:var(--jingle-font-meta)] text-muted-foreground">
                 {source.path}
               </div>
             </div>
@@ -557,7 +557,7 @@ export function MemoryTab(props: { locale: AppLocale }): React.JSX.Element {
 
   if (!state) {
     return (
-      <div className="flex h-full items-center justify-center [font-size:var(--ow-font-label)] text-muted-foreground">
+      <div className="flex h-full items-center justify-center [font-size:var(--jingle-font-label)] text-muted-foreground">
         {copy.memory.loading}
       </div>
     )

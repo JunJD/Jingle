@@ -319,7 +319,7 @@
 
 .ipc-network-channel {
   color: #f0f5fb;
-  font-family: var(--ow-font-code-family, "SF Mono", ui-monospace, monospace);
+  font-family: var(--jingle-font-code-family, "SF Mono", ui-monospace, monospace);
 }
 
 .ipc-network-status {
@@ -396,7 +396,7 @@
   margin: 0;
   overflow: hidden;
   color: #f4f7fb;
-  font-family: var(--ow-font-code-family, "SF Mono", ui-monospace, monospace);
+  font-family: var(--jingle-font-code-family, "SF Mono", ui-monospace, monospace);
   font-size: 13px;
   font-weight: 700;
   line-height: 18px;
@@ -529,7 +529,7 @@
   margin: 0;
   padding: 8px 14px 14px;
   color: #d8e0ea;
-  font-family: var(--ow-font-code-family, "SF Mono", ui-monospace, monospace);
+  font-family: var(--jingle-font-code-family, "SF Mono", ui-monospace, monospace);
   font-size: 11px;
   line-height: 18px;
   white-space: pre-wrap;
@@ -560,7 +560,7 @@
   margin: 0;
   overflow: hidden;
   color: #e8edf4;
-  font-family: var(--ow-font-code-family, "SF Mono", ui-monospace, monospace);
+  font-family: var(--jingle-font-code-family, "SF Mono", ui-monospace, monospace);
   font-size: 11px;
   line-height: 18px;
   text-overflow: ellipsis;

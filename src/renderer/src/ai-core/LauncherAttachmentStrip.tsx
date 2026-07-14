@@ -59,9 +59,9 @@ function LauncherAttachmentItem(props: {
   const fallbackIcon =
     attachment.kind === "file" ? (
       attachment.isDirectory ? (
-        <Folder className="size-[var(--ow-icon-sm)] text-muted-foreground" />
+        <Folder className="size-[var(--jingle-icon-sm)] text-muted-foreground" />
       ) : (
-        <FileText className="size-[var(--ow-icon-sm)] text-muted-foreground" />
+        <FileText className="size-[var(--jingle-icon-sm)] text-muted-foreground" />
       )
     ) : undefined
 
@@ -79,11 +79,11 @@ function LauncherAttachmentItem(props: {
           className={
             attachment.kind === "image"
               ? isCandidate
-                ? "h-[var(--ow-icon-lg)] w-[var(--ow-icon-lg)] overflow-hidden rounded-[var(--ow-radius-md)] border border-dashed border-border/70 bg-muted/45 p-0 opacity-75 shadow-sm ring-1 ring-black/5 hover:opacity-100"
-                : "h-[var(--ow-icon-lg)] w-[var(--ow-icon-lg)] overflow-hidden rounded-[var(--ow-radius-md)] border border-white/10 bg-black/[0.035] p-0 shadow-sm ring-1 ring-black/5"
+                ? "h-[var(--jingle-icon-lg)] w-[var(--jingle-icon-lg)] overflow-hidden rounded-[var(--jingle-radius-md)] border border-dashed border-border/70 bg-muted/45 p-0 opacity-75 shadow-sm ring-1 ring-black/5 hover:opacity-100"
+                : "h-[var(--jingle-icon-lg)] w-[var(--jingle-icon-lg)] overflow-hidden rounded-[var(--jingle-radius-md)] border border-white/10 bg-black/[0.035] p-0 shadow-sm ring-1 ring-black/5"
               : isCandidate
-                ? "max-w-[var(--launcher-attachment-max-width)] rounded-[var(--ow-radius-lg)] border border-dashed border-border/80 bg-background/60 px-[var(--ow-space-2-5)] py-[var(--ow-space-2)] [font-size:var(--ow-font-control)] text-muted-foreground shadow-sm ring-1 ring-black/5"
-                : "max-w-[var(--launcher-attachment-max-width)] rounded-[var(--ow-radius-lg)] border border-white/10 bg-black/[0.035] px-[var(--ow-space-2-5)] py-[var(--ow-space-2)] [font-size:var(--ow-font-control)] shadow-sm ring-1 ring-black/5"
+                ? "max-w-[var(--launcher-attachment-max-width)] rounded-[var(--jingle-radius-lg)] border border-dashed border-border/80 bg-background/60 px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)] [font-size:var(--jingle-font-control)] text-muted-foreground shadow-sm ring-1 ring-black/5"
+                : "max-w-[var(--launcher-attachment-max-width)] rounded-[var(--jingle-radius-lg)] border border-white/10 bg-black/[0.035] px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)] [font-size:var(--jingle-font-control)] shadow-sm ring-1 ring-black/5"
           }
         >
           {attachment.kind === "image" ? (
@@ -97,11 +97,11 @@ function LauncherAttachmentItem(props: {
               />
               {isCandidate ? (
                 <div className="absolute inset-0 flex items-center justify-center bg-background/55 opacity-0 transition-opacity group-hover:opacity-100">
-                  <Plus className="size-[var(--ow-icon-sm)] text-foreground" />
+                  <Plus className="size-[var(--jingle-icon-sm)] text-foreground" />
                 </div>
               ) : null}
               <AttachmentRemove
-                className="absolute right-[var(--ow-leading-nudge)] top-[var(--ow-leading-nudge)] size-[var(--ow-icon-compact)] rounded-full border-0 bg-zinc-500/95 p-0 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-zinc-600 [&>svg]:size-[var(--ow-icon-close-glyph)]"
+                className="absolute right-[var(--jingle-leading-nudge)] top-[var(--jingle-leading-nudge)] size-[var(--jingle-icon-compact)] rounded-full border-0 bg-zinc-500/95 p-0 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-zinc-600 [&>svg]:size-[var(--jingle-icon-close-glyph)]"
                 label={removeLabel}
               />
             </>
@@ -109,20 +109,20 @@ function LauncherAttachmentItem(props: {
             <>
               <AttachmentPreview
                 fallbackIcon={fallbackIcon}
-                className="size-[var(--ow-control-h-md)] rounded-lg bg-black/[0.04]"
+                className="size-[var(--jingle-control-h-md)] rounded-lg bg-black/[0.04]"
               />
               <AttachmentInfo
                 className={
                   isCandidate
-                    ? "max-w-[var(--launcher-attachment-name-max-width)] [font-size:var(--ow-font-control)] font-medium text-muted-foreground"
-                    : "max-w-[var(--launcher-attachment-name-max-width)] [font-size:var(--ow-font-control)] font-medium text-foreground"
+                    ? "max-w-[var(--launcher-attachment-name-max-width)] [font-size:var(--jingle-font-control)] font-medium text-muted-foreground"
+                    : "max-w-[var(--launcher-attachment-name-max-width)] [font-size:var(--jingle-font-control)] font-medium text-foreground"
                 }
               />
               {isCandidate ? (
-                <Plus className="size-[var(--ow-icon-compact)] shrink-0 text-muted-foreground" />
+                <Plus className="size-[var(--jingle-icon-compact)] shrink-0 text-muted-foreground" />
               ) : null}
               <AttachmentRemove
-                className="absolute right-[var(--ow-space-1)] top-[var(--ow-space-1)] size-[var(--ow-icon-sm)] rounded-full border-0 bg-zinc-500/95 p-0 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-zinc-600 [&>svg]:size-[var(--ow-icon-micro)]"
+                className="absolute right-[var(--jingle-space-1)] top-[var(--jingle-space-1)] size-[var(--jingle-icon-sm)] rounded-full border-0 bg-zinc-500/95 p-0 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-zinc-600 [&>svg]:size-[var(--jingle-icon-micro)]"
                 label={removeLabel}
               />
             </>
@@ -161,7 +161,7 @@ export function LauncherAttachmentStrip(props: {
   const overflowCount = attachments.length - visibleAttachments.length
 
   return (
-    <div className="flex min-w-0 items-center gap-[var(--ow-space-1-5)] px-[var(--ow-space-1)] py-[var(--ow-space-1)]">
+    <div className="flex min-w-0 items-center gap-[var(--jingle-space-1-5)] px-[var(--jingle-space-1)] py-[var(--jingle-space-1)]">
       <Attachments variant="inline" className="min-w-0 flex-nowrap items-center overflow-hidden">
         {visibleAttachments.map((attachment) => (
           <LauncherAttachmentItem
@@ -178,8 +178,8 @@ export function LauncherAttachmentStrip(props: {
           <div
             className={
               isCandidate
-                ? "flex h-[var(--ow-icon-lg)] w-[var(--ow-icon-lg)] shrink-0 items-center justify-center rounded-[var(--ow-radius-md)] border border-dashed border-border/70 bg-muted/45 [font-size:var(--ow-font-caption)] font-medium text-muted-foreground shadow-sm ring-1 ring-black/5"
-                : "flex h-[var(--ow-icon-lg)] w-[var(--ow-icon-lg)] shrink-0 items-center justify-center rounded-[var(--ow-radius-md)] border border-white/10 bg-black/[0.035] [font-size:var(--ow-font-caption)] font-medium text-muted-foreground shadow-sm ring-1 ring-black/5"
+                ? "flex h-[var(--jingle-icon-lg)] w-[var(--jingle-icon-lg)] shrink-0 items-center justify-center rounded-[var(--jingle-radius-md)] border border-dashed border-border/70 bg-muted/45 [font-size:var(--jingle-font-caption)] font-medium text-muted-foreground shadow-sm ring-1 ring-black/5"
+                : "flex h-[var(--jingle-icon-lg)] w-[var(--jingle-icon-lg)] shrink-0 items-center justify-center rounded-[var(--jingle-radius-md)] border border-white/10 bg-black/[0.035] [font-size:var(--jingle-font-caption)] font-medium text-muted-foreground shadow-sm ring-1 ring-black/5"
             }
           >
             +{overflowCount}

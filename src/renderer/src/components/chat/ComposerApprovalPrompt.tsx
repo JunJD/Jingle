@@ -78,23 +78,23 @@ export function ComposerApprovalPrompt(props: {
     />
   ) : null
   const actions = usesExternalActions ? null : (
-    <div className="grid gap-[var(--ow-space-2)]">
+    <div className="grid gap-[var(--jingle-space-2)]">
       {rejecting && !usesExternalRejectFeedback ? (
         <textarea
           aria-label={copy.toolCall.rejectFeedbackPlaceholder}
           autoFocus
-          className="min-h-[52px] resize-none rounded-[var(--ow-radius-md)] border border-border/60 bg-background-secondary/45 px-[var(--ow-space-2-5)] py-[var(--ow-space-2)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground outline-none placeholder:text-muted-foreground/65 focus:border-foreground/25"
+          className="min-h-[52px] resize-none rounded-[var(--jingle-radius-md)] border border-border/60 bg-background-secondary/45 px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)] [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)] text-foreground outline-none placeholder:text-muted-foreground/65 focus:border-foreground/25"
           onChange={(event) => setFeedback(event.target.value)}
           placeholder={copy.toolCall.rejectFeedbackPlaceholder}
           value={feedback}
         />
       ) : null}
 
-      <div className="flex items-center justify-end gap-[var(--ow-gap-sm)]">
+      <div className="flex items-center justify-end gap-[var(--jingle-gap-sm)]">
         {rejecting && !usesExternalRejectFeedback ? (
           <button
             type="button"
-            className="min-h-8 rounded-full px-[var(--ow-space-2-5)] [font-size:var(--ow-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+            className="min-h-8 rounded-full px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
             onClick={() => {
               setFeedback("")
               setRejecting(false)
@@ -105,7 +105,7 @@ export function ComposerApprovalPrompt(props: {
         ) : null}
         <button
           type="button"
-          className="min-h-8 rounded-full px-[var(--ow-space-3)] [font-size:var(--ow-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+          className="min-h-8 rounded-full px-[var(--jingle-space-3)] [font-size:var(--jingle-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
           onClick={() => {
             if (!usesExternalRejectFeedback && !rejecting && isLarge) {
               setRejecting(true)
@@ -122,7 +122,7 @@ export function ComposerApprovalPrompt(props: {
         </button>
         <button
           type="button"
-          className="min-h-8 rounded-full bg-foreground px-[var(--ow-space-3)] [font-size:var(--ow-font-body)] font-semibold text-background shadow-[0_6px_16px_rgba(32,38,45,0.14)] transition-transform active:scale-[0.98]"
+          className="min-h-8 rounded-full bg-foreground px-[var(--jingle-space-3)] [font-size:var(--jingle-font-body)] font-semibold text-background shadow-[0_6px_16px_rgba(32,38,45,0.14)] transition-transform active:scale-[0.98]"
           onClick={() => onDecision({ type: "approve" })}
         >
           {approveLabel}
@@ -142,24 +142,24 @@ export function ComposerApprovalPrompt(props: {
       )}
       density={density}
       header={
-        <div className="flex min-w-0 items-center justify-between gap-[var(--ow-gap-md)]">
-          <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
-            <Icon className="size-[var(--ow-icon-sm)] shrink-0 text-muted-foreground" />
+        <div className="flex min-w-0 items-center justify-between gap-[var(--jingle-gap-md)]">
+          <div className="flex min-w-0 items-center gap-[var(--jingle-gap-sm)]">
+            <Icon className="size-[var(--jingle-icon-sm)] shrink-0 text-muted-foreground" />
             <div className="min-w-0">
-              <div className="[font-size:var(--ow-font-body)] font-semibold leading-[var(--ow-line-body)] text-foreground">
+              <div className="[font-size:var(--jingle-font-body)] font-semibold leading-[var(--jingle-line-body)] text-foreground">
                 {getApprovalTitle(meta.title)}
               </div>
               {compact.target ? (
-                <div className="min-w-0 truncate font-mono [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-muted-foreground">
+                <div className="min-w-0 truncate font-mono [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-body)] text-muted-foreground">
                   {compact.target}
                 </div>
               ) : null}
             </div>
           </div>
           {compact.summary ? (
-            <div className="hidden shrink-0 items-center gap-[var(--ow-gap-xs)] rounded-full bg-foreground/5 px-[var(--ow-space-2)] py-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] font-medium text-foreground sm:flex">
+            <div className="hidden shrink-0 items-center gap-[var(--jingle-gap-xs)] rounded-full bg-foreground/5 px-[var(--jingle-space-2)] py-[var(--jingle-space-1)] [font-size:var(--jingle-font-meta)] font-medium text-foreground sm:flex">
               <span>{compact.summary}</span>
-              <ArrowUpRight className="size-[var(--ow-icon-xs)] text-muted-foreground" />
+              <ArrowUpRight className="size-[var(--jingle-icon-xs)] text-muted-foreground" />
             </div>
           ) : null}
         </div>

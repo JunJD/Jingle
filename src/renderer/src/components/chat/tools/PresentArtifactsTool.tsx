@@ -78,14 +78,14 @@ export function PresentArtifactsDetail(
     <ToolDetailStack>
       {resolvedArtifacts.length > 0 ? (
         <ToolDetailSection label={copy.toolCall.labels.present_artifacts}>
-          <div className="grid gap-[var(--ow-space-1-5)]">
+          <div className="grid gap-[var(--jingle-space-1-5)]">
             {resolvedArtifacts.map((artifact) => {
               const canOpen = isPresentedArtifactOpenable(artifact)
 
               return (
                 <button
                   className={cn(
-                    "grid gap-[var(--ow-gap-xs)] rounded-[var(--ow-radius-panel)] border px-[var(--ow-space-3)] py-[var(--ow-space-2)] text-left [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] transition-colors",
+                    "grid gap-[var(--jingle-gap-xs)] rounded-[var(--jingle-radius-panel)] border px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] text-left [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)] transition-colors",
                     canOpen
                       ? "border-border/70 bg-background-secondary/60 text-foreground/90 hover:bg-background-secondary hover:text-foreground"
                       : "border-border/50 bg-background-secondary/40 text-foreground/75"
@@ -104,13 +104,13 @@ export function PresentArtifactsDetail(
                   }}
                   type="button"
                 >
-                  <div className="flex items-start justify-between gap-[var(--ow-gap-md)]">
+                  <div className="flex items-start justify-between gap-[var(--jingle-gap-md)]">
                     <div className="min-w-0">
                       <div className="font-medium text-foreground">{artifact.title}</div>
                       <div className="text-muted-foreground">{artifact.kind}</div>
                     </div>
                     {canOpen ? (
-                      <ArrowUpRight className="mt-[var(--ow-leading-nudge)] size-[var(--ow-icon-sm)] shrink-0 text-muted-foreground" />
+                      <ArrowUpRight className="mt-[var(--jingle-leading-nudge)] size-[var(--jingle-icon-sm)] shrink-0 text-muted-foreground" />
                     ) : null}
                   </div>
                 </button>

@@ -164,7 +164,7 @@ function renderAccessoryVisuals(
   return nodes.map((node, index) => (
     <span
       key={`runtime-accessory-${index}`}
-      className="rounded-full bg-background px-[var(--ow-space-2)] py-[var(--ow-space-0-5)] [font-size:var(--ow-font-caption)]"
+      className="rounded-full bg-background px-[var(--jingle-space-2)] py-[var(--jingle-space-0-5)] [font-size:var(--jingle-font-caption)]"
     >
       {renderVisual(node, context)}
     </span>
@@ -214,7 +214,7 @@ function RuntimeSurfaceHeaderLeading(props: {
   const buttonLabel = canPop ? "Go Back" : "Go Home"
 
   return (
-    <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
+    <div className="flex min-w-0 items-center gap-[var(--jingle-gap-sm)]">
       <button
         type="button"
         onClick={canPop ? onPop : onGoHome}
@@ -223,10 +223,10 @@ function RuntimeSurfaceHeaderLeading(props: {
         aria-label={buttonLabel}
         title={buttonLabel}
       >
-        <ArrowLeft className="size-[var(--ow-icon-sm)]" />
+        <ArrowLeft className="size-[var(--jingle-icon-sm)]" />
       </button>
       {label ? (
-        <span className="truncate [font-size:var(--ow-font-body)] font-medium text-muted-foreground">
+        <span className="truncate [font-size:var(--jingle-font-body)] font-medium text-muted-foreground">
           {label}
         </span>
       ) : null}
@@ -272,22 +272,22 @@ function RuntimeDetailSurface(props: {
       >
         <ScrollArea className="flex-1">
           {snapshot.isLoading ? (
-            <div className="flex h-full items-center justify-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] text-muted-foreground">
-              <LoaderCircle className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] animate-spin" />
+            <div className="flex h-full items-center justify-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-body)] text-muted-foreground">
+              <LoaderCircle className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] animate-spin" />
               <span>Loading...</span>
             </div>
           ) : (
             <div
               className={cn(
-                "grid h-full min-h-full gap-[var(--ow-gap-lg)] px-[var(--ow-space-5)] py-[var(--ow-space-4)]",
+                "grid h-full min-h-full gap-[var(--jingle-gap-lg)] px-[var(--jingle-space-5)] py-[var(--jingle-space-4)]",
                 snapshot.metadata.length > 0 ? "grid-cols-[minmax(0,1fr)_280px]" : "grid-cols-1"
               )}
             >
               <div className="min-w-0">
                 {snapshot.markdown ? (
-                  <div className="native-detail-markdown [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground">
+                  <div className="native-detail-markdown [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)] text-foreground">
                     <Streamdown
-                      className="ow-markdown ow-native-detail-markdown space-y-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+                      className="jingle-markdown jingle-native-detail-markdown space-y-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
                       parseIncompleteMarkdown={false}
                       plugins={streamdownPlugins}
                     >
@@ -295,18 +295,18 @@ function RuntimeDetailSurface(props: {
                     </Streamdown>
                   </div>
                 ) : (
-                  <div className="[font-size:var(--ow-font-body)] text-muted-foreground">
+                  <div className="[font-size:var(--jingle-font-body)] text-muted-foreground">
                     No details available.
                   </div>
                 )}
               </div>
 
               {snapshot.metadata.length > 0 ? (
-                <div className="space-y-[var(--ow-space-3)] rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-elevated/70 p-[var(--ow-space-3)]">
-                  <div className="[font-size:var(--ow-font-meta)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                <div className="space-y-[var(--jingle-space-3)] rounded-[var(--jingle-radius-panel)] border border-border/80 bg-background-elevated/70 p-[var(--jingle-space-3)]">
+                  <div className="[font-size:var(--jingle-font-meta)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                     Metadata
                   </div>
-                  <div className="space-y-[var(--ow-space-3)]">
+                  <div className="space-y-[var(--jingle-space-3)]">
                     {metadataEntries.map((entry) => (
                       <RuntimeDetailMetadataEntry
                         key={`${entry.title}:${entry.text}:${entry.openTarget ?? ""}`}
@@ -336,8 +336,8 @@ function RuntimeDetailMetadataEntry(props: {
   const { entry, extensionName, openExternal } = props
   const canOpenTarget = entry.openTarget !== null
   const textClassName = canOpenTarget
-    ? "break-words [font-size:var(--ow-font-body)] text-primary underline-offset-2 hover:underline"
-    : "break-words [font-size:var(--ow-font-body)] text-foreground"
+    ? "break-words [font-size:var(--jingle-font-body)] text-primary underline-offset-2 hover:underline"
+    : "break-words [font-size:var(--jingle-font-body)] text-foreground"
 
   const handleOpen = (): void => {
     if (!entry.openTarget) {
@@ -348,10 +348,10 @@ function RuntimeDetailMetadataEntry(props: {
   }
 
   return (
-    <div className="space-y-[var(--ow-space-1)]">
-      <div className="flex items-center gap-[var(--ow-gap-xs)] [font-size:var(--ow-font-caption)] uppercase tracking-[0.08em] text-muted-foreground">
+    <div className="space-y-[var(--jingle-space-1)]">
+      <div className="flex items-center gap-[var(--jingle-gap-xs)] [font-size:var(--jingle-font-caption)] uppercase tracking-[0.08em] text-muted-foreground">
         {entry.icon ? (
-          <span className="flex size-[var(--ow-icon-sm)] items-center justify-center">
+          <span className="flex size-[var(--jingle-icon-sm)] items-center justify-center">
             {renderVisual(entry.icon, {
               extensionName
             })}
@@ -417,10 +417,10 @@ function RuntimeFormSurface(props: {
         title={snapshot.navigationTitle}
       >
         <ScrollArea className="flex-1">
-          <div className="space-y-[var(--ow-space-3)] px-[var(--ow-space-4)] py-[var(--ow-space-3)]">
+          <div className="space-y-[var(--jingle-space-3)] px-[var(--jingle-space-4)] py-[var(--jingle-space-3)]">
             {snapshot.isLoading ? (
-              <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] text-muted-foreground">
-                <Loader2 className="size-[var(--ow-icon-sm)] animate-spin" />
+              <div className="flex items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-body)] text-muted-foreground">
+                <Loader2 className="size-[var(--jingle-icon-sm)] animate-spin" />
                 <span>Loading...</span>
               </div>
             ) : null}
@@ -474,7 +474,7 @@ function RuntimeFormField(props: {
     return (
       <div
         data-runtime-form-field={field.id}
-        className={`rounded-[var(--ow-radius-sm)] border px-[var(--ow-space-2-5)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] ${toneClass}`}
+        className={`rounded-[var(--jingle-radius-sm)] border px-[var(--jingle-space-2-5)] py-[var(--jingle-space-1-5)] [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-body)] ${toneClass}`}
       >
         {field.text}
       </div>
@@ -483,21 +483,21 @@ function RuntimeFormField(props: {
 
   const label = (
     <>
-      <div className="[font-size:var(--ow-font-meta)] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+      <div className="[font-size:var(--jingle-font-meta)] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
         {field.title}
       </div>
       {field.description ? (
-        <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-muted-foreground">
+        <div className="[font-size:var(--jingle-font-body)] leading-[var(--jingle-line-body)] text-muted-foreground">
           {field.description}
         </div>
       ) : null}
       {"info" in field && field.info ? (
-        <div className="[font-size:var(--ow-font-caption)] leading-[var(--ow-line-body)] text-muted-foreground">
+        <div className="[font-size:var(--jingle-font-caption)] leading-[var(--jingle-line-body)] text-muted-foreground">
           {field.info}
         </div>
       ) : null}
       {"error" in field && field.error ? (
-        <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-red-600">
+        <div className="[font-size:var(--jingle-font-body)] leading-[var(--jingle-line-body)] text-red-600">
           {field.error}
         </div>
       ) : null}
@@ -508,9 +508,9 @@ function RuntimeFormField(props: {
     const value = typeof localValue === "boolean" ? localValue : field.value
 
     return (
-      <label className="block space-y-[var(--ow-space-1-5)]" data-runtime-form-field={field.id}>
+      <label className="block space-y-[var(--jingle-space-1-5)]" data-runtime-form-field={field.id}>
         {label}
-        <span className="inline-flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] text-foreground">
+        <span className="inline-flex items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-control)] text-foreground">
           <input
             type="checkbox"
             autoFocus={autoFocus}
@@ -528,7 +528,7 @@ function RuntimeFormField(props: {
     const value = typeof localValue === "string" ? localValue : field.value
 
     return (
-      <div className="space-y-[var(--ow-space-1-5)]" data-runtime-form-field={field.id}>
+      <div className="space-y-[var(--jingle-space-1-5)]" data-runtime-form-field={field.id}>
         {label}
         <RuntimeFormDropdownControl
           autoFocus={autoFocus}
@@ -546,10 +546,10 @@ function RuntimeFormField(props: {
     const value = Array.isArray(localValue) ? localValue : field.value
 
     return (
-      <label className="block space-y-[var(--ow-space-1-5)]" data-runtime-form-field={field.id}>
+      <label className="block space-y-[var(--jingle-space-1-5)]" data-runtime-form-field={field.id}>
         {label}
         <select
-          className="min-h-[calc(var(--ow-control-h-sm)*2)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
+          className="min-h-[calc(var(--jingle-control-h-sm)*2)] w-full rounded-[var(--jingle-radius-sm)] border border-input bg-background-elevated px-[var(--jingle-space-2-5)] py-[var(--jingle-space-1-5)] [font-size:var(--jingle-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
           autoFocus={autoFocus}
           multiple
           ref={inputRef as Ref<HTMLSelectElement>}
@@ -572,10 +572,10 @@ function RuntimeFormField(props: {
     const value = typeof localValue === "string" ? localValue : field.value
 
     return (
-      <label className="block space-y-[var(--ow-space-1-5)]" data-runtime-form-field={field.id}>
+      <label className="block space-y-[var(--jingle-space-1-5)]" data-runtime-form-field={field.id}>
         {label}
         <textarea
-          className="min-h-[var(--ow-textarea-min-h)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
+          className="min-h-[var(--jingle-textarea-min-h)] w-full rounded-[var(--jingle-radius-sm)] border border-input bg-background-elevated px-[var(--jingle-space-2-5)] py-[var(--jingle-space-1-5)] [font-size:var(--jingle-font-control)] leading-[var(--jingle-line-chat)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
           autoFocus={autoFocus}
           data-markdown={field.enableMarkdown === true ? "true" : undefined}
           ref={inputRef as Ref<HTMLTextAreaElement>}
@@ -592,10 +592,10 @@ function RuntimeFormField(props: {
     field.kind === "date-picker" ? (field.type === "datetime" ? "datetime-local" : "date") : "text"
 
   return (
-    <label className="block space-y-[var(--ow-space-1-5)]" data-runtime-form-field={field.id}>
+    <label className="block space-y-[var(--jingle-space-1-5)]" data-runtime-form-field={field.id}>
       {label}
       <input
-        className="flex h-[var(--ow-control-h-sm)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex h-[var(--jingle-control-h-sm)] w-full rounded-[var(--jingle-radius-sm)] border border-input bg-background-elevated px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-control)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
         autoFocus={autoFocus}
         type={inputType}
         ref={inputRef as Ref<HTMLInputElement>}
@@ -620,7 +620,7 @@ function RuntimeFormDropdownControl(props: {
   if (field.searchable !== true) {
     return (
       <NativeExtensionSelect
-        className="flex h-[var(--ow-control-h-sm)] w-full appearance-none rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated pl-[var(--ow-space-2-5)] pr-[var(--ow-space-6)] [font-size:var(--ow-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex h-[var(--jingle-control-h-sm)] w-full appearance-none rounded-[var(--jingle-radius-sm)] border border-input bg-background-elevated pl-[var(--jingle-space-2-5)] pr-[var(--jingle-space-6)] [font-size:var(--jingle-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
         autoFocus={autoFocus}
         ref={controlRef as Ref<HTMLSelectElement>}
         value={value}
@@ -637,7 +637,7 @@ function RuntimeFormDropdownControl(props: {
 
   return (
     <NativeExtensionSearchableSelect
-      className="flex h-[var(--ow-control-h-sm)] w-full items-center justify-between rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
+      className="flex h-[var(--jingle-control-h-sm)] w-full items-center justify-between rounded-[var(--jingle-radius-sm)] border border-input bg-background-elevated px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
       autoFocus={autoFocus}
       isLoading={field.isLoading === true}
       items={field.items}

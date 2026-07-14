@@ -11,11 +11,11 @@ import { getSettingsCopy } from "./copy"
 import { SETTINGS_PAGE_ORDER, SETTINGS_PAGE_REGISTRY } from "./navigation/registry"
 
 const settingsScrollPaneClassName =
-  "h-full overflow-x-hidden overflow-y-auto pr-[var(--ow-space-1)] [scrollbar-gutter:stable]"
+  "h-full overflow-x-hidden overflow-y-auto pr-[var(--jingle-space-1)] [scrollbar-gutter:stable]"
 
 function getSettingsTabClassName(active: boolean, withBorder = true): string {
   return [
-    "inline-flex items-center gap-[var(--ow-gap-sm)] px-[var(--ow-settings-tab-x)] py-[var(--ow-settings-tab-y)] [font-size:var(--ow-settings-tab-font)] font-medium transition",
+    "inline-flex items-center gap-[var(--jingle-gap-sm)] px-[var(--jingle-settings-tab-x)] py-[var(--jingle-settings-tab-y)] [font-size:var(--jingle-settings-tab-font)] font-medium transition",
     withBorder ? "border-l border-border" : "",
     active
       ? "bg-background text-foreground"
@@ -100,16 +100,16 @@ export default function SettingsApp(): React.JSX.Element {
 
   return (
     <div className="settings-app flex h-screen flex-col overflow-hidden bg-background text-foreground">
-      <div className="app-drag-region flex h-[var(--ow-settings-toolbar-h)] shrink-0 items-center border-b border-border bg-[var(--window-chrome)] px-[var(--ow-settings-window-pad)]">
+      <div className="app-drag-region flex h-[var(--jingle-settings-toolbar-h)] shrink-0 items-center border-b border-border bg-[var(--window-chrome)] px-[var(--jingle-settings-window-pad)]">
         <div
-          className="flex min-w-0 flex-1 items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-settings-tab-font)] font-semibold tracking-[0.05em] text-[var(--window-chrome-foreground)]"
+          className="flex min-w-0 flex-1 items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-settings-tab-font)] font-semibold tracking-[0.05em] text-[var(--window-chrome-foreground)]"
           style={{ paddingLeft: "calc(var(--window-controls-offset-inline) + 6px)" }}
         >
-          <Settings2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />
+          <Settings2 className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />
           <span>{copy.title}</span>
         </div>
 
-        <div className="app-no-drag inline-flex items-stretch overflow-hidden rounded-[var(--ow-settings-nav-radius)] border border-border bg-background-elevated shadow-sm">
+        <div className="app-no-drag inline-flex items-stretch overflow-hidden rounded-[var(--jingle-settings-nav-radius)] border border-border bg-background-elevated shadow-sm">
           {SETTINGS_PAGE_ORDER.map((tab, index) => {
             const definition = SETTINGS_PAGE_REGISTRY[tab]
             const Icon = definition.icon
@@ -122,25 +122,25 @@ export default function SettingsApp(): React.JSX.Element {
                 data-settings-tab={tab}
                 className={getSettingsTabClassName(navigation.tab === tab, index > 0)}
               >
-                <Icon className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+                <Icon className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)]" />
                 {copy.tabs[tab]}
               </button>
             )
           })}
         </div>
 
-        <div className="flex min-w-0 flex-1 justify-end [font-size:var(--ow-settings-tab-font)] text-[var(--window-chrome-muted)]">
+        <div className="flex min-w-0 flex-1 justify-end [font-size:var(--jingle-settings-tab-font)] text-[var(--window-chrome-muted)]">
           {locale === "zh-CN" ? "金果" : "Jingle"}
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-[var(--ow-settings-window-pad)]">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-[var(--jingle-settings-window-pad)]">
         {navigationDeliveryFailed ? (
           <div
             role="alert"
-            className="mb-[var(--ow-space-3)] flex shrink-0 items-center gap-[var(--ow-gap-sm)] border-b border-destructive/30 pb-[var(--ow-space-3)] text-sm text-destructive"
+            className="mb-[var(--jingle-space-3)] flex shrink-0 items-center gap-[var(--jingle-gap-sm)] border-b border-destructive/30 pb-[var(--jingle-space-3)] text-sm text-destructive"
           >
-            <CircleAlert className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)] shrink-0" />
+            <CircleAlert className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)] shrink-0" />
             <span>
               {locale === "zh-CN"
                 ? "设置导航初始化失败。请关闭并重新打开设置窗口。"

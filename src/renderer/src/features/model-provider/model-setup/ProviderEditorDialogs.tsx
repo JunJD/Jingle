@@ -189,18 +189,18 @@ function ProviderCredentialsDialog(props: {
 
   return (
     <Dialog open onOpenChange={(open) => !open && !saving && onClose()}>
-      <DialogContent className="w-[var(--ow-dialog-mobile-w)] rounded-[var(--ow-radius-dialog)] sm:max-w-[520px] sm:rounded-[var(--ow-radius-dialog)]">
+      <DialogContent className="w-[var(--jingle-dialog-mobile-w)] rounded-[var(--jingle-radius-dialog)] sm:max-w-[520px] sm:rounded-[var(--jingle-radius-dialog)]">
         <DialogHeader className="text-left">
-          <DialogTitle className="flex items-center gap-[var(--ow-space-2)]">
+          <DialogTitle className="flex items-center gap-[var(--jingle-space-2)]">
             <ProviderLogo providerId={provider.id} className="h-5 w-5" />
             {configured ? "编辑" : "配置"} {provider.name}
           </DialogTitle>
           <DialogDescription>保存后会读取可用模型。</DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-[var(--ow-space-4)]">
+        <div className="grid gap-[var(--jingle-space-4)]">
           {loading ? (
-            <div className="flex items-center gap-[var(--ow-space-2)] [font-size:var(--ow-font-body)] text-muted-foreground">
+            <div className="flex items-center gap-[var(--jingle-space-2)] [font-size:var(--jingle-font-body)] text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               读取配置
             </div>
@@ -245,7 +245,7 @@ function ProviderCredentialsDialog(props: {
           {errorText ? <InlineError text={errorText} /> : null}
         </div>
 
-        <DialogFooter className="flex-col-reverse gap-[var(--ow-space-2)] sm:flex-row sm:items-center sm:justify-between">
+        <DialogFooter className="flex-col-reverse gap-[var(--jingle-space-2)] sm:flex-row sm:items-center sm:justify-between">
           {configured ? (
             <button
               type="button"
@@ -259,7 +259,7 @@ function ProviderCredentialsDialog(props: {
           ) : (
             <span />
           )}
-          <div className="flex items-center justify-end gap-[var(--ow-space-2)]">
+          <div className="flex items-center justify-end gap-[var(--jingle-space-2)]">
             <Button type="button" variant="outline" disabled={saving} onClick={onClose}>
               取消
             </Button>
@@ -307,9 +307,9 @@ function ProviderActivationDialog(props: {
 
   return (
     <Dialog open onOpenChange={(open) => !open && !saving && onClose()}>
-      <DialogContent className="w-[var(--ow-dialog-mobile-w)] rounded-[var(--ow-radius-dialog)] sm:max-w-[460px] sm:rounded-[var(--ow-radius-dialog)]">
+      <DialogContent className="w-[var(--jingle-dialog-mobile-w)] rounded-[var(--jingle-radius-dialog)] sm:max-w-[460px] sm:rounded-[var(--jingle-radius-dialog)]">
         <DialogHeader className="text-left">
-          <DialogTitle className="flex items-center gap-[var(--ow-space-2)]">
+          <DialogTitle className="flex items-center gap-[var(--jingle-space-2)]">
             <ProviderLogo providerId={provider.id} className="h-5 w-5" />
             配置 {provider.name}
           </DialogTitle>
@@ -349,9 +349,9 @@ function CustomProviderDialog(props: {
 
   return (
     <Dialog open onOpenChange={(open) => !open && !savingRef.current && onClose()}>
-      <DialogContent className="w-[var(--ow-dialog-mobile-w)] max-h-[90vh] overflow-y-auto rounded-[var(--ow-radius-dialog)] sm:max-w-[600px] sm:rounded-[var(--ow-radius-dialog)]">
+      <DialogContent className="w-[var(--jingle-dialog-mobile-w)] max-h-[90vh] overflow-y-auto rounded-[var(--jingle-radius-dialog)] sm:max-w-[600px] sm:rounded-[var(--jingle-radius-dialog)]">
         <DialogHeader className="text-left">
-          <DialogTitle className="flex items-center gap-[var(--ow-space-2)]">
+          <DialogTitle className="flex items-center gap-[var(--jingle-space-2)]">
             <ProviderLogo providerId={provider.id} className="h-5 w-5" />
             编辑 {provider.name}
           </DialogTitle>

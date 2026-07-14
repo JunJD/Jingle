@@ -26,7 +26,7 @@ function LauncherUseWithManagerSection(props: {
 
   return (
     <section>
-      <div className="flex h-[var(--ow-section-h)] items-center px-[var(--launcher-result-section-x)] [font-size:var(--ow-font-meta)] font-semibold text-muted-foreground">
+      <div className="flex h-[var(--jingle-section-h)] items-center px-[var(--launcher-result-section-x)] [font-size:var(--jingle-font-meta)] font-semibold text-muted-foreground">
         <span>
           {title} · {commands.length}
         </span>
@@ -37,7 +37,7 @@ function LauncherUseWithManagerSection(props: {
           key={getLauncherCommandAddressKey(command.address)}
           type="button"
           className={cn(
-            "launcher-result-row relative mx-[var(--launcher-result-row-x)] grid h-[var(--ow-row-h-md)] w-[calc(100%-(var(--launcher-result-row-x)*2))] appearance-none grid-cols-[var(--launcher-result-icon-column)_minmax(0,1fr)_var(--launcher-result-trailing-column)] items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--launcher-result-row-padding-x)] text-left transition hover:bg-[var(--launcher-item-hover)]",
+            "launcher-result-row relative mx-[var(--launcher-result-row-x)] grid h-[var(--jingle-row-h-md)] w-[calc(100%-(var(--launcher-result-row-x)*2))] appearance-none grid-cols-[var(--launcher-result-icon-column)_minmax(0,1fr)_var(--launcher-result-trailing-column)] items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] border-0 px-[var(--launcher-result-row-padding-x)] text-left transition hover:bg-[var(--launcher-item-hover)]",
             enabled && "text-foreground"
           )}
           onClick={() => onSetCommandEnabled(command, !enabled)}
@@ -46,21 +46,21 @@ function LauncherUseWithManagerSection(props: {
           <LauncherUseWithCommandIcon command={command} />
 
           <div className="min-w-0">
-            <div className="truncate [font-size:var(--ow-font-body)] font-medium leading-[var(--ow-line-tight)] text-foreground">
+            <div className="truncate [font-size:var(--jingle-font-body)] font-medium leading-[var(--jingle-line-tight)] text-foreground">
               {command.title}
             </div>
-            <div className="mt-[var(--ow-leading-nudge)] truncate [font-size:var(--ow-font-meta)] leading-[var(--ow-line-tight)] text-muted-foreground">
+            <div className="mt-[var(--jingle-leading-nudge)] truncate [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-tight)] text-muted-foreground">
               {enabled
                 ? [command.ownerTitle, command.description].filter(Boolean).join(" · ")
                 : copy.launcher.useWithDisabledSubtitle}
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-[var(--ow-space-1-5)] [font-size:var(--ow-font-meta)] font-medium text-muted-foreground">
+          <div className="flex items-center justify-end gap-[var(--jingle-space-1-5)] [font-size:var(--jingle-font-meta)] font-medium text-muted-foreground">
             {enabled ? (
-              <CircleMinus className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+              <CircleMinus className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)]" />
             ) : (
-              <CirclePlus className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+              <CirclePlus className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)]" />
             )}
             <span>{actionLabel}</span>
           </div>
@@ -75,7 +75,7 @@ function LauncherUseWithCommandIcon(props: { command: LauncherIndexedCommand }):
 
   return (
     <div
-      className="flex h-[var(--ow-icon-md)] w-[var(--ow-icon-md)] shrink-0 items-center justify-center overflow-hidden rounded-[var(--ow-radius-sm)]"
+      className="flex h-[var(--jingle-icon-md)] w-[var(--jingle-icon-md)] shrink-0 items-center justify-center overflow-hidden rounded-[var(--jingle-radius-sm)]"
       style={getLauncherResultToneStyle("neutral")}
     >
       <LauncherResultIconGraphic icon={getLauncherIndexedCommandIcon(command)} />

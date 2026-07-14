@@ -132,8 +132,8 @@ export function PromptInput(props: PromptInputProps): React.JSX.Element {
       <PromptInputContext.Provider value={contextValue}>
         <div
           className={cn(
-            "ow-prompt-input flex min-w-0 cursor-text flex-col rounded-[var(--ow-prompt-input-radius)] border border-border/70 bg-background-elevated/90 shadow-[var(--ow-prompt-input-shadow)] transition-[border-color,box-shadow,background-color] duration-150",
-            "focus-within:border-ring/36 focus-within:shadow-[var(--ow-prompt-input-shadow-focus)]",
+            "jingle-prompt-input flex min-w-0 cursor-text flex-col rounded-[var(--jingle-prompt-input-radius)] border border-border/70 bg-background-elevated/90 shadow-[var(--jingle-prompt-input-shadow)] transition-[border-color,box-shadow,background-color] duration-150",
+            "focus-within:border-ring/36 focus-within:shadow-[var(--jingle-prompt-input-shadow-focus)]",
             disabled && "cursor-not-allowed opacity-60",
             className
           )}
@@ -452,7 +452,7 @@ export function PromptInputActions(props: PromptInputActionsProps): React.JSX.El
   const { className, ...rest } = props
 
   return (
-    <div className={cn("flex min-w-0 items-center gap-[var(--ow-gap-sm)]", className)} {...rest} />
+    <div className={cn("flex min-w-0 items-center gap-[var(--jingle-gap-sm)]", className)} {...rest} />
   )
 }
 
@@ -478,7 +478,7 @@ export function PromptInputAction(props: PromptInputActionProps): React.JSX.Elem
     <button
       aria-label={label}
       className={cn(
-        "inline-flex size-[var(--ow-prompt-input-action-size)] shrink-0 items-center justify-center rounded-full border-0 bg-transparent text-muted-foreground transition hover:bg-background-secondary/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-45",
+        "inline-flex size-[var(--jingle-prompt-input-action-size)] shrink-0 items-center justify-center rounded-full border-0 bg-transparent text-muted-foreground transition hover:bg-background-secondary/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-45",
         className
       )}
       title={title ?? label}
@@ -498,7 +498,7 @@ export function PromptInputAction(props: PromptInputActionProps): React.JSX.Elem
       <TooltipTrigger asChild>{button}</TooltipTrigger>
       <TooltipContent
         side={tooltipSide}
-        className="rounded-[var(--ow-radius-sm)] bg-popover px-[var(--ow-space-2)] py-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] text-popover-foreground shadow-md"
+        className="rounded-[var(--jingle-radius-sm)] bg-popover px-[var(--jingle-space-2)] py-[var(--jingle-space-1)] [font-size:var(--jingle-font-meta)] text-popover-foreground shadow-md"
       >
         {tooltip}
       </TooltipContent>

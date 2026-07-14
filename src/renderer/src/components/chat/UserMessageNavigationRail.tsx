@@ -250,11 +250,11 @@ export const UserMessageNavigationRail = memo(function UserMessageNavigationRail
   return (
     <nav
       aria-label={copy.chat.userMessageNavigationLabel}
-      className="pointer-events-none absolute left-[var(--ow-space-3)] top-1/2 z-20 hidden -translate-y-1/2 lg:block"
+      className="pointer-events-none absolute left-[var(--jingle-space-3)] top-1/2 z-20 hidden -translate-y-1/2 lg:block"
     >
       <div className="relative pointer-events-auto" ref={railRef}>
         <div
-          className="ow-user-message-navigation-rail-list flex max-h-[min(70vh,40rem)] flex-col overflow-y-auto overscroll-contain scrollbar-hide"
+          className="jingle-user-message-navigation-rail-list flex max-h-[min(70vh,40rem)] flex-col overflow-y-auto overscroll-contain scrollbar-hide"
           data-scrubbing={scrubbedItemId === null ? undefined : true}
           onLostPointerCapture={releaseScrub}
           onPointerCancel={releaseScrub}
@@ -270,7 +270,7 @@ export const UserMessageNavigationRail = memo(function UserMessageNavigationRail
               <button
                 aria-current={isActive ? "true" : undefined}
                 aria-label={copy.chat.userMessageNavigationJump(item.position)}
-                className="ow-user-message-navigation-rail-row group/navigation-row flex h-2.5 w-9 shrink-0 cursor-default items-center outline-none"
+                className="jingle-user-message-navigation-rail-row group/navigation-row flex h-2.5 w-9 shrink-0 cursor-default items-center outline-none"
                 data-scrub-target={isScrubbed ? true : undefined}
                 data-user-message-navigation-item-id={item.id}
                 key={item.id}
@@ -293,7 +293,7 @@ export const UserMessageNavigationRail = memo(function UserMessageNavigationRail
                 <span className="flex h-0.5 w-[30px] items-center">
                   <span
                     className={cn(
-                      "ow-user-message-navigation-rail-marker h-0.5 bg-muted-foreground opacity-40 group-focus-visible/navigation-row:bg-foreground group-focus-visible/navigation-row:opacity-100",
+                      "jingle-user-message-navigation-rail-marker h-0.5 bg-muted-foreground opacity-40 group-focus-visible/navigation-row:bg-foreground group-focus-visible/navigation-row:opacity-100",
                       scrubbedItemId === null &&
                         "group-hover/navigation-row:bg-foreground group-hover/navigation-row:opacity-100",
                       isActive && !isScrubbed && "bg-foreground opacity-60",
@@ -307,13 +307,13 @@ export const UserMessageNavigationRail = memo(function UserMessageNavigationRail
         </div>
         {preview ? (
           <div
-            className="pointer-events-none absolute left-full z-30 w-80 max-w-[calc(100vw-var(--ow-space-4))] -translate-y-1/2 overflow-hidden rounded-[var(--ow-radius-lg)] bg-popover/95 p-[var(--ow-space-2)] text-popover-foreground shadow-xl ring-[0.5px] ring-border/80 backdrop-blur-sm"
+            className="pointer-events-none absolute left-full z-30 w-80 max-w-[calc(100vw-var(--jingle-space-4))] -translate-y-1/2 overflow-hidden rounded-[var(--jingle-radius-lg)] bg-popover/95 p-[var(--jingle-space-2)] text-popover-foreground shadow-xl ring-[0.5px] ring-border/80 backdrop-blur-sm"
             style={{ top: preview.top }}
           >
-            <div className="min-w-0 truncate [font-size:var(--ow-font-body)] font-medium leading-[var(--ow-line-body)] text-foreground">
+            <div className="min-w-0 truncate [font-size:var(--jingle-font-body)] font-medium leading-[var(--jingle-line-body)] text-foreground">
               {copy.chat.userMessageNavigationJump(preview.item.position)}
             </div>
-            <div className="mt-[var(--ow-space-1)] line-clamp-3 [font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-muted-foreground">
+            <div className="mt-[var(--jingle-space-1)] line-clamp-3 [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-body)] text-muted-foreground">
               {preview.item.label.length > 0
                 ? preview.item.label
                 : copy.chat.userMessageNavigationNoContent}

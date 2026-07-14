@@ -48,17 +48,17 @@ function QuicklinkCard(props: {
 
   return (
     <div
-      className={`${settingsCardClassName} px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]`}
+      className={`${settingsCardClassName} px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)]`}
     >
-      <div className="flex flex-wrap items-start justify-between gap-[var(--ow-gap-md)]">
-        <div className="min-w-0 space-y-[var(--ow-space-1)]">
-          <div className="flex items-center gap-[var(--ow-gap-sm)]">
-            <Link2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground" />
-            <span className="[font-size:var(--ow-font-label)] font-semibold text-foreground">
+      <div className="flex flex-wrap items-start justify-between gap-[var(--jingle-gap-md)]">
+        <div className="min-w-0 space-y-[var(--jingle-space-1)]">
+          <div className="flex items-center gap-[var(--jingle-gap-sm)]">
+            <Link2 className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] text-muted-foreground" />
+            <span className="[font-size:var(--jingle-font-label)] font-semibold text-foreground">
               {quicklink.name}
             </span>
           </div>
-          <div className="[font-size:var(--ow-font-body)] text-muted-foreground">
+          <div className="[font-size:var(--jingle-font-body)] text-muted-foreground">
             {getQuicklinkKindLabel(quicklink, copy.quicklinks.commandLink)}
           </div>
         </div>
@@ -67,14 +67,14 @@ function QuicklinkCard(props: {
           className={secondaryButtonClassName}
           onClick={() => onRemove(quicklink.id)}
         >
-          <Trash2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />
+          <Trash2 className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />
           {copy.quicklinks.remove}
         </button>
       </div>
 
-      <div className="mt-[var(--ow-space-4)] grid gap-[var(--ow-space-3)]">
+      <div className="mt-[var(--jingle-space-4)] grid gap-[var(--jingle-space-3)]">
         <SettingsField label={copy.quicklinks.name}>
-          <div className="flex min-w-0 gap-[var(--ow-gap-sm)]">
+          <div className="flex min-w-0 gap-[var(--jingle-gap-sm)]">
             <SettingsTextInput
               value={name}
               onChange={(event) => setName(event.target.value)}
@@ -86,18 +86,18 @@ function QuicklinkCard(props: {
               disabled={name.trim() === quicklink.name}
               onClick={() => onRename(quicklink.id, name)}
             >
-              <Save className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />
+              <Save className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />
               {copy.quicklinks.save}
             </button>
           </div>
         </SettingsField>
         <SettingsField label={copy.quicklinks.link}>
-          <div className="overflow-hidden text-ellipsis whitespace-nowrap rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-2)] font-mono [font-size:var(--ow-font-meta)] text-muted-foreground">
+          <div className="overflow-hidden text-ellipsis whitespace-nowrap rounded-[var(--jingle-radius-md)] border border-border bg-background-elevated px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] font-mono [font-size:var(--jingle-font-meta)] text-muted-foreground">
             {quicklink.link}
           </div>
         </SettingsField>
         <SettingsField label={copy.quicklinks.shortcut}>
-          <div className="rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-2)] [font-size:var(--ow-font-body)] text-muted-foreground">
+          <div className="rounded-[var(--jingle-radius-md)] border border-border bg-background-elevated px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] [font-size:var(--jingle-font-body)] text-muted-foreground">
             {formatQuicklinkShortcut(quicklink, copy.common.none)}
           </div>
         </SettingsField>
@@ -147,10 +147,10 @@ export function QuicklinksTab(props: { locale: AppLocale }): React.JSX.Element {
         <div className={settingsPageDescriptionClassName}>{copy.quicklinks.description}</div>
       </div>
 
-      <div className="grid gap-[var(--ow-space-3)]">
+      <div className="grid gap-[var(--jingle-space-3)]">
         {quicklinks.length === 0 ? (
           <div
-            className={`${settingsInsetCardClassName} border-dashed [font-size:var(--ow-font-body)] text-muted-foreground`}
+            className={`${settingsInsetCardClassName} border-dashed [font-size:var(--jingle-font-body)] text-muted-foreground`}
           >
             {copy.quicklinks.empty}
           </div>

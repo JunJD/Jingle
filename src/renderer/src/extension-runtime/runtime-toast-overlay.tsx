@@ -69,37 +69,37 @@ export function RuntimeToastOverlay(props: {
   const Icon = toast.toast.style === "failure" ? AlertCircle : CheckCircle2
 
   return (
-    <div className="pointer-events-none absolute right-[var(--ow-space-4)] top-[var(--ow-space-4)] z-30 flex w-[min(360px,calc(100%-var(--ow-space-8)))] justify-end">
+    <div className="pointer-events-none absolute right-[var(--jingle-space-4)] top-[var(--jingle-space-4)] z-30 flex w-[min(360px,calc(100%-var(--jingle-space-8)))] justify-end">
       <div
         className={cn(
-          "pointer-events-auto flex min-w-0 gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-panel)] border px-[var(--ow-space-3)] py-[var(--ow-space-2)] shadow-lg backdrop-blur",
+          "pointer-events-auto flex min-w-0 gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-panel)] border px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] shadow-lg backdrop-blur",
           tone
         )}
       >
-        <Icon className="mt-[2px] size-[var(--ow-icon-sm)] shrink-0" />
+        <Icon className="mt-[2px] size-[var(--jingle-icon-sm)] shrink-0" />
         <div className="min-w-0 flex-1">
-          <div className="truncate [font-size:var(--ow-font-body)] font-medium">
+          <div className="truncate [font-size:var(--jingle-font-body)] font-medium">
             {toast.toast.title}
           </div>
           {toast.toast.message ? (
-            <div className="mt-[var(--ow-space-0-5)] line-clamp-2 [font-size:var(--ow-font-caption)] leading-[var(--ow-line-body)] text-muted-foreground">
+            <div className="mt-[var(--jingle-space-0-5)] line-clamp-2 [font-size:var(--jingle-font-caption)] leading-[var(--jingle-line-body)] text-muted-foreground">
               {toast.toast.message}
             </div>
           ) : null}
           {actions.length > 0 ? (
-            <div className="mt-[var(--ow-space-1-5)] flex flex-wrap gap-[var(--ow-gap-xs)]">
+            <div className="mt-[var(--jingle-space-1-5)] flex flex-wrap gap-[var(--jingle-gap-xs)]">
               {actions.map((action) => (
                 <button
                   key={`${toast.id}:${action.title}:${action.id ?? ""}`}
                   type="button"
-                  className="rounded-[var(--ow-radius-sm)] border border-border/80 bg-background px-[var(--ow-space-2)] py-[var(--ow-space-0-5)] [font-size:var(--ow-font-caption)] font-medium text-foreground transition hover:bg-muted"
+                  className="rounded-[var(--jingle-radius-sm)] border border-border/80 bg-background px-[var(--jingle-space-2)] py-[var(--jingle-space-0-5)] [font-size:var(--jingle-font-caption)] font-medium text-foreground transition hover:bg-muted"
                   onClick={() => {
                     onAction(action.id)
                   }}
                 >
                   {action.title}
                   {action.shortcut ? (
-                    <span className="ml-[var(--ow-space-1-5)] text-muted-foreground">
+                    <span className="ml-[var(--jingle-space-1-5)] text-muted-foreground">
                       {formatRuntimeActionShortcut(action.shortcut)}
                     </span>
                   ) : null}
@@ -111,10 +111,10 @@ export function RuntimeToastOverlay(props: {
         <button
           type="button"
           aria-label="Dismiss toast"
-          className="flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          className="flex size-[var(--jingle-icon-action)] shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
           onClick={onDismiss}
         >
-          <X className="size-[var(--ow-icon-xs)]" />
+          <X className="size-[var(--jingle-icon-xs)]" />
         </button>
       </div>
     </div>

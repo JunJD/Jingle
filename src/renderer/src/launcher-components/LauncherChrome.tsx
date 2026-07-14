@@ -77,10 +77,10 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
         onKeyDown={onInputKeyDown}
         placeholders={placeholders}
         className={cn(
-          "flex-1 [font-size:var(--ow-font-control)] font-medium text-foreground",
+          "flex-1 [font-size:var(--jingle-font-control)] font-medium text-foreground",
           inputClassName
         )}
-        placeholderClassName="[font-size:var(--ow-font-control)] font-medium text-muted-foreground/64"
+        placeholderClassName="[font-size:var(--jingle-font-control)] font-medium text-muted-foreground/64"
       />
     )
   }, [

@@ -205,7 +205,7 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
 
   if (!agentConfig || !launcherSettings) {
     return (
-      <div className="flex h-full items-center justify-center [font-size:var(--ow-font-label)] text-muted-foreground">
+      <div className="flex h-full items-center justify-center [font-size:var(--jingle-font-label)] text-muted-foreground">
         {getLoadingSettingsLabel(locale)}
       </div>
     )
@@ -220,12 +220,12 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
 
       <div className={settingsCardClassName}>
         <SettingsRow
-          icon={<FolderOpen className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
+          icon={<FolderOpen className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
           title={copy.general.workspaceTitle}
           description={copy.general.workspaceDescription}
         >
-          <div className="flex flex-wrap items-center gap-[var(--ow-gap-md)]">
-            <div className="flex min-h-[var(--ow-settings-control-h)] min-w-[var(--ow-settings-field-min-width)] flex-1 items-center rounded-[var(--ow-radius-md)] border border-border/70 bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1)] [font-size:var(--ow-settings-control-font)] text-foreground">
+          <div className="flex flex-wrap items-center gap-[var(--jingle-gap-md)]">
+            <div className="flex min-h-[var(--jingle-settings-control-h)] min-w-[var(--jingle-settings-field-min-width)] flex-1 items-center rounded-[var(--jingle-radius-md)] border border-border/70 bg-background-elevated px-[var(--jingle-space-3)] py-[var(--jingle-space-1)] [font-size:var(--jingle-settings-control-font)] text-foreground">
               {getWorkspacePathLabel(globalWorkspacePath, copy)}
             </div>
             <button
@@ -248,12 +248,12 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
         </SettingsRow>
 
         <SettingsRow
-          icon={<Rocket className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
+          icon={<Rocket className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
           title={copy.general.launcherModeTitle}
           description={copy.general.launcherModeDescription}
           titleId="settings-general-launcher-mode-title"
         >
-          <div className="max-w-[var(--ow-settings-select-w)]">
+          <div className="max-w-[var(--jingle-settings-select-w)]">
             <SettingsSelect
               aria-labelledby="settings-general-launcher-mode-title"
               value={launcherSettings.windowMode}
@@ -268,12 +268,12 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
         </SettingsRow>
 
         <SettingsRow
-          icon={<Languages className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
+          icon={<Languages className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
           title={copy.general.localeTitle}
           description={copy.general.localeDescription}
           titleId="settings-general-locale-title"
         >
-          <div className="max-w-[var(--ow-settings-select-w)]">
+          <div className="max-w-[var(--jingle-settings-select-w)]">
             <SettingsSelect
               aria-labelledby="settings-general-locale-title"
               value={agentConfig.locale}
@@ -291,17 +291,17 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
         </SettingsRow>
 
         <SettingsRow
-          icon={<CornerDownRight className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
+          icon={<CornerDownRight className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
           title={copy.general.followUpModeTitle}
           description={copy.general.followUpModeDescription}
         >
-          <div className="inline-flex min-h-[var(--ow-settings-control-h)] overflow-hidden rounded-[var(--ow-radius-md)] border border-border bg-background-elevated p-[var(--ow-space-0-5)]">
+          <div className="inline-flex min-h-[var(--jingle-settings-control-h)] overflow-hidden rounded-[var(--jingle-radius-md)] border border-border bg-background-elevated p-[var(--jingle-space-0-5)]">
             {(["queue", "steer"] as const).map((mode) => (
               <button
                 key={mode}
                 type="button"
                 aria-pressed={agentConfig.followUpMode === mode}
-                className={`rounded-[var(--ow-radius-sm)] px-[var(--ow-space-3)] py-[var(--ow-space-1)] [font-size:var(--ow-settings-control-font)] font-medium transition ${
+                className={`rounded-[var(--jingle-radius-sm)] px-[var(--jingle-space-3)] py-[var(--jingle-space-1)] [font-size:var(--jingle-settings-control-font)] font-medium transition ${
                   agentConfig.followUpMode === mode
                     ? "bg-background-secondary text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -315,13 +315,13 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
         </SettingsRow>
 
         <SettingsRow
-          icon={<Layers2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
+          icon={<Layers2 className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
           title={copy.general.skillSourcesTitle}
           description={copy.general.skillSourcesDescription}
         >
           <textarea
             aria-label={copy.general.skillSourcesTitle}
-            className={`${inputClassName} min-h-[var(--ow-settings-textarea-min-h)] resize-y`}
+            className={`${inputClassName} min-h-[var(--jingle-settings-textarea-min-h)] resize-y`}
             value={skillSourcesDraft}
             onChange={(event) => {
               dispatch({ type: "skill-sources-changed", value: event.target.value })
@@ -331,14 +331,14 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
         </SettingsRow>
 
         <SettingsRow
-          icon={<Layers2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
+          icon={<Layers2 className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
           title={copy.general.desktopAutomationAllowlistTitle}
           description={copy.general.desktopAutomationAllowlistDescription}
         >
-          <div className="space-y-[var(--ow-space-3)]">
+          <div className="space-y-[var(--jingle-space-3)]">
             <textarea
               aria-label={copy.general.desktopAutomationAllowlistTitle}
-              className={`${inputClassName} min-h-[var(--ow-settings-textarea-min-h)] resize-y`}
+              className={`${inputClassName} min-h-[var(--jingle-settings-textarea-min-h)] resize-y`}
               value={desktopAutomationAllowlistDraft}
               onChange={(event) => {
                 dispatch({
@@ -348,7 +348,7 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
               }}
               spellCheck={false}
             />
-            <div className="flex items-center gap-[var(--ow-gap-md)]">
+            <div className="flex items-center gap-[var(--jingle-gap-md)]">
               <button
                 type="button"
                 className={secondaryButtonClassName}
@@ -357,7 +357,7 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
                 {copy.common.save}
               </button>
               {status ? (
-                <span className="[font-size:var(--ow-font-body)] text-muted-foreground">
+                <span className="[font-size:var(--jingle-font-body)] text-muted-foreground">
                   {status}
                 </span>
               ) : null}

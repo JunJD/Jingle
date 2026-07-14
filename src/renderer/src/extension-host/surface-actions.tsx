@@ -11,19 +11,19 @@ export function NativeSurfaceActionsFooter(props: {
 
   return (
     <>
-      <div className="flex min-w-0 items-center gap-[var(--ow-gap-md)]">{leading}</div>
+      <div className="flex min-w-0 items-center gap-[var(--jingle-gap-md)]">{leading}</div>
 
-      <div className="flex items-center gap-[var(--ow-gap-sm)]">
+      <div className="flex items-center gap-[var(--jingle-gap-sm)]">
         {controller.canOpenActions ? (
           <button
             type="button"
             onClick={controller.openActions}
             onMouseDown={(event) => event.preventDefault()}
-            className="launcher-action-link flex h-[var(--launcher-action-control-h)] items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-2-5)] [font-size:var(--ow-font-meta)] font-medium text-foreground"
+            className="launcher-action-link flex h-[var(--launcher-action-control-h)] items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-meta)] font-medium text-foreground"
           >
             <span>Actions</span>
             {controller.actionPanelShortcut ? (
-              <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
+              <span className="launcher-shortcut [font-size:var(--jingle-font-meta)] text-muted-foreground">
                 {controller.actionPanelShortcut}
               </span>
             ) : null}
@@ -35,11 +35,11 @@ export function NativeSurfaceActionsFooter(props: {
           onClick={primaryAction.kind === "ready" ? primaryAction.execute : undefined}
           onMouseDown={(event) => event.preventDefault()}
           disabled={primaryAction.kind === "invalid"}
-          className="launcher-action-link flex h-[var(--launcher-action-control-h)] items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-2-5)] [font-size:var(--ow-font-meta)] font-medium text-foreground disabled:opacity-40"
+          className="launcher-action-link flex h-[var(--launcher-action-control-h)] items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-meta)] font-medium text-foreground disabled:opacity-40"
         >
           <span>{primaryAction.title}</span>
           {primaryAction.kind === "ready" && primaryAction.shortcut ? (
-            <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
+            <span className="launcher-shortcut [font-size:var(--jingle-font-meta)] text-muted-foreground">
               {primaryAction.shortcut}
             </span>
           ) : null}

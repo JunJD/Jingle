@@ -99,7 +99,7 @@ export function AssistantSelectionOverlay(props: {
     <Button
       type="button"
       variant="ghost"
-      className="fixed z-50 inline-flex h-[30px] -translate-x-1/2 items-center gap-[var(--ow-space-1-5)] rounded-full border border-border/65 bg-background-elevated/94 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-meta)] text-foreground/90 shadow-[0_8px_22px_rgba(0,0,0,0.16)] backdrop-blur-sm transition-colors duration-100 hover:bg-background-secondary/72 hover:text-foreground"
+      className="fixed z-50 inline-flex h-[30px] -translate-x-1/2 items-center gap-[var(--jingle-space-1-5)] rounded-full border border-border/65 bg-background-elevated/94 px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-meta)] text-foreground/90 shadow-[0_8px_22px_rgba(0,0,0,0.16)] backdrop-blur-sm transition-colors duration-100 hover:bg-background-secondary/72 hover:text-foreground"
       style={{
         left: draft.rect.left,
         top: draft.rect.top
@@ -111,7 +111,7 @@ export function AssistantSelectionOverlay(props: {
         setDraft(null)
       }}
     >
-      <MessageSquarePlus className="size-[var(--ow-icon-sm)] text-muted-foreground" />
+      <MessageSquarePlus className="size-[var(--jingle-icon-sm)] text-muted-foreground" />
       <span>{copy.chat.addSelectionToChat}</span>
     </Button>
   )

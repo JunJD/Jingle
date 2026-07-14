@@ -251,13 +251,13 @@ export function CustomProviderForm(props: {
   }
 
   return (
-    <div className="space-y-[var(--ow-space-4)]">
+    <div className="space-y-[var(--jingle-space-4)]">
       {title ? <SectionHeader backDisabled={saving} onBack={onBack} title={title} /> : null}
       <fieldset
         disabled={saving}
-        className="min-w-0 rounded-[var(--ow-settings-card-radius)] border border-border bg-background-elevated p-[var(--ow-space-4)]"
+        className="min-w-0 rounded-[var(--jingle-settings-card-radius)] border border-border bg-background-elevated p-[var(--jingle-space-4)]"
       >
-        <div className="grid gap-[var(--ow-space-4)]">
+        <div className="grid gap-[var(--jingle-space-4)]">
           <SettingsField label="Provider Type" required>
             <SettingsSelect
               value={engine}
@@ -291,7 +291,7 @@ export function CustomProviderForm(props: {
               }
             />
           </SettingsField>
-          <div className="grid gap-[var(--ow-space-4)] sm:grid-cols-2">
+          <div className="grid gap-[var(--jingle-space-4)] sm:grid-cols-2">
             <SettingsField label="API URL" required={requiresBaseUrl}>
               <SettingsTextInput
                 value={baseUrl}
@@ -322,8 +322,8 @@ export function CustomProviderForm(props: {
               }
             />
           </SettingsField>
-          <div className="flex items-center justify-between rounded-[var(--ow-radius-md)] border border-border bg-background-secondary px-[var(--ow-space-3)] py-[var(--ow-space-2)]">
-            <span className="[font-size:var(--ow-font-body)] text-foreground">
+          <div className="flex items-center justify-between rounded-[var(--jingle-radius-md)] border border-border bg-background-secondary px-[var(--jingle-space-3)] py-[var(--jingle-space-2)]">
+            <span className="[font-size:var(--jingle-font-body)] text-foreground">
               This provider requires an API key
             </span>
             <SettingsSwitch
@@ -347,8 +347,8 @@ export function CustomProviderForm(props: {
               />
             </SettingsField>
           ) : null}
-          <div className="flex items-center justify-between rounded-[var(--ow-radius-md)] border border-border bg-background-secondary px-[var(--ow-space-3)] py-[var(--ow-space-2)]">
-            <span className="[font-size:var(--ow-font-body)] text-foreground">
+          <div className="flex items-center justify-between rounded-[var(--jingle-radius-md)] border border-border bg-background-secondary px-[var(--jingle-space-3)] py-[var(--jingle-space-2)]">
+            <span className="[font-size:var(--jingle-font-body)] text-foreground">
               Provider supports streaming responses
             </span>
             <SettingsSwitch
@@ -360,24 +360,24 @@ export function CustomProviderForm(props: {
             />
           </div>
           <SettingsField label="Custom Headers">
-            <div className="grid gap-[var(--ow-space-2)]">
+            <div className="grid gap-[var(--jingle-space-2)]">
               {headers.map((header) => (
                 <div
                   key={header.key}
-                  className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-[var(--ow-space-2)]"
+                  className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-[var(--jingle-space-2)]"
                 >
                   <SettingsTextInput value={header.key} readOnly />
                   <SettingsTextInput value={header.value} readOnly />
                   <button
                     type="button"
-                    className="inline-flex h-[var(--ow-settings-control-h)] w-[var(--ow-settings-control-h)] items-center justify-center rounded-[var(--ow-radius-md)] border border-border bg-background-elevated text-muted-foreground transition hover:text-foreground"
+                    className="inline-flex h-[var(--jingle-settings-control-h)] w-[var(--jingle-settings-control-h)] items-center justify-center rounded-[var(--jingle-radius-md)] border border-border bg-background-elevated text-muted-foreground transition hover:text-foreground"
                     onClick={() => dispatchForm({ key: header.key, type: "remove-header" })}
                   >
                     <X className="h-4 w-4" />
                   </button>
                 </div>
               ))}
-              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-[var(--ow-space-2)]">
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-[var(--jingle-space-2)]">
                 <SettingsTextInput
                   value={newHeaderKey}
                   placeholder="Header name"
@@ -394,7 +394,7 @@ export function CustomProviderForm(props: {
                 />
                 <button
                   type="button"
-                  className="inline-flex h-[var(--ow-settings-control-h)] items-center gap-[var(--ow-space-1)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] text-muted-foreground transition hover:text-foreground"
+                  className="inline-flex h-[var(--jingle-settings-control-h)] items-center gap-[var(--jingle-space-1)] rounded-[var(--jingle-radius-md)] border border-border bg-background-elevated px-[var(--jingle-space-3)] text-muted-foreground transition hover:text-foreground"
                   onClick={handleAddHeader}
                 >
                   <Plus className="h-4 w-4" />
@@ -403,11 +403,11 @@ export function CustomProviderForm(props: {
               </div>
             </div>
           </SettingsField>
-          <div className="rounded-[var(--ow-radius-md)] border border-border bg-background-secondary px-[var(--ow-space-3)] py-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-muted-foreground">
+          <div className="rounded-[var(--jingle-radius-md)] border border-border bg-background-secondary px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-body)] text-muted-foreground">
             自定义 provider 会写入 {modelProviderPaths.customProvidersDir}
           </div>
           {errorText ? <InlineError text={errorText} /> : null}
-          <div className="flex items-center justify-between gap-[var(--ow-space-3)]">
+          <div className="flex items-center justify-between gap-[var(--jingle-space-3)]">
             <button
               type="button"
               className={secondaryButtonClassName}

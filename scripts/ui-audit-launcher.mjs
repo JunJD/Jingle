@@ -78,14 +78,14 @@ async function collectRuntimeSnapshot(page) {
     const selectorPlans = [
       { key: "shell", selector: ".launcher-window-shell" },
       { key: "header", selector: ".launcher-chrome-header" },
-      { key: "promptInput", selector: ".ow-prompt-input" },
-      { key: "composerTextbox", selector: ".ow-prompt-input [role='textbox'], .ow-prompt-input textarea, .ow-prompt-input [contenteditable='true']" },
+      { key: "promptInput", selector: ".jingle-prompt-input" },
+      { key: "composerTextbox", selector: ".jingle-prompt-input [role='textbox'], .jingle-prompt-input textarea, .jingle-prompt-input [contenteditable='true']" },
       { key: "submitButton", selector: "button[aria-label='发给 AI']" },
       { key: "attachButton", selector: "button[aria-label='添加附件']" },
       { key: "actionButton", selector: "button[aria-label='操作']" },
-      { key: "firstReasoning", selector: ".ow-reasoning-message" },
-      { key: "firstAgentTool", selector: ".ow-agent-tool" },
-      { key: "firstAgentToolGroup", selector: ".ow-agent-tool-group" }
+      { key: "firstReasoning", selector: ".jingle-reasoning-message" },
+      { key: "firstAgentTool", selector: ".jingle-agent-tool" },
+      { key: "firstAgentToolGroup", selector: ".jingle-agent-tool-group" }
     ]
 
     function styleOf(element, pseudoElement) {
@@ -146,14 +146,14 @@ async function collectRuntimeSnapshot(page) {
     }
 
     function findComposerPlaceholder(textbox) {
-      const composerRoot = document.querySelector(".ow-prompt-input")
-      const overlayPlaceholder = composerRoot?.querySelector(".ow-composer-placeholder")
+      const composerRoot = document.querySelector(".jingle-prompt-input")
+      const overlayPlaceholder = composerRoot?.querySelector(".jingle-composer-placeholder")
 
       if (overlayPlaceholder) {
         return {
           found: true,
           rect: rectOf(overlayPlaceholder),
-          selector: ".ow-prompt-input .ow-composer-placeholder",
+          selector: ".jingle-prompt-input .jingle-composer-placeholder",
           source: "overlay",
           style: styleOf(overlayPlaceholder)
         }
@@ -175,17 +175,17 @@ async function collectRuntimeSnapshot(page) {
       return null
     }
 
-    const textbox = document.querySelector(".ow-prompt-input [role='textbox'], .ow-prompt-input textarea, .ow-prompt-input [contenteditable='true']")
+    const textbox = document.querySelector(".jingle-prompt-input [role='textbox'], .jingle-prompt-input textarea, .jingle-prompt-input [contenteditable='true']")
     const placeholder = findComposerPlaceholder(textbox)
     const root = getComputedStyle(document.documentElement)
 
     return {
       counts: {
-        agentTool: document.querySelectorAll(".ow-agent-tool").length,
-        agentToolGroup: document.querySelectorAll(".ow-agent-tool-group").length,
+        agentTool: document.querySelectorAll(".jingle-agent-tool").length,
+        agentToolGroup: document.querySelectorAll(".jingle-agent-tool-group").length,
         buttons: document.querySelectorAll("button").length,
-        promptInput: document.querySelectorAll(".ow-prompt-input").length,
-        reasoning: document.querySelectorAll(".ow-reasoning-message").length
+        promptInput: document.querySelectorAll(".jingle-prompt-input").length,
+        reasoning: document.querySelectorAll(".jingle-reasoning-message").length
       },
       elements: Object.fromEntries(selectorPlans.map((plan) => [plan.key, describe(plan)])),
       placeholder: {
@@ -198,8 +198,8 @@ async function collectRuntimeSnapshot(page) {
         foreground: root.getPropertyValue("--foreground").trim(),
         mutedForeground: root.getPropertyValue("--muted-foreground").trim(),
         tertiaryForeground: root.getPropertyValue("--tertiary-foreground").trim(),
-        promptInputShadow: root.getPropertyValue("--ow-prompt-input-shadow").trim(),
-        promptInputShadowFocus: root.getPropertyValue("--ow-prompt-input-shadow-focus").trim()
+        promptInputShadow: root.getPropertyValue("--jingle-prompt-input-shadow").trim(),
+        promptInputShadowFocus: root.getPropertyValue("--jingle-prompt-input-shadow-focus").trim()
       },
       url: location.href,
       viewport: {
@@ -359,7 +359,7 @@ function createFindings(snapshot) {
       expected: "completed tool/reasoning rows should collapse into a lower-noise timeline in long threads",
       id: "long-thread-process-noise",
       priority: "P1",
-      selector: ".ow-agent-tool / .ow-reasoning-message",
+      selector: ".jingle-agent-tool / .jingle-reasoning-message",
       title: "Long launcher thread has high process UI density"
     })
   }

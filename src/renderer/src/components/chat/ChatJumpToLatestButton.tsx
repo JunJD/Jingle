@@ -13,15 +13,15 @@ export function ChatJumpToLatestButton(props: {
     <button
       type="button"
       className={cn(
-        "flex items-center gap-[var(--ow-gap-sm)] rounded-full border border-border/70 bg-background/92 px-[var(--ow-space-3)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-meta)] font-medium text-foreground shadow-[0_8px_24px_rgba(0,0,0,0.12)] backdrop-blur-md transition hover:bg-background-elevated",
+        "flex items-center gap-[var(--jingle-gap-sm)] rounded-full border border-border/70 bg-background/92 px-[var(--jingle-space-3)] py-[var(--jingle-space-1-5)] [font-size:var(--jingle-font-meta)] font-medium text-foreground shadow-[0_8px_24px_rgba(0,0,0,0.12)] backdrop-blur-md transition hover:bg-background-elevated",
         className
       )}
       onClick={onClick}
     >
       {isLoading ? (
-        <Loader2 className="size-[var(--ow-icon-sm)] animate-spin" />
+        <Loader2 className="size-[var(--jingle-icon-sm)] animate-spin" />
       ) : (
-        <ArrowDown className="size-[var(--ow-icon-sm)]" />
+        <ArrowDown className="size-[var(--jingle-icon-sm)]" />
       )}
       {label}
     </button>

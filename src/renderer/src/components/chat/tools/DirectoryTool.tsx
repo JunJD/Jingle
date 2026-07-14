@@ -66,7 +66,7 @@ defineToolComponent({
     return (
       <ToolDetailStack>
         {path ? (
-          <ToolCodeBlock className="text-[var(--ow-agent-timeline-muted)]">{path}</ToolCodeBlock>
+          <ToolCodeBlock className="text-[var(--jingle-agent-timeline-muted)]">{path}</ToolCodeBlock>
         ) : null}
         <ToolFileList items={entries} />
       </ToolDetailStack>
@@ -101,7 +101,7 @@ defineToolComponent({
     return (
       <ToolDetailStack>
         {pattern ? (
-          <ToolCodeBlock className="text-[var(--ow-agent-timeline-muted)]">{pattern}</ToolCodeBlock>
+          <ToolCodeBlock className="text-[var(--jingle-agent-timeline-muted)]">{pattern}</ToolCodeBlock>
         ) : null}
         <ToolFileList items={matches} />
       </ToolDetailStack>

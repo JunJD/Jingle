@@ -104,18 +104,18 @@ export function LauncherActionOverlay(props: {
         type="button"
       />
       <div
-        className="absolute bottom-[var(--launcher-action-panel-bottom)] right-[var(--launcher-action-panel-right)] w-[var(--launcher-action-panel-width)] overflow-hidden rounded-[var(--ow-radius-dialog)] border border-border/80 bg-background shadow-2xl"
+        className="absolute bottom-[var(--launcher-action-panel-bottom)] right-[var(--launcher-action-panel-right)] w-[var(--launcher-action-panel-width)] overflow-hidden rounded-[var(--jingle-radius-dialog)] border border-border/80 bg-background shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="max-h-[var(--launcher-action-panel-max-h)] overflow-y-auto p-[var(--ow-space-2)]">
+        <div className="max-h-[var(--launcher-action-panel-max-h)] overflow-y-auto p-[var(--jingle-space-2)]">
           {activeMenu ? (
-            <div className="-mx-[var(--ow-space-2)] mb-[var(--ow-space-2)] border-b border-border/70 px-[var(--ow-space-2)] pb-[var(--ow-space-2)]">
+            <div className="-mx-[var(--jingle-space-2)] mb-[var(--jingle-space-2)] border-b border-border/70 px-[var(--jingle-space-2)] pb-[var(--jingle-space-2)]">
               <button
                 type="button"
                 onClick={popSubmenu}
-                className="flex h-[var(--ow-control-h-lg)] w-full items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-3)] text-left [font-size:var(--ow-font-body)] text-muted-foreground transition-colors duration-100 hover:bg-background-secondary"
+                className="flex h-[var(--jingle-control-h-lg)] w-full items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] px-[var(--jingle-space-3)] text-left [font-size:var(--jingle-font-body)] text-muted-foreground transition-colors duration-100 hover:bg-background-secondary"
               >
-                <ChevronLeft className="size-[var(--ow-icon-action)] shrink-0" strokeWidth={2.2} />
+                <ChevronLeft className="size-[var(--jingle-icon-action)] shrink-0" strokeWidth={2.2} />
                 <span className="truncate">{activeMenu.title}</span>
               </button>
             </div>
@@ -123,7 +123,7 @@ export function LauncherActionOverlay(props: {
           {groupedActions.map((group, groupIndex) => (
             <Fragment key={`launcher-action-group-${groupIndex}`}>
               {group.title ? (
-                <div className="px-[var(--ow-space-2)] pb-[var(--ow-space-1)] pt-[var(--ow-space-2)] [font-size:var(--ow-font-caption)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                <div className="px-[var(--jingle-space-2)] pb-[var(--jingle-space-1)] pt-[var(--jingle-space-2)] [font-size:var(--jingle-font-caption)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                   {group.title}
                 </div>
               ) : null}
@@ -149,7 +149,7 @@ export function LauncherActionOverlay(props: {
                     }}
                     disabled={action.disabled}
                     className={cn(
-                      "flex h-[var(--ow-control-h-lg)] w-full items-center justify-between gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-3)] text-left [font-size:var(--ow-font-body)] transition-colors duration-100 focus-visible:outline-none",
+                      "flex h-[var(--jingle-control-h-lg)] w-full items-center justify-between gap-[var(--jingle-gap-md)] rounded-[var(--jingle-radius-md)] px-[var(--jingle-space-3)] text-left [font-size:var(--jingle-font-body)] transition-colors duration-100 focus-visible:outline-none",
                       isChecked
                         ? "bg-background-secondary font-medium text-foreground"
                         : "hover:bg-background-secondary/70",
@@ -158,9 +158,9 @@ export function LauncherActionOverlay(props: {
                       action.disabled ? "cursor-default opacity-45" : null
                     )}
                   >
-                    <div className="flex min-w-0 items-center gap-[var(--ow-gap-md)]">
+                    <div className="flex min-w-0 items-center gap-[var(--jingle-gap-md)]">
                       {action.icon ? (
-                        <div className="flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center [&>svg]:size-[var(--ow-icon-action)]">
+                        <div className="flex size-[var(--jingle-icon-action)] shrink-0 items-center justify-center [&>svg]:size-[var(--jingle-icon-action)]">
                           {action.icon}
                         </div>
                       ) : null}
@@ -168,15 +168,15 @@ export function LauncherActionOverlay(props: {
                     </div>
 
                     {action.shortcut ? (
-                      <span className="launcher-shortcut shrink-0 [font-size:var(--ow-font-meta)] text-muted-foreground">
+                      <span className="launcher-shortcut shrink-0 [font-size:var(--jingle-font-meta)] text-muted-foreground">
                         {action.shortcut}
                       </span>
                     ) : action.children && action.children.length > 0 ? (
-                      <span className="flex size-[var(--ow-icon-md)] shrink-0 items-center justify-center text-muted-foreground">
-                        <ChevronRight className="size-[var(--ow-icon-action)]" strokeWidth={2.2} />
+                      <span className="flex size-[var(--jingle-icon-md)] shrink-0 items-center justify-center text-muted-foreground">
+                        <ChevronRight className="size-[var(--jingle-icon-action)]" strokeWidth={2.2} />
                       </span>
                     ) : action.accessory ? (
-                      <span className="flex size-[var(--ow-icon-md)] shrink-0 items-center justify-center text-primary [&>svg]:size-[var(--ow-icon-action)]">
+                      <span className="flex size-[var(--jingle-icon-md)] shrink-0 items-center justify-center text-primary [&>svg]:size-[var(--jingle-icon-action)]">
                         {action.accessory}
                       </span>
                     ) : null}

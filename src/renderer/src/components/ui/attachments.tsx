@@ -139,12 +139,12 @@ function AttachmentMetadata({
   const label = getAttachmentLabel(data)
 
   return (
-    <div className={cn("space-y-[var(--ow-space-1)] px-[var(--ow-space-0-5)]", className)}>
-      <h4 className="[font-size:var(--ow-font-body)] font-semibold leading-none text-foreground">
+    <div className={cn("space-y-[var(--jingle-space-1)] px-[var(--jingle-space-0-5)]", className)}>
+      <h4 className="[font-size:var(--jingle-font-body)] font-semibold leading-none text-foreground">
         {label}
       </h4>
       {showMediaType && data.mediaType ? (
-        <p className="font-mono [font-size:var(--ow-font-meta)] text-muted-foreground">
+        <p className="font-mono [font-size:var(--jingle-font-meta)] text-muted-foreground">
           {data.mediaType}
         </p>
       ) : null}
@@ -205,7 +205,7 @@ export const Attachments = ({
     <AttachmentsContext.Provider value={contextValue}>
       <div
         className={cn(
-          "ow-attachments flex items-start",
+          "jingle-attachments flex items-start",
           variant === "list" ? "flex-col gap-2" : "flex-wrap gap-2",
           variant === "grid" && "ml-auto w-fit",
           className
@@ -242,15 +242,15 @@ export const Attachment = ({ data, onRemove, className, children, ...props }: At
         className={cn(
           "group relative",
           variant === "grid" &&
-            "size-[var(--ow-chat-attachment-image-size)] overflow-hidden rounded-lg",
+            "size-[var(--jingle-chat-attachment-image-size)] overflow-hidden rounded-lg",
           variant === "inline" && [
-            "flex h-[var(--ow-control-h-md)] cursor-pointer select-none items-center gap-[var(--ow-space-1-5)]",
-            "rounded-md border border-border px-[var(--ow-space-1-5)]",
-            "[font-size:var(--ow-font-body)] font-medium transition-all",
+            "flex h-[var(--jingle-control-h-md)] cursor-pointer select-none items-center gap-[var(--jingle-space-1-5)]",
+            "rounded-md border border-border px-[var(--jingle-space-1-5)]",
+            "[font-size:var(--jingle-font-body)] font-medium transition-all",
             "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50"
           ],
           variant === "list" && [
-            "flex w-full items-center gap-[var(--ow-gap-md)] rounded-lg border p-[var(--ow-space-3)]",
+            "flex w-full items-center gap-[var(--jingle-gap-md)] rounded-lg border p-[var(--jingle-space-3)]",
             "hover:bg-accent/50"
           ],
           className
@@ -338,7 +338,7 @@ export const AttachmentInfo = ({
     <div className={cn("min-w-0 flex-1", className)} {...props}>
       <span className="block truncate">{label}</span>
       {showMediaType && data.mediaType && (
-        <span className="block truncate [font-size:var(--ow-font-meta)] text-muted-foreground">
+        <span className="block truncate [font-size:var(--jingle-font-meta)] text-muted-foreground">
           {data.mediaType}
         </span>
       )}
@@ -471,15 +471,15 @@ export const AttachmentHoverPreview = ({
 
   return (
     <div
-      className={cn("attachment-hover-preview space-y-[var(--ow-space-3)]", className)}
+      className={cn("attachment-hover-preview space-y-[var(--jingle-space-3)]", className)}
       {...props}
     >
       {mediaCategory === "image" && data.type === "file" && data.url ? (
-        <div className="flex max-h-[var(--ow-attachment-hover-preview-h)] w-[var(--ow-attachment-hover-preview-w)] items-center justify-center overflow-hidden rounded-lg border border-border/70 bg-muted/30 p-[var(--ow-space-2)]">
+        <div className="flex max-h-[var(--jingle-attachment-hover-preview-h)] w-[var(--jingle-attachment-hover-preview-w)] items-center justify-center overflow-hidden rounded-lg border border-border/70 bg-muted/30 p-[var(--jingle-space-2)]">
           <img
             alt={getAttachmentLabel(data)}
             className={cn(
-              "max-h-[var(--ow-attachment-hover-image-max-h)] max-w-full rounded-md object-contain",
+              "max-h-[var(--jingle-attachment-hover-image-max-h)] max-w-full rounded-md object-contain",
               imageClassName
             )}
             height={384}
@@ -488,10 +488,10 @@ export const AttachmentHoverPreview = ({
           />
         </div>
       ) : (
-        <div className="flex items-center gap-[var(--ow-gap-md)] rounded-lg border border-border/70 bg-muted/30 px-[var(--ow-space-3)] py-[var(--ow-space-3)]">
-          <div className="flex h-[var(--ow-attachment-hover-icon-size)] w-[var(--ow-attachment-hover-icon-size)] shrink-0 items-center justify-center rounded-md bg-background">
+        <div className="flex items-center gap-[var(--jingle-gap-md)] rounded-lg border border-border/70 bg-muted/30 px-[var(--jingle-space-3)] py-[var(--jingle-space-3)]">
+          <div className="flex h-[var(--jingle-attachment-hover-icon-size)] w-[var(--jingle-attachment-hover-icon-size)] shrink-0 items-center justify-center rounded-md bg-background">
             {fallbackIcon ?? (
-              <Icon className="size-[var(--ow-icon-action)] text-muted-foreground" />
+              <Icon className="size-[var(--jingle-icon-action)] text-muted-foreground" />
             )}
           </div>
           <div className="min-w-0 flex-1">
@@ -516,7 +516,7 @@ export type AttachmentEmptyProps = HTMLAttributes<HTMLDivElement>
 export const AttachmentEmpty = ({ className, children, ...props }: AttachmentEmptyProps) => (
   <div
     className={cn(
-      "flex items-center justify-center p-[var(--ow-space-4)] [font-size:var(--ow-font-body)] text-muted-foreground",
+      "flex items-center justify-center p-[var(--jingle-space-4)] [font-size:var(--jingle-font-body)] text-muted-foreground",
       className
     )}
     {...props}

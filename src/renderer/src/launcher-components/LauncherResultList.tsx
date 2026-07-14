@@ -38,7 +38,7 @@ function LauncherResultIcon(props: { item: LauncherShellItem }): React.JSX.Eleme
 
   return (
     <div
-      className="flex h-[var(--ow-icon-md)] w-[var(--ow-icon-md)] shrink-0 items-center justify-center overflow-hidden rounded-[var(--ow-radius-sm)]"
+      className="flex h-[var(--jingle-icon-md)] w-[var(--jingle-icon-md)] shrink-0 items-center justify-center overflow-hidden rounded-[var(--jingle-radius-sm)]"
       style={getLauncherResultToneStyle(item.presentation.tone)}
     >
       <LauncherResultIconGraphic icon={item.presentation.icon} />
@@ -181,9 +181,9 @@ export function LauncherResultList(props: {
           return (
             <div
               key={row.key}
-              className="flex h-[var(--ow-section-h)] items-center px-[var(--launcher-result-section-x)] [font-size:var(--ow-font-meta)] font-semibold text-muted-foreground"
+              className="flex h-[var(--jingle-section-h)] items-center px-[var(--launcher-result-section-x)] [font-size:var(--jingle-font-meta)] font-semibold text-muted-foreground"
             >
-              <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
+              <div className="flex min-w-0 items-center gap-[var(--jingle-gap-sm)]">
                 <span className="block max-w-[420px] truncate" title={row.label}>
                   {truncateMiddle(
                     row.label,
@@ -221,7 +221,7 @@ export function LauncherResultList(props: {
             onClick={() => onExecute(row.index)}
             onMouseDown={(event) => event.preventDefault()}
             className={cn(
-              "launcher-result-row relative mx-[var(--launcher-result-row-x)] grid h-[var(--ow-row-h-md)] w-[calc(100%-(var(--launcher-result-row-x)*2))] appearance-none grid-cols-[var(--launcher-result-icon-column)_minmax(0,1fr)_var(--launcher-result-trailing-column)] items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--launcher-result-row-padding-x)] text-left transition",
+              "launcher-result-row relative mx-[var(--launcher-result-row-x)] grid h-[var(--jingle-row-h-md)] w-[calc(100%-(var(--launcher-result-row-x)*2))] appearance-none grid-cols-[var(--launcher-result-icon-column)_minmax(0,1fr)_var(--launcher-result-trailing-column)] items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] border-0 px-[var(--launcher-result-row-padding-x)] text-left transition",
               isSelected && "launcher-result-row--selected"
             )}
             style={{
@@ -232,15 +232,15 @@ export function LauncherResultList(props: {
             <LauncherResultIcon item={row.item} />
 
             <div className="min-w-0">
-              <div className="truncate [font-size:var(--ow-font-body)] font-medium leading-[var(--ow-line-tight)] text-foreground">
+              <div className="truncate [font-size:var(--jingle-font-body)] font-medium leading-[var(--jingle-line-tight)] text-foreground">
                 <LauncherResultTitle match={row.item.match} title={row.item.title} />
               </div>
-              <div className="mt-[var(--ow-leading-nudge)] truncate [font-size:var(--ow-font-meta)] leading-[var(--ow-line-tight)] text-muted-foreground">
+              <div className="mt-[var(--jingle-leading-nudge)] truncate [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-tight)] text-muted-foreground">
                 {truncateMiddle(row.item.subtitle, 72, 16)}
               </div>
             </div>
 
-            <div className="justify-self-end text-right [font-size:var(--ow-font-meta)] font-medium text-muted-foreground">
+            <div className="justify-self-end text-right [font-size:var(--jingle-font-meta)] font-medium text-muted-foreground">
               {getResultTrailingLabel(row.item, copy)}
             </div>
           </button>

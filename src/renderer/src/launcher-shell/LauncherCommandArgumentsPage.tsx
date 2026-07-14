@@ -135,30 +135,30 @@ export function LauncherCommandArgumentsPage(props: {
     <LauncherChrome
       footer={
         <>
-          <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
+          <div className="flex min-w-0 items-center gap-[var(--jingle-gap-sm)]">
             <button
-              className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground"
+              className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] border-0 px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-control)] font-medium text-foreground"
               onClick={onBack}
               onMouseDown={(event) => event.preventDefault()}
               type="button"
             >
-              <ArrowLeft className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+              <ArrowLeft className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)]" />
               <span>{copy.back}</span>
-              <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
+              <span className="launcher-shortcut [font-size:var(--jingle-font-meta)] text-muted-foreground">
                 {backShortcut}
               </span>
             </button>
           </div>
-          <div className="flex items-center gap-[var(--ow-gap-sm)]">
+          <div className="flex items-center gap-[var(--jingle-gap-sm)]">
             <button
-              className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground"
+              className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] border-0 px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-control)] font-medium text-foreground"
               onClick={submit}
               onMouseDown={(event) => event.preventDefault()}
               type="button"
             >
               <span>{copy.open}</span>
               {primaryActionShortcut ? (
-                <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
+                <span className="launcher-shortcut [font-size:var(--jingle-font-meta)] text-muted-foreground">
                   {primaryActionShortcut}
                 </span>
               ) : null}
@@ -168,7 +168,7 @@ export function LauncherCommandArgumentsPage(props: {
       }
       inputRef={launcherInputRef}
       inputReplacement={
-        <div className="min-w-0 flex-1 px-[var(--launcher-input-content-inset-x)] [font-size:var(--ow-font-control)] font-semibold text-foreground">
+        <div className="min-w-0 flex-1 px-[var(--launcher-input-content-inset-x)] [font-size:var(--jingle-font-control)] font-semibold text-foreground">
           {commandTitle}
         </div>
       }

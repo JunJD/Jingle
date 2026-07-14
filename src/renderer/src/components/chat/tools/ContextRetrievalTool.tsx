@@ -34,7 +34,7 @@ function renderDiagnostics(diagnostics: string[] | undefined): React.JSX.Element
 
   return (
     <ToolDetailSection label="Diagnostics">
-      <div className="grid gap-[var(--ow-gap-xs)]">
+      <div className="grid gap-[var(--jingle-gap-xs)]">
         {diagnostics.map((diagnostic) => (
           <div key={diagnostic} className="break-words text-muted-foreground">
             {diagnostic}
@@ -52,13 +52,13 @@ function renderNextActions(actions: ContextRetrievalNextAction[]): React.JSX.Ele
 
   return (
     <ToolDetailSection label="Next Actions">
-      <div className="grid gap-[var(--ow-gap-xs)]">
+      <div className="grid gap-[var(--jingle-gap-xs)]">
         {actions.map((action, index) => (
           <div
             key={`${action.tool}-${index}`}
-            className="grid gap-[var(--ow-space-0-5)] rounded-[var(--ow-radius-dialog)] bg-background-secondary/45 px-[var(--ow-space-3)] py-[var(--ow-space-2)]"
+            className="grid gap-[var(--jingle-space-0-5)] rounded-[var(--jingle-radius-dialog)] bg-background-secondary/45 px-[var(--jingle-space-3)] py-[var(--jingle-space-2)]"
           >
-            <div className="font-mono [font-size:var(--ow-font-code)] text-foreground/80">
+            <div className="font-mono [font-size:var(--jingle-font-code)] text-foreground/80">
               {action.tool}
             </div>
             <div className="break-words text-muted-foreground">{action.reason}</div>
@@ -77,7 +77,7 @@ function renderHistorySearchDetail(result: SearchHistoryToolResult): React.JSX.E
       </ToolDetailSection>
       {renderDiagnostics(result.diagnostics)}
       <ToolDetailSection label="Matches">
-        <div className="grid gap-[var(--ow-space-2)]">
+        <div className="grid gap-[var(--jingle-space-2)]">
           {result.items.map((item) =>
             item.type === "thread_digest" ? (
               <ToolCollapsibleSection
@@ -115,7 +115,7 @@ function renderMessageContextDetail(result: MessageContextToolResult): React.JSX
       </ToolDetailSection>
       {renderDiagnostics(result.diagnostics)}
       <ToolDetailSection label="Transcript">
-        <div className="grid gap-[var(--ow-space-2)]">
+        <div className="grid gap-[var(--jingle-space-2)]">
           {result.items.map((item) => (
             <ToolCollapsibleSection
               key={`${item.threadId}:${item.messageId}`}
@@ -172,7 +172,7 @@ function renderTraceEvidenceDetail(result: TraceEvidenceToolResult): React.JSX.E
       ) : null}
       {result.artifacts.length > 0 ? (
         <ToolDetailSection label="Artifacts">
-          <div className="grid gap-[var(--ow-space-2)]">
+          <div className="grid gap-[var(--jingle-space-2)]">
             {result.artifacts.map((artifact) => (
               <ToolCollapsibleSection
                 key={artifact.artifactId}

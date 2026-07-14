@@ -63,15 +63,15 @@ function LauncherSearchFooter(props: {
 
   return (
     <>
-      <div className="flex min-w-0 items-center gap-[var(--ow-gap-md)]">
+      <div className="flex min-w-0 items-center gap-[var(--jingle-gap-md)]">
         {showUseWithManager ? (
-          <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] font-medium text-muted-foreground">
+          <div className="flex items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-control)] font-medium text-muted-foreground">
             <span>{useWithManagerTitle}</span>
           </div>
         ) : isSearchMode ? (
-          <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] font-medium text-muted-foreground">
+          <div className="flex items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-control)] font-medium text-muted-foreground">
             {isSearchLoading ? (
-              <Loader2 className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)] animate-spin" />
+              <Loader2 className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)] animate-spin" />
             ) : null}
             <span>{isSearchLoading ? searchingLabel : searchResultsLabel}</span>
           </div>
@@ -81,27 +81,27 @@ function LauncherSearchFooter(props: {
             type="button"
             onClick={() => executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenSettings)}
             onMouseDown={(event) => event.preventDefault()}
-            className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground"
+            className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] border-0 px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-control)] font-medium text-foreground"
             title={openSettingsLabel}
             aria-label={openSettingsLabel}
           >
-            <Settings2 className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+            <Settings2 className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)]" />
             <span>{openSettingsLabel}</span>
           </button>
         )}
       </div>
 
-      <div className="flex items-center gap-[var(--ow-gap-sm)]">
+      <div className="flex items-center gap-[var(--jingle-gap-sm)]">
         {actionController.canOpenActions ? (
           <button
             type="button"
             onClick={actionController.openActions}
             onMouseDown={(event) => event.preventDefault()}
-            className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground"
+            className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] border-0 px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-control)] font-medium text-foreground"
           >
             <span>{actionsLabel}</span>
             {actionController.actionPanelShortcut ? (
-              <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
+              <span className="launcher-shortcut [font-size:var(--jingle-font-meta)] text-muted-foreground">
                 {actionController.actionPanelShortcut}
               </span>
             ) : null}
@@ -113,11 +113,11 @@ function LauncherSearchFooter(props: {
           onClick={actionController.executePrimaryAction}
           onMouseDown={(event) => event.preventDefault()}
           disabled={!actionController.primaryAction}
-          className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground disabled:cursor-default disabled:opacity-50"
+          className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] border-0 px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-control)] font-medium text-foreground disabled:cursor-default disabled:opacity-50"
         >
           <span>{primaryActionTitle}</span>
           {actionController.primaryActionShortcut ? (
-            <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
+            <span className="launcher-shortcut [font-size:var(--jingle-font-meta)] text-muted-foreground">
               {actionController.primaryActionShortcut}
             </span>
           ) : null}
@@ -135,17 +135,17 @@ function LauncherSearchHeaderTrailing(props: {
   const { aiEntryLabel, aiFooterLeading, executeHomeCommand } = props
 
   return (
-    <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] font-medium text-muted-foreground">
+    <div className="flex shrink-0 items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-control)] font-medium text-muted-foreground">
       <span>{aiFooterLeading}</span>
       <button
         type="button"
         onClick={() => executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenAi)}
         onMouseDown={(event) => event.preventDefault()}
-        className="flex size-[var(--ow-hit-target-sm)] shrink-0 appearance-none items-center justify-center rounded-[var(--ow-radius-sm)] border border-border bg-background-secondary text-muted-foreground shadow-none transition hover:bg-background-interactive hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex size-[var(--jingle-hit-target-sm)] shrink-0 appearance-none items-center justify-center rounded-[var(--jingle-radius-sm)] border border-border bg-background-secondary text-muted-foreground shadow-none transition hover:bg-background-interactive hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         title={aiEntryLabel}
         aria-label={aiEntryLabel}
       >
-        <ArrowRightToLine className="size-[var(--ow-icon-compact)]" strokeWidth={1.8} />
+        <ArrowRightToLine className="size-[var(--jingle-icon-compact)]" strokeWidth={1.8} />
       </button>
     </div>
   )

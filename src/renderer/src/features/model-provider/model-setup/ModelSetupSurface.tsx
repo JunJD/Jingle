@@ -208,18 +208,18 @@ export function ModelSetupSurface(props: ModelSetupSurfaceProps): React.JSX.Elem
           "mx-auto w-full",
           variant === "onboarding"
             ? "max-w-[860px] px-[calc(var(--window-controls-offset-inline)+18px)] pb-16 pt-[120px]"
-            : "max-w-[1024px] space-y-[var(--ow-space-5)]"
+            : "max-w-[1024px] space-y-[var(--jingle-space-5)]"
         )}
       >
         {variant === "onboarding" && (
-          <div className="mb-[var(--ow-space-7)]">
-            <div className="mb-[var(--ow-space-4)] flex h-7 w-7 items-center justify-center text-foreground">
+          <div className="mb-[var(--jingle-space-7)]">
+            <div className="mb-[var(--jingle-space-4)] flex h-7 w-7 items-center justify-center text-foreground">
               <ProviderLogo providerId="codex" className="h-5 w-5" />
             </div>
             <h1 className="[font-size:32px] font-normal leading-tight tracking-normal text-foreground">
               {title}
             </h1>
-            <p className="mt-[var(--ow-space-3)] [font-size:17px] leading-[var(--ow-line-body)] text-muted-foreground">
+            <p className="mt-[var(--jingle-space-3)] [font-size:17px] leading-[var(--jingle-line-body)] text-muted-foreground">
               你的本地 AI agent。连接 AI 模型提供商即可开始。
             </p>
           </div>

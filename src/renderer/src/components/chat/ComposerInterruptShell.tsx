@@ -16,8 +16,8 @@ export function ComposerInterruptShell(props: {
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-[var(--ow-radius-lg)] border border-border/65 bg-background-elevated/86 shadow-[0_8px_22px_rgba(32,38,45,0.07)] backdrop-blur-xl",
-        density === "compact" && "rounded-[var(--ow-radius-md)]",
+        "overflow-hidden rounded-[var(--jingle-radius-lg)] border border-border/65 bg-background-elevated/86 shadow-[0_8px_22px_rgba(32,38,45,0.07)] backdrop-blur-xl",
+        density === "compact" && "rounded-[var(--jingle-radius-md)]",
         className
       )}
       data-interrupt-size={size}
@@ -25,17 +25,17 @@ export function ComposerInterruptShell(props: {
       <div
         className={cn(
           "grid",
-          isLarge ? "gap-[var(--ow-space-2)]" : "gap-[var(--ow-space-1-5)]",
+          isLarge ? "gap-[var(--jingle-space-2)]" : "gap-[var(--jingle-space-1-5)]",
           density === "compact"
-            ? "px-[var(--ow-space-3)] py-[var(--ow-space-2)]"
-            : "px-[var(--ow-space-4)] py-[var(--ow-space-3)]"
+            ? "px-[var(--jingle-space-3)] py-[var(--jingle-space-2)]"
+            : "px-[var(--jingle-space-4)] py-[var(--jingle-space-3)]"
         )}
       >
         {header}
         {body ? (
           <div
             className={cn(
-              "min-w-0 overflow-y-auto pr-[var(--ow-space-1)]",
+              "min-w-0 overflow-y-auto pr-[var(--jingle-space-1)]",
               isLarge
                 ? density === "compact"
                   ? "max-h-[min(18vh,132px)]"

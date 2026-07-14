@@ -3,9 +3,9 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useState } from "react
 import { createPortal } from "react-dom"
 import type { ExtensionSourceMention } from "@shared/extension-sources"
 
-const FILE_REFERENCE_SELECTOR = ".ow-file-reference[data-file-path]"
+const FILE_REFERENCE_SELECTOR = ".jingle-file-reference[data-file-path]"
 const EXTENSION_SOURCE_SELECTOR =
-  ".ow-extension-source-reference[data-extension-name][data-source-id]"
+  ".jingle-extension-source-reference[data-extension-name][data-source-id]"
 const REFERENCE_TOOLTIP_MARGIN = 12
 const FILE_TOOLTIP_MAX_WIDTH = 420
 const EXTENSION_TOOLTIP_MAX_WIDTH = 360
@@ -117,7 +117,7 @@ function FileReferenceTooltip(props: {
   const { tooltip } = props
   return (
     <div
-      className="ow-file-reference-tooltip"
+      className="jingle-file-reference-tooltip"
       data-placement={tooltip.placement}
       style={{
         left: tooltip.left,
@@ -138,26 +138,26 @@ function ExtensionSourceTooltip(props: {
 
   return (
     <div
-      className="ow-extension-source-tooltip"
+      className="jingle-extension-source-tooltip"
       data-placement={tooltip.placement}
       style={{
         left: tooltip.left,
         top: tooltip.top
       }}
     >
-      <div className="ow-extension-source-tooltip__title">{tooltip.mention.label}</div>
-      <div className="ow-extension-source-tooltip__tools">
+      <div className="jingle-extension-source-tooltip__title">{tooltip.mention.label}</div>
+      <div className="jingle-extension-source-tooltip__tools">
         {visibleTools.map((tool) => (
-          <div className="ow-extension-source-tooltip__tool" key={tool.toolName}>
-            <span className="ow-extension-source-tooltip__tool-title">{tool.title}</span>
-            <span className="ow-extension-source-tooltip__tool-description">
+          <div className="jingle-extension-source-tooltip__tool" key={tool.toolName}>
+            <span className="jingle-extension-source-tooltip__tool-title">{tool.title}</span>
+            <span className="jingle-extension-source-tooltip__tool-description">
               {tool.description}
             </span>
           </div>
         ))}
       </div>
       {hiddenToolCount > 0 ? (
-        <div className="ow-extension-source-tooltip__more">+{hiddenToolCount}</div>
+        <div className="jingle-extension-source-tooltip__more">+{hiddenToolCount}</div>
       ) : null}
     </div>
   )

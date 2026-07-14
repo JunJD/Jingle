@@ -36,14 +36,14 @@ function getLauncherInputHeightClassName(input: {
   multiline: boolean
 }): string {
   if (!input.multiline) {
-    return "h-[var(--ow-control-h-sm)]"
+    return "h-[var(--jingle-control-h-sm)]"
   }
 
   if (input.isExpandedMultiline) {
-    return "min-h-[var(--launcher-ai-composer-expanded-input-min-h)] max-h-[var(--launcher-ai-composer-expanded-input-max-h)] py-[var(--ow-space-2-5)] leading-[var(--ow-line-chat)]"
+    return "min-h-[var(--launcher-ai-composer-expanded-input-min-h)] max-h-[var(--launcher-ai-composer-expanded-input-max-h)] py-[var(--jingle-space-2-5)] leading-[var(--jingle-line-chat)]"
   }
 
-  return "min-h-[var(--ow-control-h-sm)] max-h-[40px] py-[3px] leading-[20px]"
+  return "min-h-[var(--jingle-control-h-sm)] max-h-[40px] py-[3px] leading-[20px]"
 }
 
 function getLauncherInputPlaceholderClassName(input: {
@@ -51,13 +51,13 @@ function getLauncherInputPlaceholderClassName(input: {
   multiline: boolean
 }): string {
   if (!input.multiline) {
-    return "[font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] text-muted-foreground/52"
+    return "[font-size:var(--jingle-font-control)] font-medium leading-[var(--jingle-line-control-sm)] text-muted-foreground/52"
   }
 
   return cn(
-    "[font-size:var(--ow-font-control)] font-medium text-muted-foreground/52",
+    "[font-size:var(--jingle-font-control)] font-medium text-muted-foreground/52",
     input.isExpandedMultiline
-      ? "items-start pt-[var(--ow-space-2-5)] leading-[var(--ow-line-chat)]"
+      ? "items-start pt-[var(--jingle-space-2-5)] leading-[var(--jingle-line-chat)]"
       : "leading-[20px]"
   )
 }
@@ -82,7 +82,7 @@ function LauncherInputStatusIndicator(props: {
       aria-hidden="true"
       className={cn(
         "relative flex shrink-0 items-center justify-center rounded-full border backdrop-blur-sm transition",
-        "h-[var(--ow-icon-md)] w-[var(--ow-icon-md)]",
+        "h-[var(--jingle-icon-md)] w-[var(--jingle-icon-md)]",
         status === "pending" && "border-status-warning/25 bg-status-warning/10 text-status-warning",
         status === "tooling" &&
           "border-status-info/40 bg-status-info/16 text-status-info shadow-[0_0_18px_color-mix(in_srgb,var(--status-info)_34%,transparent)]"
@@ -93,12 +93,12 @@ function LauncherInputStatusIndicator(props: {
           <span className="absolute inset-[-3px] rounded-full border border-status-info/35" />
           <span className="absolute inset-0 rounded-full bg-status-info/18 animate-ping" />
           <Loader2
-            className="relative size-[var(--ow-icon-compact)] animate-spin"
+            className="relative size-[var(--jingle-icon-compact)] animate-spin"
             strokeWidth={2.25}
           />
         </>
       ) : (
-        <span className="animate-tactical-pulse h-[var(--ow-status-dot-size)] w-[var(--ow-status-dot-size)] rounded-full bg-current" />
+        <span className="animate-tactical-pulse h-[var(--jingle-status-dot-size)] w-[var(--jingle-status-dot-size)] rounded-full bg-current" />
       )}
     </div>
   )
@@ -127,7 +127,7 @@ export function LauncherInput(props: LauncherInputProps): React.JSX.Element {
       className={cn(
         "launcher-input flex min-w-0 flex-1 items-center",
         isExpandedMultiline && "items-start",
-        "gap-[var(--ow-gap-sm)]"
+        "gap-[var(--jingle-gap-sm)]"
       )}
       data-status={status}
     >
@@ -136,7 +136,7 @@ export function LauncherInput(props: LauncherInputProps): React.JSX.Element {
         aria-busy={status === "idle" ? undefined : true}
         multiline={multiline}
         className={cn(
-          "min-w-0 border-0 bg-transparent px-[var(--launcher-input-content-inset-x)] py-0 [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] shadow-none",
+          "min-w-0 border-0 bg-transparent px-[var(--launcher-input-content-inset-x)] py-0 [font-size:var(--jingle-font-control)] font-medium leading-[var(--jingle-line-control-sm)] shadow-none",
           multiline &&
             "resize-none overflow-y-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] scrollbar-hide",
           getLauncherInputHeightClassName({ isExpandedMultiline, multiline }),

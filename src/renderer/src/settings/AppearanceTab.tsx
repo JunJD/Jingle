@@ -70,20 +70,20 @@ function ColorControl(props: {
   const { label, onChange, value } = props
 
   return (
-    <label className="grid gap-[var(--ow-space-1)]">
-      <span className="[font-size:var(--ow-font-body)] font-medium text-muted-foreground">
+    <label className="grid gap-[var(--jingle-space-1)]">
+      <span className="[font-size:var(--jingle-font-body)] font-medium text-muted-foreground">
         {label}
       </span>
-      <div className="flex items-center gap-[var(--ow-gap-sm)]">
+      <div className="flex items-center gap-[var(--jingle-gap-sm)]">
         <input
           aria-label={label}
-          className="h-[var(--ow-settings-control-h)] w-[var(--ow-settings-control-h)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated p-[var(--ow-space-0-5)]"
+          className="h-[var(--jingle-settings-control-h)] w-[var(--jingle-settings-control-h)] rounded-[var(--jingle-radius-md)] border border-border bg-background-elevated p-[var(--jingle-space-0-5)]"
           type="color"
           value={value}
           onChange={(event) => onChange(event.target.value)}
         />
         <input
-          className={`${inputClassName} max-w-[var(--ow-theme-color-input-w)] font-mono`}
+          className={`${inputClassName} max-w-[var(--jingle-theme-color-input-w)] font-mono`}
           readOnly
           value={value}
           spellCheck={false}
@@ -108,7 +108,7 @@ function ThemePreview(props: { config: JingleThemeV1 }): React.JSX.Element {
 
   return (
     <div
-      className="overflow-hidden rounded-[var(--ow-settings-card-radius)] border shadow-sm"
+      className="overflow-hidden rounded-[var(--jingle-settings-card-radius)] border shadow-sm"
       style={{
         backgroundColor: theme.surface,
         borderColor: border,
@@ -117,54 +117,54 @@ function ThemePreview(props: { config: JingleThemeV1 }): React.JSX.Element {
       }}
     >
       <div
-        className="grid border-b [font-size:var(--ow-font-meta)]"
+        className="grid border-b [font-size:var(--jingle-font-meta)]"
         style={{
           backgroundColor: secondarySurface,
           borderColor: border,
-          gridTemplateColumns: "var(--ow-theme-preview-line-column) minmax(0, 1fr)"
+          gridTemplateColumns: "var(--jingle-theme-preview-line-column) minmax(0, 1fr)"
         }}
       >
-        <div className="px-[var(--ow-space-3)] py-[var(--ow-space-2)] text-right opacity-60">1</div>
-        <div className="px-[var(--ow-space-3)] py-[var(--ow-space-2)] font-mono">
+        <div className="px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] text-right opacity-60">1</div>
+        <div className="px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] font-mono">
           const themePreview = &#123;
         </div>
       </div>
       <div
-        className="grid border-b [font-size:var(--ow-font-meta)]"
+        className="grid border-b [font-size:var(--jingle-font-meta)]"
         style={{
           backgroundColor: `color-mix(in srgb, ${theme.semanticColors.diffRemoved} 14%, ${theme.surface})`,
           borderColor: border,
-          gridTemplateColumns: "var(--ow-theme-preview-line-column) minmax(0, 1fr)"
+          gridTemplateColumns: "var(--jingle-theme-preview-line-column) minmax(0, 1fr)"
         }}
       >
-        <div className="px-[var(--ow-space-3)] py-[var(--ow-space-2)] text-right opacity-60">2</div>
-        <div className="px-[var(--ow-space-3)] py-[var(--ow-space-2)] font-mono">
+        <div className="px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] text-right opacity-60">2</div>
+        <div className="px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] font-mono">
           - surface: &quot;sidebar&quot;,
         </div>
       </div>
       <div
-        className="grid border-b [font-size:var(--ow-font-meta)]"
+        className="grid border-b [font-size:var(--jingle-font-meta)]"
         style={{
           backgroundColor: `color-mix(in srgb, ${theme.semanticColors.diffAdded} 14%, ${theme.surface})`,
           borderColor: border,
-          gridTemplateColumns: "var(--ow-theme-preview-line-column) minmax(0, 1fr)"
+          gridTemplateColumns: "var(--jingle-theme-preview-line-column) minmax(0, 1fr)"
         }}
       >
-        <div className="px-[var(--ow-space-3)] py-[var(--ow-space-2)] text-right opacity-60">3</div>
-        <div className="px-[var(--ow-space-3)] py-[var(--ow-space-2)] font-mono">
+        <div className="px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] text-right opacity-60">3</div>
+        <div className="px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] font-mono">
           + accent: &quot;{theme.accent}&quot;,
         </div>
       </div>
-      <div className="flex items-center justify-between gap-[var(--ow-gap-md)] px-[var(--ow-space-3)] py-[var(--ow-space-2)]">
-        <div className="flex items-center gap-[var(--ow-gap-sm)]">
+      <div className="flex items-center justify-between gap-[var(--jingle-gap-md)] px-[var(--jingle-space-3)] py-[var(--jingle-space-2)]">
+        <div className="flex items-center gap-[var(--jingle-gap-sm)]">
           <span
-            className="h-[var(--ow-status-dot-size)] w-[var(--ow-status-dot-size)] rounded-full"
+            className="h-[var(--jingle-status-dot-size)] w-[var(--jingle-status-dot-size)] rounded-full"
             style={{ backgroundColor: theme.semanticColors.skill }}
           />
-          <span className="[font-size:var(--ow-font-body)]">skill</span>
+          <span className="[font-size:var(--jingle-font-body)]">skill</span>
         </div>
         <div
-          className="rounded-full px-[var(--ow-space-3)] py-[var(--ow-space-1)] [font-size:var(--ow-font-caption)] font-semibold"
+          className="rounded-full px-[var(--jingle-space-3)] py-[var(--jingle-space-1)] [font-size:var(--jingle-font-caption)] font-semibold"
           style={{ backgroundColor: interactiveSurface, color: theme.accent }}
         >
           {config.codeThemeId}
@@ -189,16 +189,16 @@ function AppearanceThemeRow(props: {
 
   return (
     <SettingsRow
-      icon={<Palette className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
+      icon={<Palette className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
       title={copy.appearance.themeTitle}
       description={copy.appearance.themeDescription}
       titleId="settings-appearance-theme-title"
     >
-      <div className="grid gap-[var(--ow-gap-md)]">
-        <div className="flex flex-wrap items-center gap-[var(--ow-gap-md)]">
+      <div className="grid gap-[var(--jingle-gap-md)]">
+        <div className="flex flex-wrap items-center gap-[var(--jingle-gap-md)]">
           <SettingsSelect
             aria-labelledby="settings-appearance-theme-title"
-            className="max-w-[var(--ow-settings-select-w)]"
+            className="max-w-[var(--jingle-settings-select-w)]"
             value={presetId}
             onChange={(event) => onPresetChange(event.target.value)}
           >
@@ -214,11 +214,11 @@ function AppearanceThemeRow(props: {
             className={secondaryButtonClassName}
             onClick={() => void onCopyTheme()}
           >
-            <Copy className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+            <Copy className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)]" />
             {copy.appearance.copyTheme}
           </button>
           {status ? (
-            <span className="[font-size:var(--ow-font-body)] text-muted-foreground">
+            <span className="[font-size:var(--jingle-font-body)] text-muted-foreground">
               {status}
             </span>
           ) : null}
@@ -238,11 +238,11 @@ function AppearanceColorsRow(props: {
 
   return (
     <SettingsRow
-      icon={<Paintbrush className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
+      icon={<Paintbrush className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
       title={copy.appearance.colorsTitle}
       description={copy.appearance.colorsDescription}
     >
-      <div className="grid gap-[var(--ow-gap-md)] md:grid-cols-2">
+      <div className="grid gap-[var(--jingle-gap-md)] md:grid-cols-2">
         <ColorControl
           label={copy.appearance.accentColor}
           value={theme.accent}
@@ -326,13 +326,13 @@ function AppearanceFontsRow(props: {
 
   return (
     <SettingsRow
-      icon={<Type className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
+      icon={<Type className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
       title={copy.appearance.fontsTitle}
       description={copy.appearance.fontsDescription}
     >
-      <div className="grid gap-[var(--ow-gap-md)]">
-        <label className="grid gap-[var(--ow-space-1)]">
-          <span className="[font-size:var(--ow-font-body)] font-medium text-muted-foreground">
+      <div className="grid gap-[var(--jingle-gap-md)]">
+        <label className="grid gap-[var(--jingle-space-1)]">
+          <span className="[font-size:var(--jingle-font-body)] font-medium text-muted-foreground">
             {copy.appearance.uiFont}
           </span>
           <input
@@ -352,8 +352,8 @@ function AppearanceFontsRow(props: {
             spellCheck={false}
           />
         </label>
-        <label className="grid gap-[var(--ow-space-1)]">
-          <span className="[font-size:var(--ow-font-body)] font-medium text-muted-foreground">
+        <label className="grid gap-[var(--jingle-space-1)]">
+          <span className="[font-size:var(--jingle-font-body)] font-medium text-muted-foreground">
             {copy.appearance.codeFont}
           </span>
           <input
@@ -388,21 +388,21 @@ function AppearanceBehaviorRow(props: {
 
   return (
     <SettingsRow
-      icon={<SlidersHorizontal className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
+      icon={<SlidersHorizontal className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
       title={copy.appearance.behaviorTitle}
       description={copy.appearance.behaviorDescription}
     >
-      <div className="grid gap-[var(--ow-gap-md)]">
-        <div className="grid gap-[var(--ow-space-1)]">
+      <div className="grid gap-[var(--jingle-gap-md)]">
+        <div className="grid gap-[var(--jingle-space-1)]">
           <label
-            className="[font-size:var(--ow-font-body)] font-medium text-muted-foreground"
+            className="[font-size:var(--jingle-font-body)] font-medium text-muted-foreground"
             htmlFor="settings-appearance-variant"
           >
             {copy.appearance.variant}
           </label>
           <SettingsSelect
             id="settings-appearance-variant"
-            className="max-w-[var(--ow-settings-select-w)]"
+            className="max-w-[var(--jingle-settings-select-w)]"
             value={config.variant}
             onChange={(event) => {
               const variant = event.target.value === "dark" ? "dark" : "light"
@@ -413,16 +413,16 @@ function AppearanceBehaviorRow(props: {
             <option value="dark">{copy.appearance.darkVariant}</option>
           </SettingsSelect>
         </div>
-        <div className="grid gap-[var(--ow-space-1)]">
+        <div className="grid gap-[var(--jingle-space-1)]">
           <label
-            className="[font-size:var(--ow-font-body)] font-medium text-muted-foreground"
+            className="[font-size:var(--jingle-font-body)] font-medium text-muted-foreground"
             htmlFor="settings-appearance-code-theme"
           >
             {copy.appearance.codeTheme}
           </label>
           <SettingsSelect
             id="settings-appearance-code-theme"
-            className="max-w-[var(--ow-settings-select-w)]"
+            className="max-w-[var(--jingle-settings-select-w)]"
             value={config.codeThemeId}
             onChange={(event) => {
               const codeThemeId = event.target.value
@@ -436,8 +436,8 @@ function AppearanceBehaviorRow(props: {
             ))}
           </SettingsSelect>
         </div>
-        <div className="flex min-h-[var(--ow-settings-control-h)] items-center justify-between gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1)]">
-          <span className="[font-size:var(--ow-font-body)] font-medium text-muted-foreground">
+        <div className="flex min-h-[var(--jingle-settings-control-h)] items-center justify-between gap-[var(--jingle-gap-md)] rounded-[var(--jingle-radius-md)] border border-border bg-background-elevated px-[var(--jingle-space-3)] py-[var(--jingle-space-1)]">
+          <span className="[font-size:var(--jingle-font-body)] font-medium text-muted-foreground">
             {copy.appearance.translucentWindows}
           </span>
           <SettingsSwitch
@@ -452,8 +452,8 @@ function AppearanceBehaviorRow(props: {
             }}
           />
         </div>
-        <label className="grid gap-[var(--ow-space-1)]">
-          <span className="[font-size:var(--ow-font-body)] font-medium text-muted-foreground">
+        <label className="grid gap-[var(--jingle-space-1)]">
+          <span className="[font-size:var(--jingle-font-body)] font-medium text-muted-foreground">
             {copy.appearance.contrast}: {theme.contrast}
           </span>
           <input
@@ -486,27 +486,27 @@ function AppearanceImportRow(props: {
 
   return (
     <SettingsRow
-      icon={<Code2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
+      icon={<Code2 className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
       title={copy.appearance.importTitle}
       description={copy.appearance.importDescription}
       withBorder={false}
     >
-      <div className="grid gap-[var(--ow-gap-md)]">
+      <div className="grid gap-[var(--jingle-gap-md)]">
         <textarea
           aria-label={copy.appearance.importTitle}
-          className={`${inputClassName} min-h-[var(--ow-settings-textarea-min-h)] font-mono`}
+          className={`${inputClassName} min-h-[var(--jingle-settings-textarea-min-h)] font-mono`}
           value={importDraft}
           onChange={(event) => onImportDraftChange(event.target.value)}
           placeholder={serializedTheme}
           spellCheck={false}
         />
-        <div className="flex flex-wrap items-center gap-[var(--ow-gap-md)]">
+        <div className="flex flex-wrap items-center gap-[var(--jingle-gap-md)]">
           <button type="button" className={secondaryButtonClassName} onClick={onImport}>
-            <Eye className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+            <Eye className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)]" />
             {copy.appearance.importTheme}
           </button>
-          <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] text-muted-foreground">
-            <Check className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+          <div className="flex items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-body)] text-muted-foreground">
+            <Check className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)]" />
             {copy.appearance.tokenFormat}
           </div>
         </div>
@@ -592,7 +592,7 @@ export function AppearanceTab(props: { locale: AppLocale }): React.JSX.Element {
 
   if (!themeSettings) {
     return (
-      <div className="flex h-full items-center justify-center [font-size:var(--ow-font-label)] text-muted-foreground">
+      <div className="flex h-full items-center justify-center [font-size:var(--jingle-font-label)] text-muted-foreground">
         {getLoadingAppearanceLabel(locale)}
       </div>
     )

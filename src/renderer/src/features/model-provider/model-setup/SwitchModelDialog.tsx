@@ -426,9 +426,9 @@ function SwitchModelDialogContent(props: {
         onOpenChange(nextOpen)
       }}
     >
-      <DialogContent className="w-[var(--ow-dialog-mobile-w)] rounded-[var(--ow-radius-dialog)] sm:max-w-[500px] sm:rounded-[var(--ow-radius-dialog)]">
+      <DialogContent className="w-[var(--jingle-dialog-mobile-w)] rounded-[var(--jingle-radius-dialog)] sm:max-w-[500px] sm:rounded-[var(--jingle-radius-dialog)]">
         <DialogHeader className="text-left">
-          <DialogTitle className="flex items-center gap-[var(--ow-space-2)]">
+          <DialogTitle className="flex items-center gap-[var(--jingle-space-2)]">
             <SlidersHorizontal className="h-4 w-4" />
             设置新线程默认模型
           </DialogTitle>
@@ -437,7 +437,7 @@ function SwitchModelDialogContent(props: {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-[var(--ow-space-3)]">
+        <div className="grid gap-[var(--jingle-space-3)]">
           <SettingsSelect
             value={selectedProviderId}
             disabled={saving}
@@ -517,7 +517,7 @@ function SwitchModelDialogContent(props: {
           {providerLoadError ? <InlineError text={providerLoadError} /> : null}
           {interactionError ? <InlineError text={interactionError} /> : null}
 
-          <div className="flex items-center justify-between gap-[var(--ow-space-3)] pt-[var(--ow-space-2)]">
+          <div className="flex items-center justify-between gap-[var(--jingle-space-3)] pt-[var(--jingle-space-2)]">
             <button
               type="button"
               className={secondaryButtonClassName}
@@ -526,7 +526,7 @@ function SwitchModelDialogContent(props: {
             >
               Provider
             </button>
-            <div className="flex items-center gap-[var(--ow-space-2)]">
+            <div className="flex items-center gap-[var(--jingle-space-2)]">
               <Button
                 type="button"
                 variant="outline"

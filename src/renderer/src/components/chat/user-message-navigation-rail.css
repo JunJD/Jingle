@@ -1,11 +1,11 @@
-.ow-user-message-navigation-rail-list {
-  --ow-user-message-navigation-marker-progress: 0;
+.jingle-user-message-navigation-rail-list {
+  --jingle-user-message-navigation-marker-progress: 0;
 }
 
-.ow-user-message-navigation-rail-marker {
-  --ow-user-message-navigation-marker-progress: 0;
+.jingle-user-message-navigation-rail-marker {
+  --jingle-user-message-navigation-marker-progress: 0;
   width: 26px;
-  transform: scaleX(calc(0.2308 + 0.7692 * var(--ow-user-message-navigation-marker-progress)));
+  transform: scaleX(calc(0.2308 + 0.7692 * var(--jingle-user-message-navigation-marker-progress)));
   transform-origin: left center;
   transition:
     transform 160ms
@@ -26,121 +26,121 @@
 }
 
 :is(
-    .ow-user-message-navigation-rail-row:has(
-      + .ow-user-message-navigation-rail-row[data-scrub-target]
+    .jingle-user-message-navigation-rail-row:has(
+      + .jingle-user-message-navigation-rail-row[data-scrub-target]
     ),
-    .ow-user-message-navigation-rail-row[data-scrub-target] + .ow-user-message-navigation-rail-row
+    .jingle-user-message-navigation-rail-row[data-scrub-target] + .jingle-user-message-navigation-rail-row
   )
-  .ow-user-message-navigation-rail-marker {
-  --ow-user-message-navigation-marker-progress: 0.7;
+  .jingle-user-message-navigation-rail-marker {
+  --jingle-user-message-navigation-marker-progress: 0.7;
 }
 
 :is(
-    .ow-user-message-navigation-rail-row:has(
-      + .ow-user-message-navigation-rail-row
-        + .ow-user-message-navigation-rail-row[data-scrub-target]
+    .jingle-user-message-navigation-rail-row:has(
+      + .jingle-user-message-navigation-rail-row
+        + .jingle-user-message-navigation-rail-row[data-scrub-target]
     ),
-    .ow-user-message-navigation-rail-row[data-scrub-target]
-      + .ow-user-message-navigation-rail-row
-      + .ow-user-message-navigation-rail-row
+    .jingle-user-message-navigation-rail-row[data-scrub-target]
+      + .jingle-user-message-navigation-rail-row
+      + .jingle-user-message-navigation-rail-row
   )
-  .ow-user-message-navigation-rail-marker {
-  --ow-user-message-navigation-marker-progress: 0.4;
+  .jingle-user-message-navigation-rail-marker {
+  --jingle-user-message-navigation-marker-progress: 0.4;
 }
 
 :is(
-    .ow-user-message-navigation-rail-row:has(
-      + .ow-user-message-navigation-rail-row
-        + .ow-user-message-navigation-rail-row
-        + .ow-user-message-navigation-rail-row[data-scrub-target]
+    .jingle-user-message-navigation-rail-row:has(
+      + .jingle-user-message-navigation-rail-row
+        + .jingle-user-message-navigation-rail-row
+        + .jingle-user-message-navigation-rail-row[data-scrub-target]
     ),
-    .ow-user-message-navigation-rail-row[data-scrub-target]
-      + .ow-user-message-navigation-rail-row
-      + .ow-user-message-navigation-rail-row
-      + .ow-user-message-navigation-rail-row
+    .jingle-user-message-navigation-rail-row[data-scrub-target]
+      + .jingle-user-message-navigation-rail-row
+      + .jingle-user-message-navigation-rail-row
+      + .jingle-user-message-navigation-rail-row
   )
-  .ow-user-message-navigation-rail-marker {
-  --ow-user-message-navigation-marker-progress: 0.2;
+  .jingle-user-message-navigation-rail-marker {
+  --jingle-user-message-navigation-marker-progress: 0.2;
 }
 
 :is(
-    .ow-user-message-navigation-rail-row:focus-visible,
-    .ow-user-message-navigation-rail-row[data-scrub-target]
+    .jingle-user-message-navigation-rail-row:focus-visible,
+    .jingle-user-message-navigation-rail-row[data-scrub-target]
   )
-  .ow-user-message-navigation-rail-marker {
-  --ow-user-message-navigation-marker-progress: 1;
+  .jingle-user-message-navigation-rail-marker {
+  --jingle-user-message-navigation-marker-progress: 1;
 }
 
-.ow-user-message-navigation-rail-list[data-scrubbing] .ow-user-message-navigation-rail-marker {
+.jingle-user-message-navigation-rail-list[data-scrubbing] .jingle-user-message-navigation-rail-marker {
   transition-duration: 0s;
 }
 
-.ow-user-message-navigation-rail-list[data-scrubbing]
-  .ow-user-message-navigation-rail-row[aria-current="true"]:not([data-scrub-target])
-  .ow-user-message-navigation-rail-marker {
+.jingle-user-message-navigation-rail-list[data-scrubbing]
+  .jingle-user-message-navigation-rail-row[aria-current="true"]:not([data-scrub-target])
+  .jingle-user-message-navigation-rail-marker {
   background-color: var(--muted-foreground);
   opacity: 0.4;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .ow-user-message-navigation-rail-list:not([data-scrubbing]):hover
-    .ow-user-message-navigation-rail-row[aria-current="true"]:not(:hover):not(:focus-visible)
-    .ow-user-message-navigation-rail-marker {
+  .jingle-user-message-navigation-rail-list:not([data-scrubbing]):hover
+    .jingle-user-message-navigation-rail-row[aria-current="true"]:not(:hover):not(:focus-visible)
+    .jingle-user-message-navigation-rail-marker {
     background-color: var(--muted-foreground);
     opacity: 0.4;
   }
 
   :is(
-      .ow-user-message-navigation-rail-list:not([data-scrubbing])
-        .ow-user-message-navigation-rail-row:has(+ .ow-user-message-navigation-rail-row:hover),
-      .ow-user-message-navigation-rail-list:not([data-scrubbing])
-        .ow-user-message-navigation-rail-row:hover
-        + .ow-user-message-navigation-rail-row
+      .jingle-user-message-navigation-rail-list:not([data-scrubbing])
+        .jingle-user-message-navigation-rail-row:has(+ .jingle-user-message-navigation-rail-row:hover),
+      .jingle-user-message-navigation-rail-list:not([data-scrubbing])
+        .jingle-user-message-navigation-rail-row:hover
+        + .jingle-user-message-navigation-rail-row
     )
-    .ow-user-message-navigation-rail-marker {
-    --ow-user-message-navigation-marker-progress: 0.7;
+    .jingle-user-message-navigation-rail-marker {
+    --jingle-user-message-navigation-marker-progress: 0.7;
   }
 
   :is(
-      .ow-user-message-navigation-rail-list:not([data-scrubbing])
-        .ow-user-message-navigation-rail-row:has(
-          + .ow-user-message-navigation-rail-row + .ow-user-message-navigation-rail-row:hover
+      .jingle-user-message-navigation-rail-list:not([data-scrubbing])
+        .jingle-user-message-navigation-rail-row:has(
+          + .jingle-user-message-navigation-rail-row + .jingle-user-message-navigation-rail-row:hover
         ),
-      .ow-user-message-navigation-rail-list:not([data-scrubbing])
-        .ow-user-message-navigation-rail-row:hover
-        + .ow-user-message-navigation-rail-row
-        + .ow-user-message-navigation-rail-row
+      .jingle-user-message-navigation-rail-list:not([data-scrubbing])
+        .jingle-user-message-navigation-rail-row:hover
+        + .jingle-user-message-navigation-rail-row
+        + .jingle-user-message-navigation-rail-row
     )
-    .ow-user-message-navigation-rail-marker {
-    --ow-user-message-navigation-marker-progress: 0.4;
+    .jingle-user-message-navigation-rail-marker {
+    --jingle-user-message-navigation-marker-progress: 0.4;
   }
 
   :is(
-      .ow-user-message-navigation-rail-list:not([data-scrubbing])
-        .ow-user-message-navigation-rail-row:has(
-          + .ow-user-message-navigation-rail-row
-            + .ow-user-message-navigation-rail-row
-            + .ow-user-message-navigation-rail-row:hover
+      .jingle-user-message-navigation-rail-list:not([data-scrubbing])
+        .jingle-user-message-navigation-rail-row:has(
+          + .jingle-user-message-navigation-rail-row
+            + .jingle-user-message-navigation-rail-row
+            + .jingle-user-message-navigation-rail-row:hover
         ),
-      .ow-user-message-navigation-rail-list:not([data-scrubbing])
-        .ow-user-message-navigation-rail-row:hover
-        + .ow-user-message-navigation-rail-row
-        + .ow-user-message-navigation-rail-row
-        + .ow-user-message-navigation-rail-row
+      .jingle-user-message-navigation-rail-list:not([data-scrubbing])
+        .jingle-user-message-navigation-rail-row:hover
+        + .jingle-user-message-navigation-rail-row
+        + .jingle-user-message-navigation-rail-row
+        + .jingle-user-message-navigation-rail-row
     )
-    .ow-user-message-navigation-rail-marker {
-    --ow-user-message-navigation-marker-progress: 0.2;
+    .jingle-user-message-navigation-rail-marker {
+    --jingle-user-message-navigation-marker-progress: 0.2;
   }
 
-  .ow-user-message-navigation-rail-list:not([data-scrubbing])
-    .ow-user-message-navigation-rail-row:hover
-    .ow-user-message-navigation-rail-marker {
-    --ow-user-message-navigation-marker-progress: 1;
+  .jingle-user-message-navigation-rail-list:not([data-scrubbing])
+    .jingle-user-message-navigation-rail-row:hover
+    .jingle-user-message-navigation-rail-marker {
+    --jingle-user-message-navigation-marker-progress: 1;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ow-user-message-navigation-rail-marker {
+  .jingle-user-message-navigation-rail-marker {
     transition-duration: 0s;
   }
 }

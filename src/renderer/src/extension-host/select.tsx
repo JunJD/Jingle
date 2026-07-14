@@ -169,9 +169,9 @@ export function NativeExtensionSearchableSelect(props: {
             {displayLabel || placeholder}
           </span>
           {isLoading ? (
-            <Loader2 className="ml-[var(--ow-gap-sm)] size-[var(--ow-icon-sm)] shrink-0 animate-spin text-muted-foreground" />
+            <Loader2 className="ml-[var(--jingle-gap-sm)] size-[var(--jingle-icon-sm)] shrink-0 animate-spin text-muted-foreground" />
           ) : (
-            <ChevronDown className="ml-[var(--ow-gap-sm)] size-[var(--ow-icon-sm)] shrink-0 text-muted-foreground" />
+            <ChevronDown className="ml-[var(--jingle-gap-sm)] size-[var(--jingle-icon-sm)] shrink-0 text-muted-foreground" />
           )}
         </button>
       </PopoverTrigger>
@@ -188,7 +188,7 @@ export function NativeExtensionSearchableSelect(props: {
         <input
           aria-activedescendant={activeOptionId}
           aria-controls={listboxId}
-          className="mb-1 flex h-[var(--ow-control-h-sm)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
+          className="mb-1 flex h-[var(--jingle-control-h-sm)] w-full rounded-[var(--jingle-radius-sm)] border border-input bg-background-elevated px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-control)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
           placeholder={searchPlaceholder}
           ref={searchInputRef}
           role="searchbox"
@@ -198,7 +198,7 @@ export function NativeExtensionSearchableSelect(props: {
         />
         <div id={listboxId} className="max-h-56 overflow-y-auto py-0.5" role="listbox">
           {items.length === 0 ? (
-            <div className="px-[var(--ow-space-2-5)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-body)] text-muted-foreground">
+            <div className="px-[var(--jingle-space-2-5)] py-[var(--jingle-space-1-5)] [font-size:var(--jingle-font-body)] text-muted-foreground">
               No results
             </div>
           ) : (
@@ -210,7 +210,7 @@ export function NativeExtensionSearchableSelect(props: {
                 <button
                   aria-selected={selected}
                   className={cn(
-                    "flex min-h-[var(--ow-control-h-sm)] w-full items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-sm)] px-[var(--ow-space-2-5)] py-[var(--ow-space-1)] text-left [font-size:var(--ow-font-control)] outline-none transition hover:bg-accent focus-visible:bg-accent",
+                    "flex min-h-[var(--jingle-control-h-sm)] w-full items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-sm)] px-[var(--jingle-space-2-5)] py-[var(--jingle-space-1)] text-left [font-size:var(--jingle-font-control)] outline-none transition hover:bg-accent focus-visible:bg-accent",
                     active ? "bg-accent" : null,
                     selected ? "text-foreground" : "text-muted-foreground"
                   )}
@@ -223,7 +223,7 @@ export function NativeExtensionSearchableSelect(props: {
                 >
                   <span className="min-w-0 flex-1 truncate">{item.title}</span>
                   {selected ? (
-                    <Check className="size-[var(--ow-icon-sm)] shrink-0 text-primary" />
+                    <Check className="size-[var(--jingle-icon-sm)] shrink-0 text-primary" />
                   ) : null}
                 </button>
               )

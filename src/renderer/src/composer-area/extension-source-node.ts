@@ -95,7 +95,7 @@ export class ExtensionSourceReferenceNode extends DecoratorNode<null> {
       "h-[20px]",
       "max-w-full",
       "items-center",
-      "ow-extension-source-reference",
+      "jingle-extension-source-reference",
       "whitespace-nowrap",
       "rounded-[4px]",
       "px-[2px]",
@@ -197,13 +197,13 @@ export class ExtensionSourceReferenceNode extends DecoratorNode<null> {
 function syncIconDom(element: HTMLElement, extensionName: string, icon: string | undefined): void {
   const iconSrc = getExtensionIconAssetSrc({ extensionName, icon })
   if (!iconSrc) {
-    element.classList.remove("ow-extension-source-reference--with-icon")
-    element.style.removeProperty("--ow-extension-source-icon-url")
+    element.classList.remove("jingle-extension-source-reference--with-icon")
+    element.style.removeProperty("--jingle-extension-source-icon-url")
     return
   }
 
-  element.classList.add("ow-extension-source-reference--with-icon")
-  element.style.setProperty("--ow-extension-source-icon-url", `url("${iconSrc}")`)
+  element.classList.add("jingle-extension-source-reference--with-icon")
+  element.style.setProperty("--jingle-extension-source-icon-url", `url("${iconSrc}")`)
 }
 
 export function $createExtensionSourceReferenceNode(

@@ -28,8 +28,8 @@ function readPinnedSessionWindowId(): string | null {
 
 function PinnedAiSessionWindowError(props: { message: string }): React.JSX.Element {
   return (
-    <div className="flex h-full w-full items-center justify-center bg-background px-[var(--ow-space-6)] text-center text-muted-foreground">
-      <div className="max-w-[320px] [font-size:var(--ow-font-body)] leading-[var(--ow-line-body)]">
+    <div className="flex h-full w-full items-center justify-center bg-background px-[var(--jingle-space-6)] text-center text-muted-foreground">
+      <div className="max-w-[320px] [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-body)]">
         {props.message}
       </div>
     </div>

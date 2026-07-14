@@ -378,50 +378,50 @@ function ShortcutCommandCard(props: {
 
   return (
     <div className={settingsCardClassName}>
-      <div className="grid gap-[var(--ow-settings-row-gap)] border-b border-border/70 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)] md:grid-cols-[var(--ow-settings-label-column-w)_minmax(0,1fr)]">
-        <div className="flex items-start gap-[var(--ow-settings-header-gap)]">
+      <div className="grid gap-[var(--jingle-settings-row-gap)] border-b border-border/70 px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)] md:grid-cols-[var(--jingle-settings-label-column-w)_minmax(0,1fr)]">
+        <div className="flex items-start gap-[var(--jingle-settings-header-gap)]">
           <div className="mt-0.5 text-muted-foreground">
-            <Command className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />
+            <Command className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />
           </div>
-          <div className="space-y-[var(--ow-space-1)]">
-            <div className="[font-size:var(--ow-font-label)] font-semibold text-foreground">
+          <div className="space-y-[var(--jingle-space-1)]">
+            <div className="[font-size:var(--jingle-font-label)] font-semibold text-foreground">
               {command.title}
             </div>
-            <div className="[font-size:var(--ow-settings-description-size)] leading-[var(--ow-line-body)] text-muted-foreground">
+            <div className="[font-size:var(--jingle-settings-description-size)] leading-[var(--jingle-line-body)] text-muted-foreground">
               {command.description}
             </div>
           </div>
         </div>
 
         <div
-          className="space-y-[var(--ow-space-4)]"
+          className="space-y-[var(--jingle-space-4)]"
           data-command-id={command.id}
           data-shortcut-configurable={command.configurable ? "true" : "false"}
         >
-          <div className="flex flex-wrap items-center gap-[var(--ow-gap-md)]">
+          <div className="flex flex-wrap items-center gap-[var(--jingle-gap-md)]">
             <div
               data-shortcut-current-binding={command.id}
-              className="rounded-[var(--ow-radius-md)] border border-border/70 bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-label)] font-medium text-foreground"
+              className="rounded-[var(--jingle-radius-md)] border border-border/70 bg-background-elevated px-[var(--jingle-space-3)] py-[var(--jingle-space-1-5)] [font-size:var(--jingle-font-label)] font-medium text-foreground"
             >
               {displayedBindingText}
             </div>
             <span
               data-shortcut-binding-source={command.id}
               data-shortcut-binding-source-value={currentOverride?.chord ? "custom" : "default"}
-              className="[font-size:var(--ow-font-body)] text-muted-foreground"
+              className="[font-size:var(--jingle-font-body)] text-muted-foreground"
             >
               {currentOverride?.chord
                 ? copy.shortcuts.customBinding
                 : copy.shortcuts.defaultBinding}
             </span>
             {status ? (
-              <span className="[font-size:var(--ow-font-body)] text-muted-foreground">
+              <span className="[font-size:var(--jingle-font-body)] text-muted-foreground">
                 {status}
               </span>
             ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center gap-[var(--ow-gap-md)]">
+          <div className="flex flex-wrap items-center gap-[var(--jingle-gap-md)]">
             <button
               type="button"
               data-shortcut-edit={command.id}
@@ -435,7 +435,7 @@ function ShortcutCommandCard(props: {
               }}
               disabled={isSaving}
             >
-              <Keyboard className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+              <Keyboard className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)]" />
               {copy.shortcuts.edit}
             </button>
 
@@ -451,18 +451,18 @@ function ShortcutCommandCard(props: {
           </div>
 
           {isRecording ? (
-            <div className="rounded-[var(--ow-settings-card-radius)] border border-border/70 bg-background px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
-              <div className="[font-size:var(--ow-font-body)] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            <div className="rounded-[var(--jingle-settings-card-radius)] border border-border/70 bg-background px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)]">
+              <div className="[font-size:var(--jingle-font-body)] font-medium uppercase tracking-[0.08em] text-muted-foreground">
                 {copy.shortcuts.recordingTitle}
               </div>
-              <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-label)] text-muted-foreground">
+              <div className="mt-[var(--jingle-space-2)] [font-size:var(--jingle-font-label)] text-muted-foreground">
                 {copy.shortcuts.recordingDescription}
               </div>
               <button
                 ref={recorderButtonRef}
                 type="button"
                 data-shortcut-recorder={command.id}
-                className="mt-[var(--ow-space-3)] min-h-[var(--ow-settings-control-h)] min-w-[var(--ow-settings-select-w)] rounded-[var(--ow-radius-md)] border border-[var(--ring)] bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1)] text-left [font-size:var(--ow-settings-control-font)] font-medium text-foreground outline-none"
+                className="mt-[var(--jingle-space-3)] min-h-[var(--jingle-settings-control-h)] min-w-[var(--jingle-settings-select-w)] rounded-[var(--jingle-radius-md)] border border-[var(--ring)] bg-background-elevated px-[var(--jingle-space-3)] py-[var(--jingle-space-1)] text-left [font-size:var(--jingle-settings-control-font)] font-medium text-foreground outline-none"
                 onKeyDown={(event) => {
                   event.preventDefault()
                   event.stopPropagation()
@@ -478,7 +478,7 @@ function ShortcutCommandCard(props: {
                 {draftBindingText ?? copy.shortcuts.recordingPlaceholder}
               </button>
 
-              <div className="mt-[var(--ow-space-4)] flex flex-wrap items-center gap-[var(--ow-gap-md)]">
+              <div className="mt-[var(--jingle-space-4)] flex flex-wrap items-center gap-[var(--jingle-gap-md)]">
                 <button
                   type="button"
                   data-shortcut-save={command.id}
@@ -502,26 +502,26 @@ function ShortcutCommandCard(props: {
             </div>
           ) : null}
 
-          <div className="grid gap-[var(--ow-gap-md)] md:grid-cols-2">
-            <div className="rounded-[var(--ow-settings-card-radius)] border border-border/70 bg-background px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
-              <div className="[font-size:var(--ow-font-body)] uppercase tracking-[0.08em] text-muted-foreground">
+          <div className="grid gap-[var(--jingle-gap-md)] md:grid-cols-2">
+            <div className="rounded-[var(--jingle-settings-card-radius)] border border-border/70 bg-background px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)]">
+              <div className="[font-size:var(--jingle-font-body)] uppercase tracking-[0.08em] text-muted-foreground">
                 {copy.shortcuts.defaultBindingLabel}
               </div>
-              <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-label)] font-medium text-foreground">
+              <div className="mt-[var(--jingle-space-2)] [font-size:var(--jingle-font-label)] font-medium text-foreground">
                 {defaultBindingText}
               </div>
             </div>
 
             {defaultBinding.scope === "global" ? (
-              <div className="rounded-[var(--ow-settings-card-radius)] border border-border/70 bg-background px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
-                <div className="[font-size:var(--ow-font-body)] uppercase tracking-[0.08em] text-muted-foreground">
+              <div className="rounded-[var(--jingle-settings-card-radius)] border border-border/70 bg-background px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)]">
+                <div className="[font-size:var(--jingle-font-body)] uppercase tracking-[0.08em] text-muted-foreground">
                   {copy.shortcuts.registrationStatus}
                 </div>
-                <div className="mt-[var(--ow-space-2)] flex flex-wrap items-center gap-[var(--ow-gap-md)]">
+                <div className="mt-[var(--jingle-space-2)] flex flex-wrap items-center gap-[var(--jingle-gap-md)]">
                   <span
                     data-shortcut-registration-state={command.id}
                     data-shortcut-registration-state-value={registrationStatus.state}
-                    className={`inline-flex rounded-full border px-[var(--ow-space-2)] py-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] font-medium ${
+                    className={`inline-flex rounded-full border px-[var(--jingle-space-2)] py-[var(--jingle-space-1)] [font-size:var(--jingle-font-meta)] font-medium ${
                       statusClassName[registrationStatus.state]
                     }`}
                   >
@@ -530,14 +530,14 @@ function ShortcutCommandCard(props: {
                   {registrationStatus.accelerator ? (
                     <span
                       data-shortcut-registration-accelerator={command.id}
-                      className="[font-size:var(--ow-font-body)] text-muted-foreground"
+                      className="[font-size:var(--jingle-font-body)] text-muted-foreground"
                     >
                       {registrationStatus.accelerator}
                     </span>
                   ) : null}
                 </div>
                 {registrationStatus.reason ? (
-                  <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
+                  <div className="mt-[var(--jingle-space-2)] [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)] text-muted-foreground">
                     {registrationStatus.reason}
                   </div>
                 ) : null}
@@ -559,7 +559,7 @@ export function ShortcutsTab(props: { locale: AppLocale }): React.JSX.Element {
 
   if (commandIds.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center [font-size:var(--ow-font-label)] text-muted-foreground">
+      <div className="flex h-full items-center justify-center [font-size:var(--jingle-font-label)] text-muted-foreground">
         {copy.shortcuts.unavailable}
       </div>
     )

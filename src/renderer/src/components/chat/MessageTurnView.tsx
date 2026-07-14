@@ -176,7 +176,7 @@ function toAttachmentData(
           ? { url: block.content }
           : {})
       },
-      fallbackIcon: <FileText className="size-[var(--ow-icon-display)] text-muted-foreground" />
+      fallbackIcon: <FileText className="size-[var(--jingle-icon-display)] text-muted-foreground" />
     }
   }
 
@@ -201,7 +201,7 @@ function MessageAttachments(props: {
     <Attachments
       variant="grid"
       className={cn(
-        "w-fit max-w-full gap-[var(--ow-gap-md)]",
+        "w-fit max-w-full gap-[var(--jingle-gap-md)]",
         isUser ? "ml-auto justify-end" : "justify-start"
       )}
     >
@@ -211,8 +211,8 @@ function MessageAttachments(props: {
             <Attachment
               data={data}
               className={cn(
-                "size-[var(--ow-chat-attachment-image-size)] overflow-hidden rounded-[var(--ow-chat-attachment-image-radius)] border-0 bg-background-secondary shadow-[0_8px_24px_rgba(0,0,0,0.14)]",
-                "sm:size-[var(--ow-chat-attachment-image-size-wide)]"
+                "size-[var(--jingle-chat-attachment-image-size)] overflow-hidden rounded-[var(--jingle-chat-attachment-image-radius)] border-0 bg-background-secondary shadow-[0_8px_24px_rgba(0,0,0,0.14)]",
+                "sm:size-[var(--jingle-chat-attachment-image-size-wide)]"
               )}
             >
               <AttachmentPreview
@@ -367,7 +367,7 @@ function UserTextBlock(props: {
     <div className="flex min-w-0 flex-col items-start">
       <div
         ref={setTextRef}
-        className="whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
+        className="whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)]"
         style={isCollapsed ? USER_MESSAGE_COLLAPSED_STYLE : undefined}
       >
         <ExtensionSourceTextViewer onOpenWorkspaceFile={onOpenWorkspaceFile} text={text} />
@@ -376,13 +376,13 @@ function UserTextBlock(props: {
         <button
           type="button"
           aria-expanded={isExpanded}
-          className="mt-[var(--ow-space-1)] inline-flex cursor-pointer items-center gap-[var(--ow-gap-xs)] self-start text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [font-size:var(--ow-font-body)]"
+          className="mt-[var(--jingle-space-1)] inline-flex cursor-pointer items-center gap-[var(--jingle-gap-xs)] self-start text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [font-size:var(--jingle-font-body)]"
           onClick={toggleExpansion}
         >
           <span>{isExpanded ? copy.chat.userMessageShowLess : copy.chat.userMessageShowMore}</span>
           <ChevronRight
             className={cn(
-              "size-[var(--ow-icon-xs)] transition-transform",
+              "size-[var(--jingle-icon-xs)] transition-transform",
               isExpanded ? "-rotate-90" : "rotate-90"
             )}
           />
@@ -414,7 +414,7 @@ function renderTextBlock(
   return (
     <MessageResponse
       key={key}
-      className="min-w-0 [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
+      className="min-w-0 [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)]"
       isAnimating={isStreaming}
     >
       {text}
@@ -449,14 +449,14 @@ function ReasoningBlock(props: {
 
   return (
     <Collapsible
-      className="ow-reasoning-message"
+      className="jingle-reasoning-message"
       data-active={isStreaming ? "true" : "false"}
       onOpenChange={setOpenOverride}
       open={isOpen}
     >
       <CollapsibleTrigger
         className={cn(
-          "ow-reasoning-trigger group w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "jingle-reasoning-trigger group w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           hasText ? "cursor-pointer" : "cursor-default"
         )}
         disabled={!hasText}
@@ -464,15 +464,15 @@ function ReasoningBlock(props: {
         <ActiveTurnStatusRow
           active={isStreaming}
           coachTip={coachTip}
-          icon={<MessageCircle className="size-[var(--ow-icon-sm)]" />}
+          icon={<MessageCircle className="size-[var(--jingle-icon-sm)]" />}
           label={title}
-          labelClassName="ow-reasoning-title truncate"
+          labelClassName="jingle-reasoning-title truncate"
           role={isStreaming ? "status" : undefined}
           status="thinking"
           trailing={
             <ChevronRight
               className={cn(
-                "ow-reasoning-chevron size-[var(--ow-icon-sm)] shrink-0 text-[var(--ow-agent-timeline-muted)]",
+                "jingle-reasoning-chevron size-[var(--jingle-icon-sm)] shrink-0 text-[var(--jingle-agent-timeline-muted)]",
                 !hasText && "opacity-0"
               )}
             />
@@ -481,8 +481,8 @@ function ReasoningBlock(props: {
         />
       </CollapsibleTrigger>
       {hasText ? (
-        <CollapsibleContent className="ow-reasoning-content ow-agent-tool-content overflow-hidden">
-          <div className="mt-[var(--ow-space-1)] min-w-0 max-w-full pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))] whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
+        <CollapsibleContent className="jingle-reasoning-content jingle-agent-tool-content overflow-hidden">
+          <div className="mt-[var(--jingle-space-1)] min-w-0 max-w-full pl-[calc(var(--jingle-icon-action)+var(--jingle-gap-sm))] whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)]">
             {text}
           </div>
         </CollapsibleContent>
@@ -500,7 +500,7 @@ function ThinkingMessage(props: {
 
   return (
     <Message className="max-w-full" from="assistant">
-      <MessageContent className="w-full gap-[var(--ow-space-2-5)]">
+      <MessageContent className="w-full gap-[var(--jingle-space-2-5)]">
         <ReasoningBlock coachTip={coachTip} isStreaming={isStreaming} text={text} />
       </MessageContent>
     </Message>
@@ -606,15 +606,15 @@ type ActivityView = ToolActivityView
 function getAgentActivitySummaryIcon(kind: AgentActivitySummaryIcon): React.JSX.Element {
   switch (kind) {
     case "command":
-      return <Terminal className="size-[var(--ow-icon-action)]" />
+      return <Terminal className="size-[var(--jingle-icon-action)]" />
     case "file":
-      return <FileText className="size-[var(--ow-icon-action)]" />
+      return <FileText className="size-[var(--jingle-icon-action)]" />
     case "folder":
-      return <FolderOpen className="size-[var(--ow-icon-action)]" />
+      return <FolderOpen className="size-[var(--jingle-icon-action)]" />
     case "pencil":
-      return <Edit className="size-[var(--ow-icon-action)]" />
+      return <Edit className="size-[var(--jingle-icon-action)]" />
     case "search":
-      return <Search className="size-[var(--ow-icon-action)]" />
+      return <Search className="size-[var(--jingle-icon-action)]" />
   }
 }
 
@@ -791,7 +791,7 @@ function AgentActivityGroup(props: {
     >
       <AgentToolGroupTrigger
         active={headerTextActive}
-        className="leading-[var(--ow-line-chat)]"
+        className="leading-[var(--jingle-line-chat)]"
         detail={activeThinking ? <RunCoachTip tip={coachTip} /> : headerDetail}
         icon={headerIcon}
         {...(headerToolAction
@@ -800,10 +800,10 @@ function AgentActivityGroup(props: {
       >
         {headerTitle}
       </AgentToolGroupTrigger>
-      <AgentToolGroupContent className="ow-agent-activity-group-content space-y-[var(--ow-space-2)]">
+      <AgentToolGroupContent className="jingle-agent-activity-group-content space-y-[var(--jingle-space-2)]">
         {actionViews.map((action) => {
           return (
-            <div className="ow-agent-activity-tool-item" key={action.key}>
+            <div className="jingle-agent-activity-tool-item" key={action.key}>
               <ActionMessage
                 activeToolCall={action.activeToolCall}
                 approvalRequest={action.approvalRequest}
@@ -871,7 +871,7 @@ function AssistantActivityCluster(props: {
       if (activeThinking || isActivityViewPending(toolActivity) || headerSummary) {
         return (
           <Message className="max-w-full" from="assistant">
-            <MessageContent className="w-full gap-[var(--ow-gap-md)]">
+            <MessageContent className="w-full gap-[var(--jingle-gap-md)]">
               <AgentActivityGroup
                 activeThinking={activeThinking}
                 coachTip={coachTip}
@@ -891,7 +891,7 @@ function AssistantActivityCluster(props: {
 
       return (
         <Message className="max-w-full" from="assistant">
-          <MessageContent className="w-full gap-[var(--ow-space-2-5)]">
+          <MessageContent className="w-full gap-[var(--jingle-space-2-5)]">
             <ActionMessage
               activeToolCall={toolActivity.activeToolCall}
               approvalRequest={toolActivity.approvalRequest}
@@ -912,7 +912,7 @@ function AssistantActivityCluster(props: {
 
   return (
     <Message className="max-w-full" from="assistant">
-      <MessageContent className="w-full gap-[var(--ow-gap-md)]">
+      <MessageContent className="w-full gap-[var(--jingle-gap-md)]">
         <AgentActivityGroup
           activeThinking={activeThinking}
           coachTip={coachTip}
@@ -1071,15 +1071,15 @@ function AssistantProcessFold(props: {
   )
 
   return (
-    <AgentToolGroup className="ow-assistant-process-fold" defaultOpen={false}>
+    <AgentToolGroup className="jingle-assistant-process-fold" defaultOpen={false}>
       <AgentToolGroupTrigger
-        className="leading-[var(--ow-line-chat)]"
+        className="leading-[var(--jingle-line-chat)]"
         detail={summaryParts.details.join(" · ")}
         icon={null}
         leadingAccessory={
           <span
             aria-label={copy.chat.turnProcessSteps(summaryParts.stepCount)}
-            className="inline-flex h-[18px] shrink-0 items-center rounded-[var(--ow-radius-sm)] border border-border/60 bg-background-secondary/42 px-[var(--ow-space-1-5)] text-[10px] font-medium tabular-nums"
+            className="inline-flex h-[18px] shrink-0 items-center rounded-[var(--jingle-radius-sm)] border border-border/60 bg-background-secondary/42 px-[var(--jingle-space-1-5)] text-[10px] font-medium tabular-nums"
           >
             {summaryParts.stepCount}
           </span>
@@ -1088,7 +1088,7 @@ function AssistantProcessFold(props: {
       >
         {title}
       </AgentToolGroupTrigger>
-      <AgentToolGroupContent className="ow-agent-activity-group-content">
+      <AgentToolGroupContent className="jingle-agent-activity-group-content">
         {children}
       </AgentToolGroupContent>
     </AgentToolGroup>
@@ -1171,11 +1171,11 @@ function AssistantBlock(props: {
       data-assistant-message-streaming={isStreaming ? "true" : "false"}
       from="assistant"
     >
-      <MessageContent className="w-full gap-[var(--ow-gap-md)]">
+      <MessageContent className="w-full gap-[var(--jingle-gap-md)]">
         {content.attachments}
         {content.reasoningContent}
         {content.textContent ? (
-          <div className="space-y-[var(--ow-space-3)]">{content.textContent}</div>
+          <div className="space-y-[var(--jingle-space-3)]">{content.textContent}</div>
         ) : null}
       </MessageContent>
     </Message>
@@ -1224,7 +1224,7 @@ function TurnElapsedDivider(props: { projection: TurnElapsedProjection }): React
       : copy.chat.turnWorkedFor(formatTurnElapsedTime(elapsed))
 
   return (
-    <div className="flex items-center gap-[var(--ow-gap-sm)] py-[var(--ow-space-1)] text-[var(--ow-agent-timeline-muted)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
+    <div className="flex items-center gap-[var(--jingle-gap-sm)] py-[var(--jingle-space-1)] text-[var(--jingle-agent-timeline-muted)] [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)]">
       <span className="shrink-0 tabular-nums">{label}</span>
       <span className="h-px min-w-0 flex-1 bg-border/70" />
     </div>
@@ -1241,7 +1241,7 @@ function RunCoachTip(props: { tip: JingleRunCoachTipProjection | null }): React.
 
   return (
     <span
-      className="inline-flex min-w-0 max-w-full items-center truncate text-[var(--ow-agent-timeline-muted)]"
+      className="inline-flex min-w-0 max-w-full items-center truncate text-[var(--jingle-agent-timeline-muted)]"
       data-run-coach-tip={tip.id}
     >
       <span className="min-w-0 truncate">{copy.chat.runCoachTip[tip.id]}</span>
@@ -1275,7 +1275,7 @@ function ActiveTurnStatusRow(props: {
   return (
     <AgentActivityRow
       active={active}
-      className="w-full text-[var(--ow-agent-timeline-muted)]"
+      className="w-full text-[var(--jingle-agent-timeline-muted)]"
       data-active-turn-status={status}
       detail={<RunCoachTip tip={coachTip} />}
       detailClassName="max-w-[min(36rem,52vw)]"
@@ -1294,9 +1294,9 @@ function WaitingApprovalStatusRow(): React.JSX.Element {
 
   return (
     <Message className="max-w-full" from="assistant">
-      <MessageContent className="w-full gap-[var(--ow-space-2-5)]">
+      <MessageContent className="w-full gap-[var(--jingle-space-2-5)]">
         <ActiveTurnStatusRow
-          icon={<TriangleAlert className="size-[var(--ow-icon-action)] text-status-warning" />}
+          icon={<TriangleAlert className="size-[var(--jingle-icon-action)] text-status-warning" />}
           label={copy.chat.agentStatusWaitingApproval}
           role="status"
           status="waiting_approval"
@@ -1311,9 +1311,9 @@ function SteeredConversationStatusRow(): React.JSX.Element {
 
   return (
     <Message className="max-w-full" from="assistant">
-      <MessageContent className="w-full gap-[var(--ow-space-2-5)]">
+      <MessageContent className="w-full gap-[var(--jingle-space-2-5)]">
         <AgentActivityRow
-          className="w-full text-[var(--ow-agent-timeline-muted)]"
+          className="w-full text-[var(--jingle-agent-timeline-muted)]"
           data-steered-conversation-status="applied"
           label={copy.chat.agentStatusSteered}
           role="status"
@@ -1401,7 +1401,7 @@ function UserMessage(props: {
         ) : null}
         {content.attachments}
         <form
-          className="ml-auto flex w-full max-w-full flex-col gap-[var(--ow-space-3)] rounded-[var(--ow-radius-md)] bg-secondary px-[var(--ow-message-bubble-x)] py-[var(--ow-message-bubble-y)] text-foreground"
+          className="ml-auto flex w-full max-w-full flex-col gap-[var(--jingle-space-3)] rounded-[var(--jingle-radius-md)] bg-secondary px-[var(--jingle-message-bubble-x)] py-[var(--jingle-message-bubble-y)] text-foreground"
           onSubmit={(event) => {
             event.preventDefault()
             void submitEdit()
@@ -1410,7 +1410,7 @@ function UserMessage(props: {
           <textarea
             aria-label={copy.chat.editUserMessage}
             autoFocus
-            className="min-h-[7rem] w-full resize-y bg-transparent [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground outline-none placeholder:text-muted-foreground"
+            className="min-h-[7rem] w-full resize-y bg-transparent [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)] text-foreground outline-none placeholder:text-muted-foreground"
             disabled={isSubmittingEdit}
             onChange={(event) => {
               const text = event.currentTarget.value
@@ -1418,9 +1418,9 @@ function UserMessage(props: {
             }}
             value={editingInput.text}
           />
-          <div className="flex items-center justify-end gap-[var(--ow-gap-sm)]">
+          <div className="flex items-center justify-end gap-[var(--jingle-gap-sm)]">
             <button
-              className="inline-flex h-[var(--ow-control-h-md)] items-center justify-center rounded-[var(--ow-radius-sm)] bg-background-elevated px-[var(--ow-space-3)] [font-size:var(--ow-font-meta)] text-muted-foreground transition hover:bg-background-interactive hover:text-foreground disabled:opacity-50"
+              className="inline-flex h-[var(--jingle-control-h-md)] items-center justify-center rounded-[var(--jingle-radius-sm)] bg-background-elevated px-[var(--jingle-space-3)] [font-size:var(--jingle-font-meta)] text-muted-foreground transition hover:bg-background-interactive hover:text-foreground disabled:opacity-50"
               disabled={isSubmittingEdit}
               onClick={cancelEditing}
               type="button"
@@ -1428,7 +1428,7 @@ function UserMessage(props: {
               {copy.chat.cancelEditMessage}
             </button>
             <button
-              className="inline-flex h-[var(--ow-control-h-md)] items-center justify-center rounded-[var(--ow-radius-sm)] bg-primary px-[var(--ow-space-3)] [font-size:var(--ow-font-meta)] text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+              className="inline-flex h-[var(--jingle-control-h-md)] items-center justify-center rounded-[var(--jingle-radius-sm)] bg-primary px-[var(--jingle-space-3)] [font-size:var(--jingle-font-meta)] text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
               disabled={isSubmittingEdit || !editIsSubmittable}
               type="submit"
             >
@@ -1450,21 +1450,21 @@ function UserMessage(props: {
       ) : null}
       {content.attachments}
       {content.textContent ? (
-        <MessageContent className="gap-[var(--ow-space-2-5)]">{content.textContent}</MessageContent>
+        <MessageContent className="gap-[var(--jingle-space-2-5)]">{content.textContent}</MessageContent>
       ) : null}
       {hasActions ? (
-        <MessageToolbar className="-mt-[var(--ow-space-1)] ml-auto justify-end">
-          <MessageActions className="h-[var(--ow-control-h-compact)] rounded-[var(--ow-radius-sm)] border border-transparent px-[var(--ow-space-1)] text-muted-foreground">
-            <span className="px-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] tabular-nums">
+        <MessageToolbar className="-mt-[var(--jingle-space-1)] ml-auto justify-end">
+          <MessageActions className="h-[var(--jingle-control-h-compact)] rounded-[var(--jingle-radius-sm)] border border-transparent px-[var(--jingle-space-1)] text-muted-foreground">
+            <span className="px-[var(--jingle-space-1)] [font-size:var(--jingle-font-meta)] tabular-nums">
               {createdAtLabel}
             </span>
             {canCopy ? (
               <MessageAction asChild label={copy.chat.copyMessage} tooltip={copy.chat.copyMessage}>
                 <CopyButton
-                  className="size-[22px] rounded-[var(--ow-radius-sm)] text-muted-foreground hover:text-foreground [&_svg]:size-[var(--ow-icon-sm)]"
+                  className="size-[22px] rounded-[var(--jingle-radius-sm)] text-muted-foreground hover:text-foreground [&_svg]:size-[var(--jingle-icon-sm)]"
                   copiedLabel={copy.common.copied}
                   copyLabel={copy.chat.copyMessage}
-                  iconClassName="size-[var(--ow-icon-sm)]"
+                  iconClassName="size-[var(--jingle-icon-sm)]"
                   text={copyText}
                 />
               </MessageAction>
@@ -1475,7 +1475,7 @@ function UserMessage(props: {
                 onClick={startEditing}
                 tooltip={copy.chat.editUserMessage}
               >
-                <Edit className="size-[var(--ow-icon-sm)]" />
+                <Edit className="size-[var(--jingle-icon-sm)]" />
               </MessageAction>
             ) : null}
           </MessageActions>
@@ -1611,7 +1611,7 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
     ) : null
   return (
     <div
-      className="space-y-[var(--ow-space-2-5)]"
+      className="space-y-[var(--jingle-space-2-5)]"
       data-message-turn-active={isActiveTurn ? "true" : "false"}
       data-message-turn-folded={shouldFoldProcess ? "true" : "false"}
       data-message-turn-key={turn.key}
@@ -1656,7 +1656,7 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
                 onClick={() => void onRetry(retryInput)}
                 tooltip={copy.chat.retryMessage}
               >
-                <RefreshCcwIcon className="size-[var(--ow-icon-action)]" />
+                <RefreshCcwIcon className="size-[var(--jingle-icon-action)]" />
               </MessageAction>
             ) : null}
             {turn.branchMessageId && onBranch && !isStreaming ? (
@@ -1669,16 +1669,16 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
                 }}
                 tooltip={copy.launcher.branchChat}
               >
-                <GitForkIcon className="size-[var(--ow-icon-sm)]" />
+                <GitForkIcon className="size-[var(--jingle-icon-sm)]" />
               </MessageAction>
             ) : null}
             {copyText ? (
               <MessageAction asChild label={copy.chat.copyMessage} tooltip={copy.chat.copyMessage}>
                 <CopyButton
-                  className="size-[22px] rounded-[var(--ow-radius-sm)] text-muted-foreground hover:text-foreground [&_svg]:size-[var(--ow-icon-sm)]"
+                  className="size-[22px] rounded-[var(--jingle-radius-sm)] text-muted-foreground hover:text-foreground [&_svg]:size-[var(--jingle-icon-sm)]"
                   copiedLabel={copy.common.copied}
                   copyLabel={copy.chat.copyMessage}
-                  iconClassName="size-[var(--ow-icon-action)]"
+                  iconClassName="size-[var(--jingle-icon-action)]"
                   text={copyText}
                 />
               </MessageAction>

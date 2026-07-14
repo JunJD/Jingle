@@ -21,7 +21,7 @@ function getLauncherInput(page: Page, surface?: string) {
 }
 
 function getLauncherAiComposer(page: Page) {
-  return page.locator('.ow-prompt-input [contenteditable="true"]').first()
+  return page.locator('.jingle-prompt-input [contenteditable="true"]').first()
 }
 
 async function readLauncherVisibleInputValue(page: Page): Promise<string> {

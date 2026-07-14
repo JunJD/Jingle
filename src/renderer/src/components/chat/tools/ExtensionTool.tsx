@@ -30,7 +30,7 @@ export const extensionToolComponent: ToolComponentDefinition = {
     return (
       <ToolDetailStack>
         <ToolDetailSection label={ui.presentation.capabilityTitle}>
-          <div className="[font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)] text-muted-foreground">
+          <div className="[font-size:var(--jingle-font-control)] leading-[var(--jingle-line-chat)] text-muted-foreground">
             {ui.display.description}
           </div>
         </ToolDetailSection>

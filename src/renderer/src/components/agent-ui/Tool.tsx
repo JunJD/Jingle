@@ -58,7 +58,7 @@ export function AgentToolStatusBadge(props: {
   return (
     <span
       className={cn(
-        "inline-flex h-[18px] shrink-0 items-center rounded-full border px-[var(--ow-space-2)] [font-size:var(--ow-font-caption)] font-medium uppercase tracking-[0.08em]",
+        "inline-flex h-[18px] shrink-0 items-center rounded-full border px-[var(--jingle-space-2)] [font-size:var(--jingle-font-caption)] font-medium uppercase tracking-[0.08em]",
         state === "running" && "border-status-info/20 bg-status-info/8 text-status-info",
         state === "approval" && "border-status-warning/24 bg-status-warning/10 text-status-warning",
         state === "complete" && "border-status-nominal/20 bg-status-nominal/8 text-status-nominal",
@@ -106,18 +106,18 @@ export function AgentActivityRow(props: AgentActivityRowProps): React.JSX.Elemen
   const usesInlineTrailing = hasTrailing && trailingPlacement === "inline"
   const gridClassName = hasIcon
     ? usesEdgeTrailing
-      ? "grid-cols-[var(--ow-icon-action)_minmax(0,1fr)_minmax(var(--ow-agent-activity-trailing-min-width),auto)]"
-      : "grid-cols-[var(--ow-icon-action)_minmax(0,1fr)]"
+      ? "grid-cols-[var(--jingle-icon-action)_minmax(0,1fr)_minmax(var(--jingle-agent-activity-trailing-min-width),auto)]"
+      : "grid-cols-[var(--jingle-icon-action)_minmax(0,1fr)]"
     : usesEdgeTrailing
-      ? "grid-cols-[minmax(0,1fr)_minmax(var(--ow-agent-activity-trailing-min-width),auto)]"
+      ? "grid-cols-[minmax(0,1fr)_minmax(var(--jingle-agent-activity-trailing-min-width),auto)]"
       : "grid-cols-[minmax(0,1fr)]"
 
   return (
     <span
       className={cn(
-        "ow-agent-activity-row relative isolate grid min-h-[var(--ow-agent-activity-row-height)] max-w-full min-w-0 items-center gap-x-[var(--ow-gap-sm)] overflow-hidden rounded-[var(--ow-radius-sm)] px-0 py-[var(--ow-space-0-5)]",
+        "jingle-agent-activity-row relative isolate grid min-h-[var(--jingle-agent-activity-row-height)] max-w-full min-w-0 items-center gap-x-[var(--jingle-gap-sm)] overflow-hidden rounded-[var(--jingle-radius-sm)] px-0 py-[var(--jingle-space-0-5)]",
         gridClassName,
-        active && "text-[var(--ow-agent-timeline-active)]",
+        active && "text-[var(--jingle-agent-timeline-active)]",
         className
       )}
       data-active={active ? "true" : undefined}
@@ -125,40 +125,40 @@ export function AgentActivityRow(props: AgentActivityRowProps): React.JSX.Elemen
     >
       {hasIcon ? (
         <span
-          className="inline-flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center"
-          data-slot="ow-agent-activity-icon"
+          className="inline-flex size-[var(--jingle-icon-action)] shrink-0 items-center justify-center"
+          data-slot="jingle-agent-activity-icon"
         >
           {icon}
         </span>
       ) : null}
       <span
-        className="inline-flex w-fit min-w-0 max-w-full justify-self-start items-baseline gap-x-[var(--ow-gap-sm)] overflow-hidden whitespace-nowrap"
-        data-slot="ow-agent-activity-body"
+        className="inline-flex w-fit min-w-0 max-w-full justify-self-start items-baseline gap-x-[var(--jingle-gap-sm)] overflow-hidden whitespace-nowrap"
+        data-slot="jingle-agent-activity-body"
       >
         <span
           className={cn(
-            "block min-w-0 max-w-full truncate [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]",
+            "block min-w-0 max-w-full truncate [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)]",
             labelClassName
           )}
-          data-slot="ow-agent-activity-label"
+          data-slot="jingle-agent-activity-label"
         >
           {label}
         </span>
         {detail ? (
           <span
             className={cn(
-              "block min-w-0 max-w-[min(32rem,60vw)] shrink truncate [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-[var(--ow-agent-timeline-muted)]",
+              "block min-w-0 max-w-[min(32rem,60vw)] shrink truncate [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)] text-[var(--jingle-agent-timeline-muted)]",
               detailClassName
             )}
-            data-slot="ow-agent-activity-detail"
+            data-slot="jingle-agent-activity-detail"
           >
             {detail}
           </span>
         ) : null}
         {usesInlineTrailing ? (
           <span
-            className="inline-flex min-w-[var(--ow-agent-activity-trailing-min-width)] shrink-0 items-center justify-start self-center gap-[var(--ow-gap-xs)]"
-            data-slot="ow-agent-activity-trailing"
+            className="inline-flex min-w-[var(--jingle-agent-activity-trailing-min-width)] shrink-0 items-center justify-start self-center gap-[var(--jingle-gap-xs)]"
+            data-slot="jingle-agent-activity-trailing"
           >
             {meta}
             {trailing}
@@ -167,8 +167,8 @@ export function AgentActivityRow(props: AgentActivityRowProps): React.JSX.Elemen
       </span>
       {usesEdgeTrailing ? (
         <span
-          className="flex min-w-[var(--ow-agent-activity-trailing-min-width)] shrink-0 items-center justify-end gap-[var(--ow-gap-xs)]"
-          data-slot="ow-agent-activity-trailing"
+          className="flex min-w-[var(--jingle-agent-activity-trailing-min-width)] shrink-0 items-center justify-end gap-[var(--jingle-gap-xs)]"
+          data-slot="jingle-agent-activity-trailing"
         >
           {meta}
           {trailing}
@@ -224,7 +224,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
     >
       <div
         className={cn(
-          "ow-agent-tool overflow-hidden rounded-[var(--ow-radius-sm)] bg-transparent",
+          "jingle-agent-tool overflow-hidden rounded-[var(--jingle-radius-sm)] bg-transparent",
           className
         )}
         data-state={state}
@@ -233,7 +233,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
         <CollapsibleTrigger asChild disabled={!hasDetail}>
           <Button
             className={cn(
-              "h-auto min-w-0 max-w-full shrink justify-start gap-[var(--ow-gap-xs)] rounded-none bg-transparent px-0 py-[var(--ow-space-0-5)] text-left font-normal text-[var(--ow-agent-timeline-muted)] hover:bg-transparent",
+              "h-auto min-w-0 max-w-full shrink justify-start gap-[var(--jingle-gap-xs)] rounded-none bg-transparent px-0 py-[var(--jingle-space-0-5)] text-left font-normal text-[var(--jingle-agent-timeline-muted)] hover:bg-transparent",
               !hasDetail && "cursor-default opacity-100 hover:bg-transparent disabled:opacity-100"
             )}
             data-tool-trigger
@@ -245,17 +245,17 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
               active={state === "running"}
               className="w-fit max-w-full"
               detail={subtitle}
-              detailClassName="ow-agent-tool-detail"
+              detailClassName="jingle-agent-tool-detail"
               icon={
-                icon ?? <AgentToolStatusIcon className="size-[var(--ow-icon-sm)]" state={state} />
+                icon ?? <AgentToolStatusIcon className="size-[var(--jingle-icon-sm)]" state={state} />
               }
               label={title}
-              labelClassName="ow-agent-tool-title"
+              labelClassName="jingle-agent-tool-title"
               meta={meta}
               trailing={
                 hasDetail ? (
                   <ChevronRight
-                    className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] text-[var(--ow-agent-timeline-muted)]"
+                    className="jingle-agent-tool-chevron size-[var(--jingle-icon-sm)] text-[var(--jingle-agent-timeline-muted)]"
                     data-open={isOpen ? "true" : "false"}
                   />
                 ) : null
@@ -265,8 +265,8 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
           </Button>
         </CollapsibleTrigger>
         {hasDetail ? (
-          <CollapsibleContent className="ow-agent-tool-content overflow-hidden">
-            <div className="min-w-0 max-w-full px-0 pb-[var(--ow-space-2)] pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))] pt-[var(--ow-space-1)]">
+          <CollapsibleContent className="jingle-agent-tool-content overflow-hidden">
+            <div className="min-w-0 max-w-full px-0 pb-[var(--jingle-space-2)] pl-[calc(var(--jingle-icon-action)+var(--jingle-gap-sm))] pt-[var(--jingle-space-1)]">
               {detail}
             </div>
           </CollapsibleContent>
@@ -285,7 +285,7 @@ export function AgentToolGroup(props: AgentToolGroupProps): React.JSX.Element {
 
   return (
     <Collapsible
-      className={cn("ow-agent-tool-group", className)}
+      className={cn("jingle-agent-tool-group", className)}
       data-active={active ? "true" : "false"}
       defaultOpen={defaultOpen}
       {...rest}
@@ -311,7 +311,7 @@ export function AgentToolGroupTrigger(props: AgentToolGroupTriggerProps): React.
     children,
     className,
     detail,
-    icon = <ListTodo className="size-[var(--ow-icon-action)]" />,
+    icon = <ListTodo className="size-[var(--jingle-icon-action)]" />,
     leadingAccessory,
     meta,
     showLeadingToggle = false,
@@ -322,24 +322,24 @@ export function AgentToolGroupTrigger(props: AgentToolGroupTriggerProps): React.
   const usesLeadingToggle = !hasLeadingIcon && showLeadingToggle
   const shouldShowTrailingToggle = showTrailingToggle ?? (!hasLeadingIcon && !usesLeadingToggle)
   const leadingToggle = (
-    <span className="relative inline-flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center">
-      <ChevronRight className="ow-agent-tool-chevron absolute size-[var(--ow-icon-action)] opacity-45 group-hover:opacity-100 group-data-[state=open]:hidden" />
-      <ChevronDown className="ow-agent-tool-chevron absolute hidden size-[var(--ow-icon-action)] group-data-[state=open]:block" />
+    <span className="relative inline-flex size-[var(--jingle-icon-action)] shrink-0 items-center justify-center">
+      <ChevronRight className="jingle-agent-tool-chevron absolute size-[var(--jingle-icon-action)] opacity-45 group-hover:opacity-100 group-data-[state=open]:hidden" />
+      <ChevronDown className="jingle-agent-tool-chevron absolute hidden size-[var(--jingle-icon-action)] group-data-[state=open]:block" />
     </span>
   )
   const leadingIcon = hasLeadingIcon ? (
-    <span className="relative inline-flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center">
+    <span className="relative inline-flex size-[var(--jingle-icon-action)] shrink-0 items-center justify-center">
       <span className="transition-opacity group-hover:opacity-0 group-data-[state=open]:opacity-0">
         {icon}
       </span>
-      <ChevronRight className="ow-agent-tool-chevron absolute size-[var(--ow-icon-action)] opacity-0 group-hover:opacity-100 group-data-[state=open]:hidden" />
-      <ChevronDown className="ow-agent-tool-chevron absolute hidden size-[var(--ow-icon-action)] group-data-[state=open]:block" />
+      <ChevronRight className="jingle-agent-tool-chevron absolute size-[var(--jingle-icon-action)] opacity-0 group-hover:opacity-100 group-data-[state=open]:hidden" />
+      <ChevronDown className="jingle-agent-tool-chevron absolute hidden size-[var(--jingle-icon-action)] group-data-[state=open]:block" />
     </span>
   ) : usesLeadingToggle ? (
     leadingToggle
   ) : null
   const label = leadingAccessory ? (
-    <span className="inline-flex min-w-0 max-w-full items-center gap-[var(--ow-gap-sm)]">
+    <span className="inline-flex min-w-0 max-w-full items-center gap-[var(--jingle-gap-sm)]">
       {leadingAccessory}
       <span className="min-w-0 truncate">{children}</span>
     </span>
@@ -350,7 +350,7 @@ export function AgentToolGroupTrigger(props: AgentToolGroupTriggerProps): React.
   return (
     <CollapsibleTrigger
       className={cn(
-        "ow-agent-tool-group-trigger group inline-flex min-w-0 max-w-full cursor-pointer items-center text-left text-[var(--ow-agent-timeline-muted)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "jingle-agent-tool-group-trigger group inline-flex min-w-0 max-w-full cursor-pointer items-center text-left text-[var(--jingle-agent-timeline-muted)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className
       )}
       aria-live={active ? "polite" : undefined}
@@ -361,16 +361,16 @@ export function AgentToolGroupTrigger(props: AgentToolGroupTriggerProps): React.
         active={active}
         className="w-fit max-w-full"
         detail={detail}
-        detailClassName="ow-agent-tool-group-detail"
+        detailClassName="jingle-agent-tool-group-detail"
         icon={leadingIcon}
         label={label}
-        labelClassName="ow-agent-tool-group-title block"
+        labelClassName="jingle-agent-tool-group-title block"
         meta={meta}
         trailing={
           shouldShowTrailingToggle ? (
-            <span className="relative inline-flex size-[var(--ow-icon-sm)] shrink-0 items-center justify-center">
-              <ChevronRight className="ow-agent-tool-chevron absolute size-[var(--ow-icon-sm)] opacity-45 group-hover:opacity-100 group-data-[state=open]:hidden" />
-              <ChevronDown className="ow-agent-tool-chevron absolute hidden size-[var(--ow-icon-sm)] group-data-[state=open]:block" />
+            <span className="relative inline-flex size-[var(--jingle-icon-sm)] shrink-0 items-center justify-center">
+              <ChevronRight className="jingle-agent-tool-chevron absolute size-[var(--jingle-icon-sm)] opacity-45 group-hover:opacity-100 group-data-[state=open]:hidden" />
+              <ChevronDown className="jingle-agent-tool-chevron absolute hidden size-[var(--jingle-icon-sm)] group-data-[state=open]:block" />
             </span>
           ) : null
         }
@@ -386,10 +386,10 @@ export function AgentToolGroupContent(props: AgentToolGroupContentProps): React.
 
   return (
     <CollapsibleContent
-      className={cn("ow-agent-tool-content overflow-hidden text-popover-foreground", className)}
+      className={cn("jingle-agent-tool-content overflow-hidden text-popover-foreground", className)}
       {...rest}
     >
-      <div className="mt-[var(--ow-space-2)] min-w-0 max-w-full space-y-[var(--ow-space-2)]">
+      <div className="mt-[var(--jingle-space-2)] min-w-0 max-w-full space-y-[var(--jingle-space-2)]">
         {children}
       </div>
     </CollapsibleContent>

@@ -104,14 +104,14 @@ function LauncherArtifactTypeIcon(props: { artifact: ArtifactRecord }): React.JS
   const { artifact } = props
 
   if (artifact.kind === "link") {
-    return <ExternalLink className="size-[var(--ow-icon-sm)] text-muted-foreground" />
+    return <ExternalLink className="size-[var(--jingle-icon-sm)] text-muted-foreground" />
   }
 
   if (artifact.kind === "file") {
-    return <FileText className="size-[var(--ow-icon-sm)] text-muted-foreground" />
+    return <FileText className="size-[var(--jingle-icon-sm)] text-muted-foreground" />
   }
 
-  return <PackageOpen className="size-[var(--ow-icon-sm)] text-muted-foreground" />
+  return <PackageOpen className="size-[var(--jingle-icon-sm)] text-muted-foreground" />
 }
 
 function LauncherAiPresenceMark(): React.JSX.Element {
@@ -187,9 +187,9 @@ function LauncherArtifactImagePreview(props: { artifact: FileArtifactRecord }): 
   return (
     <div className="flex h-full w-full items-center justify-center bg-background-secondary">
       {preview.status === "loading" ? (
-        <Loader2 className="size-[var(--ow-icon-md)] animate-spin text-muted-foreground" />
+        <Loader2 className="size-[var(--jingle-icon-md)] animate-spin text-muted-foreground" />
       ) : (
-        <ImageIcon className="size-[var(--ow-icon-lg)] text-muted-foreground" />
+        <ImageIcon className="size-[var(--jingle-icon-lg)] text-muted-foreground" />
       )}
     </div>
   )
@@ -201,9 +201,9 @@ function LauncherArtifactCard(props: { artifact: ArtifactRecord }): React.JSX.El
   const isOpenable = isLauncherArtifactOpenable(artifact)
   const meta = getArtifactMeta(artifact)
   const className = cn(
-    "group flex min-w-0 flex-col overflow-hidden rounded-[var(--ow-radius-panel)] border border-border/70 bg-background-secondary/60 text-left transition-colors",
+    "group flex min-w-0 flex-col overflow-hidden rounded-[var(--jingle-radius-panel)] border border-border/70 bg-background-secondary/60 text-left transition-colors",
     isOpenable ? "hover:border-border hover:bg-background-secondary" : "cursor-default",
-    isImage ? "sm:col-span-1" : "px-[var(--ow-space-3)] py-[var(--ow-space-2)]"
+    isImage ? "sm:col-span-1" : "px-[var(--jingle-space-3)] py-[var(--jingle-space-2)]"
   )
   const content = (
     <>
@@ -218,21 +218,21 @@ function LauncherArtifactCard(props: { artifact: ArtifactRecord }): React.JSX.El
 
       <div
         className={cn(
-          "flex min-w-0 items-start gap-[var(--ow-gap-md)]",
-          isImage ? "px-[var(--ow-space-3)] py-[var(--ow-space-2)]" : null
+          "flex min-w-0 items-start gap-[var(--jingle-gap-md)]",
+          isImage ? "px-[var(--jingle-space-3)] py-[var(--jingle-space-2)]" : null
         )}
       >
         {!isImage ? (
-          <div className="flex size-[var(--ow-icon-lg)] shrink-0 items-center justify-center rounded-[var(--ow-radius-md)] bg-background">
+          <div className="flex size-[var(--jingle-icon-lg)] shrink-0 items-center justify-center rounded-[var(--jingle-radius-md)] bg-background">
             <LauncherArtifactTypeIcon artifact={artifact} />
           </div>
         ) : null}
 
         <div className="min-w-0 flex-1">
-          <div className="truncate [font-size:var(--ow-font-body)] font-medium leading-[var(--ow-line-control)] text-foreground">
+          <div className="truncate [font-size:var(--jingle-font-body)] font-medium leading-[var(--jingle-line-control)] text-foreground">
             {artifact.title}
           </div>
-          <div className="mt-[var(--ow-leading-nudge)] truncate [font-size:var(--ow-font-meta)] leading-[var(--ow-line-control-sm)] text-muted-foreground">
+          <div className="mt-[var(--jingle-leading-nudge)] truncate [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-control-sm)] text-muted-foreground">
             {meta}
           </div>
         </div>
@@ -288,16 +288,16 @@ function LauncherArtifactsPanel(props: {
   }
 
   return (
-    <section className="flex min-w-0 flex-col gap-[var(--ow-space-2)]" data-launcher-artifacts="">
-      <div className="flex items-center justify-between gap-[var(--ow-gap-md)]">
-        <div className="[font-size:var(--ow-font-meta)] font-medium uppercase tracking-normal text-muted-foreground">
+    <section className="flex min-w-0 flex-col gap-[var(--jingle-space-2)]" data-launcher-artifacts="">
+      <div className="flex items-center justify-between gap-[var(--jingle-gap-md)]">
+        <div className="[font-size:var(--jingle-font-meta)] font-medium uppercase tracking-normal text-muted-foreground">
           {copy.toolCall.labels.present_artifacts}
         </div>
-        <div className="[font-size:var(--ow-font-meta)] text-muted-foreground">
+        <div className="[font-size:var(--jingle-font-meta)] text-muted-foreground">
           {visibleArtifacts.length}
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-[var(--ow-space-2)] sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-[var(--jingle-space-2)] sm:grid-cols-2">
         {visibleArtifacts.map((artifact) => (
           <LauncherArtifactCard artifact={artifact} key={artifact.id} />
         ))}
@@ -339,16 +339,16 @@ export function LauncherAiEmptyState(props: { error?: string | null }): React.JS
     <div className="relative flex flex-1 items-center justify-center overflow-hidden px-[var(--launcher-ai-content-x)]">
       <div className="relative flex w-full max-w-[var(--launcher-ai-empty-max-width)] flex-col items-center text-center">
         <LauncherAiPresenceMark />
-        <div className="text-section-header mb-[var(--ow-space-2-5)]">
+        <div className="text-section-header mb-[var(--jingle-space-2-5)]">
           {copy.launcher.aiEmptyEyebrow}
         </div>
         <h1 className="[font-size:var(--launcher-ai-empty-title)] font-semibold tracking-normal text-foreground sm:[font-size:var(--launcher-ai-empty-title-wide)]">
           {copy.launcher.aiHeroTitle}
         </h1>
-        <p className="mt-[var(--ow-space-3)] max-w-[var(--launcher-ai-empty-copy-max-width)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
+        <p className="mt-[var(--jingle-space-3)] max-w-[var(--launcher-ai-empty-copy-max-width)] [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)] text-muted-foreground">
           {copy.launcher.aiHeroDescription}
         </p>
-        {error ? <AgentErrorNotice className="mt-[var(--ow-space-6)]" error={error} /> : null}
+        {error ? <AgentErrorNotice className="mt-[var(--jingle-space-6)]" error={error} /> : null}
       </div>
     </div>
   )
@@ -363,8 +363,8 @@ export function LauncherAiThreadLoadingState(props: {
 
   return (
     <div className="relative flex flex-1 items-center justify-center px-[var(--launcher-ai-content-x)] text-muted-foreground">
-      <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-body)]">
-        <Loader2 className="size-[var(--ow-icon-md)] animate-spin" />
+      <div className="flex items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-body)]">
+        <Loader2 className="size-[var(--jingle-icon-md)] animate-spin" />
         <span>{label}</span>
       </div>
     </div>

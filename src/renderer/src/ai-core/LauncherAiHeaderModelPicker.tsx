@@ -50,18 +50,18 @@ export function LauncherAiHeaderModelPicker(
           type="button"
           aria-label={copy.launcher.changeModel}
           title={copy.launcher.changeModel}
-          className="group -ml-[var(--ow-space-0-5)] mt-px flex max-w-[var(--launcher-chip-max-width)] items-center gap-[var(--ow-gap-xs)] rounded-[var(--ow-radius-xs)] px-[var(--ow-space-0-5)] py-px text-muted-foreground transition hover:bg-background-secondary/62 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="group -ml-[var(--jingle-space-0-5)] mt-px flex max-w-[var(--launcher-chip-max-width)] items-center gap-[var(--jingle-gap-xs)] rounded-[var(--jingle-radius-xs)] px-[var(--jingle-space-0-5)] py-px text-muted-foreground transition hover:bg-background-secondary/62 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {selectedProvider ? (
             <ProviderIcon
-              className="size-[var(--ow-icon-xs)] shrink-0 text-muted-foreground/72 group-hover:text-foreground"
+              className="size-[var(--jingle-icon-xs)] shrink-0 text-muted-foreground/72 group-hover:text-foreground"
               providerId={selectedProvider.id}
             />
           ) : null}
-          <span className="min-w-0 truncate [font-size:var(--ow-font-meta)] leading-[var(--ow-line-tight)]">
+          <span className="min-w-0 truncate [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-tight)]">
             {displayName}
           </span>
-          <ChevronDown className="size-[var(--ow-icon-xs)] shrink-0 opacity-0 transition group-hover:opacity-70 group-data-[state=open]:opacity-70" />
+          <ChevronDown className="size-[var(--jingle-icon-xs)] shrink-0 opacity-0 transition group-hover:opacity-70 group-data-[state=open]:opacity-70" />
         </button>
       </PopoverTrigger>
       <PopoverContent

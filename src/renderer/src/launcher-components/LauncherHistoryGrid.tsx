@@ -13,7 +13,7 @@ import { LauncherResultIconGraphic } from "@launcher-shell/result-icon"
 import type { LauncherShellItem } from "@launcher-shell/types"
 
 const historyMenuItemClassName =
-  "gap-[var(--ow-gap-sm)] px-[var(--ow-space-2)] py-[var(--ow-space-1)] [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-body)]"
+  "gap-[var(--jingle-gap-sm)] px-[var(--jingle-space-2)] py-[var(--jingle-space-1)] [font-size:var(--jingle-font-control)] font-medium leading-[var(--jingle-line-body)]"
 
 function LauncherHistoryItemIcon(props: { item: LauncherShellItem }): React.JSX.Element {
   const { item } = props
@@ -66,14 +66,14 @@ export function LauncherHistoryGrid(props: {
                   onClick={() => onExecute(index)}
                   onMouseDown={(event) => event.preventDefault()}
                   className={cn(
-                    "flex h-full w-full appearance-none flex-col items-center justify-center gap-[var(--ow-gap-sm)] border-0 px-[var(--ow-space-2)] pb-[var(--ow-space-2)] pt-[var(--ow-space-3)] text-center transition",
+                    "flex h-full w-full appearance-none flex-col items-center justify-center gap-[var(--jingle-gap-sm)] border-0 px-[var(--jingle-space-2)] pb-[var(--jingle-space-2)] pt-[var(--jingle-space-3)] text-center transition",
                     "text-foreground",
                     isSelected && "bg-[var(--launcher-item-hover)]"
                   )}
                 >
                   <LauncherHistoryItemIcon item={item} />
 
-                  <span className="w-full truncate [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-foreground/92">
+                  <span className="w-full truncate [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-body)] text-foreground/92">
                     {item.title}
                   </span>
                 </button>
@@ -85,9 +85,9 @@ export function LauncherHistoryGrid(props: {
                   onClick={() => onSetPinned(item.id, !item.pin)}
                 >
                   {item.pin ? (
-                    <PinOff className="size-[var(--ow-icon-sm)]" strokeWidth={1.8} />
+                    <PinOff className="size-[var(--jingle-icon-sm)]" strokeWidth={1.8} />
                   ) : (
-                    <Pin className="size-[var(--ow-icon-sm)]" strokeWidth={1.8} />
+                    <Pin className="size-[var(--jingle-icon-sm)]" strokeWidth={1.8} />
                   )}
                   {item.pin ? copy.launcher.unpinHistoryItem : copy.launcher.pinHistoryItem}
                 </ContextMenuItem>
@@ -97,14 +97,14 @@ export function LauncherHistoryGrid(props: {
                   variant="destructive"
                   onClick={() => onRemove(item.id)}
                 >
-                  <Trash2 className="size-[var(--ow-icon-sm)]" strokeWidth={1.8} />
+                  <Trash2 className="size-[var(--jingle-icon-sm)]" strokeWidth={1.8} />
                   {copy.launcher.removeHistoryItem}
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>
 
             {item.pin ? (
-              <div className="pointer-events-none absolute right-[var(--ow-space-1)] top-[var(--ow-space-1)] h-0 w-0 border-b-[var(--launcher-history-pin-size)] border-l-[var(--launcher-history-pin-size)] border-r-[var(--launcher-history-pin-size)] border-t-[var(--launcher-history-pin-size)] border-b-transparent border-l-transparent border-r-[var(--launcher-pin-indicator)] border-t-[var(--launcher-pin-indicator)]" />
+              <div className="pointer-events-none absolute right-[var(--jingle-space-1)] top-[var(--jingle-space-1)] h-0 w-0 border-b-[var(--launcher-history-pin-size)] border-l-[var(--launcher-history-pin-size)] border-r-[var(--launcher-history-pin-size)] border-t-[var(--launcher-history-pin-size)] border-b-transparent border-l-transparent border-r-[var(--launcher-pin-indicator)] border-t-[var(--launcher-pin-indicator)]" />
             ) : null}
           </div>
         )

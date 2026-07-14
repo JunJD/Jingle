@@ -118,7 +118,7 @@ function getPermissionModeLabelFromLabels(
 }
 
 function getPermissionModeIcon(mode: PermissionModeName): React.ReactNode {
-  const className = "size-[var(--ow-icon-action)]"
+  const className = "size-[var(--jingle-icon-action)]"
 
   switch (mode) {
     case "explore":
@@ -325,7 +325,7 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
             ({
               accessory:
                 permissionMode === currentPermissionMode
-                  ? createElement(Check, { className: "size-[var(--ow-icon-sm)]" })
+                  ? createElement(Check, { className: "size-[var(--jingle-icon-sm)]" })
                   : undefined,
               checked: permissionMode === currentPermissionMode,
               icon: getPermissionModeIcon(permissionMode),

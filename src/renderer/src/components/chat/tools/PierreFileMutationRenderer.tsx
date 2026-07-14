@@ -126,7 +126,7 @@ function PierreFileTreePanel(props: {
   return (
     <div
       className={cn(
-        "min-w-0 overflow-hidden rounded-[var(--ow-radius-md)] border border-border/70 bg-background-secondary/30",
+        "min-w-0 overflow-hidden rounded-[var(--jingle-radius-md)] border border-border/70 bg-background-secondary/30",
         compact ? "max-h-[180px]" : "h-full min-h-[96px]"
       )}
       data-file-mutation-tree={treeKey}
@@ -154,23 +154,23 @@ function FileContentsPreview(props: {
 
   return (
     <div className="max-h-[360px] min-w-0 overflow-auto bg-background text-foreground/86">
-      <div className="grid min-w-0 font-mono leading-[var(--ow-line-code)]">
+      <div className="grid min-w-0 font-mono leading-[var(--jingle-line-code)]">
         {visibleLines.map((line, index) => (
           <div
             className="grid min-w-0 grid-cols-[3.25rem_minmax(0,1fr)] border-b border-border/35 last:border-b-0"
             key={`${fileKey}:${index}`}
           >
-            <span className="select-none border-r border-border/45 px-[var(--ow-space-2)] py-[var(--ow-space-1)] text-right tabular-nums text-muted-foreground/70">
+            <span className="select-none border-r border-border/45 px-[var(--jingle-space-2)] py-[var(--jingle-space-1)] text-right tabular-nums text-muted-foreground/70">
               {index + 1}
             </span>
-            <span className="min-w-0 whitespace-pre-wrap break-words px-[var(--ow-space-3)] py-[var(--ow-space-1)]">
+            <span className="min-w-0 whitespace-pre-wrap break-words px-[var(--jingle-space-3)] py-[var(--jingle-space-1)]">
               {line || " "}
             </span>
           </div>
         ))}
       </div>
       {hiddenLineCount > 0 ? (
-        <div className="border-t border-border/45 px-[var(--ow-space-3)] py-[var(--ow-space-2)] font-mono leading-[var(--ow-line-code)] text-muted-foreground">
+        <div className="border-t border-border/45 px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] font-mono leading-[var(--jingle-line-code)] text-muted-foreground">
           +{hiddenLineCount}
         </div>
       ) : null}
@@ -226,7 +226,7 @@ function FileMutationDiffHeader(props: {
   const canOpenFile = Boolean(openTargetContext?.folderPath && openTargetContext.selectedTargetId)
 
   return (
-    <div className="flex min-h-8 min-w-0 items-center gap-[var(--ow-gap-sm)] border-b border-border/70 bg-background-secondary/38 px-[var(--ow-space-3)] py-[var(--ow-space-1)] [font-size:var(--ow-font-meta)]">
+    <div className="flex min-h-8 min-w-0 items-center gap-[var(--jingle-gap-sm)] border-b border-border/70 bg-background-secondary/38 px-[var(--jingle-space-3)] py-[var(--jingle-space-1)] [font-size:var(--jingle-font-meta)]">
       <button
         type="button"
         className="min-w-0 flex-1 truncate text-left font-medium text-muted-foreground transition hover:text-foreground disabled:cursor-default disabled:hover:text-muted-foreground"
@@ -325,7 +325,7 @@ export function PierreFileMutationRenderer(
   return (
     <div
       className={cn(
-        "grid min-w-0 gap-[var(--ow-space-2-5)]",
+        "grid min-w-0 gap-[var(--jingle-space-2-5)]",
         !compact &&
           shouldRenderTree &&
           paths.length > 1 &&
@@ -344,7 +344,7 @@ export function PierreFileMutationRenderer(
         />
       ) : null}
       {filesWithDiff.length > 0 ? (
-        <div className="grid min-w-0 gap-[var(--ow-space-2-5)]">
+        <div className="grid min-w-0 gap-[var(--jingle-space-2-5)]">
           {filesWithDiff.map((file) => (
             <div
               key={file.key}
@@ -355,7 +355,7 @@ export function PierreFileMutationRenderer(
                 }
                 diffRefs.current.delete(file.path)
               }}
-              className="min-w-0 overflow-hidden rounded-[var(--ow-radius-md)] border border-border/70 bg-background-elevated/60"
+              className="min-w-0 overflow-hidden rounded-[var(--jingle-radius-md)] border border-border/70 bg-background-elevated/60"
               data-file-mutation-path={file.path}
             >
               <FileMutationDiffHeader

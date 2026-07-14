@@ -14,12 +14,12 @@ type ProviderTabProps = {
 
 function ProviderTabSkeleton(): React.JSX.Element {
   return (
-    <div className="mx-auto w-full max-w-[var(--ow-settings-content-max-width)] space-y-[var(--ow-space-4)]">
-      <div className="h-[var(--ow-settings-provider-skeleton-lg)] animate-pulse rounded-[var(--ow-radius-panel)] border border-border/70 bg-background-secondary/70" />
-      <div className="h-[var(--ow-settings-provider-skeleton-md)] animate-pulse rounded-[var(--ow-radius-panel)] border border-dashed border-border/80 bg-background-secondary/45" />
-      <div className="space-y-[var(--ow-space-2)]">
-        <div className="h-[var(--ow-settings-provider-skeleton-sm)] animate-pulse rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-elevated/70" />
-        <div className="h-[var(--ow-settings-provider-skeleton-sm)] animate-pulse rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-elevated/70" />
+    <div className="mx-auto w-full max-w-[var(--jingle-settings-content-max-width)] space-y-[var(--jingle-space-4)]">
+      <div className="h-[var(--jingle-settings-provider-skeleton-lg)] animate-pulse rounded-[var(--jingle-radius-panel)] border border-border/70 bg-background-secondary/70" />
+      <div className="h-[var(--jingle-settings-provider-skeleton-md)] animate-pulse rounded-[var(--jingle-radius-panel)] border border-dashed border-border/80 bg-background-secondary/45" />
+      <div className="space-y-[var(--jingle-space-2)]">
+        <div className="h-[var(--jingle-settings-provider-skeleton-sm)] animate-pulse rounded-[var(--jingle-radius-panel)] border border-border/80 bg-background-elevated/70" />
+        <div className="h-[var(--jingle-settings-provider-skeleton-sm)] animate-pulse rounded-[var(--jingle-radius-panel)] border border-border/80 bg-background-elevated/70" />
       </div>
     </div>
   )
@@ -31,7 +31,7 @@ function ProviderTabError(props: {
   onRetry: () => void
 }): React.JSX.Element {
   return (
-    <div className="space-y-[var(--ow-space-3)]">
+    <div className="space-y-[var(--jingle-space-3)]">
       <InlineError text={props.error} />
       <Button type="button" variant="outline" disabled={props.loading} onClick={props.onRetry}>
         <RotateCw className={props.loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
@@ -53,7 +53,7 @@ export function ProviderTab(props: ProviderTabProps): React.JSX.Element {
       throw new Error("Model setup controller finished without a snapshot or an error.")
     }
     return (
-      <div className="mx-auto w-full max-w-[var(--ow-settings-content-max-width)]">
+      <div className="mx-auto w-full max-w-[var(--jingle-settings-content-max-width)]">
         <ProviderTabError
           error={controller.error}
           loading={controller.loading}
@@ -66,7 +66,7 @@ export function ProviderTab(props: ProviderTabProps): React.JSX.Element {
   const focusProviderId = getValidFocusProviderId(focusTarget, controller.snapshot.providers)
 
   return (
-    <div className="mx-auto w-full max-w-[var(--ow-settings-content-max-width)]">
+    <div className="mx-auto w-full max-w-[var(--jingle-settings-content-max-width)]">
       <ModelSetupSurface
         commands={controller.commands}
         focusProviderId={focusProviderId}
@@ -75,7 +75,7 @@ export function ProviderTab(props: ProviderTabProps): React.JSX.Element {
         onFocusProviderConsumed={onFocusTargetConsumed}
       />
       {controller.error ? (
-        <div className="mt-[var(--ow-space-3)]">
+        <div className="mt-[var(--jingle-space-3)]">
           <ProviderTabError
             error={controller.error}
             loading={controller.loading}

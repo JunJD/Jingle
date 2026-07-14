@@ -88,7 +88,7 @@ export function LauncherAiEnvironmentMenu(
             "data-[state=open]:bg-background-secondary/70 data-[state=open]:text-foreground"
           )}
         >
-          <Info className="size-[var(--ow-icon-sm)]" />
+          <Info className="size-[var(--jingle-icon-sm)]" />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

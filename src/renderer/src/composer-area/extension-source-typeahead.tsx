@@ -56,7 +56,7 @@ type IndexedComposerMentionOption = {
 }
 
 const SECTION_LABEL_CLASS =
-  "px-[var(--ow-space-2)] pb-[var(--ow-space-0-5)] pt-[var(--ow-space-1-5)] [font-size:var(--ow-font-meta)] font-medium text-muted-foreground"
+  "px-[var(--jingle-space-2)] pb-[var(--jingle-space-0-5)] pt-[var(--jingle-space-1-5)] [font-size:var(--jingle-font-meta)] font-medium text-muted-foreground"
 
 function filterSourceMentionOptions(
   mentions: ExtensionSourceMention[],
@@ -178,10 +178,10 @@ function useMenuRenderFn(
             <button
               ref={option.setRefElement}
               className={cn(
-                "flex w-full cursor-default select-none items-center gap-[var(--ow-space-1-5)] rounded-[var(--ow-radius-xs)] border-0 bg-transparent px-[var(--ow-space-2)] text-left text-foreground outline-none transition-colors duration-100",
+                "flex w-full cursor-default select-none items-center gap-[var(--jingle-space-1-5)] rounded-[var(--jingle-radius-xs)] border-0 bg-transparent px-[var(--jingle-space-2)] text-left text-foreground outline-none transition-colors duration-100",
                 isWorkspaceFile
-                  ? "h-[26px] [font-size:var(--ow-font-meta)]"
-                  : "h-[34px] [font-size:var(--ow-font-label)]",
+                  ? "h-[26px] [font-size:var(--jingle-font-meta)]"
+                  : "h-[34px] [font-size:var(--jingle-font-label)]",
                 selected ? "bg-background-secondary" : "hover:bg-background-secondary/72"
               )}
               onClick={() => {
@@ -194,7 +194,7 @@ function useMenuRenderFn(
             >
               {option.kind === "extension-source" ? (
                 <>
-                  <span className="flex size-[20px] shrink-0 items-center justify-center rounded-[var(--ow-radius-xs)] bg-background-tertiary text-muted-foreground">
+                  <span className="flex size-[20px] shrink-0 items-center justify-center rounded-[var(--jingle-radius-xs)] bg-background-tertiary text-muted-foreground">
                     <ExtensionIcon
                       className="size-[16px]"
                       extensionName={option.mention.extensionName}
@@ -223,7 +223,7 @@ function useMenuRenderFn(
             width: `${menuLayout.width}px`
           }}
         >
-          <ul className="relative z-[9999] m-0 max-h-[320px] w-full list-none overflow-y-auto rounded-[var(--ow-radius-sm)] border border-border bg-popover p-[var(--ow-space-0-5)] text-popover-foreground shadow-[0_10px_28px_rgba(15,23,42,0.14)] outline-none">
+          <ul className="relative z-[9999] m-0 max-h-[320px] w-full list-none overflow-y-auto rounded-[var(--jingle-radius-sm)] border border-border bg-popover p-[var(--jingle-space-0-5)] text-popover-foreground shadow-[0_10px_28px_rgba(15,23,42,0.14)] outline-none">
             {pluginOptions.length > 0 && showSectionLabels ? (
               <li className={SECTION_LABEL_CLASS}>插件</li>
             ) : null}
@@ -234,7 +234,7 @@ function useMenuRenderFn(
             {workspaceFileOptions.map(renderOption)}
             {workspaceFileSearchStatus ? (
               <li
-                className="flex h-[32px] cursor-default select-none items-center px-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-muted-foreground"
+                className="flex h-[32px] cursor-default select-none items-center px-[var(--jingle-space-2)] [font-size:var(--jingle-font-meta)] text-muted-foreground"
                 role="presentation"
               >
                 {getWorkspaceFileSearchStatusLabel(workspaceFileSearchStatus)}
@@ -391,7 +391,7 @@ function WorkspaceFileOptionContent(props: { file: ComposerWorkspaceFileMention 
   return (
     <>
       <WorkspaceFileIcon className="mt-px" name={file.name} variant="badge" />
-      <span className="flex w-full min-w-0 items-center gap-[var(--ow-space-1)]">
+      <span className="flex w-full min-w-0 items-center gap-[var(--jingle-space-1)]">
         <span
           className={cn(
             "truncate font-medium leading-[18px] text-foreground/82",

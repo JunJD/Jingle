@@ -82,41 +82,41 @@ export function MemoryReviewPanel(props: MemoryReviewPanelProps): React.JSX.Elem
   }
 
   return (
-    <div className="border-t border-border pt-[var(--ow-space-4)]">
-      <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-label)] font-semibold text-foreground">
-        <Brain className="size-[var(--ow-icon-sm)] text-muted-foreground" />
+    <div className="border-t border-border pt-[var(--jingle-space-4)]">
+      <div className="flex items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-label)] font-semibold text-foreground">
+        <Brain className="size-[var(--jingle-icon-sm)] text-muted-foreground" />
         {copy.chat.pendingMemoryTitle}
       </div>
-      <div className="mt-[var(--ow-space-3)] grid gap-[var(--ow-space-2)]">
+      <div className="mt-[var(--jingle-space-3)] grid gap-[var(--jingle-space-2)]">
         {suggestions.map((suggestion) => {
           const evidenceRefs = readSuggestionEvidenceRefs(suggestion)
 
           return (
             <div
               key={suggestion.suggestionId}
-              className="rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-2)]"
+              className="rounded-[var(--jingle-radius-md)] border border-border bg-background-elevated px-[var(--jingle-space-3)] py-[var(--jingle-space-2)]"
             >
-              <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-foreground">
+              <div className="[font-size:var(--jingle-font-body)] leading-[var(--jingle-line-body)] text-foreground">
                 {suggestion.content}
               </div>
               {suggestion.reason ? (
-                <div className="mt-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-muted-foreground">
+                <div className="mt-[var(--jingle-space-1)] [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-body)] text-muted-foreground">
                   {suggestion.reason}
                 </div>
               ) : null}
               {evidenceRefs.length > 0 ? (
-                <div className="mt-[var(--ow-space-2)] rounded-[var(--ow-radius-sm)] border border-border bg-background px-[var(--ow-space-2)] py-[var(--ow-space-2)]">
-                  <div className="flex items-center gap-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] font-medium text-muted-foreground">
-                    <Link2 className="size-[var(--ow-icon-xs)]" />
+                <div className="mt-[var(--jingle-space-2)] rounded-[var(--jingle-radius-sm)] border border-border bg-background px-[var(--jingle-space-2)] py-[var(--jingle-space-2)]">
+                  <div className="flex items-center gap-[var(--jingle-space-1)] [font-size:var(--jingle-font-meta)] font-medium text-muted-foreground">
+                    <Link2 className="size-[var(--jingle-icon-xs)]" />
                     {copy.chat.pendingMemoryEvidenceTitle(evidenceRefs.length)}
                   </div>
-                  <div className="mt-[var(--ow-space-2)] grid gap-[var(--ow-space-1)]">
+                  <div className="mt-[var(--jingle-space-2)] grid gap-[var(--jingle-space-1)]">
                     {evidenceRefs.map((ref) => (
                       <div key={ref.id} className="min-w-0">
-                        <div className="truncate [font-size:var(--ow-font-meta)] text-foreground">
+                        <div className="truncate [font-size:var(--jingle-font-meta)] text-foreground">
                           {ref.title}
                         </div>
-                        <div className="truncate [font-size:var(--ow-font-meta)] text-muted-foreground">
+                        <div className="truncate [font-size:var(--jingle-font-meta)] text-muted-foreground">
                           {sourceLabel(ref.sourceType)} - {ref.preview}
                         </div>
                       </div>
@@ -124,25 +124,25 @@ export function MemoryReviewPanel(props: MemoryReviewPanelProps): React.JSX.Elem
                   </div>
                 </div>
               ) : null}
-              <div className="mt-[var(--ow-space-2)] flex items-center gap-[var(--ow-gap-sm)]">
+              <div className="mt-[var(--jingle-space-2)] flex items-center gap-[var(--jingle-gap-sm)]">
                 <button
                   type="button"
-                  className="inline-flex min-h-[var(--ow-control-h-sm)] items-center gap-[var(--ow-space-1)] rounded-[var(--ow-radius-sm)] border border-border bg-background px-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-foreground transition hover:bg-background-secondary"
+                  className="inline-flex min-h-[var(--jingle-control-h-sm)] items-center gap-[var(--jingle-space-1)] rounded-[var(--jingle-radius-sm)] border border-border bg-background px-[var(--jingle-space-2)] [font-size:var(--jingle-font-meta)] text-foreground transition hover:bg-background-secondary"
                   onClick={() => {
                     void acceptSuggestion(suggestion.suggestionId)
                   }}
                 >
-                  <Check className="size-[var(--ow-icon-xs)]" />
+                  <Check className="size-[var(--jingle-icon-xs)]" />
                   {copy.chat.pendingMemoryAccept}
                 </button>
                 <button
                   type="button"
-                  className="inline-flex min-h-[var(--ow-control-h-sm)] items-center gap-[var(--ow-space-1)] rounded-[var(--ow-radius-sm)] border border-border bg-background px-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-muted-foreground transition hover:bg-background-secondary hover:text-foreground"
+                  className="inline-flex min-h-[var(--jingle-control-h-sm)] items-center gap-[var(--jingle-space-1)] rounded-[var(--jingle-radius-sm)] border border-border bg-background px-[var(--jingle-space-2)] [font-size:var(--jingle-font-meta)] text-muted-foreground transition hover:bg-background-secondary hover:text-foreground"
                   onClick={() => {
                     void rejectSuggestion(suggestion.suggestionId)
                   }}
                 >
-                  <X className="size-[var(--ow-icon-xs)]" />
+                  <X className="size-[var(--jingle-icon-xs)]" />
                   {copy.chat.pendingMemoryReject}
                 </button>
               </div>

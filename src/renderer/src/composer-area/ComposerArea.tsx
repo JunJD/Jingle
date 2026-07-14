@@ -56,7 +56,7 @@ import type { ExtensionSourceMention } from "@shared/extension-sources"
 import type { ComposerAreaHandle, ComposerAreaProps } from "./types"
 
 const COMPOSER_AREA_SYNC_TAG = "composer-area-sync"
-const REFERENCE_NODE_SELECTED_CLASS = "ow-composer-reference--selected"
+const REFERENCE_NODE_SELECTED_CLASS = "jingle-composer-reference--selected"
 
 function $isComposerReferenceNode(node: LexicalNode | null | undefined): boolean {
   return $isExtensionSourceReferenceNode(node) || $isFileReferenceNode(node)
@@ -572,7 +572,7 @@ export function ComposerArea(props: ComposerAreaProps): React.JSX.Element {
                 placeholder={
                   <div
                     className={cn(
-                      "ow-composer-placeholder pointer-events-none absolute left-0 top-0 select-none",
+                      "jingle-composer-placeholder pointer-events-none absolute left-0 top-0 select-none",
                       className,
                       "font-normal leading-[20px]"
                     )}

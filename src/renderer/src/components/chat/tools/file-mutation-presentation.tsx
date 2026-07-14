@@ -106,7 +106,7 @@ function FileMutationLineStatsMeta(props: {
   return (
     <span
       aria-label={formatFileMutationLineStatsValue(stats) ?? undefined}
-      className="inline-flex shrink-0 items-center gap-[var(--ow-gap-xs)] font-medium tabular-nums"
+      className="inline-flex shrink-0 items-center gap-[var(--jingle-gap-xs)] font-medium tabular-nums"
     >
       <FileMutationStatValue
         className="text-status-nominal"

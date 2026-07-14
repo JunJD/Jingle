@@ -85,7 +85,7 @@ export class FileReferenceNode extends DecoratorNode<null> {
       "h-[20px]",
       "max-w-full",
       "items-center",
-      "ow-file-reference",
+      "jingle-file-reference",
       "whitespace-nowrap",
       "rounded-[4px]",
       "px-[2px]",
@@ -169,7 +169,7 @@ export class FileReferenceNode extends DecoratorNode<null> {
 
 function syncFileIconDom(element: HTMLElement, name: string): void {
   const badge = getWorkspaceFileIconBadge(name)
-  element.classList.add("ow-file-reference--with-icon")
+  element.classList.add("jingle-file-reference--with-icon")
   element.dataset.fileIconKind = badge.kind
   element.dataset.fileIconLabel = badge.label
 }

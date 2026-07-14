@@ -18,7 +18,7 @@ export type MessageProps = HTMLAttributes<HTMLDivElement> & {
 export const Message = ({ className, from, ...props }: MessageProps) => (
   <div
     className={cn(
-      "group flex w-full max-w-[var(--ow-message-max-w)] flex-col gap-[var(--ow-message-gap)]",
+      "group flex w-full max-w-[var(--jingle-message-max-w)] flex-col gap-[var(--jingle-message-gap)]",
       from === "user" ? "is-user ml-auto justify-end" : "is-assistant",
       className
     )}
@@ -31,8 +31,8 @@ export type MessageContentProps = HTMLAttributes<HTMLDivElement>
 export const MessageContent = ({ children, className, ...props }: MessageContentProps) => (
   <div
     className={cn(
-      "is-user:dark flex w-fit min-w-0 max-w-full flex-col gap-[var(--ow-message-gap)] overflow-hidden [font-size:var(--ow-font-body)]",
-      "group-[.is-user]:ml-auto group-[.is-user]:rounded-[var(--ow-radius-md)] group-[.is-user]:bg-secondary group-[.is-user]:px-[var(--ow-message-bubble-x)] group-[.is-user]:py-[var(--ow-message-bubble-y)] group-[.is-user]:text-foreground",
+      "is-user:dark flex w-fit min-w-0 max-w-full flex-col gap-[var(--jingle-message-gap)] overflow-hidden [font-size:var(--jingle-font-body)]",
+      "group-[.is-user]:ml-auto group-[.is-user]:rounded-[var(--jingle-radius-md)] group-[.is-user]:bg-secondary group-[.is-user]:px-[var(--jingle-message-bubble-x)] group-[.is-user]:py-[var(--jingle-message-bubble-y)] group-[.is-user]:text-foreground",
       "group-[.is-assistant]:text-foreground",
       className
     )}
@@ -45,7 +45,7 @@ export const MessageContent = ({ children, className, ...props }: MessageContent
 export type MessageActionsProps = ComponentProps<"div">
 
 export const MessageActions = ({ className, children, ...props }: MessageActionsProps) => (
-  <div className={cn("flex items-center gap-[var(--ow-gap-xs)]", className)} {...props}>
+  <div className={cn("flex items-center gap-[var(--jingle-gap-xs)]", className)} {...props}>
     {children}
   </div>
 )
@@ -68,7 +68,7 @@ export const MessageAction = ({
     <Button
       aria-label={label || tooltip}
       className={cn(
-        "size-[22px] rounded-[var(--ow-radius-sm)] text-muted-foreground hover:text-foreground [&_svg]:size-[var(--ow-icon-sm)]",
+        "size-[22px] rounded-[var(--jingle-radius-sm)] text-muted-foreground hover:text-foreground [&_svg]:size-[var(--jingle-icon-sm)]",
         className
       )}
       size={size}
@@ -88,7 +88,7 @@ export const MessageAction = ({
           <TooltipContent
             side="top"
             sideOffset={6}
-            className="z-50 rounded-[var(--ow-radius-sm)] bg-foreground px-[var(--ow-space-2)] py-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] leading-[var(--ow-line-tight)] text-background shadow-md"
+            className="z-50 rounded-[var(--jingle-radius-sm)] bg-foreground px-[var(--jingle-space-2)] py-[var(--jingle-space-1)] [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-tight)] text-background shadow-md"
           >
             <p>{tooltip}</p>
           </TooltipContent>
@@ -181,7 +181,7 @@ export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
       className={cn(
-        "ow-markdown ow-chat-markdown size-full space-y-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+        "jingle-markdown jingle-chat-markdown size-full space-y-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className
       )}
       plugins={streamdownPlugins}
@@ -200,7 +200,7 @@ export type MessageToolbarProps = ComponentProps<"div">
 export const MessageToolbar = ({ className, children, ...props }: MessageToolbarProps) => (
   <div
     className={cn(
-      "mt-[var(--ow-space-4)] flex w-full items-center justify-between gap-[var(--ow-gap-lg)]",
+      "mt-[var(--jingle-space-4)] flex w-full items-center justify-between gap-[var(--jingle-gap-lg)]",
       className
     )}
     {...props}

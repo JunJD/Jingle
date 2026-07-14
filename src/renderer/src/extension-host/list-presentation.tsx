@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 import { useSelectedRowScrollIntoView } from "@launcher-components/useSelectedRowScrollIntoView"
 
 export const nativeSurfaceListDropdownClassName =
-  "h-[var(--ow-control-h-md)] max-w-[var(--launcher-dropdown-max-width)] appearance-none rounded-[var(--ow-radius-md)] border border-border/80 bg-background pl-[var(--ow-space-3)] pr-[var(--ow-space-6)] [font-size:var(--ow-font-meta)] font-medium text-foreground outline-none transition focus:border-[var(--ring)]"
+  "h-[var(--jingle-control-h-md)] max-w-[var(--launcher-dropdown-max-width)] appearance-none rounded-[var(--jingle-radius-md)] border border-border/80 bg-background pl-[var(--jingle-space-3)] pr-[var(--jingle-space-6)] [font-size:var(--jingle-font-meta)] font-medium text-foreground outline-none transition focus:border-[var(--ring)]"
 
 export interface NativeSurfaceListItemPresentation {
   accessory?: ReactNode
@@ -93,14 +93,14 @@ export function NativeSurfaceListRows(props: {
 
   return (
     <ScrollArea ref={scrollAreaRef} className="flex-1">
-      <div className="py-[var(--ow-space-2)]">
+      <div className="py-[var(--jingle-space-2)]">
         {indexedSections.map((section) => (
           <div key={section.id}>
             {section.title ? (
-              <div className="flex h-[var(--ow-section-h)] items-center justify-between gap-[var(--ow-gap-md)] px-[var(--launcher-list-section-x)] [font-size:var(--ow-font-meta)] font-semibold text-muted-foreground">
+              <div className="flex h-[var(--jingle-section-h)] items-center justify-between gap-[var(--jingle-gap-md)] px-[var(--launcher-list-section-x)] [font-size:var(--jingle-font-meta)] font-semibold text-muted-foreground">
                 <span>{section.title}</span>
                 {section.subtitle ? (
-                  <span className="[font-size:var(--ow-font-caption)] font-medium">
+                  <span className="[font-size:var(--jingle-font-caption)] font-medium">
                     {section.subtitle}
                   </span>
                 ) : null}
@@ -120,23 +120,23 @@ export function NativeSurfaceListRows(props: {
                   onClick={() => onExecute(index)}
                   onMouseEnter={() => onSelect(index)}
                   className={cn(
-                    "mx-[var(--launcher-list-row-x)] grid h-[var(--ow-row-h-md)] grid-cols-[minmax(0,1fr)_auto] items-center gap-[var(--ow-space-2-5)] rounded-[var(--ow-radius-md)] px-[var(--launcher-list-row-padding-x)] text-left transition",
+                    "mx-[var(--launcher-list-row-x)] grid h-[var(--jingle-row-h-md)] grid-cols-[minmax(0,1fr)_auto] items-center gap-[var(--jingle-space-2-5)] rounded-[var(--jingle-radius-md)] px-[var(--launcher-list-row-padding-x)] text-left transition",
                     isSelected ? "bg-background-secondary" : "hover:bg-background-secondary/60"
                   )}
                 >
                   <div className="min-w-0">
-                    <div className="flex min-w-0 items-center gap-[var(--ow-gap-md)]">
+                    <div className="flex min-w-0 items-center gap-[var(--jingle-gap-md)]">
                       {item.icon ? (
-                        <div className="flex h-[var(--ow-icon-md)] w-[var(--ow-icon-md)] shrink-0 items-center justify-center text-muted-foreground">
+                        <div className="flex h-[var(--jingle-icon-md)] w-[var(--jingle-icon-md)] shrink-0 items-center justify-center text-muted-foreground">
                           {item.icon}
                         </div>
                       ) : null}
                       <div className="min-w-0">
-                        <div className="truncate [font-size:var(--ow-font-body)] font-medium text-foreground">
+                        <div className="truncate [font-size:var(--jingle-font-body)] font-medium text-foreground">
                           {item.title}
                         </div>
                         {item.subtitle ? (
-                          <div className="truncate [font-size:var(--ow-font-meta)] text-muted-foreground">
+                          <div className="truncate [font-size:var(--jingle-font-meta)] text-muted-foreground">
                             {item.subtitle}
                           </div>
                         ) : null}
@@ -144,9 +144,9 @@ export function NativeSurfaceListRows(props: {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-[var(--ow-gap-md)]">
+                  <div className="flex items-center gap-[var(--jingle-gap-md)]">
                     {item.accessory ? (
-                      <div className="flex shrink-0 items-center gap-[var(--ow-gap-xs)] text-muted-foreground">
+                      <div className="flex shrink-0 items-center gap-[var(--jingle-gap-xs)] text-muted-foreground">
                         {item.accessory}
                       </div>
                     ) : null}
@@ -158,12 +158,12 @@ export function NativeSurfaceListRows(props: {
                         }}
                         className="flex h-[var(--launcher-action-control-h)] w-[var(--launcher-action-control-h)] items-center justify-center rounded-full text-muted-foreground transition hover:text-foreground"
                       >
-                        <MoreHorizontal className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />
+                        <MoreHorizontal className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />
                       </div>
                     ) : item.actionLabel ? (
-                      <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-caption)] text-muted-foreground">
+                      <div className="flex items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-caption)] text-muted-foreground">
                         <span>{item.actionLabel}</span>
-                        <ChevronRight className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+                        <ChevronRight className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)]" />
                       </div>
                     ) : null}
                   </div>
@@ -177,10 +177,10 @@ export function NativeSurfaceListRows(props: {
             type="button"
             onClick={onLoadMore}
             disabled={isLoadingMore}
-            className="mx-[var(--launcher-list-row-x)] mt-[var(--ow-space-1)] flex h-[var(--ow-row-h-md)] w-[calc(100%-(var(--launcher-list-row-x)*2))] items-center justify-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] px-[var(--launcher-list-row-padding-x)] [font-size:var(--ow-font-body)] font-medium text-muted-foreground transition hover:bg-background-secondary/60 hover:text-foreground disabled:opacity-60"
+            className="mx-[var(--launcher-list-row-x)] mt-[var(--jingle-space-1)] flex h-[var(--jingle-row-h-md)] w-[calc(100%-(var(--launcher-list-row-x)*2))] items-center justify-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] px-[var(--launcher-list-row-padding-x)] [font-size:var(--jingle-font-body)] font-medium text-muted-foreground transition hover:bg-background-secondary/60 hover:text-foreground disabled:opacity-60"
           >
             {isLoadingMore ? (
-              <LoaderCircle className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] animate-spin" />
+              <LoaderCircle className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] animate-spin" />
             ) : null}
             <span>{isLoadingMore ? "Loading..." : "Load More"}</span>
           </button>
@@ -196,20 +196,20 @@ export function NativeSurfaceListEmptyState(props: {
   const { presentation } = props
 
   return (
-    <div className="flex flex-1 items-center justify-center px-[var(--ow-space-6)]">
+    <div className="flex flex-1 items-center justify-center px-[var(--jingle-space-6)]">
       {presentation.kind === "loading" ? (
-        <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] text-muted-foreground">
-          <LoaderCircle className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] animate-spin" />
+        <div className="flex items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-body)] text-muted-foreground">
+          <LoaderCircle className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] animate-spin" />
           <span>{presentation.label}</span>
         </div>
       ) : (
-        <div className="max-w-[var(--ow-empty-max-w)] space-y-[var(--ow-space-3)] text-center">
-          <div className="space-y-[var(--ow-space-1)]">
-            <div className="[font-size:var(--ow-font-title)] font-semibold text-foreground">
+        <div className="max-w-[var(--jingle-empty-max-w)] space-y-[var(--jingle-space-3)] text-center">
+          <div className="space-y-[var(--jingle-space-1)]">
+            <div className="[font-size:var(--jingle-font-title)] font-semibold text-foreground">
               {presentation.title}
             </div>
             {presentation.description ? (
-              <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
+              <div className="[font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)] text-muted-foreground">
                 {presentation.description}
               </div>
             ) : null}
@@ -219,10 +219,10 @@ export function NativeSurfaceListEmptyState(props: {
               type="button"
               onClick={presentation.action.execute}
               onMouseDown={(event) => event.preventDefault()}
-              className="inline-flex h-[var(--ow-control-h-md)] items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border border-border bg-background px-[var(--ow-space-3)] [font-size:var(--ow-font-control)] font-medium text-foreground transition hover:bg-background-secondary"
+              className="inline-flex h-[var(--jingle-control-h-md)] items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] border border-border bg-background px-[var(--jingle-space-3)] [font-size:var(--jingle-font-control)] font-medium text-foreground transition hover:bg-background-secondary"
             >
               <span>{presentation.action.title}</span>
-              <ChevronRight className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+              <ChevronRight className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)]" />
             </button>
           ) : null}
         </div>

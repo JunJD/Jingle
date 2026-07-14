@@ -25,7 +25,7 @@ function PierreFileMutationFallbackFile(props: {
   const stats = formatFileMutationLineStats(file)
 
   return (
-    <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border border-border/70 bg-background-secondary/35 px-[var(--ow-space-3)] py-[var(--ow-space-2)] leading-[var(--ow-line-body)]">
+    <div className="flex min-w-0 items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] border border-border/70 bg-background-secondary/35 px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] leading-[var(--jingle-line-body)]">
       <span className="min-w-0 flex-1 truncate font-medium text-muted-foreground" title={file.path}>
         {getCompactFileMutationPath(file.path, null)}
       </span>
@@ -43,7 +43,7 @@ function PierreFileMutationFallback(props: {
   }
 
   return (
-    <div className="grid min-w-0 gap-[var(--ow-gap-xs)]">
+    <div className="grid min-w-0 gap-[var(--jingle-gap-xs)]">
       {viewModel.files.map((file) => (
         <PierreFileMutationFallbackFile file={file} key={file.key} />
       ))}

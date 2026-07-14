@@ -93,13 +93,13 @@ export function LauncherAiHeaderLeadingActions(
       <div className="flex shrink-0 items-center gap-[2px]">
         <LauncherAiHeaderAction
           disabled={!canGoToPreviousChat}
-          icon={<ArrowLeft className="size-[var(--ow-icon-sm)]" />}
+          icon={<ArrowLeft className="size-[var(--jingle-icon-sm)]" />}
           label={labels.goToPreviousChat}
           onClick={onGoToPreviousChat}
         />
         <LauncherAiHeaderAction
           disabled={!canGoToNextChat}
-          icon={<ArrowRight className="size-[var(--ow-icon-sm)]" />}
+          icon={<ArrowRight className="size-[var(--jingle-icon-sm)]" />}
           label={labels.goToNextChat}
           onClick={onGoToNextChat}
         />
@@ -108,7 +108,7 @@ export function LauncherAiHeaderLeadingActions(
     newQuestionAction = (
       <LauncherAiHeaderAction
         disabled={!canStartNewQuestion}
-        icon={<SquarePen className="size-[var(--ow-icon-sm)]" />}
+        icon={<SquarePen className="size-[var(--jingle-icon-sm)]" />}
         label={labels.newQuestion}
         onClick={onNewQuestion}
       />
@@ -116,10 +116,10 @@ export function LauncherAiHeaderLeadingActions(
   }
 
   return (
-    <div className="flex min-w-0 items-center gap-[var(--ow-gap-xs)]">
+    <div className="flex min-w-0 items-center gap-[var(--jingle-gap-xs)]">
       {showBackButton ? (
         <LauncherAiHeaderAction
-          icon={<ArrowLeft className="size-[var(--ow-icon-sm)]" />}
+          icon={<ArrowLeft className="size-[var(--jingle-icon-sm)]" />}
           label={labels.goHome}
           onClick={onGoHome}
         />
@@ -129,9 +129,9 @@ export function LauncherAiHeaderLeadingActions(
         disabled={!canOpenSidebar}
         icon={
           isSidebarOpen ? (
-            <PanelLeftOpen className="size-[var(--ow-icon-sm)] rotate-180" />
+            <PanelLeftOpen className="size-[var(--jingle-icon-sm)] rotate-180" />
           ) : (
-            <PanelLeftOpen className="size-[var(--ow-icon-sm)]" />
+            <PanelLeftOpen className="size-[var(--jingle-icon-sm)]" />
           )
         }
         label={isSidebarOpen ? labels.collapseSidebar : labels.expandSidebar}
@@ -141,9 +141,9 @@ export function LauncherAiHeaderLeadingActions(
       />
       {threadNavigationActions}
       {newQuestionAction}
-      <div className="ml-[var(--ow-space-1)] flex min-w-0 flex-col items-start">
+      <div className="ml-[var(--jingle-space-1)] flex min-w-0 flex-col items-start">
         <div
-          className="max-w-[28rem] truncate [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] text-foreground"
+          className="max-w-[28rem] truncate [font-size:var(--jingle-font-control)] font-medium leading-[var(--jingle-line-control-sm)] text-foreground"
           data-launcher-ai-thread-title=""
         >
           {title}

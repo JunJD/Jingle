@@ -1269,7 +1269,7 @@ export function LauncherAiPage(): React.JSX.Element {
                   <LauncherAiEmptyState error={threadError} />
                 )}
                 <form
-                  className="launcher-ai-composer-footer shrink-0 px-[var(--launcher-ai-composer-page-x)] pb-[var(--ow-space-2)]"
+                  className="launcher-ai-composer-footer shrink-0 px-[var(--launcher-ai-composer-page-x)] pb-[var(--jingle-space-2)]"
                   onSubmit={(event) => {
                     event.preventDefault()
                     if (!isApprovalPending) {
@@ -1304,7 +1304,7 @@ export function LauncherAiPage(): React.JSX.Element {
                   ) : null}
                   <PromptInput
                     className={cn(
-                      "mx-auto w-full max-w-[var(--launcher-ai-content-max-width)] px-[var(--ow-space-2)] py-[var(--ow-space-1)]",
+                      "mx-auto w-full max-w-[var(--launcher-ai-content-max-width)] px-[var(--jingle-space-2)] py-[var(--jingle-space-1)]",
                       (isApprovalPending || showFollowUpQueue) && "rounded-t-none border-t-0"
                     )}
                     style={{ backgroundColor: "var(--background-elevated)" }}
@@ -1334,7 +1334,7 @@ export function LauncherAiPage(): React.JSX.Element {
 
                     <div
                       className={cn(
-                        "grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-x-[var(--ow-gap-sm)] gap-y-[var(--ow-space-1)]",
+                        "grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-x-[var(--jingle-gap-sm)] gap-y-[var(--jingle-space-1)]",
                         shouldStackComposerControls
                           ? "items-center"
                           : isComposerExpanded
@@ -1354,7 +1354,7 @@ export function LauncherAiPage(): React.JSX.Element {
                           <PromptInputAction
                             onClick={openAttachmentPicker}
                             onMouseDown={(event) => event.preventDefault()}
-                            icon={<Plus className="size-[var(--ow-icon-xs)]" />}
+                            icon={<Plus className="size-[var(--jingle-icon-xs)]" />}
                             label={copy.launcher.aiAddAttachment}
                             title={
                               addAttachmentShortcut
@@ -1368,7 +1368,7 @@ export function LauncherAiPage(): React.JSX.Element {
 
                       <div
                         className={cn(
-                          "flex min-w-0 flex-1 flex-col gap-[var(--ow-space-1)]",
+                          "flex min-w-0 flex-1 flex-col gap-[var(--jingle-space-1)]",
                           shouldStackComposerControls
                             ? "col-span-3 col-start-1 row-start-1"
                             : isApprovalPending
@@ -1401,7 +1401,7 @@ export function LauncherAiPage(): React.JSX.Element {
                           workspaceFileSearchInProgress={
                             isApprovalPending ? false : workspaceFileMentionState.isSearching
                           }
-                          className="w-full py-[7px] [font-size:var(--ow-font-control)] font-normal"
+                          className="w-full py-[7px] [font-size:var(--jingle-font-control)] font-normal"
                         />
 
                         {!isApprovalPending ? (
@@ -1431,7 +1431,7 @@ export function LauncherAiPage(): React.JSX.Element {
                               onRemove={removeAttachment}
                             />
                             <AssistantSelectionReferencePill
-                              className="px-[var(--ow-space-1)]"
+                              className="px-[var(--jingle-space-1)]"
                               refs={assistantSelectionRefs}
                               removable
                               onClear={clearSelectionRefs}
@@ -1443,7 +1443,7 @@ export function LauncherAiPage(): React.JSX.Element {
 
                       <div
                         className={cn(
-                          "flex shrink-0 items-center gap-[var(--ow-gap-sm)]",
+                          "flex shrink-0 items-center gap-[var(--jingle-gap-sm)]",
                           shouldStackComposerControls
                             ? "col-start-3 row-start-2 justify-self-end"
                             : "col-start-3 row-start-1"
@@ -1453,14 +1453,14 @@ export function LauncherAiPage(): React.JSX.Element {
                           <>
                             <button
                               type="button"
-                              className="min-h-8 rounded-full px-[var(--ow-space-2-5)] [font-size:var(--ow-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              className="min-h-8 rounded-full px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               onClick={submitApprovalRejectFeedback}
                             >
                               {copy.toolCall.decline}
                             </button>
                             <button
                               type="button"
-                              className="min-h-8 rounded-full bg-foreground px-[var(--ow-space-3)] [font-size:var(--ow-font-body)] font-semibold text-background shadow-[0_6px_16px_rgba(32,38,45,0.14)] transition-transform hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
+                              className="min-h-8 rounded-full bg-foreground px-[var(--jingle-space-3)] [font-size:var(--jingle-font-body)] font-semibold text-background shadow-[0_6px_16px_rgba(32,38,45,0.14)] transition-transform hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
                               onClick={submitApprovalAccept}
                             >
                               {copy.toolCall.accept}
@@ -1472,7 +1472,7 @@ export function LauncherAiPage(): React.JSX.Element {
                           <PromptInputAction
                             onClick={() => actionController.openActions()}
                             onMouseDown={(event) => event.preventDefault()}
-                            icon={<Command className="size-[var(--ow-icon-sm)]" />}
+                            icon={<Command className="size-[var(--jingle-icon-sm)]" />}
                             label={copy.launcher.actionsLabel}
                             title={
                               actionController.actionPanelShortcut
@@ -1493,7 +1493,7 @@ export function LauncherAiPage(): React.JSX.Element {
                               void handleStop()
                             }}
                             onMouseDown={(event) => event.preventDefault()}
-                            icon={<Square className="size-[var(--ow-icon-compact)]" />}
+                            icon={<Square className="size-[var(--jingle-icon-compact)]" />}
                             label={copy.launcher.aiStopLabel}
                             title={copy.launcher.aiStopLabel}
                             tooltip={copy.launcher.aiStopLabel}
@@ -1503,7 +1503,7 @@ export function LauncherAiPage(): React.JSX.Element {
                             onClick={submitCurrentInput}
                             onMouseDown={(event) => event.preventDefault()}
                             disabled={primaryActionDisabled}
-                            icon={<ArrowUp className="size-[var(--ow-icon-sm)]" />}
+                            icon={<ArrowUp className="size-[var(--jingle-icon-sm)]" />}
                             label={copy.launcher.aiPrimaryLabel}
                             title={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
                             tooltip={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}

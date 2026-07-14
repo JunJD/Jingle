@@ -28,12 +28,12 @@ function ApprovalActionBlock(props: { action: LargeApprovalAction }): React.JSX.
   }
 
   return (
-    <div className="rounded-[var(--ow-radius-md)] bg-background-secondary/42 px-[var(--ow-space-2-5)] py-[var(--ow-space-2)]">
-      <div className="[font-size:var(--ow-font-body)] font-medium leading-[var(--ow-line-body)] text-foreground">
+    <div className="rounded-[var(--jingle-radius-md)] bg-background-secondary/42 px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)]">
+      <div className="[font-size:var(--jingle-font-body)] font-medium leading-[var(--jingle-line-body)] text-foreground">
         {action.title}
       </div>
       {action.detail ? (
-        <div className="mt-[var(--ow-space-1)] min-w-0 break-all font-mono [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-muted-foreground">
+        <div className="mt-[var(--jingle-space-1)] min-w-0 break-all font-mono [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-body)] text-muted-foreground">
           {truncateMiddle(action.detail, 120)}
         </div>
       ) : null}
@@ -49,15 +49,15 @@ function ApprovalImpactList(props: { items: LargeApprovalImpact[] }): React.JSX.
   }
 
   return (
-    <div className="grid gap-[var(--ow-space-1-5)]">
+    <div className="grid gap-[var(--jingle-space-1-5)]">
       {items.map((item, index) => (
         <div
           key={`${item.label}:${item.detail ?? index}`}
-          className="flex min-w-0 items-start gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] bg-background-secondary/42 px-[var(--ow-space-2-5)] py-[var(--ow-space-2)]"
+          className="flex min-w-0 items-start gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] bg-background-secondary/42 px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)]"
         >
           <span
             className={cn(
-              "shrink-0 rounded-full px-[var(--ow-space-1-5)] py-[var(--ow-space-0-5)] [font-size:var(--ow-font-caption)] font-medium leading-none",
+              "shrink-0 rounded-full px-[var(--jingle-space-1-5)] py-[var(--jingle-space-0-5)] [font-size:var(--jingle-font-caption)] font-medium leading-none",
               item.tone === "success" && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
               item.tone === "warning" && "bg-amber-500/10 text-amber-700 dark:text-amber-300",
               item.tone === "destructive" && "bg-destructive/10 text-destructive",
@@ -67,7 +67,7 @@ function ApprovalImpactList(props: { items: LargeApprovalImpact[] }): React.JSX.
             {item.label}
           </span>
           {item.detail ? (
-            <span className="min-w-0 break-all font-mono [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-foreground/78">
+            <span className="min-w-0 break-all font-mono [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-body)] text-foreground/78">
               {truncateMiddle(item.detail, 120)}
             </span>
           ) : null}
@@ -90,14 +90,14 @@ function ApprovalConfirmationBlock(props: {
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-[var(--ow-radius-md)] border bg-background-secondary/38",
+        "overflow-hidden rounded-[var(--jingle-radius-md)] border bg-background-secondary/38",
         confirmation.tone === "danger" && "border-destructive/24 bg-destructive/4",
         confirmation.tone === "warning" && "border-amber-500/24 bg-amber-500/5",
         (!confirmation.tone || confirmation.tone === "default") && "border-border/58"
       )}
     >
       {heading ? (
-        <div className="px-[var(--ow-space-3)] py-[var(--ow-space-2-5)] [font-size:var(--ow-font-body)] font-medium leading-[var(--ow-line-body)] text-foreground">
+        <div className="px-[var(--jingle-space-3)] py-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-body)] font-medium leading-[var(--jingle-line-body)] text-foreground">
           {heading}
         </div>
       ) : null}
@@ -106,15 +106,15 @@ function ApprovalConfirmationBlock(props: {
           {confirmation.facts.map((fact, index) => (
             <div
               key={`${fact.label}:${fact.value}:${index}`}
-              className="grid min-w-0 grid-cols-[minmax(88px,0.34fr)_minmax(0,1fr)] gap-[var(--ow-gap-md)] px-[var(--ow-space-3)] py-[var(--ow-space-2-5)]"
+              className="grid min-w-0 grid-cols-[minmax(88px,0.34fr)_minmax(0,1fr)] gap-[var(--jingle-gap-md)] px-[var(--jingle-space-3)] py-[var(--jingle-space-2-5)]"
             >
-              <div className="[font-size:var(--ow-font-meta)] font-medium leading-[var(--ow-line-body)] text-muted-foreground">
+              <div className="[font-size:var(--jingle-font-meta)] font-medium leading-[var(--jingle-line-body)] text-muted-foreground">
                 {fact.label}
               </div>
               <div
                 className={cn(
-                  "min-w-0 whitespace-pre-wrap text-left [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground/86 [overflow-wrap:anywhere]",
-                  fact.presentation === "mono" && "font-mono [font-size:var(--ow-font-meta)]"
+                  "min-w-0 whitespace-pre-wrap text-left [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)] text-foreground/86 [overflow-wrap:anywhere]",
+                  fact.presentation === "mono" && "font-mono [font-size:var(--jingle-font-meta)]"
                 )}
               >
                 {fact.value}
@@ -135,18 +135,18 @@ function ApprovalFactList(props: { items: LargeApprovalFact[] }): React.JSX.Elem
   }
 
   return (
-    <div className="grid gap-[var(--ow-space-1-5)]">
+    <div className="grid gap-[var(--jingle-space-1-5)]">
       {items.map((item, index) => (
         <div
           key={`${item.label}:${item.value}:${index}`}
-          className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] bg-background-secondary/42 px-[var(--ow-space-2-5)] py-[var(--ow-space-2)]"
+          className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-[var(--jingle-gap-md)] rounded-[var(--jingle-radius-md)] bg-background-secondary/42 px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)]"
         >
-          <div className="[font-size:var(--ow-font-meta)] font-medium leading-[var(--ow-line-body)] text-muted-foreground">
+          <div className="[font-size:var(--jingle-font-meta)] font-medium leading-[var(--jingle-line-body)] text-muted-foreground">
             {item.label}
           </div>
           <div
             className={cn(
-              "min-w-0 break-words text-right [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-foreground/80",
+              "min-w-0 break-words text-right [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-body)] text-foreground/80",
               (item.presentation === "mono" || item.presentation === "path") &&
                 "font-mono whitespace-pre-wrap"
             )}

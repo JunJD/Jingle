@@ -158,7 +158,7 @@ export function LauncherAiThreadMenu(props: LauncherAiThreadMenuProps): React.JS
             "data-[state=open]:bg-background-secondary/70 data-[state=open]:text-foreground"
           )}
         >
-          <MoreHorizontal className="size-[var(--ow-icon-sm)]" />
+          <MoreHorizontal className="size-[var(--jingle-icon-sm)]" />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

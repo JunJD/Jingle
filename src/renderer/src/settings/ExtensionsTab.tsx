@@ -205,7 +205,7 @@ function PreferenceField(props: {
   return (
     <SettingsField label={fieldLabel} description={description} required={preference.required}>
       {preference.type === "checkbox" ? (
-        <div className="flex min-h-[var(--ow-settings-control-h)] items-center justify-between gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1)] [font-size:var(--ow-settings-control-font)] text-foreground">
+        <div className="flex min-h-[var(--jingle-settings-control-h)] items-center justify-between gap-[var(--jingle-gap-md)] rounded-[var(--jingle-radius-md)] border border-border bg-background-elevated px-[var(--jingle-space-3)] py-[var(--jingle-space-1)] [font-size:var(--jingle-settings-control-font)] text-foreground">
           <span className="min-w-0 truncate text-muted-foreground">
             {value === true ? enabledLabel : disabledLabel}
           </span>
@@ -323,20 +323,20 @@ function PreferenceSection(props: {
   } = props
 
   return (
-    <div className="space-y-[var(--ow-space-3)]">
+    <div className="space-y-[var(--jingle-space-3)]">
       {title ? (
-        <div className="[font-size:var(--ow-font-label)] font-semibold text-foreground">
+        <div className="[font-size:var(--jingle-font-label)] font-semibold text-foreground">
           {title}
         </div>
       ) : null}
       {preferences.length === 0 ? (
         <div
-          className={`${settingsInsetCardClassName} border-dashed [font-size:var(--ow-font-body)] text-muted-foreground`}
+          className={`${settingsInsetCardClassName} border-dashed [font-size:var(--jingle-font-body)] text-muted-foreground`}
         >
           {emptyLabel}
         </div>
       ) : (
-        <div className="space-y-[var(--ow-space-3)]">
+        <div className="space-y-[var(--jingle-space-3)]">
           {preferences.map((preference) => (
             <PreferenceField
               key={preference.name}
@@ -419,30 +419,30 @@ function CommandCard(props: {
 
   return (
     <div
-      className={`rounded-[var(--ow-settings-card-radius)] border bg-background-elevated/65 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)] ${
+      className={`rounded-[var(--jingle-settings-card-radius)] border bg-background-elevated/65 px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)] ${
         isFocused ? "border-[var(--ring)]" : "border-border/80"
       }`}
     >
-      <div className="flex flex-wrap items-start justify-between gap-[var(--ow-gap-md)]">
-        <div className="space-y-[var(--ow-space-1)]">
-          <div className="flex items-center gap-[var(--ow-gap-sm)]">
+      <div className="flex flex-wrap items-start justify-between gap-[var(--jingle-gap-md)]">
+        <div className="space-y-[var(--jingle-space-1)]">
+          <div className="flex items-center gap-[var(--jingle-gap-sm)]">
             <ExtensionIcon
-              className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground"
+              className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] text-muted-foreground"
               extensionName={extensionName}
               icon={icon}
               iconName={iconName}
             />
-            <span className="[font-size:var(--ow-font-label)] font-semibold text-foreground">
+            <span className="[font-size:var(--jingle-font-label)] font-semibold text-foreground">
               {title}
             </span>
           </div>
-          <div className="[font-size:var(--ow-font-body)] text-muted-foreground">{description}</div>
+          <div className="[font-size:var(--jingle-font-body)] text-muted-foreground">{description}</div>
         </div>
-        <div className="rounded-full border border-border bg-background px-[var(--ow-space-2-5)] py-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] uppercase tracking-[0.08em] text-muted-foreground">
+        <div className="rounded-full border border-border bg-background px-[var(--jingle-space-2-5)] py-[var(--jingle-space-1)] [font-size:var(--jingle-font-meta)] uppercase tracking-[0.08em] text-muted-foreground">
           {labelMode}: {formatCommandMode(mode, locale)}
         </div>
       </div>
-      <div className="mt-[var(--ow-space-3)]">
+      <div className="mt-[var(--jingle-space-3)]">
         <PreferenceSection
           disabledLabel={disabledLabel}
           emptyLabel={emptyLabel}
@@ -469,7 +469,7 @@ function ConnectionStatusBadge(props: {
 }): React.JSX.Element {
   return (
     <span
-      className={`rounded-full border px-[var(--ow-space-2-5)] py-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] ${
+      className={`rounded-full border px-[var(--jingle-space-2-5)] py-[var(--jingle-space-1)] [font-size:var(--jingle-font-meta)] ${
         props.connected
           ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500"
           : "border-border bg-background text-muted-foreground"
@@ -499,19 +499,19 @@ function OAuthConnectionCard(props: {
 
   return (
     <div
-      className={`${settingsCardClassName} px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]`}
+      className={`${settingsCardClassName} px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)]`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-[var(--ow-gap-md)]">
-        <div className="min-w-0 space-y-[var(--ow-space-1)]">
-          <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-label)] font-semibold text-foreground">
-            <Link className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground" />
+      <div className="flex flex-wrap items-center justify-between gap-[var(--jingle-gap-md)]">
+        <div className="min-w-0 space-y-[var(--jingle-space-1)]">
+          <div className="flex items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-label)] font-semibold text-foreground">
+            <Link className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] text-muted-foreground" />
             <span>{statusLabels.title}</span>
           </div>
-          <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-muted-foreground">
+          <div className="[font-size:var(--jingle-font-body)] leading-[var(--jingle-line-body)] text-muted-foreground">
             {statusLabels.description}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)]">
+        <div className="flex shrink-0 items-center gap-[var(--jingle-gap-sm)]">
           <ConnectionStatusBadge
             connected={connected}
             labels={{
@@ -523,14 +523,14 @@ function OAuthConnectionCard(props: {
             type="button"
             disabled={isConnecting}
             onClick={onConnect}
-            className="rounded-[var(--ow-radius-md)] border border-border bg-background px-[var(--ow-space-3)] py-[var(--ow-space-2)] [font-size:var(--ow-font-label)] font-medium text-foreground transition hover:bg-background-elevated disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-[var(--jingle-radius-md)] border border-border bg-background px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] [font-size:var(--jingle-font-label)] font-medium text-foreground transition hover:bg-background-elevated disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isConnecting ? statusLabels.connecting : statusLabels.connect}
           </button>
         </div>
       </div>
       {error ? (
-        <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-destructive">
+        <div className="mt-[var(--jingle-space-2)] [font-size:var(--jingle-font-meta)] text-destructive">
           {error}
         </div>
       ) : null}
@@ -577,15 +577,15 @@ function SecretConnectionCard(props: {
 
   return (
     <div
-      className={`${settingsCardClassName} px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]`}
+      className={`${settingsCardClassName} px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)]`}
     >
-      <div className="flex flex-wrap items-start justify-between gap-[var(--ow-gap-md)]">
-        <div className="min-w-0 space-y-[var(--ow-space-1)]">
-          <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-label)] font-semibold text-foreground">
-            <Link className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground" />
+      <div className="flex flex-wrap items-start justify-between gap-[var(--jingle-gap-md)]">
+        <div className="min-w-0 space-y-[var(--jingle-space-1)]">
+          <div className="flex items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-label)] font-semibold text-foreground">
+            <Link className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] text-muted-foreground" />
             <span>{statusLabels.title}</span>
           </div>
-          <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-muted-foreground">
+          <div className="[font-size:var(--jingle-font-body)] leading-[var(--jingle-line-body)] text-muted-foreground">
             {connectionManifest.connectGuide ?? statusLabels.description}
           </div>
         </div>
@@ -597,7 +597,7 @@ function SecretConnectionCard(props: {
           }}
         />
       </div>
-      <div className="mt-[var(--ow-space-3)] space-y-[var(--ow-space-3)]">
+      <div className="mt-[var(--jingle-space-3)] space-y-[var(--jingle-space-3)]">
         {connectionManifest.auth.secretNames.map((secretName) => (
           <SettingsField key={secretName} label={secretTitle} required>
             <SettingsPasswordInput
@@ -625,7 +625,7 @@ function SecretConnectionCard(props: {
         ))}
       </div>
       {error ? (
-        <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-destructive">
+        <div className="mt-[var(--jingle-space-2)] [font-size:var(--jingle-font-meta)] text-destructive">
           {error}
         </div>
       ) : null}
@@ -974,24 +974,24 @@ export function ExtensionsTab(props: {
   }
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[var(--ow-settings-sidebar-w)_minmax(0,1fr)] gap-[var(--ow-gap-lg)]">
+    <div className="grid h-full min-h-0 grid-cols-[var(--jingle-settings-sidebar-w)_minmax(0,1fr)] gap-[var(--jingle-gap-lg)]">
       <aside
-        className={`${settingsCardClassName} flex min-h-0 flex-col gap-[var(--ow-gap-md)] p-[var(--ow-settings-card-y)]`}
+        className={`${settingsCardClassName} flex min-h-0 flex-col gap-[var(--jingle-gap-md)] p-[var(--jingle-settings-card-y)]`}
       >
-        <div className="space-y-[var(--ow-space-1)]">
-          <div className="[font-size:var(--ow-settings-title-size)] font-semibold text-foreground">
+        <div className="space-y-[var(--jingle-space-1)]">
+          <div className="[font-size:var(--jingle-settings-title-size)] font-semibold text-foreground">
             {copy.extensions.title}
           </div>
-          <div className="[font-size:var(--ow-settings-description-size)] leading-[var(--ow-line-body)] text-muted-foreground">
+          <div className="[font-size:var(--jingle-settings-description-size)] leading-[var(--jingle-line-body)] text-muted-foreground">
             {copy.extensions.rootsDescription}
           </div>
         </div>
 
         <div className="relative">
-          <Search className="pointer-events-none absolute left-[var(--ow-space-3)] top-1/2 h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute left-[var(--jingle-space-3)] top-1/2 h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] -translate-y-1/2 text-muted-foreground" />
           <input
             aria-label={copy.extensions.installedTitle}
-            className={`${inputClassName} pl-[var(--ow-control-icon-inset)]`}
+            className={`${inputClassName} pl-[var(--jingle-control-icon-inset)]`}
             placeholder={copy.extensions.installedTitle}
             value={search}
             onChange={(event) => {
@@ -1000,10 +1000,10 @@ export function ExtensionsTab(props: {
           />
         </div>
 
-        <div className="min-h-0 flex-1 space-y-[var(--ow-space-2)] overflow-y-auto pr-[var(--ow-space-1)]">
+        <div className="min-h-0 flex-1 space-y-[var(--jingle-space-2)] overflow-y-auto pr-[var(--jingle-space-1)]">
           {filteredSchemas.length === 0 ? (
             <div
-              className={`${settingsInsetCardClassName} border-dashed [font-size:var(--ow-font-body)] text-muted-foreground`}
+              className={`${settingsInsetCardClassName} border-dashed [font-size:var(--jingle-font-body)] text-muted-foreground`}
             >
               {copy.extensions.empty}
             </div>
@@ -1019,30 +1019,30 @@ export function ExtensionsTab(props: {
                   type="button"
                   data-extension-selected={isSelected ? schema.extName : undefined}
                   onClick={() => setSelectedExtName(schema.extName)}
-                  className={`w-full rounded-[var(--ow-settings-card-radius)] border px-[var(--ow-space-3)] py-[var(--ow-space-2)] text-left transition ${
+                  className={`w-full rounded-[var(--jingle-settings-card-radius)] border px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] text-left transition ${
                     isSelected
                       ? "border-[var(--ring)] bg-background"
                       : "border-border/70 bg-background-elevated/60 hover:bg-background"
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-[var(--ow-gap-md)]">
-                    <div className="min-w-0 space-y-[var(--ow-space-1)]">
-                      <div className="flex items-center gap-[var(--ow-gap-sm)]">
+                  <div className="flex items-start justify-between gap-[var(--jingle-gap-md)]">
+                    <div className="min-w-0 space-y-[var(--jingle-space-1)]">
+                      <div className="flex items-center gap-[var(--jingle-gap-sm)]">
                         <ExtensionIcon
-                          className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground"
+                          className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] text-muted-foreground"
                           extensionName={schema.extName}
                           icon={schema.icon}
                           iconName={schema.iconName}
                         />
-                        <span className="truncate [font-size:var(--ow-font-label)] font-semibold text-foreground">
+                        <span className="truncate [font-size:var(--jingle-font-label)] font-semibold text-foreground">
                           {title}
                         </span>
                       </div>
-                      <div className="line-clamp-2 [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
+                      <div className="line-clamp-2 [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)] text-muted-foreground">
                         {description}
                       </div>
                     </div>
-                    <div className="shrink-0 rounded-full border border-border bg-background px-[var(--ow-space-2)] py-0.5 [font-size:var(--ow-font-caption)] uppercase tracking-[0.08em] text-muted-foreground">
+                    <div className="shrink-0 rounded-full border border-border bg-background px-[var(--jingle-space-2)] py-0.5 [font-size:var(--jingle-font-caption)] uppercase tracking-[0.08em] text-muted-foreground">
                       {schema.commands.length}
                     </div>
                   </div>
@@ -1053,26 +1053,26 @@ export function ExtensionsTab(props: {
         </div>
       </aside>
 
-      <section className="min-h-0 overflow-y-auto pr-[var(--ow-space-1)]">
+      <section className="min-h-0 overflow-y-auto pr-[var(--jingle-space-1)]">
         {selectedSchema ? (
-          <div className="space-y-[var(--ow-space-4)]">
+          <div className="space-y-[var(--jingle-space-4)]">
             <div
-              className={`${settingsCardClassName} px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]`}
+              className={`${settingsCardClassName} px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)]`}
             >
-              <div className="space-y-[var(--ow-space-1)]">
-                <div className="flex items-center gap-[var(--ow-gap-sm)]">
-                  <Settings2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground" />
-                  <h2 className="[font-size:var(--ow-settings-title-size)] font-semibold text-foreground">
+              <div className="space-y-[var(--jingle-space-1)]">
+                <div className="flex items-center gap-[var(--jingle-gap-sm)]">
+                  <Settings2 className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] text-muted-foreground" />
+                  <h2 className="[font-size:var(--jingle-settings-title-size)] font-semibold text-foreground">
                     {resolveExtensionText(selectedSchema.title, locale, selectedSchema.extName)}
                   </h2>
                 </div>
-                <div className="[font-size:var(--ow-settings-description-size)] leading-[var(--ow-line-body)] text-muted-foreground">
+                <div className="[font-size:var(--jingle-settings-description-size)] leading-[var(--jingle-line-body)] text-muted-foreground">
                   {resolveExtensionText(selectedSchema.description, locale, selectedSchema.extName)}
                 </div>
               </div>
             </div>
 
-            <div className="space-y-[var(--ow-space-3)]">
+            <div className="space-y-[var(--jingle-space-3)]">
               {selectedSchema.connection ? (
                 selectedSchema.connection.auth.type === "oauth" ? (
                   <OAuthConnectionCard
@@ -1123,7 +1123,7 @@ export function ExtensionsTab(props: {
 
               {selectedSchema.preferences.length > 0 ? (
                 <div
-                  className={`${settingsCardClassName} px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]`}
+                  className={`${settingsCardClassName} px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)]`}
                 >
                   <PreferenceSection
                     disabledLabel={copy.extensions.disabled}
@@ -1193,7 +1193,7 @@ export function ExtensionsTab(props: {
             </div>
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center rounded-[var(--ow-settings-card-radius)] border border-dashed border-border bg-background-elevated/60 [font-size:var(--ow-font-label)] text-muted-foreground">
+          <div className="flex h-full items-center justify-center rounded-[var(--jingle-settings-card-radius)] border border-dashed border-border bg-background-elevated/60 [font-size:var(--jingle-font-label)] text-muted-foreground">
             {copy.extensions.empty}
           </div>
         )}

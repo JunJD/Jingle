@@ -229,7 +229,7 @@ export function ArchivedThreadsTab(props: { locale: AppLocale }): React.JSX.Elem
 
   if (!view) {
     return (
-      <div className="flex h-full items-center justify-center [font-size:var(--ow-font-label)] text-muted-foreground">
+      <div className="flex h-full items-center justify-center [font-size:var(--jingle-font-label)] text-muted-foreground">
         {copy.archived.loading}
       </div>
     )
@@ -238,7 +238,7 @@ export function ArchivedThreadsTab(props: { locale: AppLocale }): React.JSX.Elem
   return (
     <div className={settingsPageClassName}>
       <div className={settingsPageHeaderClassName}>
-        <div className="flex items-start justify-between gap-[var(--ow-gap-md)]">
+        <div className="flex items-start justify-between gap-[var(--jingle-gap-md)]">
           <div className="min-w-0">
             <div className={settingsPageTitleClassName}>{copy.archived.title}</div>
             <div className={settingsPageDescriptionClassName}>{copy.archived.description}</div>
@@ -258,18 +258,18 @@ export function ArchivedThreadsTab(props: { locale: AppLocale }): React.JSX.Elem
               })
             }}
           >
-            <Trash2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />
+            <Trash2 className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />
             {copy.archived.deleteVisible}
           </button>
         </div>
       </div>
 
       <div className={settingsCardClassName}>
-        <div className="grid gap-[var(--ow-gap-md)] border-b border-border/70 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)] md:grid-cols-[minmax(0,1fr)_220px]">
+        <div className="grid gap-[var(--jingle-gap-md)] border-b border-border/70 px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)] md:grid-cols-[minmax(0,1fr)_220px]">
           <label className="relative block">
-            <Search className="pointer-events-none absolute left-[var(--ow-space-3)] top-1/2 h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-[var(--jingle-space-3)] top-1/2 h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] -translate-y-1/2 text-muted-foreground" />
             <input
-              className={`${inputClassName} pl-[calc(var(--ow-space-3)*2+var(--ow-icon-action))]`}
+              className={`${inputClassName} pl-[calc(var(--jingle-space-3)*2+var(--jingle-icon-action))]`}
               placeholder={copy.archived.searchPlaceholder}
               value={query}
               onChange={(event) =>
@@ -299,12 +299,12 @@ export function ArchivedThreadsTab(props: { locale: AppLocale }): React.JSX.Elem
         </div>
 
         {visibleThreads.length === 0 ? (
-          <div className="flex min-h-[220px] flex-col items-center justify-center gap-[var(--ow-gap-sm)] px-[var(--ow-settings-card-x)] py-[var(--ow-space-8)] text-center">
+          <div className="flex min-h-[220px] flex-col items-center justify-center gap-[var(--jingle-gap-sm)] px-[var(--jingle-settings-card-x)] py-[var(--jingle-space-8)] text-center">
             <Archive className="h-8 w-8 text-muted-foreground" />
-            <div className="[font-size:var(--ow-font-label)] font-medium text-foreground">
+            <div className="[font-size:var(--jingle-font-label)] font-medium text-foreground">
               {copy.archived.emptyTitle}
             </div>
-            <div className="max-w-[360px] [font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-muted-foreground">
+            <div className="max-w-[360px] [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-body)] text-muted-foreground">
               {copy.archived.emptyDescription}
             </div>
           </div>
@@ -316,25 +316,25 @@ export function ArchivedThreadsTab(props: { locale: AppLocale }): React.JSX.Elem
               return (
                 <div
                   key={thread.threadId}
-                  className="group grid gap-[var(--ow-gap-md)] px-[var(--ow-settings-card-x)] py-[var(--ow-space-3)] transition hover:bg-background/70 md:grid-cols-[minmax(0,1fr)_auto]"
+                  className="group grid gap-[var(--jingle-gap-md)] px-[var(--jingle-settings-card-x)] py-[var(--jingle-space-3)] transition hover:bg-background/70 md:grid-cols-[minmax(0,1fr)_auto]"
                 >
-                  <div className="min-w-0 space-y-[var(--ow-space-1)]">
-                    <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
-                      <MessageSquare className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] shrink-0 text-muted-foreground" />
-                      <div className="min-w-0 truncate [font-size:var(--ow-font-label)] font-semibold text-foreground">
+                  <div className="min-w-0 space-y-[var(--jingle-space-1)]">
+                    <div className="flex min-w-0 items-center gap-[var(--jingle-gap-sm)]">
+                      <MessageSquare className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] shrink-0 text-muted-foreground" />
+                      <div className="min-w-0 truncate [font-size:var(--jingle-font-label)] font-semibold text-foreground">
                         {thread.title}
                       </div>
                     </div>
-                    <div className="flex min-w-0 flex-wrap items-center gap-x-[var(--ow-gap-md)] gap-y-[var(--ow-space-1)] pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))] [font-size:var(--ow-font-meta)] text-muted-foreground">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-[var(--jingle-gap-md)] gap-y-[var(--jingle-space-1)] pl-[calc(var(--jingle-icon-action)+var(--jingle-gap-sm))] [font-size:var(--jingle-font-meta)] text-muted-foreground">
                       <span>{formatRelativeTime(thread.archivedAt, locale)}</span>
-                      <span className="inline-flex min-w-0 items-center gap-[var(--ow-space-1)]">
-                        <Folder className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)] shrink-0" />
+                      <span className="inline-flex min-w-0 items-center gap-[var(--jingle-space-1)]">
+                        <Folder className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)] shrink-0" />
                         <span className="min-w-0 truncate">{projectLabel}</span>
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-end gap-[var(--ow-space-2)]">
+                  <div className="flex items-center justify-end gap-[var(--jingle-space-2)]">
                     <button
                       type="button"
                       className={secondaryButtonClassName}
@@ -343,7 +343,7 @@ export function ArchivedThreadsTab(props: { locale: AppLocale }): React.JSX.Elem
                         void restoreThread(thread.threadId)
                       }}
                     >
-                      <RotateCcw className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />
+                      <RotateCcw className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />
                       {copy.archived.restore}
                     </button>
                     <button
@@ -360,7 +360,7 @@ export function ArchivedThreadsTab(props: { locale: AppLocale }): React.JSX.Elem
                         })
                       }}
                     >
-                      <Trash2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />
+                      <Trash2 className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />
                       {copy.archived.delete}
                     </button>
                   </div>
@@ -372,7 +372,7 @@ export function ArchivedThreadsTab(props: { locale: AppLocale }): React.JSX.Elem
       </div>
 
       {status ? (
-        <div className="[font-size:var(--ow-font-meta)] text-muted-foreground">{status}</div>
+        <div className="[font-size:var(--jingle-font-meta)] text-muted-foreground">{status}</div>
       ) : null}
 
       <Dialog
@@ -383,12 +383,12 @@ export function ArchivedThreadsTab(props: { locale: AppLocale }): React.JSX.Elem
           }
         }}
       >
-        <DialogContent className="w-[var(--ow-dialog-mobile-w)] rounded-[var(--ow-radius-dialog)] sm:max-w-[var(--ow-dialog-w-sm)] sm:rounded-[var(--ow-radius-dialog)]">
+        <DialogContent className="w-[var(--jingle-dialog-mobile-w)] rounded-[var(--jingle-radius-dialog)] sm:max-w-[var(--jingle-dialog-w-sm)] sm:rounded-[var(--jingle-radius-dialog)]">
           <DialogHeader className="text-left">
             <DialogTitle>{deleteDialogTitle}</DialogTitle>
             <DialogDescription>{deleteDialogDescription}</DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-[var(--ow-space-2)]">
+          <DialogFooter className="gap-[var(--jingle-space-2)]">
             <Button
               type="button"
               variant="outline"
@@ -407,7 +407,7 @@ export function ArchivedThreadsTab(props: { locale: AppLocale }): React.JSX.Elem
                 void confirmDelete()
               }}
             >
-              <Trash2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />
+              <Trash2 className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />
               {copy.archived.confirmDelete}
             </Button>
           </DialogFooter>

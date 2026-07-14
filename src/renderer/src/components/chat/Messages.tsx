@@ -152,13 +152,13 @@ function ContextCompactionRow(): ReactElement {
   const label = copy.chat.contextCompacted
 
   return (
-    <div className="ow-context-compaction-row" aria-label={label}>
-      <div className="ow-context-compaction-rule" aria-hidden="true" />
-      <div className="ow-context-compaction-pill">
+    <div className="jingle-context-compaction-row" aria-label={label}>
+      <div className="jingle-context-compaction-rule" aria-hidden="true" />
+      <div className="jingle-context-compaction-pill">
         <Archive aria-hidden="true" className="size-3.5" strokeWidth={1.8} />
         <span>{label}</span>
       </div>
-      <div className="ow-context-compaction-rule" aria-hidden="true" />
+      <div className="jingle-context-compaction-rule" aria-hidden="true" />
     </div>
   )
 }
@@ -430,7 +430,7 @@ const MessageTurnRow = memo(function MessageTurnRow(props: {
 export function Messages(props: MessagesProps): React.JSX.Element {
   const {
     contentClassName,
-    contentInsetY = "var(--ow-chat-thread-y)",
+    contentInsetY = "var(--jingle-chat-thread-y)",
     isAtBottom = true,
     isLoading,
     isScrolling = false,
@@ -478,7 +478,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
   const activeTurnBlankScrollOffsetRef = useRef<number | null>(null)
   const activeTurnBlankUserScrollIntentAtRef = useRef(0)
   const scrollViewportId = useId()
-  const virtualRowPadding = "pb-[var(--ow-chat-turn-gap)]"
+  const virtualRowPadding = "pb-[var(--jingle-chat-turn-gap)]"
   const shouldStartActiveTurnBlank = Boolean(
     isLoading &&
     activeTurnKey &&

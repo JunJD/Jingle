@@ -1,7 +1,7 @@
 import { cva } from "class-variance-authority"
 
 export const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-[var(--ow-space-1-5)] whitespace-nowrap rounded-[var(--ow-radius-md)] [font-size:var(--ow-font-control)] font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-[var(--ow-icon-action)] shrink-0 [&_svg]:shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+  "inline-flex items-center justify-center gap-[var(--jingle-space-1-5)] whitespace-nowrap rounded-[var(--jingle-radius-md)] [font-size:var(--jingle-font-control)] font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-[var(--jingle-icon-action)] shrink-0 [&_svg]:shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ring",
   {
     variants: {
       variant: {
@@ -17,11 +17,11 @@ export const buttonVariants = cva(
         info: "bg-status-info text-white hover:bg-status-info/90"
       },
       size: {
-        default: "h-[var(--ow-control-h-md)] px-[var(--ow-space-3)] py-[var(--ow-space-1-5)]",
-        sm: "h-[var(--ow-control-h-compact)] px-[var(--ow-space-2-5)] [font-size:var(--ow-font-meta)]",
-        lg: "h-[var(--ow-control-h-lg)] px-[var(--ow-space-4)]",
-        icon: "size-[var(--ow-control-h-md)]",
-        "icon-sm": "size-[var(--ow-control-h-compact)]"
+        default: "h-[var(--jingle-control-h-md)] px-[var(--jingle-space-3)] py-[var(--jingle-space-1-5)]",
+        sm: "h-[var(--jingle-control-h-compact)] px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-meta)]",
+        lg: "h-[var(--jingle-control-h-lg)] px-[var(--jingle-space-4)]",
+        icon: "size-[var(--jingle-control-h-md)]",
+        "icon-sm": "size-[var(--jingle-control-h-compact)]"
       }
     },
     defaultVariants: {

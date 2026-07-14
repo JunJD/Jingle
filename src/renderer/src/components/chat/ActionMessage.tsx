@@ -105,7 +105,7 @@ function ToolExecutionTime(props: { active: boolean; startedAt?: Date }): React.
   const elapsed = Math.max(0, now - startedAtMs)
 
   return (
-    <span className="shrink-0 text-[var(--ow-agent-timeline-muted)] [font-size:var(--ow-font-caption)] tabular-nums">
+    <span className="shrink-0 text-[var(--jingle-agent-timeline-muted)] [font-size:var(--jingle-font-caption)] tabular-nums">
       {formatElapsedTime(elapsed)}
     </span>
   )
@@ -118,7 +118,7 @@ function ToolDurationTime(props: { durationMs?: number | null }): React.JSX.Elem
   }
 
   return (
-    <span className="shrink-0 text-[var(--ow-agent-timeline-muted)] [font-size:var(--ow-font-caption)] tabular-nums">
+    <span className="shrink-0 text-[var(--jingle-agent-timeline-muted)] [font-size:var(--jingle-font-caption)] tabular-nums">
       {formatElapsedTime(durationMs)}
     </span>
   )
@@ -204,7 +204,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
       <ToolDurationTime durationMs={durationMs} />
     ) : null
   const resultMeta = display.resultMeta ? (
-    <span className="shrink-0 text-[var(--ow-agent-timeline-muted)] [font-size:var(--ow-font-caption)]">
+    <span className="shrink-0 text-[var(--jingle-agent-timeline-muted)] [font-size:var(--jingle-font-caption)]">
       {display.resultMeta}
     </span>
   ) : null
@@ -225,7 +225,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     return (
       <div className="min-w-0">
         <button
-          className="inline-flex max-w-full min-w-0 rounded-[var(--ow-radius-sm)] text-left text-[var(--ow-agent-timeline-muted)] transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex max-w-full min-w-0 rounded-[var(--jingle-radius-sm)] text-left text-[var(--jingle-agent-timeline-muted)] transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           data-active={isToolActive(activityStatus) ? "true" : undefined}
           data-tool-call-toggle={toolCall.name}
           onClick={() => {
@@ -244,7 +244,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
             active={isToolActive(activityStatus)}
             className="w-full"
             detail={display.detail}
-            icon={<Icon className="size-[var(--ow-icon-sm)]" />}
+            icon={<Icon className="size-[var(--jingle-icon-sm)]" />}
             label={display.title}
             meta={
               meta || canExpandDetail ? (
@@ -252,7 +252,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
                   {meta}
                   {canExpandDetail ? (
                     <ChevronRight
-                      className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] text-[var(--ow-agent-timeline-muted)]"
+                      className="jingle-agent-tool-chevron size-[var(--jingle-icon-sm)] text-[var(--jingle-agent-timeline-muted)]"
                       data-open={isExpanded ? "true" : "false"}
                     />
                   ) : null}
@@ -263,7 +263,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
           />
         </button>
         {canExpandDetail && isExpanded ? (
-          <div className="mt-[var(--ow-space-2)] min-w-0 max-w-full pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))]">
+          <div className="mt-[var(--jingle-space-2)] min-w-0 max-w-full pl-[calc(var(--jingle-icon-action)+var(--jingle-gap-sm))]">
             {detailContent}
           </div>
         ) : null}
@@ -276,7 +276,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
       defaultOpen={autoExpanded}
       detail={detailContent}
       hasDetail={canExpandDetail}
-      icon={<Icon className="size-[var(--ow-icon-sm)]" />}
+      icon={<Icon className="size-[var(--jingle-icon-sm)]" />}
       meta={meta}
       onOpenChange={(nextExpanded) => {
         if (approvalRequest) {

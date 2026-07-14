@@ -144,7 +144,7 @@ export function LauncherAiOpenTargetMenu(props: LauncherAiOpenTargetMenuProps): 
         {primaryTarget ? (
           getTargetIcon(primaryTarget)
         ) : (
-          <FolderOpen className="size-[var(--ow-icon-sm)]" />
+          <FolderOpen className="size-[var(--jingle-icon-sm)]" />
         )}
       </button>
       <DropdownMenu.Root open={isOpen} onOpenChange={setIsOpen}>
@@ -160,7 +160,7 @@ export function LauncherAiOpenTargetMenu(props: LauncherAiOpenTargetMenuProps): 
               "data-[state=open]:bg-background-secondary/70 data-[state=open]:text-foreground"
             )}
           >
-            <ChevronDown className="size-[var(--ow-icon-xs)]" />
+            <ChevronDown className="size-[var(--jingle-icon-xs)]" />
           </button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>

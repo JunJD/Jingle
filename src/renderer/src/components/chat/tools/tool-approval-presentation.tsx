@@ -127,7 +127,7 @@ export function renderCompactToolApprovalDetail(
 
   if (approvalItem.kind === "extension_tool") {
     return (
-      <div className="rounded-[var(--ow-radius-md)] bg-background-secondary/42 px-[var(--ow-space-2-5)] py-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-muted-foreground">
+      <div className="rounded-[var(--jingle-radius-md)] bg-background-secondary/42 px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)] [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-body)] text-muted-foreground">
         {approvalItem.reason || approvalItem.toolTitle}
       </div>
     )
@@ -135,7 +135,7 @@ export function renderCompactToolApprovalDetail(
 
   if (approvalItem.kind === "execute_command" && approvalItem.command && approvalItem.changes.length === 0) {
     return (
-      <pre className="min-w-0 overflow-hidden rounded-[var(--ow-radius-md)] bg-background-secondary/42 px-[var(--ow-space-2-5)] py-[var(--ow-space-2)] font-mono [font-size:var(--ow-font-code)] leading-[var(--ow-line-code)] text-foreground/80">
+      <pre className="min-w-0 overflow-hidden rounded-[var(--jingle-radius-md)] bg-background-secondary/42 px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)] font-mono [font-size:var(--jingle-font-code)] leading-[var(--jingle-line-code)] text-foreground/80">
         {`$ ${approvalItem.command}`}
       </pre>
     )

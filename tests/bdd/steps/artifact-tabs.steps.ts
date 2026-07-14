@@ -25,11 +25,11 @@ When("我在 Pinned AI session 展开 present_artifacts 工具消息", async fun
   const threadId = this.getScenarioValue("artifactTabs.threadId")
   const artifactTitle = this.getScenarioValue("artifactTabs.artifactTitle")
   const groupToggle = page
-    .locator('.ow-agent-tool-group-trigger[data-tool-call-toggle="present_artifacts"]')
+    .locator('.jingle-agent-tool-group-trigger[data-tool-call-toggle="present_artifacts"]')
     .first()
   const toolToggle = page
     .locator(
-      '.ow-agent-activity-tool-item [data-tool-call-toggle="present_artifacts"], [data-tool-trigger][data-tool-call-toggle="present_artifacts"]'
+      '.jingle-agent-activity-tool-item [data-tool-call-toggle="present_artifacts"], [data-tool-trigger][data-tool-call-toggle="present_artifacts"]'
     )
     .first()
   const artifactCard = page.locator(

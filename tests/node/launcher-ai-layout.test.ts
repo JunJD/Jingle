@@ -168,7 +168,7 @@ test("launcher AI sidebar section headings keep clipping scoped to text", async 
   assert.match(itemRowRule, /flex:\s*0 0 auto/)
   assert.match(sectionItemRule, /min-height:\s*28px/)
   assert.match(sectionItemRule, /overflow:\s*visible/)
-  assert.match(sectionItemRule, /font-size:\s*var\(--ow-font-meta\)/)
+  assert.match(sectionItemRule, /font-size:\s*var\(--jingle-font-meta\)/)
   assert.match(sectionItemRule, /font-weight:\s*600/)
   assert.doesNotMatch(sectionItemRule, /text-overflow:\s*ellipsis/)
   assert.match(titleRule, /overflow:\s*hidden/)
