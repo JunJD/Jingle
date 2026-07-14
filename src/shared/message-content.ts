@@ -315,6 +315,10 @@ function normalizeDisplayContentBlock(value: unknown): ContentBlock | null {
   const block = value as ContentBlock & Record<string, unknown>
   const blockType = block.type as string
 
+  if (blockType === "tool_use") {
+    return null
+  }
+
   if (blockType === "reasoning") {
     const reasoning =
       readStringProperty(block, "reasoning") ??
