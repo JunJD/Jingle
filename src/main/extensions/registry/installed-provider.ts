@@ -16,6 +16,7 @@ import type {
 } from "./types"
 
 const DESCRIPTOR_FILE_NAME = "jingle.extension.json"
+const EXTENSION_PACKAGE_TEMPORARY_DIRECTORY_PREFIX = ".jingle-extension-tmp-"
 
 export class InstalledExtensionProvider {
   constructor(private readonly extensionsRoot: string) {}
@@ -39,6 +40,9 @@ export class InstalledExtensionProvider {
 
     const versionEntries: string[] = []
     for (const version of readdirSync(extensionRoot)) {
+      if (isExtensionPackageTemporaryDirectory(version)) {
+        continue
+      }
       const versionRoot = join(extensionRoot, version)
       if (safeIsDirectory(versionRoot)) {
         versionEntries.push(versionRoot)
@@ -244,6 +248,10 @@ export class InstalledExtensionProvider {
       version: descriptor.version
     } satisfies LoadedExtensionPackageDescriptor
   }
+}
+
+function isExtensionPackageTemporaryDirectory(name: string): boolean {
+  return name.startsWith(EXTENSION_PACKAGE_TEMPORARY_DIRECTORY_PREFIX)
 }
 
 function failedPackage(input: {
