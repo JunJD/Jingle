@@ -27,7 +27,6 @@ export interface AppCopy {
     agentErrorRecovery: string
     agentLabel: string
     copyMessage: string
-    agentTasks: string
     agentThought: string
     agentStatusThinking: string
     agentStatusSteered: string
@@ -93,7 +92,6 @@ export interface AppCopy {
     startConversation: string
     retryMessage: string
     selectedTextReferences: (count: number) => string
-    tasksCompleted: (count: number) => string
     userLabel: string
     userMessageNavigationJump: (position: number) => string
     userMessageNavigationLabel: string
@@ -113,24 +111,6 @@ export interface AppCopy {
     rawResult: string
     running: string
     synced: string
-  }
-  contextUsage: {
-    cache: string
-    cacheCreated: string
-    cacheHits: string
-    contextWindow: string
-    critical: string
-    input: string
-    lastUpdated: string
-    max: string
-    moderate: string
-    noCachedTokens: string
-    normal: string
-    output: string
-    tokenBreakdown: string
-    tokens: string
-    total: string
-    warning: string
   }
   launcher: {
     actionsLabel: string
@@ -326,14 +306,6 @@ export interface AppCopy {
     writeLinesToFile: (count: number, fileName: string) => string
     matchesInFiles: (matchCount: number, fileCount: number) => string
   }
-  workspacePicker: {
-    changeFolder: string
-    linkedHint: string
-    selectFolder: string
-    selectHint: string
-    selectWorkspace: string
-    title: string
-  }
 }
 
 export const appCopy: Record<AppLocale, AppCopy> = {
@@ -363,7 +335,6 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       agentErrorRecovery: "你可以继续发送新消息，恢复这段对话。",
       agentLabel: "AGENT",
       copyMessage: "复制消息",
-      agentTasks: "Agent 任务",
       agentThought: "已思考",
       agentStatusThinking: "正在思考",
       agentStatusSteered: "已引导对话",
@@ -434,7 +405,6 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       startConversation: "开始和 Agent 对话",
       retryMessage: "重试回答",
       selectedTextReferences: (count) => `${count} 个已选文本片段`,
-      tasksCompleted: (count) => `${count} 个任务已完成`,
       userLabel: "你",
       userMessageNavigationJump: (position) => `跳到第 ${position} 条用户消息`,
       userMessageNavigationLabel: "用户消息导航",
@@ -454,24 +424,6 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       rawResult: "原始结果",
       running: "运行中",
       synced: "已同步"
-    },
-    contextUsage: {
-      cache: "缓存",
-      cacheCreated: "新建缓存",
-      cacheHits: "缓存命中",
-      contextWindow: "上下文窗口",
-      critical: "临界",
-      input: "输入",
-      lastUpdated: "最近更新",
-      max: "上限",
-      moderate: "中等",
-      noCachedTokens: "暂无缓存 token",
-      normal: "正常",
-      output: "输出",
-      tokenBreakdown: "Token 构成",
-      tokens: "tokens",
-      total: "总计",
-      warning: "警告"
     },
     launcher: {
       actionsLabel: "操作",
@@ -688,14 +640,6 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       upcomingChanges: "即将变更",
       writeLinesToFile: (count, fileName) => `向 ${fileName} 写入 ${count} 行`
     },
-    workspacePicker: {
-      changeFolder: "更换文件夹",
-      linkedHint: "Agent 会在这个文件夹里读取和写入文件。",
-      selectFolder: "选择文件夹",
-      selectHint: "为 Agent 选择一个工作目录。后续读写都会直接发生在这里。",
-      selectWorkspace: "选择 workspace",
-      title: "Workspace 文件夹"
-    }
   },
   "en-US": {
     app: {
@@ -724,7 +668,6 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       agentErrorRecovery: "You can send a new message to continue the conversation.",
       agentLabel: "AGENT",
       copyMessage: "Copy message",
-      agentTasks: "Agent Tasks",
       agentThought: "Thought",
       agentStatusThinking: "Thinking",
       agentStatusSteered: "Steered conversation",
@@ -796,7 +739,6 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       retryMessage: "Retry response",
       selectedTextReferences: (count) =>
         `${count} selected text reference${count === 1 ? "" : "s"}`,
-      tasksCompleted: (count) => `${count} task${count === 1 ? "" : "s"} completed`,
       userLabel: "YOU",
       userMessageNavigationJump: (position) => `Jump to user message ${position}`,
       userMessageNavigationLabel: "User messages",
@@ -816,24 +758,6 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       rawResult: "Raw Result",
       running: "Running",
       synced: "Synced"
-    },
-    contextUsage: {
-      cache: "Cache",
-      cacheCreated: "Cache created",
-      cacheHits: "Cache hits",
-      contextWindow: "Context Window",
-      critical: "Critical",
-      input: "Input",
-      lastUpdated: "Last updated",
-      max: "max",
-      moderate: "Moderate",
-      noCachedTokens: "No cached tokens",
-      normal: "Normal",
-      output: "Output",
-      tokenBreakdown: "Token Breakdown",
-      tokens: "tokens",
-      total: "Total",
-      warning: "Warning"
     },
     launcher: {
       actionsLabel: "Actions",
@@ -1055,14 +979,5 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       upcomingChanges: "Upcoming changes",
       writeLinesToFile: (count, fileName) => `Writing ${count} lines to ${fileName}`
     },
-    workspacePicker: {
-      changeFolder: "Change Folder",
-      linkedHint: "The agent will read and write files in this folder.",
-      selectFolder: "Select Folder",
-      selectHint:
-        "Select a folder for the agent to work in. The agent will read and write files directly to this location.",
-      selectWorkspace: "Select workspace",
-      title: "Workspace Folder"
-    }
   }
 }
