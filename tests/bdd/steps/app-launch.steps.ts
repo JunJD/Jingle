@@ -562,7 +562,11 @@ Then(
           }
 
           return content.some((block) => {
-            return typeof block.text === "string" && block.text.includes(assistantText)
+            return (
+              block.type === "text" &&
+              typeof block.text === "string" &&
+              block.text.includes(assistantText)
+            )
           })
         }).length
 
