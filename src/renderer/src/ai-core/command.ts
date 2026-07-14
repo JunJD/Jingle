@@ -4,19 +4,14 @@ import {
   AI_RESULT_KIND,
   aiBuiltInCommandManifest
 } from "@shared/launcher-ai"
-import { lazy, type ComponentType } from "react"
 import { getAiPageViewportHeight } from "./ai-config"
 import { defineBuiltInCommandOwner } from "@launcher-shell/built-ins/sdk"
-
-const LauncherAiPage = lazy(async () => {
-  const module = await import("./LauncherAiPage")
-  return { default: module.LauncherAiPage }
-}) as ComponentType
+import { LazyLauncherAiPage } from "./LazyLauncherAiPage"
 
 export const aiBuiltInCommandOwner = defineBuiltInCommandOwner({
   commands: [
     {
-      Component: LauncherAiPage,
+      Component: LazyLauncherAiPage,
       commandName: AI_CHAT_COMMAND_NAME,
       mode: "view",
       search: {

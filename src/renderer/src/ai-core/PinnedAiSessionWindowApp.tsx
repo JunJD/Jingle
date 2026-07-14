@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { Suspense, useEffect, useMemo, useRef, useState } from "react"
 import { AiCoreHostProvider } from "./AiCoreHost"
 import { getAiShellConfig } from "./ai-config"
-import { LauncherAiPage } from "./LauncherAiPage"
+import { LazyLauncherAiPage } from "./LazyLauncherAiPage"
 import { useAiCoreThreadHost } from "./useAiCoreThreadHost"
 import { useThreadContext } from "@/lib/thread-context"
 import type { LauncherInputElement } from "@launcher-shell/input-element"
@@ -125,7 +125,9 @@ export function PinnedAiSessionWindowApp(): React.JSX.Element {
             }
           }}
         >
-          <LauncherAiPage />
+          <Suspense fallback={<div aria-busy="true" className="h-full w-full" />}>
+            <LazyLauncherAiPage />
+          </Suspense>
         </AiCoreHostProvider>
       </div>
     </div>
