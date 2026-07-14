@@ -1,7 +1,9 @@
 import { Fragment, createElement, type ReactNode } from "react"
 import { useLauncherActionController } from "@/features/launcher-actions/controller"
-import type { LauncherActionController } from "@/features/launcher-actions/model"
-import type { NativeActionDescriptor } from "./actions"
+import type {
+  LauncherActionController,
+  LauncherActionDescriptor
+} from "@/features/launcher-actions/model"
 import { NativeSurfaceHeaderLeading } from "./chrome"
 import { NativeSurfaceActionLayer, NativeSurfaceActionsFooter } from "./surface-actions"
 
@@ -15,7 +17,7 @@ export interface NativeSurfaceController {
 }
 
 export function useNativeSurfaceActionController(params: {
-  actions: NativeActionDescriptor[]
+  actions: LauncherActionDescriptor[]
   primaryActionFallbackTitle: string
 }): NativeSurfaceActionController {
   return useLauncherActionController(params)
@@ -50,7 +52,7 @@ function createFooterLeading(params: {
 }
 
 export function useNativeSurfaceController(params: {
-  actions: NativeActionDescriptor[]
+  actions: LauncherActionDescriptor[]
   footerCount?: string | null
   footerLabel: string
   headerLabel?: string
