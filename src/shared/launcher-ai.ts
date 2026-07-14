@@ -18,6 +18,7 @@ export const aiBuiltInCommandManifest: LauncherCommandOwnerManifest<
   },
   commands: [
     {
+      iconName: "sparkles",
       mode: "view",
       name: AI_CHAT_COMMAND_NAME,
       title: "AI Chat"
