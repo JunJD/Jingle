@@ -993,7 +993,10 @@ test("tool execution view derives from messages and runtime facts", () => {
     turn
   })
 
-  assert.equal(runningView[runningToolCall.id], undefined)
+  assert.deepEqual(runningView[runningToolCall.id], {
+    status: "unavailable",
+    toolCallId: runningToolCall.id
+  })
   assert.deepEqual(runningView[completedToolCall.id], {
     status: "complete",
     toolCallId: completedToolCall.id
@@ -1066,7 +1069,10 @@ test("tool execution view derives from messages and runtime facts", () => {
     turn: activeTurnProjection.turns[0]!
   })
 
-  assert.equal(activeTurnView[queuedToolCall.id], undefined)
+  assert.deepEqual(activeTurnView[queuedToolCall.id], {
+    status: "unavailable",
+    toolCallId: queuedToolCall.id
+  })
 
   const approval: HITLRequest = {
     allowed_decisions: ["approve", "reject"],
@@ -1093,7 +1099,10 @@ test("tool execution view derives from messages and runtime facts", () => {
     pendingApproval: null,
     turn
   })
-  assert.equal(finishedView[runningToolCall.id], undefined)
+  assert.deepEqual(finishedView[runningToolCall.id], {
+    status: "unavailable",
+    toolCallId: runningToolCall.id
+  })
   assert.deepEqual(finishedView[completedToolCall.id], {
     status: "complete",
     toolCallId: completedToolCall.id
@@ -1400,7 +1409,10 @@ test("turn tool execution view only applies approval to the owning turn", () => 
     turn: projection.turns[1]!
   })
 
-  assert.equal(firstTurnView[firstToolCall.id], undefined)
+  assert.deepEqual(firstTurnView[firstToolCall.id], {
+    status: "unavailable",
+    toolCallId: firstToolCall.id
+  })
   assert.deepEqual(secondTurnView[secondToolCall.id], {
     status: "approval",
     toolCallId: secondToolCall.id

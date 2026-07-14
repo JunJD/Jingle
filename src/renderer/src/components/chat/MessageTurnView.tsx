@@ -642,7 +642,12 @@ function toAgentActivitySummaryTool(action: ToolActivityView) {
 }
 
 function isActivityViewPending(action: ActivityView): boolean {
-  return action.status !== "complete" && action.status !== "failed"
+  return (
+    action.status === "approval" ||
+    action.status === "arguments_streaming" ||
+    action.status === "running" ||
+    action.status === "waiting_result"
+  )
 }
 
 function isActivityViewLoading(action: ActivityView): boolean {

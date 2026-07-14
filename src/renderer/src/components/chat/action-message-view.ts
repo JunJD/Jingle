@@ -53,6 +53,8 @@ export function getToolStatusLabel(copy: AppCopy, status: ToolComponentStatus): 
       return null
     case "failed":
       return copy.common.error
+    case "unavailable":
+      return copy.chat.messageContentUnavailable
   }
 }
 

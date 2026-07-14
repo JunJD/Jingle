@@ -65,6 +65,7 @@ export interface AppCopy {
     describeOutcome: string
     dismissError: string
     inputNeedsWorkspace: string
+    messageContentUnavailable: string
     memoryTemporaryOff: string
     memoryTemporaryOn: string
     pendingWorkspaceMemoryBlocksWorkspaceChange: string
@@ -403,6 +404,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       describeOutcome: "描述你想达成的结果。workspace 和 tools 会随后接上。",
       dismissError: "关闭错误",
       inputNeedsWorkspace: "请先选择一个 workspace 文件夹，再发送消息。",
+      messageContentUnavailable: "这条消息包含无法显示的内容。",
       memoryTemporaryOff: "使用记忆",
       memoryTemporaryOn: "临时模式",
       pendingWorkspaceMemoryBlocksWorkspaceChange:
@@ -763,6 +765,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       describeOutcome: "Describe the outcome you want. The workspace and tools will follow.",
       dismissError: "Dismiss error",
       inputNeedsWorkspace: "Please select a workspace folder before sending messages.",
+      messageContentUnavailable: "This message contains content that cannot be displayed.",
       memoryTemporaryOff: "Use memory",
       memoryTemporaryOn: "Temporary",
       pendingWorkspaceMemoryBlocksWorkspaceChange:

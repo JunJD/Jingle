@@ -12,6 +12,7 @@ export type JingleAgentToolExecutionViewStatus =
   | "complete"
   | "failed"
   | "running"
+  | "unavailable"
   | "waiting_result"
 
 export interface JingleAgentActivityToolCallSource {
@@ -115,7 +116,7 @@ function getToolCallSummaryFactKey(toolCall: JingleAgentActivityToolCallSource):
 }
 
 function isPendingToolExecutionStatus(status: JingleAgentToolExecutionViewStatus): boolean {
-  return status !== "complete" && status !== "failed"
+  return status === "arguments_streaming" || status === "running" || status === "waiting_result"
 }
 
 function isCompletedToolExecutionStatus(status: JingleAgentToolExecutionViewStatus): boolean {
@@ -127,7 +128,10 @@ export function projectJingleAgentActivitySummary(
 ): JingleAgentActivitySummaryProjection | null {
   if (
     tools.length === 0 ||
-    tools.some((tool) => tool.status === "approval" || tool.status === "failed")
+    tools.some(
+      (tool) =>
+        tool.status === "approval" || tool.status === "failed" || tool.status === "unavailable"
+    )
   ) {
     return null
   }

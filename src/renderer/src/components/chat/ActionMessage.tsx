@@ -36,6 +36,7 @@ function toAgentToolState(status: ToolComponentStatus): AgentToolState {
     case "complete":
       return "complete"
     case "failed":
+    case "unavailable":
       return "error"
     case "arguments_streaming":
     case "running":

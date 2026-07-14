@@ -154,7 +154,13 @@ export function projectJingleTurnToolExecutionsView<
           status: "running",
           toolCallId: toolCall.id
         })
+        continue
       }
+
+      nextToolExecutions.set(toolCall.id, {
+        status: "unavailable",
+        toolCallId: toolCall.id
+      })
     }
   }
 
