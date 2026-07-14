@@ -1735,7 +1735,6 @@ body[data-platform="linux"] .launcher-chrome {
   .ow-agent-tool-content,
   .ow-markdown,
   .ow-reasoning-content,
-  .shiki-wrapper,
   pre,
   code,
   .select-text {
@@ -3463,9 +3462,7 @@ body[data-window="pinned-ai-session"] .ow-markdown,
 }
 
 .ow-markdown [data-streamdown="code-block-body"] pre,
-.ow-markdown [data-streamdown="code-block-body"] code,
-.ow-markdown .shiki-wrapper,
-.ow-markdown .shiki-content code {
+.ow-markdown [data-streamdown="code-block-body"] code {
   font-family: var(--ow-font-code-family);
   font-size: inherit;
   line-height: inherit;
@@ -3715,31 +3712,4 @@ body[data-window="pinned-ai-session"] .ow-markdown,
 
 .app-no-drag {
   -webkit-app-region: no-drag;
-}
-
-/* Shiki syntax highlighting styles */
-.shiki-wrapper {
-  font-size: var(--ow-font-code);
-  line-height: var(--ow-line-code);
-}
-
-.shiki-content pre {
-  margin: 0;
-  padding: var(--ow-space-4);
-  background-color: transparent !important;
-  overflow-x: auto;
-}
-
-.shiki-content code {
-  background: transparent !important;
-}
-
-.shiki-content .line {
-  display: inline-block;
-  width: 100%;
-  min-height: var(--ow-line-code);
-}
-
-.shiki-content .line:hover {
-  background-color: var(--background-interactive);
 }
