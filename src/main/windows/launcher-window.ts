@@ -1,4 +1,4 @@
-import { BrowserWindow, type Rectangle, screen } from "electron"
+import { BrowserWindow, type Rectangle, screen, type WebContents } from "electron"
 import { join } from "path"
 import { installExternalWindowOpenHandler } from "./external-window-open"
 import { loadRendererWindow } from "./load-renderer-window"
@@ -24,7 +24,12 @@ const LAUNCHER_MAX_SCREEN_HEIGHT_RATIO = 0.7
 const LAUNCHER_WINDOW_GUTTER = process.platform === "win32" ? 12 : 0
 const WINDOWS_LAUNCHER_SHAPE_RADIUS = 12
 const launcherVisibleOrigins = new WeakMap<BrowserWindow, { x: number; y: number }>()
+const launcherWindowWebContents = new WeakSet<WebContents>()
 let launcherBlurHideSuppressionDepth = 0
+
+export function isLauncherWindowWebContents(webContents: WebContents): boolean {
+  return launcherWindowWebContents.has(webContents) && !webContents.isDestroyed()
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
@@ -330,6 +335,7 @@ export function createLauncherWindow(): BrowserWindow {
       sandbox: false
     }
   })
+  launcherWindowWebContents.add(launcherWindow.webContents)
   attachWindowDiagnostics(launcherWindow, "launcher")
   lockFixedWindowZoom(launcherWindow)
 

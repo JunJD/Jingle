@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron"
+import { BrowserWindow, type WebContents } from "electron"
 import { join } from "path"
 import { PINNED_AI_SESSION_WINDOW_KIND } from "@shared/ai-session-window"
 import { installExternalWindowOpenHandler } from "./external-window-open"
@@ -10,6 +10,11 @@ const PINNED_AI_SESSION_WINDOW_WIDTH = 1040
 const PINNED_AI_SESSION_WINDOW_HEIGHT = 640
 const PINNED_AI_SESSION_WINDOW_MIN_WIDTH = 560
 const PINNED_AI_SESSION_WINDOW_MIN_HEIGHT = 420
+const pinnedAiSessionWindowWebContents = new WeakSet<WebContents>()
+
+export function isPinnedAiSessionWindowWebContents(webContents: WebContents): boolean {
+  return pinnedAiSessionWindowWebContents.has(webContents) && !webContents.isDestroyed()
+}
 
 export interface CreatePinnedAiSessionWindowInput {
   threadId: string
@@ -46,6 +51,7 @@ export function createPinnedAiSessionWindow(
       sandbox: false
     }
   })
+  pinnedAiSessionWindowWebContents.add(window.webContents)
 
   attachWindowDiagnostics(window, PINNED_AI_SESSION_WINDOW_KIND)
   lockFixedWindowZoom(window)
