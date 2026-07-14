@@ -15,7 +15,10 @@ import { DEFAULT_APP_LOCALE, resolveLocalizedText } from "@shared/i18n"
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
 import { getDefaultExtensionRegistryService } from "../../extensions/registry/default-registry"
 import { loadExtensionMainDefinition } from "../../extensions/registry/main-loader"
-import { resolveNativeExtensionExecutionContext } from "../../native-extensions/execution-context"
+import {
+  resolveNativeExtensionExecutionContext,
+  type NativeExtensionExecutionContextSnapshot
+} from "../../native-extensions/execution-context"
 
 const nativeExtensionRegistry = getDefaultExtensionRegistryService()
 const supportedNativeExtensionPackages = nativeExtensionRegistry.listEnabledPackages(
@@ -169,6 +172,23 @@ export async function listNativeExtensionMainDefinitions(
 export async function invokeNativeExtension(
   request: NativeExtensionInvokeRequest
 ): Promise<unknown> {
+  const context = resolveNativeExtensionExecutionContext({
+    extensionName: request.extensionName,
+    platform: process.platform
+  })
+  return invokeNativeExtensionWithContext(request, context)
+}
+
+export async function invokeNativeExtensionWithContext(
+  request: NativeExtensionInvokeRequest,
+  context: NativeExtensionExecutionContextSnapshot
+): Promise<unknown> {
+  if (request.extensionName !== context.extensionName) {
+    throw new Error(
+      `Native extension RPC owner "${request.extensionName}" does not match execution context "${context.extensionName}"`
+    )
+  }
+
   const definition = nativeExtensionDefinitionMap.get(request.extensionName)
   if (!definition) {
     throw new Error(`Unknown native extension "${request.extensionName}"`)
@@ -189,11 +209,6 @@ export async function invokeNativeExtension(
     definition.manifest.rpcMethods ?? [],
     service
   )
-
-  const context = resolveNativeExtensionExecutionContext({
-    extensionName: request.extensionName,
-    platform: process.platform
-  })
 
   return service.invoke(request, {
     connection: context.connection,

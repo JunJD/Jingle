@@ -65,24 +65,6 @@ class BddExtensionRuntimeHostCapabilities implements ExtensionRuntimeHostCapabil
     return this.host.confirmAlert(alert)
   }
 
-  getRuntimeCapabilities(
-    params: Parameters<ExtensionRuntimeHostCapabilities["getRuntimeCapabilities"]>[0]
-  ): ReturnType<ExtensionRuntimeHostCapabilities["getRuntimeCapabilities"]> {
-    return this.host.getRuntimeCapabilities(params)
-  }
-
-  getCommandPreferences(
-    params: Parameters<ExtensionRuntimeHostCapabilities["getCommandPreferences"]>[0]
-  ): ReturnType<ExtensionRuntimeHostCapabilities["getCommandPreferences"]> {
-    return this.host.getCommandPreferences(params)
-  }
-
-  getExtensionPreferences(
-    extensionName: string
-  ): ReturnType<ExtensionRuntimeHostCapabilities["getExtensionPreferences"]> {
-    return this.host.getExtensionPreferences(extensionName)
-  }
-
   getStorageValue(
     params: ExtensionRuntimeStorageParams
   ): ReturnType<ExtensionRuntimeHostCapabilities["getStorageValue"]> {
@@ -123,16 +105,19 @@ class BddExtensionRuntimeHostCapabilities implements ExtensionRuntimeHostCapabil
     return this.host.handleRunBotAgentRequest(params)
   }
 
-  async invokeNativeExtension(request: NativeExtensionInvokeRequest): Promise<unknown> {
+  async invokeNativeExtension(
+    request: NativeExtensionInvokeRequest,
+    context: Parameters<ExtensionRuntimeHostCapabilities["invokeNativeExtension"]>[1]
+  ): Promise<unknown> {
     this.record("rpc", request)
     if (this.probe.invokeNativeExtension) {
-      const extensionPreferences = await this.host.getExtensionPreferences(request.extensionName)
       return this.probe.invokeNativeExtension(request, {
-        extensionPreferences
+        connection: context.connection,
+        extensionPreferences: context.extensionPreferences
       })
     }
 
-    return this.host.invokeNativeExtension(request)
+    return this.host.invokeNativeExtension(request, context)
   }
 
   openExtensionSettings(
@@ -160,9 +145,10 @@ class BddExtensionRuntimeHostCapabilities implements ExtensionRuntimeHostCapabil
     return this.host.openExternal(params)
   }
 
-  showToast(
-    params: { sessionId: string; toast: ExtensionToastPayload }
-  ): ReturnType<ExtensionRuntimeHostCapabilities["showToast"]> {
+  showToast(params: {
+    sessionId: string
+    toast: ExtensionToastPayload
+  }): ReturnType<ExtensionRuntimeHostCapabilities["showToast"]> {
     this.record("toast", params.toast)
     return this.host.showToast(params)
   }
@@ -183,16 +169,18 @@ class BddExtensionRuntimeHostCapabilities implements ExtensionRuntimeHostCapabil
     return this.host.readSelectedText()
   }
 
-  pasteClipboardText(
-    content: { html?: string; text: string }
-  ): ReturnType<ExtensionRuntimeHostCapabilities["pasteClipboardText"]> {
+  pasteClipboardText(content: {
+    html?: string
+    text: string
+  }): ReturnType<ExtensionRuntimeHostCapabilities["pasteClipboardText"]> {
     this.record("clipboard", { method: "paste-text", ...content })
     return this.host.pasteClipboardText(content)
   }
 
-  writeClipboardText(
-    content: { html?: string; text: string }
-  ): ReturnType<ExtensionRuntimeHostCapabilities["writeClipboardText"]> {
+  writeClipboardText(content: {
+    html?: string
+    text: string
+  }): ReturnType<ExtensionRuntimeHostCapabilities["writeClipboardText"]> {
     this.record("clipboard", { method: "write-text", ...content })
     return this.host.writeClipboardText(content)
   }

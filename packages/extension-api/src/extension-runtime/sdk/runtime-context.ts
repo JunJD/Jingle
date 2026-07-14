@@ -2,8 +2,15 @@ import type { ReactNode } from "react"
 import type {
   ExtensionHostRequest,
   ExtensionHostResponse,
+  ExtensionRuntimeJsonObject,
+  ExtensionRuntimeJsonValue,
   ExtensionRuntimeLaunchContext,
   ExtensionRuntimeLaunchProps
+} from "../../shared/extension-runtime-protocol"
+import {
+  normalizeExtensionRuntimeJsonFact,
+  normalizeExtensionRuntimeLaunchProps,
+  normalizeExtensionRuntimeNavigationHostRequest
 } from "../../shared/extension-runtime-protocol"
 
 export type ExtensionRuntimeHostRequestInput = ExtensionHostRequest extends infer TRequest
@@ -22,6 +29,53 @@ export type RuntimeToastActionHandler = () => Promise<void> | void
 
 export interface RuntimeToastActionRegistration {
   id: string
+}
+
+export async function sendExtensionRuntimeHostRequest(
+  request: ExtensionRuntimeHostRequestInput,
+  options: {
+    createRequestId: () => string
+    send: (request: ExtensionHostRequest) => Promise<ExtensionHostResponse>
+  }
+): Promise<ExtensionHostResponse> {
+  const normalizedRequest = finalizeExtensionRuntimeHostRequest(request, options.createRequestId())
+  return options.send(normalizedRequest)
+}
+
+function finalizeExtensionRuntimeHostRequest(
+  request: ExtensionRuntimeHostRequestInput,
+  requestId: string
+): ExtensionHostRequest {
+  if (!request || typeof request !== "object") {
+    throw new TypeError("extension runtime host request must be an object")
+  }
+
+  const descriptors = Object.getOwnPropertyDescriptors(request)
+  if (Object.prototype.hasOwnProperty.call(descriptors, "id")) {
+    throw new TypeError("extension runtime host request id is owned by the runtime")
+  }
+  const capabilityDescriptor = descriptors.capability
+  if (
+    !capabilityDescriptor?.enumerable ||
+    !("value" in capabilityDescriptor) ||
+    typeof capabilityDescriptor.value !== "string"
+  ) {
+    throw new TypeError("extension runtime host request capability must be a data property")
+  }
+
+  const requestWithId = Object.create(Object.getPrototypeOf(request), {
+    ...descriptors,
+    id: {
+      configurable: false,
+      enumerable: true,
+      value: requestId,
+      writable: false
+    }
+  }) as ExtensionHostRequest
+
+  return capabilityDescriptor.value === "navigation"
+    ? normalizeExtensionRuntimeNavigationHostRequest(requestWithId)
+    : requestWithId
 }
 
 export interface ExtensionRuntimeCommandAddress {
@@ -62,9 +116,9 @@ export enum LaunchType {
 }
 
 export interface LaunchCommandOptions {
-  arguments?: Record<string, unknown>
+  arguments?: ExtensionRuntimeJsonObject
   commandName?: string
-  context?: Record<string, unknown>
+  context?: ExtensionRuntimeJsonObject
   extensionName?: string
   fallbackText?: string
   name?: string
@@ -247,14 +301,19 @@ export function createExtensionRuntimeNavigation(params: {
       }
     },
     openCommand: async (address, options) => {
+      const normalized = normalizeNavigationOpenCommandInput(address, options)
       const response = await requestHost({
         capability: "navigation",
         method: "open-command",
         payload: {
-          commandName: address.commandName,
-          extensionName: address.extensionName,
-          ...(options?.launchProps ? { launchProps: options.launchProps } : {}),
-          ...(options?.showLauncher !== undefined ? { showLauncher: options.showLauncher } : {})
+          commandName: normalized.address.commandName,
+          extensionName: normalized.address.extensionName,
+          ...(normalized.options?.launchProps
+            ? { launchProps: normalized.options.launchProps }
+            : {}),
+          ...(normalized.options?.showLauncher !== undefined
+            ? { showLauncher: normalized.options.showLauncher }
+            : {})
         }
       })
       if (!response.ok) {
@@ -352,8 +411,9 @@ export async function closeMainWindow(_options?: CloseMainWindowOptions): Promis
 }
 
 export async function launchCommand(options: LaunchCommandOptions): Promise<void> {
+  const normalizedOptions = normalizeLaunchCommandOptions(options)
   const context = getActiveExtensionRuntimeSdk()
-  const commandName = options.commandName ?? options.name
+  const commandName = normalizedOptions.commandName ?? normalizedOptions.name
   if (!commandName) {
     throw new Error("launchCommand requires a command name.")
   }
@@ -361,15 +421,180 @@ export async function launchCommand(options: LaunchCommandOptions): Promise<void
   await context.navigation.openCommand(
     {
       commandName,
-      extensionName: options.extensionName ?? context.extensionName
+      extensionName: normalizedOptions.extensionName ?? context.extensionName
     },
     {
       launchProps: {
-        ...(options.arguments ? { arguments: options.arguments } : {}),
-        ...(options.context ? { launchContext: options.context } : {}),
-        ...(options.fallbackText !== undefined ? { fallbackText: options.fallbackText } : {})
+        ...(normalizedOptions.arguments ? { arguments: normalizedOptions.arguments } : {}),
+        ...(normalizedOptions.context ? { launchContext: normalizedOptions.context } : {}),
+        ...(normalizedOptions.fallbackText !== undefined
+          ? { fallbackText: normalizedOptions.fallbackText }
+          : {})
       },
-      showLauncher: options.type === LaunchType.UserInitiated
+      showLauncher: normalizedOptions.type === LaunchType.UserInitiated
     }
   )
+}
+
+function normalizeNavigationOpenCommandInput(
+  address: ExtensionRuntimeCommandAddress,
+  options: ExtensionRuntimeCommandOpenOptions | undefined
+): {
+  address: ExtensionRuntimeCommandAddress
+  options?: ExtensionRuntimeCommandOpenOptions
+} {
+  const path = "extension runtime navigation openCommand"
+  const input = readJsonObject(
+    normalizeExtensionRuntimeJsonFact(
+      {
+        address,
+        ...(options === undefined ? {} : { options })
+      },
+      path
+    ),
+    path
+  )
+  assertExactJsonKeys(input, path, ["address", "options"])
+  const normalizedAddress = readJsonObject(input.address, `${path}.address`)
+  assertExactJsonKeys(normalizedAddress, `${path}.address`, [
+    "commandName",
+    "extensionName",
+    "kind"
+  ])
+  const commandName = readRequiredString(
+    normalizedAddress.commandName,
+    `${path}.address.commandName`
+  )
+  const extensionName = readRequiredString(
+    normalizedAddress.extensionName,
+    `${path}.address.extensionName`
+  )
+  if (normalizedAddress.kind !== undefined && normalizedAddress.kind !== "extension-command") {
+    throw new TypeError(`${path}.address.kind is invalid`)
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(input, "options")) {
+    return {
+      address: {
+        commandName,
+        extensionName,
+        ...(normalizedAddress.kind ? { kind: normalizedAddress.kind } : {})
+      }
+    }
+  }
+
+  const normalizedOptions = readJsonObject(input.options, `${path}.options`)
+  assertExactJsonKeys(normalizedOptions, `${path}.options`, ["launchProps", "showLauncher"])
+  const launchProps = Object.prototype.hasOwnProperty.call(normalizedOptions, "launchProps")
+    ? normalizeExtensionRuntimeLaunchProps(
+        normalizedOptions.launchProps,
+        `${path}.options.launchProps`
+      )
+    : undefined
+  if (
+    normalizedOptions.showLauncher !== undefined &&
+    typeof normalizedOptions.showLauncher !== "boolean"
+  ) {
+    throw new TypeError(`${path}.options.showLauncher must be a boolean`)
+  }
+
+  return {
+    address: {
+      commandName,
+      extensionName,
+      ...(normalizedAddress.kind ? { kind: normalizedAddress.kind } : {})
+    },
+    options: {
+      ...(launchProps ? { launchProps } : {}),
+      ...(normalizedOptions.showLauncher !== undefined
+        ? { showLauncher: normalizedOptions.showLauncher }
+        : {})
+    }
+  }
+}
+
+function normalizeLaunchCommandOptions(value: unknown): LaunchCommandOptions {
+  const path = "extension runtime launchCommand options"
+  const options = readJsonObject(normalizeExtensionRuntimeJsonFact(value, path), path)
+  assertExactJsonKeys(options, path, [
+    "arguments",
+    "commandName",
+    "context",
+    "extensionName",
+    "fallbackText",
+    "name",
+    "ownerOrAuthorName",
+    "type"
+  ])
+  if (options.type !== LaunchType.Background && options.type !== LaunchType.UserInitiated) {
+    throw new TypeError(`${path}.type is invalid`)
+  }
+
+  return {
+    ...(Object.prototype.hasOwnProperty.call(options, "arguments")
+      ? { arguments: readJsonObject(options.arguments, `${path}.arguments`) }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(options, "commandName")
+      ? { commandName: readRequiredString(options.commandName, `${path}.commandName`) }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(options, "context")
+      ? { context: readJsonObject(options.context, `${path}.context`) }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(options, "extensionName")
+      ? { extensionName: readRequiredString(options.extensionName, `${path}.extensionName`) }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(options, "fallbackText")
+      ? { fallbackText: readString(options.fallbackText, `${path}.fallbackText`) }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(options, "name")
+      ? { name: readRequiredString(options.name, `${path}.name`) }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(options, "ownerOrAuthorName")
+      ? {
+          ownerOrAuthorName: readRequiredString(
+            options.ownerOrAuthorName,
+            `${path}.ownerOrAuthorName`
+          )
+        }
+      : {}),
+    type: options.type
+  }
+}
+
+function readJsonObject(
+  value: ExtensionRuntimeJsonValue | undefined,
+  path: string
+): ExtensionRuntimeJsonObject {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`${path} must be a plain object`)
+  }
+  return value as ExtensionRuntimeJsonObject
+}
+
+function assertExactJsonKeys(
+  value: ExtensionRuntimeJsonObject,
+  path: string,
+  supportedKeys: readonly string[]
+): void {
+  const supported = new Set(supportedKeys)
+  for (const key of Object.keys(value)) {
+    if (!supported.has(key)) {
+      throw new TypeError(`${path} contains unsupported property ${JSON.stringify(key)}`)
+    }
+  }
+}
+
+function readRequiredString(value: ExtensionRuntimeJsonValue | undefined, path: string): string {
+  const text = readString(value, path)
+  if (text.trim().length === 0) {
+    throw new TypeError(`${path} must be non-empty`)
+  }
+  return text
+}
+
+function readString(value: ExtensionRuntimeJsonValue | undefined, path: string): string {
+  if (typeof value !== "string") {
+    throw new TypeError(`${path} must be a string`)
+  }
+  return value
 }

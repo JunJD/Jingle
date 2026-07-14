@@ -8,6 +8,12 @@ import {
   type NativeExtensionSourceMentionProjection
 } from "@shared/native-extensions"
 import { resolveLocalizedText, type AppLocale } from "@shared/i18n"
+import {
+  normalizeExtensionRuntimeLaunchIntent,
+  type ExtensionRuntimeInitialAction,
+  type ExtensionRuntimeLaunchIntent,
+  type ExtensionRuntimeLaunchProps
+} from "@shared/extension-runtime-protocol"
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
 import { handleRuntimeNavigationRequest } from "@renderer/extension-runtime/runtime-navigation"
 import type { AppCopy } from "@/lib/i18n/messages"
@@ -41,6 +47,22 @@ interface SearchTermMatch {
   remainder: string
 }
 
+export function createRuntimeRunOnceLaunchIntent(input: {
+  commandName: string
+  extensionName: string
+  initialAction: ExtensionRuntimeInitialAction
+  launchProps?: ExtensionRuntimeLaunchProps
+  seedQuery: string
+}): ExtensionRuntimeLaunchIntent {
+  return normalizeExtensionRuntimeLaunchIntent({
+    commandName: input.commandName,
+    extensionName: input.extensionName,
+    initialAction: input.initialAction,
+    ...(input.launchProps !== undefined ? { launchProps: input.launchProps } : {}),
+    seedQuery: input.seedQuery
+  })
+}
+
 const SEARCH_TEXT_COLLATOR = new Intl.Collator(undefined, {
   sensitivity: "base",
   usage: "search"
@@ -56,7 +78,9 @@ function appendSearchTerm(terms: string[], term: string): string[] {
   return terms
 }
 
-function getCommandSearchMetadataTerms(command: NativeExtensionLauncherCommandProjection): string[] {
+function getCommandSearchMetadataTerms(
+  command: NativeExtensionLauncherCommandProjection
+): string[] {
   const terms: string[] = []
   const search = command.search
 
@@ -413,19 +437,8 @@ export function buildNativeLauncherCommandOwners(
           requiresSearchArgument: hasSearchArguments(command),
           validateCommandPreferences,
           run: async (context) => {
-            let runOnceSessionId: string | null = null
+            const runOnceSessionId = crypto.randomUUID()
             const showToast = context.showToast
-            const unsubscribeRunOnceSessions = window.api.extensionRuntime.subscribeRunOnceSessions(
-              (session) => {
-                if (
-                  session.context.extensionName === extension.extName &&
-                  session.context.commandName === command.name &&
-                  session.context.mode === "no-view"
-                ) {
-                  runOnceSessionId = session.sessionId
-                }
-              }
-            )
             const unsubscribeNavigationRequests = context.navigation
               ? window.api.extensionRuntime.subscribeNavigationRequests((event) => {
                   if (event.sessionId !== runOnceSessionId || !context.navigation) {
@@ -448,17 +461,15 @@ export function buildNativeLauncherCommandOwners(
               : undefined
 
             try {
-              const agentConfig = await window.api.settings.getAgentConfig()
               const result = await window.api.extensionRuntime.runOnce({
-                commandName: command.name,
-                commandPreferences: context.commandPreferences,
-                extensionName: extension.extName,
-                extensionPreferences: {},
-                initialAction: context.initialAction,
-                launchProps: context.launchProps,
-                locale: agentConfig.locale,
-                mode: "no-view",
-                seedQuery: context.seedQuery
+                intent: createRuntimeRunOnceLaunchIntent({
+                  commandName: command.name,
+                  extensionName: extension.extName,
+                  initialAction: context.initialAction,
+                  launchProps: context.launchProps,
+                  seedQuery: context.seedQuery
+                }),
+                sessionId: runOnceSessionId
               })
 
               if (result.status === "error") {
@@ -467,7 +478,6 @@ export function buildNativeLauncherCommandOwners(
             } finally {
               unsubscribeToastRequests?.()
               unsubscribeNavigationRequests?.()
-              unsubscribeRunOnceSessions()
             }
           }
         }

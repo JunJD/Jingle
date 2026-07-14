@@ -2,16 +2,20 @@ import type {
   ExtensionRuntimeEventAck,
   ExtensionRuntimeEvent,
   ExtensionRuntimeForegroundStartRequest,
-  ExtensionRuntimeLaunchContext,
   ExtensionRuntimeNavigationRequestEvent,
   ExtensionRuntimeNavigationResponse,
   ExtensionRuntimeRunBotAgentRequestEvent,
   ExtensionRuntimeRunBotAgentResponse,
+  ExtensionRuntimeRunOnceRequest,
   ExtensionRuntimeRunResult,
   ExtensionRuntimeSessionError,
   ExtensionRuntimeSessionInfo,
   ExtensionRuntimeToastRequestEvent,
   ExtensionSurfaceSnapshot
+} from "@shared/extension-runtime-protocol"
+import {
+  normalizeExtensionRuntimeNavigationRequestEvent,
+  normalizeExtensionRuntimeStartRequest
 } from "@shared/extension-runtime-protocol"
 import { invokeIpc, ipcRenderer } from "../ipc"
 
@@ -73,13 +77,16 @@ function removeSurfaceSubscription(subscription: SurfaceSubscription): void {
 }
 
 export const extensionRuntimeApi = {
-  startForeground: (
+  startForeground: async (
     request: ExtensionRuntimeForegroundStartRequest
   ): Promise<ExtensionRuntimeSessionInfo> => {
-    return invokeIpc("extensionRuntime:startForeground", request)
+    return invokeIpc(
+      "extensionRuntime:startForeground",
+      normalizeExtensionRuntimeStartRequest(request)
+    )
   },
-  runOnce: (context: ExtensionRuntimeLaunchContext): Promise<ExtensionRuntimeRunResult> => {
-    return invokeIpc("extensionRuntime:runOnce", context)
+  runOnce: async (request: ExtensionRuntimeRunOnceRequest): Promise<ExtensionRuntimeRunResult> => {
+    return invokeIpc("extensionRuntime:runOnce", normalizeExtensionRuntimeStartRequest(request))
   },
   stopForeground: (sessionId?: string): Promise<boolean> => {
     return invokeIpc("extensionRuntime:stopForeground", sessionId)
@@ -90,9 +97,7 @@ export const extensionRuntimeApi = {
   completeNavigationRequest: (response: ExtensionRuntimeNavigationResponse): Promise<boolean> => {
     return invokeIpc("extensionRuntime:completeNavigationRequest", response)
   },
-  completeRunBotAgentRequest: (
-    response: ExtensionRuntimeRunBotAgentResponse
-  ): Promise<boolean> => {
+  completeRunBotAgentRequest: (response: ExtensionRuntimeRunBotAgentResponse): Promise<boolean> => {
     return invokeIpc("extensionRuntime:completeRunBotAgentRequest", response)
   },
   subscribeEventAcks: (callback: (event: ExtensionRuntimeEventAckEvent) => void): (() => void) => {
@@ -114,34 +119,38 @@ export const extensionRuntimeApi = {
       ipcRenderer.removeListener("extensionRuntime:eventAck", listener)
     }
   },
-  subscribeRunOnceSessions: (
-    callback: (session: ExtensionRuntimeSessionInfo) => void
-  ): (() => void) => {
-    let disposed = false
-    const listener = (_event: unknown, payload: ExtensionRuntimeSessionInfo): void => {
-      if (!disposed) {
-        callback(payload)
-      }
-    }
-
-    ipcRenderer.on("extensionRuntime:runOnceSession", listener)
-
-    return () => {
-      if (disposed) {
-        return
-      }
-
-      disposed = true
-      ipcRenderer.removeListener("extensionRuntime:runOnceSession", listener)
-    }
-  },
   subscribeNavigationRequests: (
     callback: (event: ExtensionRuntimeNavigationRequestEvent) => void
   ): (() => void) => {
     let disposed = false
     const listener = (_event: unknown, payload: ExtensionRuntimeNavigationRequestEvent): void => {
-      if (!disposed) {
-        callback(payload)
+      if (disposed) {
+        return
+      }
+
+      try {
+        callback(normalizeExtensionRuntimeNavigationRequestEvent(payload))
+      } catch (error) {
+        const requestId = payload?.request?.id
+        const sessionId = payload?.sessionId
+        if (typeof requestId !== "string" || typeof sessionId !== "string") {
+          console.error("[ExtensionRuntime] Rejected invalid navigation request:", error)
+          return
+        }
+        void invokeIpc("extensionRuntime:completeNavigationRequest", {
+          error: {
+            code: "navigation_payload_invalid",
+            message: error instanceof Error ? error.message : String(error)
+          },
+          ok: false,
+          requestId,
+          sessionId
+        } satisfies ExtensionRuntimeNavigationResponse).catch((reportError) => {
+          console.error(
+            "[ExtensionRuntime] Failed to report invalid navigation request:",
+            reportError
+          )
+        })
       }
     }
 
@@ -181,10 +190,7 @@ export const extensionRuntimeApi = {
     callback: (event: ExtensionRuntimeRunBotAgentRequestEvent) => void
   ): (() => void) => {
     let disposed = false
-    const listener = (
-      _event: unknown,
-      payload: ExtensionRuntimeRunBotAgentRequestEvent
-    ): void => {
+    const listener = (_event: unknown, payload: ExtensionRuntimeRunBotAgentRequestEvent): void => {
       if (!disposed) {
         callback(payload)
       }

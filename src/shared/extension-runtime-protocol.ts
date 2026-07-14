@@ -1,8 +1,21 @@
 import type * as CommonProtocol from "@jingle/extension-api/host-runtime"
 
+export {
+  normalizeExtensionRuntimeJsonFact,
+  normalizeExtensionRuntimeLaunchIntent,
+  normalizeExtensionRuntimeLaunchProps,
+  normalizeExtensionRuntimeNavigationHostRequest,
+  normalizeExtensionRuntimeNavigationRequestEvent,
+  normalizeExtensionRuntimeStartRequest
+} from "../../packages/extension-api/src/shared/extension-runtime-protocol"
+
 export type ExtensionRuntimeCommandMode = CommonProtocol.ExtensionRuntimeCommandMode
 export type ExtensionRuntimeInitialAction = CommonProtocol.ExtensionRuntimeInitialAction
+export type ExtensionRuntimeJsonValue = CommonProtocol.ExtensionRuntimeJsonValue
+export type ExtensionRuntimeJsonObject = CommonProtocol.ExtensionRuntimeJsonObject
+export type ExtensionRuntimeJsonArray = CommonProtocol.ExtensionRuntimeJsonArray
 export type ExtensionRuntimeLaunchProps = CommonProtocol.ExtensionRuntimeLaunchProps
+export type ExtensionRuntimeLaunchIntent = CommonProtocol.ExtensionRuntimeLaunchIntent
 export type ExtensionRuntimeHostCapability = CommonProtocol.ExtensionRuntimeHostCapability
 export type ExtensionRuntimeStorageScope = CommonProtocol.ExtensionRuntimeStorageScope
 export type ExtensionRuntimeLaunchContext = CommonProtocol.ExtensionRuntimeLaunchContext
@@ -20,17 +33,15 @@ export type ExtensionRuntimeLaunchPackageRef =
       version: string
     }
 
-export interface ExtensionRuntimeForegroundStartRequest {
-  context: ExtensionRuntimeLaunchContext
-  sessionId: string
-}
+export type ExtensionRuntimeForegroundStartRequest = CommonProtocol.ExtensionRuntimeStartRequest
+
+export type ExtensionRuntimeRunOnceRequest = CommonProtocol.ExtensionRuntimeStartRequest
 
 export type ExtensionRuntimeSessionKind = CommonProtocol.ExtensionRuntimeSessionKind
 
 export interface ExtensionRuntimeSessionInfo {
-  context: ExtensionRuntimeLaunchContext
+  intent: ExtensionRuntimeLaunchIntent
   kind: ExtensionRuntimeSessionKind
-  pid?: number
   sessionId: string
 }
 
@@ -135,7 +146,6 @@ export interface ExtensionAgentHostRequest extends ExtensionHostRequestBase {
   payload: ExtensionRunBotAgentPayload
 }
 
-export type ExtensionPreferencesHostRequest = CommonProtocol.ExtensionPreferencesHostRequest
 export type ExtensionRpcHostRequest = CommonProtocol.ExtensionRpcHostRequest
 export type ExtensionStorageHostRequest = CommonProtocol.ExtensionStorageHostRequest
 export type ExtensionStorageGetHostRequest = CommonProtocol.ExtensionStorageGetHostRequest
@@ -156,11 +166,13 @@ export type ExtensionAlertActionPayload = CommonProtocol.ExtensionAlertActionPay
 export type ExtensionConfirmAlertPayload = CommonProtocol.ExtensionConfirmAlertPayload
 export type ExtensionDialogHostRequest = CommonProtocol.ExtensionDialogHostRequest
 export type ExtensionNavigationHostRequest = CommonProtocol.ExtensionNavigationHostRequest
-export type ExtensionRuntimeNavigationRequestEvent = CommonProtocol.ExtensionRuntimeNavigationRequestEvent
+export type ExtensionRuntimeNavigationRequestEvent =
+  CommonProtocol.ExtensionRuntimeNavigationRequestEvent
 export type ExtensionRuntimeEventAck = CommonProtocol.ExtensionRuntimeEventAck
 export type ExtensionRuntimeNavigationResponse = CommonProtocol.ExtensionRuntimeNavigationResponse
 export type ExtensionClipboardHostRequest = CommonProtocol.ExtensionClipboardHostRequest
-export type ExtensionClipboardReadTextHostRequest = CommonProtocol.ExtensionClipboardReadTextHostRequest
+export type ExtensionClipboardReadTextHostRequest =
+  CommonProtocol.ExtensionClipboardReadTextHostRequest
 export type ExtensionClipboardReadSelectedTextHostRequest =
   CommonProtocol.ExtensionClipboardReadSelectedTextHostRequest
 export type ExtensionClipboardWriteTextHostRequest =
@@ -176,10 +188,14 @@ export type ExtensionRuntimeToHostMessage =
   | Exclude<CommonProtocol.ExtensionRuntimeToHostMessage, { type: "host-request" }>
   | { request: ExtensionHostRequest; sessionId: string; type: "host-request" }
 
+export interface ExtensionRuntimeUtilityExecutionLease {
+  context: ExtensionRuntimeLaunchContext
+  runtime: ExtensionRuntimeLaunchPackageRef
+}
+
 export type ExtensionHostToRuntimeMessage =
   | {
-      context: ExtensionRuntimeLaunchContext
-      runtime: ExtensionRuntimeLaunchPackageRef
+      lease: ExtensionRuntimeUtilityExecutionLease
       sessionId: string
       type: "start"
     }

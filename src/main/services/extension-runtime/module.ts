@@ -6,10 +6,11 @@ import { NativeMenuBarService } from "../../native-menu-bar/service"
 import { NativeExtensionsService } from "../../native-extensions/service"
 import { SettingsService } from "../../settings/service"
 import { SettingsWindowRoutingService } from "../../settings-window-routing/service"
-import { getDefaultExtensionRegistryService } from "../../extensions/registry/default-registry"
+import { isLauncherWindowWebContents } from "../../windows/launcher-window"
 import { wrapExtensionRuntimeHostForBdd } from "./bdd-host-capabilities"
 import { ExtensionRuntimeController } from "./controller"
 import { DefaultExtensionRuntimeHostCapabilities } from "./host-capabilities"
+import { createExtensionRuntimeExecutionLeaseOwner } from "./execution-lease"
 import { ExtensionRuntimeMenuBarService } from "./menu-bar-service"
 import { ExtensionRuntimeRendererBridge } from "./renderer-bridge"
 import { ExtensionRuntimeManager, type ExtensionRuntimeHostCapabilities } from "./runtime-manager"
@@ -37,32 +38,18 @@ export function registerExtensionRuntimeModule(container: DependencyContainer): 
   })
   container.register(ExtensionRuntimeManager, {
     useFactory: instanceCachingFactory((dependencyContainer) => {
+      const nativeExtensionsService = dependencyContainer.resolve(NativeExtensionsService)
+      const settingsService = dependencyContainer.resolve(SettingsService)
       return new ExtensionRuntimeManager({
+        executionLeaseOwner: createExtensionRuntimeExecutionLeaseOwner({
+          getLocale: () => settingsService.getAgentConfig().locale
+        }),
         host: dependencyContainer.resolve<ExtensionRuntimeHostCapabilities>(
           EXTENSION_RUNTIME_HOST_TOKEN
         ),
         processLauncher: new UtilityProcessExtensionRuntimeProcessLauncher(),
-        resolveRuntimePackage: (context) => {
-          const runtimeRef = getDefaultExtensionRegistryService().getRuntimePackageRef(
-            context.extensionName
-          )
-          if (!runtimeRef) {
-            throw new Error(`Native extension "${context.extensionName}" has no runtime package`)
-          }
-
-          return runtimeRef.kind === "module"
-            ? {
-                extensionName: runtimeRef.extensionName,
-                kind: "module",
-                modulePath: runtimeRef.modulePath,
-                version: runtimeRef.version
-              }
-            : {
-                extensionName: runtimeRef.extensionName,
-                kind: "built-in",
-                version: runtimeRef.version
-              }
-        }
+        subscribeConfigurationCommits: (listener) =>
+          nativeExtensionsService.onConfigurationCommitted(listener)
       })
     })
   })
@@ -70,18 +57,16 @@ export function registerExtensionRuntimeModule(container: DependencyContainer): 
     useFactory: instanceCachingFactory((dependencyContainer) => {
       return new ExtensionRuntimeController(
         dependencyContainer.resolve(ExtensionRuntimeManager),
-        dependencyContainer.resolve(ExtensionRuntimeRendererBridge)
+        dependencyContainer.resolve(ExtensionRuntimeRendererBridge),
+        isLauncherWindowWebContents
       )
     })
   })
   container.register(ExtensionRuntimeMenuBarService, {
     useFactory: instanceCachingFactory((dependencyContainer) => {
-      const settingsService = dependencyContainer.resolve(SettingsService)
       return new ExtensionRuntimeMenuBarService(
         dependencyContainer.resolve(ExtensionRuntimeManager),
-        dependencyContainer.resolve<ExtensionRuntimeHostCapabilities>(EXTENSION_RUNTIME_HOST_TOKEN),
-        dependencyContainer.resolve(NativeMenuBarService),
-        () => settingsService.getAgentConfig().locale
+        dependencyContainer.resolve(NativeMenuBarService)
       )
     })
   })

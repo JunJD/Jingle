@@ -2,7 +2,6 @@ import Store from "electron-store"
 import { spawn } from "node:child_process"
 import { dialog, shell } from "electron"
 import { HumanMessage, SystemMessage } from "@langchain/core/messages"
-import type { ExtensionRuntimeHostCapability } from "@shared/extension-runtime-protocol"
 import type { ExtensionAiAskPayload } from "@shared/extension-runtime-protocol"
 import type { ExtensionConfirmAlertPayload } from "@shared/extension-runtime-protocol"
 import type { ExtensionToastPayload } from "@shared/extension-runtime-protocol"
@@ -48,20 +47,6 @@ export class DefaultExtensionRuntimeHostCapabilities implements ExtensionRuntime
     private readonly rendererBridge: ExtensionRuntimeRendererBridge,
     private readonly openUrlWithApplication: OpenUrlWithApplication = openUrlWithDesktopApplication
   ) {}
-
-  getRuntimeCapabilities(params: {
-    commandName: string
-    extensionName: string
-  }): readonly ExtensionRuntimeHostCapability[] {
-    const manifest = this.nativeExtensionsService.getManifest(params.extensionName)
-    if (!manifest.commands.some((command) => command.name === params.commandName)) {
-      throw new Error(
-        `Native extension "${params.extensionName}" does not declare command "${params.commandName}"`
-      )
-    }
-
-    return manifest.runtimeCapabilities ?? []
-  }
 
   async askAI(input: ExtensionAiAskPayload): Promise<string> {
     const model = getChatModelInstance({
@@ -150,9 +135,10 @@ export class DefaultExtensionRuntimeHostCapabilities implements ExtensionRuntime
   }
 
   invokeNativeExtension(
-    request: Parameters<NativeExtensionsService["invoke"]>[0]
+    request: Parameters<NativeExtensionsService["invokeWithContext"]>[0],
+    context: Parameters<NativeExtensionsService["invokeWithContext"]>[1]
   ): Promise<unknown> {
-    return this.nativeExtensionsService.invoke(request)
+    return this.nativeExtensionsService.invokeWithContext(request, context)
   }
 
   openExtensionSettings(params: { commandName?: string; extensionName: string }): void {

@@ -5,11 +5,38 @@ export type ExtensionRuntimeCommandMode = "menu-bar" | "no-view" | "view"
 
 export type ExtensionRuntimeInitialAction = "focus" | "open" | "submit"
 
+export interface ExtensionRuntimeJsonObject {
+  readonly [key: string]: ExtensionRuntimeJsonValue
+}
+
+export interface ExtensionRuntimeJsonArray extends ReadonlyArray<ExtensionRuntimeJsonValue> {}
+
+export type ExtensionRuntimeJsonValue =
+  | boolean
+  | ExtensionRuntimeJsonArray
+  | null
+  | number
+  | string
+  | ExtensionRuntimeJsonObject
+
 export interface ExtensionRuntimeLaunchProps {
-  arguments?: Record<string, unknown>
-  draftValues?: Record<string, unknown>
+  arguments?: ExtensionRuntimeJsonObject
+  draftValues?: ExtensionRuntimeJsonObject
   fallbackText?: string
-  launchContext?: Record<string, unknown>
+  launchContext?: ExtensionRuntimeJsonObject
+}
+
+export interface ExtensionRuntimeLaunchIntent {
+  commandName: string
+  extensionName: string
+  initialAction: ExtensionRuntimeInitialAction
+  launchProps?: ExtensionRuntimeLaunchProps
+  seedQuery: string
+}
+
+export interface ExtensionRuntimeStartRequest {
+  intent: ExtensionRuntimeLaunchIntent
+  sessionId: string
 }
 
 export type ExtensionRuntimeHostCapability =
@@ -29,16 +56,11 @@ export type ExtensionRuntimeHostCapability =
 
 export type ExtensionRuntimeStorageScope = "command" | "extension"
 
-export interface ExtensionRuntimeLaunchContext {
-  commandName: string
+export interface ExtensionRuntimeLaunchContext extends ExtensionRuntimeLaunchIntent {
   commandPreferences: Record<string, unknown>
-  extensionName: string
   extensionPreferences: Record<string, unknown>
-  initialAction: ExtensionRuntimeInitialAction
-  launchProps?: ExtensionRuntimeLaunchProps
   locale: AppLocale
   mode: ExtensionRuntimeCommandMode
-  seedQuery: string
 }
 
 export type ExtensionRuntimeSessionKind = "ambient" | "foreground" | "run-once"
@@ -425,7 +447,6 @@ export type ExtensionHostRequest =
   | ExtensionDialogHostRequest
   | ExtensionNavigationHostRequest
   | ExtensionOpenExternalHostRequest
-  | ExtensionPreferencesHostRequest
   | ExtensionQuicklinksHostRequest
   | ExtensionRpcHostRequest
   | ExtensionSchedulerHostRequest
@@ -441,15 +462,6 @@ export interface ExtensionAgentHostRequest extends ExtensionHostRequestBase {
   capability: "agent"
   method: "run-bot-agent"
   payload: ExtensionRunBotAgentPayload
-}
-
-export interface ExtensionPreferencesHostRequest extends ExtensionHostRequestBase {
-  capability: "preferences"
-  method: "get-command-preferences" | "get-extension-preferences"
-  payload: {
-    commandName?: string
-    extensionName: string
-  }
 }
 
 export interface ExtensionRpcHostRequest extends ExtensionHostRequestBase {
@@ -598,16 +610,28 @@ export interface ExtensionDialogHostRequest extends ExtensionHostRequestBase {
   payload: ExtensionConfirmAlertPayload
 }
 
-export interface ExtensionNavigationHostRequest extends ExtensionHostRequestBase {
+export interface ExtensionNavigationBaseHostRequest extends ExtensionHostRequestBase {
   capability: "navigation"
-  method: "go-home" | "hide-launcher" | "open-command"
-  payload?: {
+}
+
+export interface ExtensionNavigationRootHostRequest extends ExtensionNavigationBaseHostRequest {
+  method: "go-home" | "hide-launcher"
+  payload?: never
+}
+
+export interface ExtensionNavigationOpenCommandHostRequest extends ExtensionNavigationBaseHostRequest {
+  method: "open-command"
+  payload: {
     commandName: string
     extensionName: string
     launchProps?: ExtensionRuntimeLaunchProps
     showLauncher?: boolean
   }
 }
+
+export type ExtensionNavigationHostRequest =
+  | ExtensionNavigationOpenCommandHostRequest
+  | ExtensionNavigationRootHostRequest
 
 export interface ExtensionRuntimeNavigationRequestEvent {
   request: ExtensionNavigationHostRequest
@@ -718,4 +742,303 @@ export interface ExtensionRuntimeMetrics {
   rendererApplyDurationMs?: number
   snapshotBytes?: number
   snapshotRevision?: number
+}
+
+export function normalizeExtensionRuntimeJsonFact(
+  value: unknown,
+  path = "extension runtime JSON fact"
+): ExtensionRuntimeJsonValue {
+  return normalizeJsonFact(value, path, new Set<object>())
+}
+
+export function normalizeExtensionRuntimeLaunchProps(
+  value: unknown,
+  path = "extension runtime launch props"
+): ExtensionRuntimeLaunchProps {
+  const normalized = normalizeExtensionRuntimeJsonFact(value, path)
+  const record = assertNormalizedRecord(normalized, path)
+  assertExactKeys(record, path, ["arguments", "draftValues", "fallbackText", "launchContext"])
+
+  const argumentsValue = readOptionalRecord(record, "arguments", path)
+  const draftValues = readOptionalRecord(record, "draftValues", path)
+  const launchContext = readOptionalRecord(record, "launchContext", path)
+  const fallbackText = record.fallbackText
+  if (fallbackText !== undefined && typeof fallbackText !== "string") {
+    throw new TypeError(`${path}.fallbackText must be a string`)
+  }
+
+  return Object.freeze({
+    ...(argumentsValue ? { arguments: argumentsValue } : {}),
+    ...(draftValues ? { draftValues } : {}),
+    ...(fallbackText !== undefined ? { fallbackText } : {}),
+    ...(launchContext ? { launchContext } : {})
+  })
+}
+
+export function normalizeExtensionRuntimeStartRequest(
+  value: unknown,
+  path = "extension runtime start request"
+): ExtensionRuntimeStartRequest {
+  const normalized = normalizeExtensionRuntimeJsonFact(value, path)
+  const request = assertNormalizedRecord(normalized, path)
+  assertExactKeys(request, path, ["intent", "sessionId"])
+
+  return Object.freeze({
+    intent: normalizeExtensionRuntimeLaunchIntent(request.intent, `${path}.intent`),
+    sessionId: readNonEmptyString(request.sessionId, `${path}.sessionId`)
+  })
+}
+
+export function normalizeExtensionRuntimeLaunchIntent(
+  value: unknown,
+  path = "extension runtime launch intent"
+): ExtensionRuntimeLaunchIntent {
+  const normalized = normalizeExtensionRuntimeJsonFact(value, path)
+  const record = assertNormalizedRecord(normalized, path)
+  assertExactKeys(record, path, [
+    "commandName",
+    "extensionName",
+    "initialAction",
+    "launchProps",
+    "seedQuery"
+  ])
+
+  const commandName = readNonEmptyString(record.commandName, `${path}.commandName`)
+  const extensionName = readNonEmptyString(record.extensionName, `${path}.extensionName`)
+  const initialAction = record.initialAction
+  if (initialAction !== "focus" && initialAction !== "open" && initialAction !== "submit") {
+    throw new TypeError(`${path}.initialAction is invalid`)
+  }
+  if (typeof record.seedQuery !== "string") {
+    throw new TypeError(`${path}.seedQuery must be a string`)
+  }
+  const launchProps = hasOwn(record, "launchProps")
+    ? normalizeExtensionRuntimeLaunchProps(record.launchProps, `${path}.launchProps`)
+    : undefined
+
+  return Object.freeze({
+    commandName,
+    extensionName,
+    initialAction,
+    ...(launchProps ? { launchProps } : {}),
+    seedQuery: record.seedQuery
+  })
+}
+
+export function normalizeExtensionRuntimeNavigationHostRequest(
+  value: unknown,
+  path = "extension runtime navigation request"
+): ExtensionNavigationHostRequest {
+  const normalized = normalizeExtensionRuntimeJsonFact(value, path)
+  const request = assertNormalizedRecord(normalized, path)
+  assertExactKeys(request, path, ["capability", "id", "method", "payload"])
+  if (request.capability !== "navigation") {
+    throw new TypeError(`${path}.capability must be navigation`)
+  }
+  const id = readNonEmptyString(request.id, `${path}.id`)
+  const method = request.method
+  if (method !== "go-home" && method !== "hide-launcher" && method !== "open-command") {
+    throw new TypeError(`${path}.method is invalid`)
+  }
+
+  if (method !== "open-command") {
+    if (hasOwn(request, "payload")) {
+      throw new TypeError(`${path}.payload is not supported for ${method}`)
+    }
+    return Object.freeze({ capability: "navigation", id, method })
+  }
+
+  const payload = assertNormalizedRecord(request.payload, `${path}.payload`)
+  assertExactKeys(payload, `${path}.payload`, [
+    "commandName",
+    "extensionName",
+    "launchProps",
+    "showLauncher"
+  ])
+  const commandName = readNonEmptyString(payload.commandName, `${path}.payload.commandName`)
+  const extensionName = readNonEmptyString(payload.extensionName, `${path}.payload.extensionName`)
+  const launchProps = hasOwn(payload, "launchProps")
+    ? normalizeExtensionRuntimeLaunchProps(payload.launchProps, `${path}.payload.launchProps`)
+    : undefined
+  const showLauncher = payload.showLauncher
+  if (showLauncher !== undefined && typeof showLauncher !== "boolean") {
+    throw new TypeError(`${path}.payload.showLauncher must be a boolean`)
+  }
+
+  return Object.freeze({
+    capability: "navigation",
+    id,
+    method,
+    payload: Object.freeze({
+      commandName,
+      extensionName,
+      ...(launchProps ? { launchProps } : {}),
+      ...(showLauncher !== undefined ? { showLauncher } : {})
+    })
+  })
+}
+
+export function normalizeExtensionRuntimeNavigationRequestEvent(
+  value: unknown,
+  path = "extension runtime navigation event"
+): ExtensionRuntimeNavigationRequestEvent {
+  const normalized = normalizeExtensionRuntimeJsonFact(value, path)
+  const event = assertNormalizedRecord(normalized, path)
+  assertExactKeys(event, path, ["request", "sessionId"])
+
+  return Object.freeze({
+    request: normalizeExtensionRuntimeNavigationHostRequest(event.request, `${path}.request`),
+    sessionId: readNonEmptyString(event.sessionId, `${path}.sessionId`)
+  })
+}
+
+function normalizeJsonFact(
+  value: unknown,
+  path: string,
+  ancestors: Set<object>
+): ExtensionRuntimeJsonValue {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return value
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new TypeError(`${path} must contain only finite numbers`)
+    }
+    return Object.is(value, -0) ? 0 : value
+  }
+  if (typeof value !== "object") {
+    throw new TypeError(`${path} must contain only JSON values`)
+  }
+  if (ancestors.has(value)) {
+    throw new TypeError(`${path} must not contain cycles`)
+  }
+
+  ancestors.add(value)
+  try {
+    if (Array.isArray(value)) {
+      if (Object.getPrototypeOf(value) !== Array.prototype) {
+        throw new TypeError(`${path} must use the standard Array prototype`)
+      }
+      const entries = readJsonArrayEntries(value, path)
+      const normalized = entries.map((entry, index) =>
+        normalizeJsonFact(entry, `${path}[${index}]`, ancestors)
+      )
+      return Object.freeze(normalized)
+    }
+
+    const prototype = Object.getPrototypeOf(value)
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new TypeError(`${path} must contain only plain objects`)
+    }
+    const entries = readEnumerableDataEntries(value, path).map(
+      ([key, entry]) =>
+        [key, normalizeJsonFact(entry, `${path}[${JSON.stringify(key)}]`, ancestors)] as const
+    )
+    return Object.freeze(Object.fromEntries(entries))
+  } finally {
+    ancestors.delete(value)
+  }
+}
+
+function readJsonArrayEntries(value: unknown[], path: string): unknown[] {
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length")
+  if (
+    !lengthDescriptor ||
+    !("value" in lengthDescriptor) ||
+    !Number.isSafeInteger(lengthDescriptor.value) ||
+    lengthDescriptor.value < 0
+  ) {
+    throw new TypeError(`${path}.length must be a non-negative integer data property`)
+  }
+  const length = lengthDescriptor.value as number
+  for (const key of Reflect.ownKeys(value)) {
+    if (key === "length") {
+      continue
+    }
+    if (typeof key !== "string" || !isArrayIndex(key, length)) {
+      throw new TypeError(`${path} must not contain custom array properties`)
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    if (!descriptor?.enumerable || !("value" in descriptor)) {
+      throw new TypeError(`${path}[${key}] must be an enumerable data property`)
+    }
+  }
+  const entries: unknown[] = []
+  for (let index = 0; index < length; index += 1) {
+    if (!hasOwn(value, String(index))) {
+      throw new TypeError(`${path} must not contain sparse arrays`)
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
+    if (!descriptor?.enumerable || !("value" in descriptor)) {
+      throw new TypeError(`${path}[${index}] must be an enumerable data property`)
+    }
+    entries.push(descriptor.value)
+  }
+  return entries
+}
+
+function readEnumerableDataEntries(value: object, path: string): Array<[string, unknown]> {
+  return Reflect.ownKeys(value).map((key) => {
+    if (typeof key !== "string") {
+      throw new TypeError(`${path} must not contain symbol keys`)
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    if (!descriptor?.enumerable || !("value" in descriptor)) {
+      throw new TypeError(`${path}[${JSON.stringify(key)}] must be an enumerable data property`)
+    }
+    return [key, descriptor.value]
+  })
+}
+
+function assertNormalizedRecord(
+  value: ExtensionRuntimeJsonValue | undefined,
+  path: string
+): ExtensionRuntimeJsonObject {
+  if (!value || Array.isArray(value) || typeof value !== "object") {
+    throw new TypeError(`${path} must be a plain object`)
+  }
+  return value as ExtensionRuntimeJsonObject
+}
+
+function assertExactKeys(
+  record: ExtensionRuntimeJsonObject,
+  path: string,
+  supportedKeys: readonly string[]
+): void {
+  const supported = new Set(supportedKeys)
+  for (const key of Object.keys(record)) {
+    if (!supported.has(key)) {
+      throw new TypeError(`${path} contains unsupported property ${JSON.stringify(key)}`)
+    }
+  }
+}
+
+function readOptionalRecord(
+  record: ExtensionRuntimeJsonObject,
+  key: string,
+  path: string
+): ExtensionRuntimeJsonObject | undefined {
+  if (!hasOwn(record, key)) {
+    return undefined
+  }
+  return assertNormalizedRecord(record[key], `${path}.${key}`)
+}
+
+function readNonEmptyString(value: ExtensionRuntimeJsonValue | undefined, path: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new TypeError(`${path} must be a non-empty string`)
+  }
+  return value
+}
+
+function hasOwn(value: object, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key)
+}
+
+function isArrayIndex(key: string, length: number): boolean {
+  if (!/^(0|[1-9]\d*)$/.test(key)) {
+    return false
+  }
+  const index = Number(key)
+  return Number.isSafeInteger(index) && index >= 0 && index < length
 }

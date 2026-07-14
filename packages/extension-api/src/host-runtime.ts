@@ -16,6 +16,7 @@ export {
 } from "./extension-runtime/react-bridge-abi"
 export {
   getActiveExtensionRuntimeSdk,
+  sendExtensionRuntimeHostRequest,
   type RuntimeToastActionHandler,
   type RuntimeToastActionRegistration
 } from "./extension-runtime/sdk/runtime-context"
@@ -31,4 +32,12 @@ export type {
   RuntimeCacheBackendScope,
   RuntimeCacheEntry
 } from "./extension-runtime/sdk/storage"
+export {
+  normalizeExtensionRuntimeJsonFact,
+  normalizeExtensionRuntimeLaunchIntent,
+  normalizeExtensionRuntimeLaunchProps,
+  normalizeExtensionRuntimeNavigationHostRequest,
+  normalizeExtensionRuntimeNavigationRequestEvent,
+  normalizeExtensionRuntimeStartRequest
+} from "./shared/extension-runtime-protocol"
 export type * from "./shared/extension-runtime-protocol"

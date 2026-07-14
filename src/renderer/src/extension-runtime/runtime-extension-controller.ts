@@ -9,13 +9,12 @@ import type {
   ExtensionListSurfaceSnapshot,
   ExtensionRuntimeEvent,
   ExtensionRuntimeEventAck,
+  ExtensionRuntimeLaunchIntent,
   ExtensionSurfaceSnapshot,
   ExtensionToastPayload
 } from "@shared/extension-runtime-protocol"
-import type {
-  NativeExtensionHostValue,
-  NativeExtensionNavigation
-} from "../extension-host/sdk"
+import { normalizeExtensionRuntimeLaunchIntent } from "@shared/extension-runtime-protocol"
+import type { NativeExtensionHostValue, NativeExtensionNavigation } from "../extension-host/sdk"
 import type { NativeSurfaceListEmptyPresentation } from "../extension-host/list-presentation"
 import {
   acknowledgeRuntimeFormLocalValue,
@@ -259,6 +258,22 @@ export function projectRuntimeDetailMetadata(
     ...metadata,
     openTarget: projectRuntimeOpenExternalTarget(target)
   }
+}
+
+export function createRuntimeForegroundLaunchIntent(
+  host: Pick<
+    NativeExtensionHostValue,
+    "commandName" | "extensionName" | "initialAction" | "launchProps"
+  >,
+  seedQuery: string
+): ExtensionRuntimeLaunchIntent {
+  return normalizeExtensionRuntimeLaunchIntent({
+    commandName: host.commandName,
+    extensionName: host.extensionName,
+    initialAction: host.initialAction,
+    ...(host.launchProps !== undefined ? { launchProps: host.launchProps } : {}),
+    seedQuery
+  })
 }
 
 export function useRuntimeExtensionController(params: {
@@ -512,23 +527,39 @@ export function useRuntimeExtensionController(params: {
   useEffect(() => {
     let cancelled = false
     const sessionId = createRuntimeSessionId()
+    let launchIntent: ExtensionRuntimeLaunchIntent
+
+    try {
+      launchIntent = createRuntimeForegroundLaunchIntent(
+        {
+          commandName: host.commandName,
+          extensionName: host.extensionName,
+          initialAction: host.initialAction,
+          ...(host.launchProps !== undefined ? { launchProps: host.launchProps } : {})
+        },
+        initialSeedQueryRef.current
+      )
+    } catch (error) {
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setRuntimeState({
+            error: getRuntimeRequestErrorMessage(error),
+            sessionId: null,
+            snapshot: null
+          })
+        }
+      })
+      return () => {
+        cancelled = true
+      }
+    }
 
     hasReceivedListSurfaceRef.current = false
     activeSessionIdRef.current = sessionId
 
     void window.api.extensionRuntime
       .startForeground({
-        context: {
-          commandName: host.commandName,
-          commandPreferences: host.commandPreferences,
-          extensionName: host.extensionName,
-          extensionPreferences: {},
-          initialAction: host.initialAction,
-          launchProps: host.launchProps,
-          locale: host.locale,
-          mode: "view",
-          seedQuery: initialSeedQueryRef.current
-        },
+        intent: launchIntent,
         sessionId
       })
       .then((session) => {
@@ -575,15 +606,12 @@ export function useRuntimeExtensionController(params: {
     clearListQueryThrottleTimer,
     clearToastDismissTimer,
     host.commandName,
-    host.commandPreferences,
     host.extensionName,
     host.initialAction,
-    host.launchProps,
-    host.locale
+    host.launchProps
   ])
 
-  const listSnapshot =
-    runtimeState.snapshot?.kind === "list" ? runtimeState.snapshot : null
+  const listSnapshot = runtimeState.snapshot?.kind === "list" ? runtimeState.snapshot : null
   const listDropdownProjection = projectRuntimeListDropdown(listSnapshot)
 
   return {
@@ -605,10 +633,7 @@ export function useRuntimeExtensionController(params: {
   }
 }
 
-export function sendRuntimeExtensionEvent(
-  sessionId: string,
-  event: ExtensionRuntimeEvent
-): void {
+export function sendRuntimeExtensionEvent(sessionId: string, event: ExtensionRuntimeEvent): void {
   void window.api.extensionRuntime.sendEvent(sessionId, event)
 }
 

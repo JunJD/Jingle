@@ -1,5 +1,9 @@
 import type { LauncherSearchAction } from "./launcher-search"
-import type { ExtensionRuntimeLaunchProps } from "./extension-runtime-protocol"
+import {
+  normalizeExtensionRuntimeJsonFact,
+  type ExtensionRuntimeJsonObject,
+  type ExtensionRuntimeLaunchProps
+} from "./extension-runtime-protocol"
 
 export interface ExtensionQuicklinkShortcut {
   key: string
@@ -140,15 +144,19 @@ export function createExtensionQuicklinkAction(
   }
 }
 
-function readLaunchContext(value: string | null): Record<string, unknown> | null {
+function readLaunchContext(value: string | null): ExtensionRuntimeJsonObject | null {
   if (!value) {
     return null
   }
 
   try {
     const parsed = JSON.parse(value) as unknown
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
+    const normalized = normalizeExtensionRuntimeJsonFact(
+      parsed,
+      "extension quicklink launchContext"
+    )
+    return normalized && typeof normalized === "object" && !Array.isArray(normalized)
+      ? (normalized as ExtensionRuntimeJsonObject)
       : null
   } catch {
     return null

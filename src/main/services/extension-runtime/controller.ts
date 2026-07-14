@@ -1,12 +1,13 @@
-import type { IpcMain, WebContents } from "electron"
+import type { IpcMain, IpcMainInvokeEvent, WebContents } from "electron"
 import type {
   ExtensionRuntimeEvent,
   ExtensionRuntimeForegroundStartRequest,
-  ExtensionRuntimeLaunchContext,
   ExtensionRuntimeNavigationResponse,
   ExtensionRuntimeRunBotAgentResponse,
+  ExtensionRuntimeRunOnceRequest,
   ExtensionRuntimeRunResult
 } from "@shared/extension-runtime-protocol"
+import { normalizeExtensionRuntimeStartRequest } from "@shared/extension-runtime-protocol"
 import { registerIpcHandle } from "../../ipc/handle"
 import { ExtensionRuntimeRendererBridge } from "./renderer-bridge"
 import { ExtensionRuntimeManager } from "./runtime-manager"
@@ -14,7 +15,6 @@ import { ExtensionRuntimeManager } from "./runtime-manager"
 const SURFACE_CHANNEL = "extensionRuntime:surface"
 const ERROR_CHANNEL = "extensionRuntime:error"
 const EVENT_ACK_CHANNEL = "extensionRuntime:eventAck"
-const RUN_ONCE_SESSION_CHANNEL = "extensionRuntime:runOnceSession"
 
 export class ExtensionRuntimeController {
   private readonly surfaceSubscribers = new Map<number, WebContents>()
@@ -22,34 +22,32 @@ export class ExtensionRuntimeController {
 
   constructor(
     private readonly runtimeManager: ExtensionRuntimeManager,
-    private readonly rendererBridge: ExtensionRuntimeRendererBridge
+    private readonly rendererBridge: ExtensionRuntimeRendererBridge,
+    private readonly isAuthorizedRenderer: (webContents: WebContents) => boolean
   ) {
+    this.rendererBridge.onSessionOwnerDetached((sessionId) => {
+      this.runtimeManager.stopSessionById(sessionId, {
+        code: "runtime_renderer_detached",
+        message: "Extension runtime renderer owner detached."
+      })
+    })
     this.runtimeManager.onSurface((surface, session) => {
-      for (const subscriber of this.surfaceSubscribers.values()) {
-        if (!subscriber.isDestroyed()) {
-          subscriber.send(SURFACE_CHANNEL, { session, surface })
-        }
-      }
+      this.sendSessionProjection(session.sessionId, SURFACE_CHANNEL, { session, surface })
     })
     this.runtimeManager.onError((error) => {
-      this.rendererBridge.releaseSession(error.sessionId)
-      for (const subscriber of this.surfaceSubscribers.values()) {
-        if (!subscriber.isDestroyed()) {
-          subscriber.send(ERROR_CHANNEL, error)
-        }
-      }
+      this.sendSessionProjection(error.sessionId, ERROR_CHANNEL, error, false)
+    })
+    this.runtimeManager.onSessionStopped((session) => {
+      this.rendererBridge.releaseSession(session.sessionId)
     })
     this.runtimeManager.onEventAck((ack, session) => {
-      for (const subscriber of this.surfaceSubscribers.values()) {
-        if (!subscriber.isDestroyed()) {
-          subscriber.send(EVENT_ACK_CHANNEL, { ack, session })
-        }
-      }
+      this.sendSessionProjection(session.sessionId, EVENT_ACK_CHANNEL, { ack, session })
     })
   }
 
   register(ipcMain: IpcMain): void {
     registerIpcHandle(ipcMain, "extensionRuntime:subscribeSurfaces", (event) => {
+      this.assertAuthorizedRenderer(event)
       const senderId = event.sender.id
       this.surfaceSubscribers.set(senderId, event.sender)
       if (!this.surfaceSubscriberDestroyCleanups.has(senderId)) {
@@ -63,6 +61,7 @@ export class ExtensionRuntimeController {
     })
 
     registerIpcHandle(ipcMain, "extensionRuntime:unsubscribeSurfaces", (event) => {
+      this.assertAuthorizedRenderer(event)
       const senderId = event.sender.id
       const cleanup = this.surfaceSubscriberDestroyCleanups.get(senderId)
       if (cleanup) {
@@ -76,57 +75,55 @@ export class ExtensionRuntimeController {
       ipcMain,
       "extensionRuntime:startForeground",
       async (event, request: ExtensionRuntimeForegroundStartRequest) => {
-        const previousSessionId = this.runtimeManager.getForegroundSession()?.sessionId
-        this.rendererBridge.bindSession(request.sessionId, event.sender)
-        try {
-          const session = await this.runtimeManager.startForeground(request.context, {
-            sessionId: request.sessionId
-          })
-          if (previousSessionId) {
-            this.rendererBridge.releaseSession(previousSessionId)
-          }
-          return session
-        } catch (error) {
-          this.rendererBridge.releaseSession(request.sessionId)
-          throw error
-        }
+        this.assertAuthorizedRenderer(event)
+        const normalizedRequest = normalizeExtensionRuntimeStartRequest(request)
+        return this.runtimeManager.startForeground(normalizedRequest.intent, {
+          onSessionStart: (startedSession) => {
+            this.rendererBridge.bindSession(startedSession.sessionId, event.sender)
+          },
+          sessionId: normalizedRequest.sessionId
+        })
       }
     )
 
     registerIpcHandle(
       ipcMain,
       "extensionRuntime:runOnce",
-      async (event, context: ExtensionRuntimeLaunchContext): Promise<ExtensionRuntimeRunResult> => {
-        let sessionId: string | null = null
-        try {
-          return await this.runtimeManager.runOnce(context, {
-            onSessionStart: (session) => {
-              sessionId = session.sessionId
-              this.rendererBridge.bindSession(session.sessionId, event.sender)
-              event.sender.send(RUN_ONCE_SESSION_CHANNEL, session)
-            }
-          })
-        } finally {
-          if (sessionId) {
-            this.rendererBridge.releaseSession(sessionId)
-          }
-        }
+      async (
+        event,
+        request: ExtensionRuntimeRunOnceRequest
+      ): Promise<ExtensionRuntimeRunResult> => {
+        this.assertAuthorizedRenderer(event)
+        const normalizedRequest = normalizeExtensionRuntimeStartRequest(request)
+        return this.runtimeManager.runOnce(normalizedRequest.intent, {
+          onSessionStart: (session) => {
+            this.rendererBridge.bindSession(session.sessionId, event.sender)
+          },
+          sessionId: normalizedRequest.sessionId
+        })
       }
     )
 
-    registerIpcHandle(ipcMain, "extensionRuntime:stopForeground", (_event, sessionId?: string) => {
-      const stoppedSessionId = sessionId ?? this.runtimeManager.getForegroundSession()?.sessionId
-      const stopped = this.runtimeManager.stopForeground(sessionId)
-      if (stopped && stoppedSessionId) {
-        this.rendererBridge.releaseSession(stoppedSessionId)
+    registerIpcHandle(ipcMain, "extensionRuntime:stopForeground", (event, sessionId?: string) => {
+      this.assertAuthorizedRenderer(event)
+      const targetSessionId = sessionId ?? this.runtimeManager.getForegroundSession()?.sessionId
+      if (!targetSessionId) {
+        return false
       }
-      return stopped
+      if (!this.rendererBridge.isSessionOwner(targetSessionId, event.sender)) {
+        return false
+      }
+      return this.runtimeManager.stopForeground(targetSessionId)
     })
 
     registerIpcHandle(
       ipcMain,
       "extensionRuntime:sendEvent",
-      (_event, sessionId: string, runtimeEvent: ExtensionRuntimeEvent) => {
+      (event, sessionId: string, runtimeEvent: ExtensionRuntimeEvent) => {
+        this.assertAuthorizedRenderer(event)
+        if (!this.rendererBridge.isSessionOwner(sessionId, event.sender)) {
+          return false
+        }
         return this.runtimeManager.sendEvent(sessionId, runtimeEvent)
       }
     )
@@ -135,6 +132,7 @@ export class ExtensionRuntimeController {
       ipcMain,
       "extensionRuntime:completeNavigationRequest",
       (event, response: ExtensionRuntimeNavigationResponse) => {
+        this.assertAuthorizedRenderer(event)
         return this.rendererBridge.completeNavigationRequest(event.sender, response)
       }
     )
@@ -143,8 +141,42 @@ export class ExtensionRuntimeController {
       ipcMain,
       "extensionRuntime:completeRunBotAgentRequest",
       (event, response: ExtensionRuntimeRunBotAgentResponse) => {
+        this.assertAuthorizedRenderer(event)
         return this.rendererBridge.completeRunBotAgentRequest(event.sender, response)
       }
     )
+  }
+
+  private sendSessionProjection(
+    sessionId: string,
+    channel: string,
+    payload: unknown,
+    stopOnFailure = true
+  ): void {
+    const owner = this.rendererBridge.getSessionOwner(sessionId)
+    if (!owner || this.surfaceSubscribers.get(owner.id) !== owner) {
+      return
+    }
+
+    try {
+      owner.send(channel, payload)
+    } catch (error) {
+      this.rendererBridge.releaseSession(sessionId)
+      if (stopOnFailure) {
+        this.runtimeManager.stopSessionById(sessionId, {
+          code: "runtime_renderer_transport_failed",
+          message: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+  }
+
+  private assertAuthorizedRenderer(event: IpcMainInvokeEvent): void {
+    if (event.senderFrame !== event.sender.mainFrame) {
+      throw new Error("Extension runtime IPC is only available to the renderer main frame.")
+    }
+    if (!this.isAuthorizedRenderer(event.sender)) {
+      throw new Error("Extension runtime IPC is only available to the Launcher window.")
+    }
   }
 }

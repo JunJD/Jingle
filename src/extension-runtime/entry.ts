@@ -7,8 +7,7 @@ import type {
   ExtensionHostToRuntimeMessage,
   ExtensionRuntimeError,
   ExtensionRuntimeEvent,
-  ExtensionRuntimeLaunchContext,
-  ExtensionRuntimeLaunchPackageRef,
+  ExtensionRuntimeUtilityExecutionLease,
   ExtensionRuntimeToHostMessage
 } from "@shared/extension-runtime-protocol"
 import { loadNativeExtensionRuntimeCommand } from "./runtime-package-loader"
@@ -23,7 +22,9 @@ import {
   ExtensionRuntimeNavigationProvider,
   installExtensionRuntimeReactBridge,
   installExtensionRuntimeCacheBackend,
+  normalizeExtensionRuntimeNavigationHostRequest,
   runWithExtensionRuntimeSdk,
+  sendExtensionRuntimeHostRequest,
   type ExtensionRuntimeHostRequestInput
 } from "@jingle/extension-api/host-runtime"
 
@@ -40,7 +41,7 @@ parentPort.on("message", (event) => {
 
   switch (message.type) {
     case "start":
-      void startRuntime(message.sessionId, message.context, message.runtime)
+      void startRuntime(message.sessionId, message.lease)
       return
     case "stop":
       process.exit(0)
@@ -98,10 +99,11 @@ function postToHost(message: ExtensionRuntimeToHostMessage): void {
 
 async function startRuntime(
   sessionId: string,
-  context: ExtensionRuntimeLaunchContext,
-  runtimeRef: ExtensionRuntimeLaunchPackageRef
+  receivedLease: ExtensionRuntimeUtilityExecutionLease
 ): Promise<void> {
   try {
+    const lease = deepFreeze(structuredClone(receivedLease))
+    const { context, runtime: runtimeRef } = lease
     const command = await loadNativeExtensionRuntimeCommand(runtimeRef, context)
 
     if (command.mode !== context.mode) {
@@ -111,8 +113,11 @@ async function startRuntime(
     }
 
     const requestHostWithId = (request: ExtensionRuntimeHostRequestInput) =>
-      requestHost(sessionId, withHostRequestId(request))
-    const resolvedContext = await resolveRuntimeLaunchContext(context, requestHostWithId)
+      sendExtensionRuntimeHostRequest(request, {
+        createRequestId: () => `runtime-host-request-${hostRequestIndex++}`,
+        send: (transportRequest) => requestHost(sessionId, transportRequest)
+      })
+    const resolvedContext = context
 
     if (command.mode === "no-view") {
       const navigation = createExtensionRuntimeNavigation({
@@ -196,58 +201,28 @@ function installRuntimeReactBridge(): void {
   })
 }
 
-async function resolveRuntimeLaunchContext(
-  context: ExtensionRuntimeLaunchContext,
-  requestHost: (request: ExtensionRuntimeHostRequestInput) => Promise<ExtensionHostResponse>
-): Promise<ExtensionRuntimeLaunchContext> {
-  const extensionPreferencesResponse = await requestHost({
-    capability: "preferences",
-    method: "get-extension-preferences",
-    payload: {
-      extensionName: context.extensionName
-    }
-  })
-  if (!extensionPreferencesResponse.ok) {
-    throw new Error(extensionPreferencesResponse.error.message)
-  }
-
-  const commandPreferencesResponse = await requestHost({
-    capability: "preferences",
-    method: "get-command-preferences",
-    payload: {
-      commandName: context.commandName,
-      extensionName: context.extensionName
-    }
-  })
-  if (!commandPreferencesResponse.ok) {
-    throw new Error(commandPreferencesResponse.error.message)
-  }
-
-  return {
-    ...context,
-    commandPreferences: commandPreferencesResponse.result as Record<string, unknown>,
-    extensionPreferences: extensionPreferencesResponse.result as Record<string, unknown>
-  }
-}
-
-function withHostRequestId(request: ExtensionRuntimeHostRequestInput): ExtensionHostRequest {
-  return {
-    ...request,
-    id: `runtime-host-request-${hostRequestIndex++}`
-  } as ExtensionHostRequest
-}
-
-function requestHost(
+async function requestHost(
   sessionId: string,
   request: ExtensionHostRequest
 ): Promise<ExtensionHostResponse> {
+  const transportRequest =
+    request.capability === "navigation"
+      ? normalizeExtensionRuntimeNavigationHostRequest(request)
+      : request
   return new Promise((resolve) => {
-    pendingHostResponses.set(request.id, resolve)
-    postToHost({
-      request,
-      sessionId,
-      type: "host-request"
-    })
+    pendingHostResponses.set(transportRequest.id, resolve)
+    try {
+      postToHost({
+        request: transportRequest,
+        sessionId,
+        type: "host-request"
+      })
+    } catch (error) {
+      if (pendingHostResponses.get(transportRequest.id) === resolve) {
+        pendingHostResponses.delete(transportRequest.id)
+      }
+      throw error
+    }
   })
 }
 
@@ -282,4 +257,16 @@ function installRuntimeCacheBackend(): void {
   }
 
   installExtensionRuntimeCacheBackend(createFileExtensionRuntimeCacheBackend(cacheDir))
+}
+
+function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
+  if (!value || typeof value !== "object" || seen.has(value)) {
+    return value
+  }
+
+  seen.add(value)
+  for (const child of Object.values(value)) {
+    deepFreeze(child, seen)
+  }
+  return Object.freeze(value)
 }

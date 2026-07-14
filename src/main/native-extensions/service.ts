@@ -23,10 +23,12 @@ import {
 import { resolveNativeExtensionConnection } from "./connection-resolver"
 import {
   resolveNativeExtensionExecutionContext,
-  resolveNativeExtensionExecutionContextFromSnapshot
+  resolveNativeExtensionExecutionContextFromSnapshot,
+  type NativeExtensionExecutionContextSnapshot
 } from "./execution-context"
 import {
   invokeNativeExtension,
+  invokeNativeExtensionWithContext,
   listNativeExtensionLauncherCatalog,
   listNativeExtensionSettingsSchemas,
   listNativeExtensionSourceMentions
@@ -183,6 +185,13 @@ export class NativeExtensionsService {
 
   invoke(request: NativeExtensionInvokeRequest): Promise<unknown> {
     return invokeNativeExtension(request)
+  }
+
+  invokeWithContext(
+    request: NativeExtensionInvokeRequest,
+    context: NativeExtensionExecutionContextSnapshot
+  ): Promise<unknown> {
+    return invokeNativeExtensionWithContext(request, context)
   }
 
   async startOAuthConnection(

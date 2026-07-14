@@ -10,8 +10,7 @@ import type {
 } from "@shared/extension-runtime-protocol"
 
 export const EXTENSION_RUNTIME_NAVIGATION_REQUEST_CHANNEL = "extensionRuntime:navigationRequest"
-export const EXTENSION_RUNTIME_RUN_BOT_AGENT_REQUEST_CHANNEL =
-  "extensionRuntime:runBotAgentRequest"
+export const EXTENSION_RUNTIME_RUN_BOT_AGENT_REQUEST_CHANNEL = "extensionRuntime:runBotAgentRequest"
 export const EXTENSION_RUNTIME_TOAST_REQUEST_CHANNEL = "extensionRuntime:toastRequest"
 
 interface PendingNavigationRequest {
@@ -32,12 +31,16 @@ interface RendererOwnerCleanup {
 }
 
 export class ExtensionRuntimeRendererBridge {
+  private readonly ownerDetachedListeners = new Set<(sessionId: string) => void>()
   private readonly ownerCleanupByWebContentsId = new Map<number, RendererOwnerCleanup>()
   private readonly pendingNavigationRequests = new Map<string, PendingNavigationRequest>()
   private readonly pendingRunBotAgentRequests = new Map<string, PendingRunBotAgentRequest>()
   private readonly sessionOwners = new Map<string, WebContents>()
 
   bindSession(sessionId: string, webContents: WebContents): void {
+    if (webContents.isDestroyed()) {
+      throw new Error(`Extension runtime session "${sessionId}" renderer is already destroyed.`)
+    }
     this.sessionOwners.set(sessionId, webContents)
 
     if (this.ownerCleanupByWebContentsId.has(webContents.id)) {
@@ -48,7 +51,7 @@ export class ExtensionRuntimeRendererBridge {
       this.ownerCleanupByWebContentsId.delete(webContents.id)
       for (const [ownerSessionId, owner] of Array.from(this.sessionOwners.entries())) {
         if (owner.id === webContents.id) {
-          this.releaseSession(ownerSessionId)
+          this.releaseSessionOwner(ownerSessionId, true)
         }
       }
     }
@@ -60,7 +63,27 @@ export class ExtensionRuntimeRendererBridge {
     webContents.once("destroyed", listener)
   }
 
+  onSessionOwnerDetached(listener: (sessionId: string) => void): () => void {
+    this.ownerDetachedListeners.add(listener)
+    return () => {
+      this.ownerDetachedListeners.delete(listener)
+    }
+  }
+
+  getSessionOwner(sessionId: string): WebContents | null {
+    const owner = this.sessionOwners.get(sessionId)
+    return owner && !owner.isDestroyed() ? owner : null
+  }
+
+  isSessionOwner(sessionId: string, webContents: WebContents): boolean {
+    return this.getSessionOwner(sessionId) === webContents
+  }
+
   releaseSession(sessionId: string): void {
+    this.releaseSessionOwner(sessionId, false)
+  }
+
+  private releaseSessionOwner(sessionId: string, notifyDetached: boolean): void {
     const owner = this.sessionOwners.get(sessionId)
     this.sessionOwners.delete(sessionId)
     for (const [requestId, pending] of this.pendingNavigationRequests) {
@@ -78,6 +101,12 @@ export class ExtensionRuntimeRendererBridge {
 
       this.pendingRunBotAgentRequests.delete(requestId)
       pending.reject(new Error(`Extension runtime session "${sessionId}" renderer detached.`))
+    }
+
+    if (notifyDetached) {
+      for (const listener of this.ownerDetachedListeners) {
+        listener(sessionId)
+      }
     }
 
     if (!owner || owner.isDestroyed()) {
