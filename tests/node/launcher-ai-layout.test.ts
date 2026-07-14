@@ -64,7 +64,7 @@ test("renderer entry keeps bootstrap side effects out of the React refresh bound
 
   assert.match(
     mainSource,
-    /ReactDOM\.createRoot\(document\.getElementById\("root"\)!\)\.render\(\s*<RendererRoot windowKind=\{windowKind\} \/>\s*\)/
+    /ReactDOM\.createRoot\(document\.getElementById\("root"\)!\)\.render\(\s*<RendererRoot resolvedWindowKind=\{resolvedWindowKind\} windowKind=\{windowKind\} \/>\s*\)/
   )
   assert.match(mainSource, /import \{ RendererRoot \} from "\.\/RendererRoot"/)
   assert.doesNotMatch(mainSource, /export function RendererRoot/)
