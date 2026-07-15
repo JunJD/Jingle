@@ -318,7 +318,7 @@ export interface ExtensionActionShortcutNode {
 
 export interface ExtensionRunBotAgentSourceRef {
   id?: string
-  label?: string
+  label: string
   metadata?: Record<string, unknown>
   type: string
   url?: string
@@ -332,8 +332,13 @@ export interface ExtensionRunBotAgentPromptPlan {
 }
 
 export interface ExtensionRunBotAgentWorkflow {
-  labels?: string[]
+  labels?: ExtensionRunBotAgentWorkflowLabel[]
   status?: string
+}
+
+export interface ExtensionRunBotAgentWorkflowLabel {
+  key: string
+  value?: string
 }
 
 export interface ExtensionRunBotAgentPayload {

@@ -88,7 +88,7 @@ function formatRunBotAgentPrompt(input: ExtensionRunBotAgentPayload): string {
 
   if (input.sourceRef) {
     lines.push(
-      `- Source: ${input.sourceRef.label ?? input.sourceRef.id ?? input.sourceRef.type}${
+      `- Source: ${input.sourceRef.label}${
         input.sourceRef.url ? ` (${input.sourceRef.url})` : ""
       }`
     )
@@ -100,7 +100,13 @@ function formatRunBotAgentPrompt(input: ExtensionRunBotAgentPayload): string {
     lines.push(
       `- Work classification: ${[
         status ? `status=${status}` : null,
-        labels?.length ? `labels=${labels.join(", ")}` : null
+        labels?.length
+          ? `labels=${labels
+              .map((label) =>
+                label.value === undefined ? label.key : `${label.key}=${label.value}`
+              )
+              .join(", ")}`
+          : null
       ]
         .filter(Boolean)
         .join("; ")}`
@@ -110,7 +116,7 @@ function formatRunBotAgentPrompt(input: ExtensionRunBotAgentPayload): string {
   if (input.prompt.contextRefs?.length) {
     lines.push("", "References:")
     for (const ref of input.prompt.contextRefs) {
-      lines.push(`- ${ref.label ?? ref.id ?? ref.type}${ref.url ? `: ${ref.url}` : ""}`)
+      lines.push(`- ${ref.label}${ref.url ? `: ${ref.url}` : ""}`)
     }
   }
 

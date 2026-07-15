@@ -83,6 +83,7 @@ export type ExtensionActionShortcutNode = CommonProtocol.ExtensionActionShortcut
 export type ExtensionRunBotAgentSourceRef = CommonProtocol.ExtensionRunBotAgentSourceRef
 export type ExtensionRunBotAgentPromptPlan = CommonProtocol.ExtensionRunBotAgentPromptPlan
 export type ExtensionRunBotAgentWorkflow = CommonProtocol.ExtensionRunBotAgentWorkflow
+export type ExtensionRunBotAgentWorkflowLabel = CommonProtocol.ExtensionRunBotAgentWorkflowLabel
 export type ExtensionRunBotAgentPayload = CommonProtocol.ExtensionRunBotAgentPayload
 export type ExtensionRuntimeRunBotAgentRequestEvent =
   CommonProtocol.ExtensionRuntimeRunBotAgentRequestEvent

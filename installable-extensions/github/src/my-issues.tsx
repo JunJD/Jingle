@@ -66,9 +66,9 @@ function createRunBotAgentInput(item: GitHubIssueLike): Action.RunBotAgent["inpu
     title: `${item.repositoryName} #${item.number}: ${item.title}`,
     workflow: {
       labels: [
-        "source:github",
-        `repo:${item.repositoryName}`,
-        item.kind === "pull_request" ? "kind:pull-request" : "kind:issue"
+        { key: "source", value: "github" },
+        { key: "repo", value: item.repositoryName },
+        { key: "kind", value: item.kind === "pull_request" ? "pull-request" : "issue" }
       ],
       status: "ready"
     }

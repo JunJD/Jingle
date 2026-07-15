@@ -902,6 +902,26 @@ function isRuntimeSubmitFormValues(
   return value !== undefined
 }
 
+function isRunBotAgentSourceRef(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false
+  }
+
+  const source = value as Record<string, unknown>
+  return (
+    typeof source.type === "string" &&
+    source.type.trim().length > 0 &&
+    typeof source.label === "string" &&
+    source.label.trim().length > 0 &&
+    (source.id === undefined || typeof source.id === "string") &&
+    (source.url === undefined || typeof source.url === "string") &&
+    (source.metadata === undefined ||
+      (typeof source.metadata === "object" &&
+        source.metadata !== null &&
+        !Array.isArray(source.metadata)))
+  )
+}
+
 function readRunBotAgentInputProp(props: RuntimeHostProps): ExtensionRunBotAgentPayload | null {
   const value = props.input
   if (!value || typeof value !== "object") {
@@ -909,8 +929,10 @@ function readRunBotAgentInputProp(props: RuntimeHostProps): ExtensionRunBotAgent
   }
 
   const input = value as {
-    prompt?: { objective?: unknown }
+    prompt?: { contextRefs?: unknown; objective?: unknown }
+    sourceRef?: unknown
     title?: unknown
+    workflow?: unknown
   }
   if (
     typeof input.title !== "string" ||
@@ -921,6 +943,41 @@ function readRunBotAgentInputProp(props: RuntimeHostProps): ExtensionRunBotAgent
     input.prompt.objective.trim().length === 0
   ) {
     return null
+  }
+
+  if (
+    (input.sourceRef !== undefined && !isRunBotAgentSourceRef(input.sourceRef)) ||
+    (input.prompt.contextRefs !== undefined &&
+      (!Array.isArray(input.prompt.contextRefs) ||
+        !input.prompt.contextRefs.every(isRunBotAgentSourceRef)))
+  ) {
+    return null
+  }
+
+  if (input.workflow !== undefined) {
+    if (!input.workflow || typeof input.workflow !== "object" || Array.isArray(input.workflow)) {
+      return null
+    }
+
+    const workflow = input.workflow as { labels?: unknown; status?: unknown }
+    if (
+      (workflow.status !== undefined &&
+        (typeof workflow.status !== "string" || workflow.status.trim().length === 0)) ||
+      (workflow.labels !== undefined &&
+        (!Array.isArray(workflow.labels) ||
+          !workflow.labels.every(
+            (label) =>
+              typeof label === "object" &&
+              label !== null &&
+              !Array.isArray(label) &&
+              "key" in label &&
+              typeof label.key === "string" &&
+              label.key.trim().length > 0 &&
+              (!("value" in label) || label.value === undefined || typeof label.value === "string")
+          )))
+    ) {
+      return null
+    }
   }
 
   return value as ExtensionRunBotAgentPayload

@@ -1357,7 +1357,14 @@ test("runtime Action.RunBotAgent delegates to the agent host capability", async 
                 type: "github.issue",
                 url: "https://github.com/JunJD/Jingle/issues/12"
               },
-              title: "Fix GitHub issue"
+              title: "Fix GitHub issue",
+              workflow: {
+                labels: [
+                  { key: "source", value: "github" },
+                  { key: "kind", value: "issue" }
+                ],
+                status: "ready"
+              }
             },
             title: "Run with Agent"
           })
@@ -1399,10 +1406,64 @@ test("runtime Action.RunBotAgent delegates to the agent host capability", async 
           type: "github.issue",
           url: "https://github.com/JunJD/Jingle/issues/12"
         },
-        title: "Fix GitHub issue"
+        title: "Fix GitHub issue",
+        workflow: {
+          labels: [
+            { key: "source", value: "github" },
+            { key: "kind", value: "issue" }
+          ],
+          status: "ready"
+        }
       }
     }
   ])
+})
+
+test("runtime Action.RunBotAgent rejects legacy labels and missing source labels", async () => {
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(
+      List,
+      { navigationTitle: "Test List" },
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action.RunBotAgent, {
+            input: {
+              prompt: { objective: "Fix the issue" },
+              sourceRef: { type: "github.issue" },
+              title: "Missing source label"
+            } as never,
+            title: "Run missing source label"
+          })
+        ),
+        id: "missing-source-label",
+        title: "Missing source label"
+      }),
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action.RunBotAgent, {
+            input: {
+              prompt: { objective: "Fix the issue" },
+              title: "Legacy labels",
+              workflow: { labels: ["source:github"] }
+            } as never,
+            title: "Run legacy labels"
+          })
+        ),
+        id: "legacy-labels",
+        title: "Legacy labels"
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  assert.deepEqual(snapshot.sections[0]?.items.map((item) => item.actions), [[], []])
 })
 
 test("runtime reconciler dispatches Paste actions through host requests", async () => {
