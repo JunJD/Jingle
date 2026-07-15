@@ -7,22 +7,7 @@
   width: 26px;
   transform: scaleX(calc(0.2308 + 0.7692 * var(--jingle-user-message-navigation-marker-progress)));
   transform-origin: left center;
-  transition:
-    transform 160ms
-      linear(
-        0,
-        0.398 10%,
-        0.682 20%,
-        0.843 30%,
-        0.925 40%,
-        0.972 50%,
-        1.004 60%,
-        1.008 70%,
-        1.003 80%,
-        1
-      ),
-    background-color 100ms ease,
-    opacity 100ms ease;
+  transition: none;
 }
 
 :is(
@@ -69,10 +54,6 @@
   )
   .jingle-user-message-navigation-rail-marker {
   --jingle-user-message-navigation-marker-progress: 1;
-}
-
-.jingle-user-message-navigation-rail-list[data-scrubbing] .jingle-user-message-navigation-rail-marker {
-  transition-duration: 0s;
 }
 
 .jingle-user-message-navigation-rail-list[data-scrubbing]
@@ -136,11 +117,5 @@
     .jingle-user-message-navigation-rail-row:hover
     .jingle-user-message-navigation-rail-marker {
     --jingle-user-message-navigation-marker-progress: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .jingle-user-message-navigation-rail-marker {
-    transition-duration: 0s;
   }
 }
