@@ -51,6 +51,46 @@ function createSerializedAiMessage(id: string, content: string) {
   }
 }
 
+function createSerializedAiToolMessage(id: string, toolCallId: string) {
+  return {
+    id: ["AIMessage"],
+    kwargs: {
+      content: "",
+      id,
+      tool_calls: [
+        {
+          args: { file_path: "package.json" },
+          id: toolCallId,
+          name: "read_file",
+          type: "tool_call"
+        }
+      ]
+    },
+    type: "ai" as const
+  }
+}
+
+function createSerializedHumanMessage(id: string, content: string) {
+  return {
+    id: ["HumanMessage"],
+    kwargs: { content, id },
+    type: "human" as const
+  }
+}
+
+function createSerializedToolResult(id: string, toolCallId: string, content: string) {
+  return {
+    id: ["ToolMessage"],
+    kwargs: {
+      content,
+      id,
+      name: "read_file",
+      tool_call_id: toolCallId
+    },
+    type: "tool" as const
+  }
+}
+
 function createLiveLangChainAiMessageChunk(id: string, content: string) {
   return structuredClone(new AIMessageChunk({ content, id }))
 }
@@ -853,6 +893,102 @@ test("AgentThreadRunner applies pending values tool calls when values arrive bef
   )
   assert.equal(snapshot.activeRun?.currentToolCallId, "tool-call-1")
   assert.equal(snapshot.activeRun?.phase, "tool_running")
+})
+
+test("AgentThreadRunner applies one current-turn values result after an empty assistant chunk", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+  const threadId = "thread-values-result-before-empty-assistant"
+  const valuesPayload = {
+    messages: [
+      createSerializedHumanMessage("user-1", "read package"),
+      createSerializedAiToolMessage("values-assistant", "tool-call-1"),
+      createSerializedToolResult("tool-result-1", "tool-call-1", "package contents")
+    ]
+  }
+
+  await hub.prepareInvoke(threadId, { content: "read package", id: "user-1" })
+  await hub.handlePayload(threadId, { data: valuesPayload, mode: "values", type: "stream" })
+  await hub.handlePayload(threadId, { data: valuesPayload, mode: "values", type: "stream" })
+  await hub.handlePayload(threadId, {
+    data: [createSerializedAiMessage("streamed-assistant", "")],
+    mode: "messages",
+    type: "stream"
+  })
+  await hub.handlePayload(threadId, { data: valuesPayload, mode: "values", type: "stream" })
+
+  const snapshot = await hub.readThreadState(threadId)
+  const toolResults = snapshot.messagesPage.filter(
+    (message) => message.role === "tool" && message.tool_call_id === "tool-call-1"
+  )
+  assert.equal(toolResults.length, 1)
+  assert.equal(toolResults[0]?.content, "package contents")
+  assert.equal(
+    toolResults[0] ? readJingleToolExecutionTiming(toolResults[0])?.status : null,
+    "completed"
+  )
+})
+
+test("AgentThreadRunner applies pending values result when streamed assistant already owns the call", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+  const threadId = "thread-values-result-before-complete-assistant"
+  const valuesPayload = {
+    messages: [
+      createSerializedHumanMessage("user-1", "read package"),
+      createSerializedAiToolMessage("values-assistant", "tool-call-1"),
+      createSerializedToolResult("tool-result-1", "tool-call-1", "package contents")
+    ]
+  }
+
+  await hub.prepareInvoke(threadId, { content: "read package", id: "user-1" })
+  await hub.handlePayload(threadId, { data: valuesPayload, mode: "values", type: "stream" })
+  await hub.handlePayload(threadId, {
+    data: [createSerializedAiToolMessage("streamed-assistant", "tool-call-1")],
+    mode: "messages",
+    type: "stream"
+  })
+
+  const snapshot = await hub.readThreadState(threadId)
+  const toolResults = snapshot.messagesPage.filter(
+    (message) => message.role === "tool" && message.tool_call_id === "tool-call-1"
+  )
+  assert.equal(toolResults.length, 1)
+  assert.equal(
+    toolResults[0] ? readJingleToolExecutionTiming(toolResults[0])?.status : null,
+    "completed"
+  )
+})
+
+test("AgentThreadRunner rejects historical values results even when a call id is reused", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+  const threadId = "thread-values-historical-result"
+
+  await hub.prepareInvoke(threadId, { content: "read current", id: "user-current" })
+  await hub.handlePayload(threadId, {
+    data: {
+      messages: [
+        createSerializedHumanMessage("user-old", "read old"),
+        createSerializedAiToolMessage("assistant-old", "tool-call-reused"),
+        createSerializedToolResult("tool-result-old", "tool-call-reused", "STALE"),
+        createSerializedHumanMessage("user-current", "read current"),
+        createSerializedAiToolMessage("assistant-current", "tool-call-reused")
+      ]
+    },
+    mode: "values",
+    type: "stream"
+  })
+  await hub.handlePayload(threadId, {
+    data: [createSerializedAiToolMessage("streamed-assistant", "tool-call-reused")],
+    mode: "messages",
+    type: "stream"
+  })
+
+  const snapshot = await hub.readThreadState(threadId)
+  assert.equal(
+    snapshot.messagesPage.some(
+      (message) => message.role === "tool" && message.tool_call_id === "tool-call-reused"
+    ),
+    false
+  )
 })
 
 test("AgentThreadRunner exposes live thread data while persisted state lags runtime state", async () => {

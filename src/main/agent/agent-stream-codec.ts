@@ -41,6 +41,10 @@ export interface DecodedToolMessageChunk {
   toolCallId: string
 }
 
+export interface DecodedValuesToolMessageChunk extends DecodedToolMessageChunk {
+  sourceIndex: number
+}
+
 export interface DecodedMessagesStreamPayload {
   assistant: DecodedAssistantChunk | null
   tool: DecodedToolMessageChunk | null
@@ -51,6 +55,7 @@ export interface DecodedValuesStreamPayload {
   messages: Message[] | null
   pendingApproval: HITLRequest | null
   todos: Todo[] | null
+  toolMessages: DecodedValuesToolMessageChunk[]
 }
 
 function getRequiredRuntimeRunId(runId: string | null): string {
@@ -187,6 +192,73 @@ function decodeValuesMessage(message: JingleLangGraphValuesMessage, index: numbe
   }
 }
 
+function decodeValuesToolMessage(
+  message: JingleLangGraphValuesMessage,
+  index: number
+): DecodedValuesToolMessageChunk | null {
+  if (message.role !== "tool" || !message.toolCallId) {
+    return null
+  }
+
+  const decodedMessage = decodeValuesMessage(message, index)
+  return {
+    content: decodedMessage.content,
+    id: decodedMessage.id,
+    ...(decodedMessage.metadata ? { metadata: decodedMessage.metadata } : {}),
+    name: decodedMessage.name,
+    sourceIndex: index,
+    status: message.status,
+    toolCallId: message.toolCallId
+  }
+}
+
+export function selectExecutionValuesToolMessages(input: {
+  allowedToolCallIds?: ReadonlySet<string>
+  messages: readonly Message[]
+  targetTurnId: string | null
+  toolMessages: readonly DecodedValuesToolMessageChunk[]
+}): DecodedValuesToolMessageChunk[] {
+  if (!input.targetTurnId) {
+    return input.allowedToolCallIds
+      ? input.toolMessages.filter((message) => input.allowedToolCallIds?.has(message.toolCallId))
+      : []
+  }
+
+  const turnStartIndex = input.messages.findIndex(
+    (message) => message.role === "user" && message.id === input.targetTurnId
+  )
+  if (turnStartIndex < 0) {
+    return []
+  }
+
+  const nextTurnIndex = input.messages.findIndex(
+    (message, index) => index > turnStartIndex && message.role === "user"
+  )
+  const turnEndIndex = nextTurnIndex < 0 ? input.messages.length : nextTurnIndex
+  const candidatesByIndex = new Map(
+    input.toolMessages.map((message) => [message.sourceIndex, message] as const)
+  )
+  const declaredToolCallIds = new Set<string>()
+  const selected: DecodedValuesToolMessageChunk[] = []
+
+  for (let index = turnStartIndex + 1; index < turnEndIndex; index += 1) {
+    const message = input.messages[index]
+    if (message?.role === "assistant") {
+      for (const toolCall of message.tool_calls ?? []) {
+        declaredToolCallIds.add(toolCall.id)
+      }
+      continue
+    }
+
+    const candidate = candidatesByIndex.get(index)
+    if (candidate && declaredToolCallIds.has(candidate.toolCallId)) {
+      selected.push(candidate)
+    }
+  }
+
+  return selected
+}
+
 export function appendAssistantMessageContent(
   existing: Message["content"],
   incoming: Message["content"]
@@ -286,7 +358,12 @@ export function decodeValuesStreamPayload(
             content: todo.content || "",
             id: todo.id || crypto.randomUUID(),
             status: (todo.status || "pending") as Todo["status"]
-          }))
+          })),
+    toolMessages:
+      decoded.messages?.flatMap((message, index) => {
+        const toolMessage = decodeValuesToolMessage(message, index)
+        return toolMessage ? [toolMessage] : []
+      }) ?? []
   }
 }
 

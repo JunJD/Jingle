@@ -133,6 +133,7 @@ export interface JingleLangGraphValuesMessage {
   name?: string
   responseMetadata?: Record<string, unknown>
   role: JingleLangGraphMessageRole
+  status: "error" | null
   topLevelId?: string
   toolCallId?: string
   toolCalls: JingleLangGraphToolCall[]
@@ -339,6 +340,7 @@ function decodeValuesMessage(
     name: kwargs.name,
     responseMetadata,
     role,
+    status: kwargs.status === "error" ? "error" : null,
     ...(typeof message.id === "string" && message.id.length > 0
       ? { topLevelId: message.id }
       : {}),

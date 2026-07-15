@@ -1,4 +1,10 @@
-import { decodeMessagesStreamPayload, decodeValuesStreamPayload } from "./agent-stream-codec"
+import {
+  decodeMessagesStreamPayload,
+  decodeValuesStreamPayload,
+  selectExecutionValuesToolMessages,
+  type DecodedToolMessageChunk,
+  type DecodedValuesToolMessageChunk
+} from "./agent-stream-codec"
 import {
   appendAgentEvent,
   appendAgentEventSafely,
@@ -17,17 +23,26 @@ export interface AgentStreamBoundaryRecorderState {
   assistantMessageIds: Set<string>
   completedAssistantMessageIds: Set<string>
   completedToolResultIds: Set<string>
+  pendingValuesToolResults: Map<string, DecodedValuesToolMessageChunk>
+  targetTurnId: string | null
   toolCallIds: Set<string>
 }
 
-export function createAgentStreamBoundaryRecorderState(): AgentStreamBoundaryRecorderState {
+export function createAgentStreamBoundaryRecorderState(
+  input: {
+    initialToolCallIds?: readonly string[]
+    targetTurnId?: string | null
+  } = {}
+): AgentStreamBoundaryRecorderState {
   return {
     approvalRequestIds: new Set<string>(),
     assistantMessageIdRef: { value: null },
     assistantMessageIds: new Set<string>(),
     completedAssistantMessageIds: new Set<string>(),
     completedToolResultIds: new Set<string>(),
-    toolCallIds: new Set<string>()
+    pendingValuesToolResults: new Map<string, DecodedValuesToolMessageChunk>(),
+    targetTurnId: input.targetTurnId ?? null,
+    toolCallIds: new Set(input.initialToolCallIds)
   }
 }
 
@@ -309,6 +324,59 @@ export async function recordAgentStreamBoundaryEvents(input: {
   }
 }
 
+type ToolResultRecordOutcome = "duplicate" | "not-recorded" | "recorded"
+
+async function recordToolResultBoundaryEvent(input: {
+  result: DecodedToolMessageChunk
+  runId: string
+  state: AgentStreamBoundaryRecorderState
+  threadId: string
+}): Promise<ToolResultRecordOutcome> {
+  if (input.state.completedToolResultIds.has(input.result.toolCallId)) {
+    return "duplicate"
+  }
+
+  const event = await appendAgentEventSafely({
+    payload: {
+      messageId: input.result.id,
+      output: input.result.content,
+      status: input.result.status === "error" ? "failed" : "completed",
+      toolCallId: input.result.toolCallId,
+      toolName: input.result.name ?? null
+    },
+    runId: input.runId,
+    threadId: input.threadId,
+    type: input.result.status === "error" ? "tool.call.failed" : "tool.call.completed"
+  })
+  if (event) {
+    input.state.completedToolResultIds.add(input.result.toolCallId)
+    return "recorded"
+  }
+  return "not-recorded"
+}
+
+async function flushPendingValuesToolResults(input: {
+  runId: string
+  state: AgentStreamBoundaryRecorderState
+  threadId: string
+}): Promise<void> {
+  for (const [toolCallId, result] of input.state.pendingValuesToolResults) {
+    if (!input.state.toolCallIds.has(toolCallId)) {
+      continue
+    }
+
+    const outcome = await recordToolResultBoundaryEvent({
+      result,
+      runId: input.runId,
+      state: input.state,
+      threadId: input.threadId
+    })
+    if (outcome !== "not-recorded") {
+      input.state.pendingValuesToolResults.delete(toolCallId)
+    }
+  }
+}
+
 async function recordAgentStreamBoundaryEventsUnsafe(input: {
   data: unknown
   mode: string
@@ -355,16 +423,11 @@ async function recordAgentStreamBoundaryEventsUnsafe(input: {
         })
       }
 
-      const newToolCalls = assistant.toolCalls.filter((toolCall) => {
-        if (!toolCall.id || input.state.toolCallIds.has(toolCall.id)) {
-          return false
-        }
+      const newToolCalls = assistant.toolCalls.filter(
+        (toolCall) => toolCall.id && !input.state.toolCallIds.has(toolCall.id)
+      )
 
-        input.state.toolCallIds.add(toolCall.id)
-        return true
-      })
-
-      await appendAgentEventsSafely(
+      const recordedToolCalls = await appendAgentEventsSafely(
         newToolCalls.map((toolCall) => ({
           payload: {
             args: toolCall.args ?? null,
@@ -377,20 +440,20 @@ async function recordAgentStreamBoundaryEventsUnsafe(input: {
           type: "tool.call.started"
         }))
       )
+      if (recordedToolCalls.length === newToolCalls.length) {
+        for (const toolCall of newToolCalls) {
+          input.state.toolCallIds.add(toolCall.id)
+        }
+      }
+      await flushPendingValuesToolResults(input)
     }
 
     if (decoded.tool) {
-      await appendAgentEventSafely({
-        payload: {
-          messageId: decoded.tool.id,
-          output: decoded.tool.content,
-          status: decoded.tool.status === "error" ? "failed" : "completed",
-          toolCallId: decoded.tool.toolCallId,
-          toolName: decoded.tool.name ?? null
-        },
+      await recordToolResultBoundaryEvent({
+        result: decoded.tool,
         runId: input.runId,
-        threadId: input.threadId,
-        type: decoded.tool.status === "error" ? "tool.call.failed" : "tool.call.completed"
+        state: input.state,
+        threadId: input.threadId
       })
     }
     return
@@ -404,6 +467,31 @@ async function recordAgentStreamBoundaryEventsUnsafe(input: {
     runId: input.runId,
     threadId: input.threadId
   })
+
+  const valuesToolMessages = decoded.messages
+    ? selectExecutionValuesToolMessages({
+        allowedToolCallIds: input.state.toolCallIds,
+        messages: decoded.messages,
+        targetTurnId: input.state.targetTurnId,
+        toolMessages: decoded.toolMessages
+      })
+    : []
+  for (const toolMessage of valuesToolMessages) {
+    if (input.state.toolCallIds.has(toolMessage.toolCallId)) {
+      const outcome = await recordToolResultBoundaryEvent({
+        result: toolMessage,
+        runId: input.runId,
+        state: input.state,
+        threadId: input.threadId
+      })
+      if (outcome !== "not-recorded") {
+        input.state.pendingValuesToolResults.delete(toolMessage.toolCallId)
+        continue
+      }
+    }
+
+    input.state.pendingValuesToolResults.set(toolMessage.toolCallId, toolMessage)
+  }
 
   const request = decoded.pendingApproval
   if (!request || input.state.approvalRequestIds.has(request.id)) {

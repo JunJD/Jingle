@@ -1068,6 +1068,196 @@ test("stream boundary recorder does not replay values messages as durable tool e
   assert.deepEqual(events, [])
 })
 
+test("stream boundary recorder retries one current-turn values result after tool start", async () => {
+  const { createRun, createThread, flushAgentTraceProjection, getAgentTraceEvents } =
+    await loadDbModules()
+  const { createAgentStreamBoundaryRecorderState, recordAgentStreamBoundaryEvents } =
+    await import("../../src/main/agent/event-recorder")
+  const threadId = "thread-values-result-before-start"
+  const runId = "run-values-result-before-start"
+  const state = createAgentStreamBoundaryRecorderState({ targetTurnId: "user-current" })
+  const valuesPayload = {
+    messages: [
+      {
+        id: ["HumanMessage"],
+        kwargs: { content: "read package", id: "user-current" },
+        type: "human"
+      },
+      {
+        id: ["AIMessage"],
+        kwargs: {
+          content: "",
+          id: "assistant-values",
+          tool_calls: [
+            {
+              args: { file_path: "package.json" },
+              id: "tool-call-values",
+              name: "read_file",
+              type: "tool_call"
+            }
+          ]
+        },
+        type: "ai"
+      },
+      {
+        id: ["ToolMessage"],
+        kwargs: {
+          content: "package contents",
+          id: "tool-result-values",
+          name: "read_file",
+          tool_call_id: "tool-call-values"
+        },
+        type: "tool"
+      }
+    ]
+  }
+
+  await createThread(threadId)
+  await createRun(runId, threadId)
+  await recordAgentStreamBoundaryEvents({
+    data: valuesPayload,
+    mode: "values",
+    runId,
+    state,
+    threadId
+  })
+  await recordAgentStreamBoundaryEvents({
+    data: valuesPayload,
+    mode: "values",
+    runId,
+    state,
+    threadId
+  })
+  await recordAgentStreamBoundaryEvents({
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content: "",
+          id: "assistant-stream",
+          tool_calls: [
+            {
+              args: { file_path: "package.json" },
+              id: "tool-call-values",
+              name: "read_file",
+              type: "tool_call"
+            }
+          ]
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    runId,
+    state,
+    threadId
+  })
+  await recordAgentStreamBoundaryEvents({
+    data: valuesPayload,
+    mode: "values",
+    runId,
+    state,
+    threadId
+  })
+  await flushAgentTraceProjection()
+
+  const events = await getAgentTraceEvents(runId)
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["message.assistant.started", "tool.call.started", "tool.call.completed"]
+  )
+})
+
+test("stream boundary recorder accepts only the seeded resume target from values", async () => {
+  const { createRun, createThread, flushAgentTraceProjection, getAgentTraceEvents } =
+    await loadDbModules()
+  const { createAgentStreamBoundaryRecorderState, recordAgentStreamBoundaryEvents } =
+    await import("../../src/main/agent/event-recorder")
+  const threadId = "thread-values-seeded-resume"
+  const runId = "run-values-seeded-resume"
+
+  await createThread(threadId)
+  await createRun(runId, threadId)
+  const initialState = createAgentStreamBoundaryRecorderState()
+  await recordAgentStreamBoundaryEvents({
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content: "",
+          id: "assistant-target",
+          tool_calls: [
+            {
+              args: { file_path: "package.json" },
+              id: "tool-call-target",
+              name: "read_file",
+              type: "tool_call"
+            }
+          ]
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    runId,
+    state: initialState,
+    threadId
+  })
+
+  const resumeState = createAgentStreamBoundaryRecorderState({
+    initialToolCallIds: ["tool-call-target"]
+  })
+  const valuesPayload = {
+    messages: [
+      {
+        id: ["ToolMessage"],
+        kwargs: {
+          content: "historical",
+          id: "tool-result-history",
+          name: "read_file",
+          tool_call_id: "tool-call-history"
+        },
+        type: "tool"
+      },
+      {
+        id: ["ToolMessage"],
+        kwargs: {
+          content: "package contents",
+          id: "tool-result-target",
+          name: "read_file",
+          tool_call_id: "tool-call-target"
+        },
+        type: "tool"
+      }
+    ]
+  }
+  await recordAgentStreamBoundaryEvents({
+    data: valuesPayload,
+    mode: "values",
+    runId,
+    state: resumeState,
+    threadId
+  })
+  await recordAgentStreamBoundaryEvents({
+    data: valuesPayload,
+    mode: "values",
+    runId,
+    state: resumeState,
+    threadId
+  })
+  await flushAgentTraceProjection()
+
+  const events = await getAgentTraceEvents(runId)
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["message.assistant.started", "tool.call.started", "tool.call.completed"]
+  )
+  const completionPayload = JSON.parse(events.at(-1)?.payload ?? "null") as {
+    toolCallId?: string
+  }
+  assert.equal(completionPayload.toolCallId, "tool-call-target")
+})
+
 test("stream boundary recorder records values approval interrupts", async () => {
   const { createRun, createThread, flushAgentTraceProjection, getAgentTraceEvents } =
     await loadDbModules()

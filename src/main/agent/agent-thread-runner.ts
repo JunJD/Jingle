@@ -51,10 +51,14 @@ import {
   decodeMessagesStreamPayload,
   decodeValuesStreamPayload,
   sanitizeAssistantHistoryMessages,
-  toTokenUsage
+  selectExecutionValuesToolMessages,
+  toTokenUsage,
+  type DecodedToolMessageChunk,
+  type DecodedValuesToolMessageChunk
 } from "./agent-stream-codec"
 
 type TerminalRuntimeStatus = "idle" | "interrupted" | "error" | "cancelled"
+type ToolResultFinalization = "applied" | "duplicate" | "unmatched"
 type JingleAppliedAgentSteer = AppliedAgentSteer<
   AgentInvokeMessage["content"],
   NonNullable<AgentInvokeMessage["refs"]>
@@ -142,6 +146,10 @@ class ThreadRuntimeProjector {
   private readonly toolCallAccumulator = new JingleStreamingToolCallAccumulator()
   private currentMessageId: string | null = null
   private pendingValuesAssistantToolMessage: Message | null = null
+  private readonly pendingValuesToolResults = new Map<
+    string,
+    { result: DecodedValuesToolMessageChunk; turnId: string }
+  >()
   private pendingResumeDecision: HITLDecision | null = null
   private runtimeState: AgentThreadRuntimeState
 
@@ -390,6 +398,7 @@ class ThreadRuntimeProjector {
               : {})
           })
         )
+        this.flushPendingValuesToolResults()
 
         if (
           decoded.assistant.usageMetadata &&
@@ -404,57 +413,7 @@ class ThreadRuntimeProjector {
       }
 
       if (decoded.tool) {
-        const completedAt = new Date()
-        const toolCallMessageId = this.ensureCanonicalAssistantToolCallForToolResult(
-          decoded.tool.toolCallId
-        )
-        const toolName = this.getCanonicalToolCallName(decoded.tool.toolCallId, decoded.tool.name)
-        const toolExecution = this.createToolExecutionUpdate({
-          completedAt,
-          messageId: decoded.tool.id,
-          status: decoded.tool.status === "error" ? "failed" : "completed",
-          toolCallId: decoded.tool.toolCallId,
-          toolName,
-          ...(decoded.tool.status === "error"
-            ? {
-                error: {
-                  message:
-                    extractMessageText(decoded.tool.content).trim() || "Tool execution failed"
-                }
-              }
-            : {})
-        })
-        const fileMutationResult = this.createFileMutationResultMetadata({
-          content: decoded.tool.content,
-          status: toolExecution.event.status,
-          toolCallId: decoded.tool.toolCallId,
-          toolName: toolExecution.event.toolName
-        })
-        this.upsertMessage(
-          {
-            content: decoded.tool.content,
-            created_at: completedAt,
-            id: decoded.tool.id,
-            metadata: {
-              ...(decoded.tool.metadata ?? {}),
-              [JINGLE_TOOL_EXECUTION_METADATA_KEY]: toolExecution.metadata,
-              ...(fileMutationResult
-                ? { [FILE_MUTATION_RESULT_METADATA_KEY]: fileMutationResult }
-                : {})
-            },
-            name: toolName ?? decoded.tool.name,
-            role: "tool",
-            tool_call_id: decoded.tool.toolCallId
-          },
-          { appendAssistantText: false }
-        )
-        this.commitRuntimeEvent({
-          messageId: toolCallMessageId,
-          runId: this.runtimeState.activeRun?.runId ?? this.runtimeState.latestRunId,
-          ...toolExecution.event,
-          toolCallId: decoded.tool.toolCallId,
-          type: "tool.updated"
-        })
+        this.finalizeToolResult(decoded.tool, { requireCurrentTurnToolCall: false })
         this.currentMessageId = null
       }
     }
@@ -466,6 +425,24 @@ class ThreadRuntimeProjector {
       })
       if (decoded.messages) {
         this.mergeValuesMessages(decoded.messages)
+      }
+
+      const activeTurnId = this.runtimeState.activeRun?.turnId ?? null
+      const valuesToolMessages = decoded.messages
+        ? selectExecutionValuesToolMessages({
+            messages: decoded.messages,
+            targetTurnId: activeTurnId,
+            toolMessages: decoded.toolMessages
+          })
+        : []
+      for (const toolMessage of valuesToolMessages) {
+        if (
+          this.finalizeToolResult(toolMessage, { requireCurrentTurnToolCall: true }) ===
+            "unmatched" &&
+          activeTurnId
+        ) {
+          this.rememberPendingValuesToolResult(toolMessage, activeTurnId)
+        }
       }
 
       if (decoded.todos) {
@@ -841,6 +818,7 @@ class ThreadRuntimeProjector {
         id: activeAssistantId
       })
       this.pendingValuesAssistantToolMessage = null
+      this.flushPendingValuesToolResults()
       return
     }
 
@@ -856,7 +834,10 @@ class ThreadRuntimeProjector {
       return
     }
 
-    if (!this.mergeValuesAssistantIntoCurrentStream(valuesAssistant)) {
+    const materialized =
+      this.mergeValuesAssistantIntoCurrentStream(valuesAssistant) ||
+      this.currentAssistantOwnsValuesToolCalls(valuesAssistant)
+    if (!materialized) {
       return
     }
 
@@ -865,6 +846,50 @@ class ThreadRuntimeProjector {
       id: activeAssistantId
     })
     this.pendingValuesAssistantToolMessage = null
+    this.flushPendingValuesToolResults()
+  }
+
+  private currentAssistantOwnsValuesToolCalls(valuesAssistant: Message): boolean {
+    const activeAssistantId = this.runtimeState.activeRun?.assistantMessageId
+    const valuesToolCalls = valuesAssistant.tool_calls ?? []
+    if (!activeAssistantId || valuesToolCalls.length === 0) {
+      return false
+    }
+
+    const activeAssistant = this.runtimeState.messagesPage.find(
+      (message) => message.role === "assistant" && message.id === activeAssistantId
+    )
+    const activeToolCallIds = new Set(
+      activeAssistant?.tool_calls?.map((toolCall) => toolCall.id) ?? []
+    )
+    return valuesToolCalls.every((toolCall) => activeToolCallIds.has(toolCall.id))
+  }
+
+  private rememberPendingValuesToolResult(
+    toolMessage: DecodedValuesToolMessageChunk,
+    turnId: string
+  ): void {
+    this.pendingValuesToolResults.set(toolMessage.toolCallId, {
+      result: toolMessage,
+      turnId
+    })
+  }
+
+  private flushPendingValuesToolResults(): void {
+    const activeTurnId = this.runtimeState.activeRun?.turnId ?? null
+    for (const [toolCallId, pending] of this.pendingValuesToolResults) {
+      if (!activeTurnId || pending.turnId !== activeTurnId) {
+        this.pendingValuesToolResults.delete(toolCallId)
+        continue
+      }
+
+      if (
+        this.finalizeToolResult(pending.result, { requireCurrentTurnToolCall: true }) !==
+        "unmatched"
+      ) {
+        this.pendingValuesToolResults.delete(toolCallId)
+      }
+    }
   }
 
   private getVisibleMessagesForTurn(
@@ -891,6 +916,24 @@ class ThreadRuntimeProjector {
 
   private findToolCallMessageId(toolCallId: string): string | null {
     for (const message of this.runtimeState.messagesPage) {
+      if (
+        message.role === "assistant" &&
+        message.tool_calls?.some((toolCall) => toolCall.id === toolCallId)
+      ) {
+        return message.id
+      }
+    }
+
+    return null
+  }
+
+  private findCurrentTurnToolCallMessageId(toolCallId: string): string | null {
+    const activeRun = this.runtimeState.activeRun
+    if (!activeRun) {
+      return null
+    }
+
+    for (const message of this.getVisibleMessagesForTurn(activeRun.turnId)) {
       if (
         message.role === "assistant" &&
         message.tool_calls?.some((toolCall) => toolCall.id === toolCallId)
@@ -1000,6 +1043,75 @@ class ThreadRuntimeProjector {
     }
 
     return fallbackName ?? null
+  }
+
+  private finalizeToolResult(
+    toolMessage: DecodedToolMessageChunk,
+    options: { requireCurrentTurnToolCall: boolean }
+  ): ToolResultFinalization {
+    const existingResult = this.runtimeState.messagesPage.find(
+      (message) => message.role === "tool" && message.tool_call_id === toolMessage.toolCallId
+    )
+    if (existingResult) {
+      return "duplicate"
+    }
+
+    const toolCallMessageId = options.requireCurrentTurnToolCall
+      ? this.findCurrentTurnToolCallMessageId(toolMessage.toolCallId)
+      : this.ensureCanonicalAssistantToolCallForToolResult(toolMessage.toolCallId)
+    if (options.requireCurrentTurnToolCall && !toolCallMessageId) {
+      return "unmatched"
+    }
+
+    const completedAt = new Date()
+    const toolName = this.getCanonicalToolCallName(toolMessage.toolCallId, toolMessage.name)
+    const toolExecution = this.createToolExecutionUpdate({
+      completedAt,
+      messageId: toolMessage.id,
+      status: toolMessage.status === "error" ? "failed" : "completed",
+      toolCallId: toolMessage.toolCallId,
+      toolName,
+      ...(toolMessage.status === "error"
+        ? {
+            error: {
+              message: extractMessageText(toolMessage.content).trim() || "Tool execution failed"
+            }
+          }
+        : {})
+    })
+    const fileMutationResult = this.createFileMutationResultMetadata({
+      content: toolMessage.content,
+      status: toolExecution.event.status,
+      toolCallId: toolMessage.toolCallId,
+      toolName: toolExecution.event.toolName
+    })
+    this.upsertMessage(
+      {
+        content: toolMessage.content,
+        created_at: completedAt,
+        id: toolMessage.id,
+        metadata: {
+          ...(toolMessage.metadata ?? {}),
+          [JINGLE_TOOL_EXECUTION_METADATA_KEY]: toolExecution.metadata,
+          ...(fileMutationResult ? { [FILE_MUTATION_RESULT_METADATA_KEY]: fileMutationResult } : {})
+        },
+        name: toolName ?? toolMessage.name,
+        role: "tool",
+        tool_call_id: toolMessage.toolCallId
+      },
+      { appendAssistantText: false }
+    )
+    this.commitRuntimeEvent({
+      messageId: toolCallMessageId,
+      runId: this.runtimeState.activeRun?.runId ?? this.runtimeState.latestRunId,
+      ...toolExecution.event,
+      toolCallId: toolMessage.toolCallId,
+      type: "tool.updated"
+    })
+    if (options.requireCurrentTurnToolCall && this.currentMessageId === toolCallMessageId) {
+      this.currentMessageId = null
+    }
+    return "applied"
   }
 
   private createFileMutationResultMetadata(input: {
@@ -1128,6 +1240,7 @@ class ThreadRuntimeProjector {
     this.toolCallAccumulator.reset()
     this.currentMessageId = null
     this.pendingValuesAssistantToolMessage = null
+    this.pendingValuesToolResults.clear()
   }
 
   private upsertMessage(message: Message, options: { appendAssistantText: boolean }): boolean {

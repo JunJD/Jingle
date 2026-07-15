@@ -896,7 +896,9 @@ export class AgentService {
           ? thread.title
           : null
 
-      const boundaryRecorderState = createAgentStreamBoundaryRecorderState()
+      const boundaryRecorderState = createAgentStreamBoundaryRecorderState({
+        targetTurnId: message.id
+      })
       runExecutionStarted = true
       const result = await run.execute({
         contextInclusions: providedInclusions,
@@ -1206,7 +1208,9 @@ export class AgentService {
       abortController.signal.throwIfAborted()
       activeRun.markPreparationSettled()
 
-      const boundaryRecorderState = createAgentStreamBoundaryRecorderState()
+      const boundaryRecorderState = createAgentStreamBoundaryRecorderState({
+        initialToolCallIds: [resumeTarget.toolCallId]
+      })
       runExecutionStarted = true
       const result = await run.execute({
         contextInclusions: resumeContextInclusions,
