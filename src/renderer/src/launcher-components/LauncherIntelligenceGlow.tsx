@@ -11,8 +11,6 @@ type Corner = "bottom-left" | "bottom-right" | "top-left" | "top-right"
 
 interface GlowLayer {
   readonly blur: number
-  readonly duration: string
-  readonly from: number
   readonly id: string
   readonly opacity: number
   readonly strokeWidth: number
@@ -32,32 +30,24 @@ const INNER_STROKE_INSET = -4
 const GLOW_LAYERS: readonly GlowLayer[] = [
   {
     blur: 0,
-    duration: "6.8s",
-    from: 0,
     id: "core",
     opacity: 0.94,
     strokeWidth: 2.5
   },
   {
     blur: 4,
-    duration: "8.6s",
-    from: 360,
     id: "soft",
     opacity: 0.76,
     strokeWidth: 6
   },
   {
     blur: 10,
-    duration: "11.8s",
-    from: 120,
     id: "halo",
     opacity: 0.48,
     strokeWidth: 10.5
   },
   {
     blur: 15,
-    duration: "14.6s",
-    from: 0,
     id: "bloom",
     opacity: 0.28,
     strokeWidth: 15
@@ -115,24 +105,6 @@ function readBounds(target: HTMLElement): GlowBounds {
   }
 }
 
-function useReducedMotion(): boolean {
-  const [reducedMotion, setReducedMotion] = useState(
-    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  )
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)")
-    const handleChange = (event: MediaQueryListEvent): void => {
-      setReducedMotion(event.matches)
-    }
-
-    mediaQuery.addEventListener("change", handleChange)
-    return () => mediaQuery.removeEventListener("change", handleChange)
-  }, [])
-
-  return reducedMotion
-}
-
 function buildCornerPath(
   corner: Corner,
   bounds: GlowBounds,
@@ -185,7 +157,6 @@ export function LauncherIntelligenceGlow(props: {
 }): React.JSX.Element | null {
   const { status, targetRef } = props
   const [bounds, setBounds] = useState<GlowBounds | null>(null)
-  const reducedMotion = useReducedMotion()
   const gradientPrefix = useId().replace(/:/g, "")
 
   useEffect(() => {
@@ -213,8 +184,6 @@ export function LauncherIntelligenceGlow(props: {
     return null
   }
 
-  const centerX = bounds.width / 2
-  const centerY = bounds.height / 2
   const baseArmLength = Math.max(30, Math.min(Math.min(bounds.width, bounds.height) * 0.135, 68))
   const tuning = GLOW_TUNING[status]
 
@@ -251,16 +220,6 @@ export function LauncherIntelligenceGlow(props: {
                   <stop offset="58%" stopColor="rgba(247, 169, 229, 1)" />
                   <stop offset="78%" stopColor="rgba(121, 177, 255, 1)" />
                   <stop offset="100%" stopColor="rgba(255, 107, 124, 1)" />
-                  {reducedMotion ? null : (
-                    <animateTransform
-                      attributeName="gradientTransform"
-                      dur={layer.duration}
-                      from={`${layer.from} ${centerX} ${centerY}`}
-                      repeatCount="indefinite"
-                      to={`${layer.from + 360} ${centerX} ${centerY}`}
-                      type="rotate"
-                    />
-                  )}
                 </linearGradient>
                 {layer.blur > 0 ? (
                   <filter
