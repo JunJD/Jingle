@@ -1,5 +1,13 @@
 import { ArrowUp, Command, Plus, Square } from "lucide-react"
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState
+} from "react"
 import { PromptInput, PromptInputAction, PromptInputTextarea } from "@/components/agent-ui"
 import { LauncherActionOverlay } from "@/features/launcher-actions/LauncherActionOverlay"
 import { ComposerApprovalPrompt } from "@/components/chat/ComposerApprovalPrompt"
@@ -29,7 +37,12 @@ import { useAiCoreHost, useAiCoreLifecycle } from "./AiCoreHost"
 import { LauncherAttachmentStrip } from "./LauncherAttachmentStrip"
 import { AssistantSelectionReferencePill } from "@/components/chat/AssistantSelectionReferences"
 import { AssistantSelectionReferenceNavigationProvider } from "@/components/chat/AssistantSelectionReferenceNavigation"
-import { createLauncherAiController } from "./launcher-ai-controller"
+import {
+  createLauncherAiController,
+  createLauncherComposerRevisionLedger,
+  createLauncherCommandSubmissionGate,
+  isLauncherCommandTargetCurrent
+} from "./launcher-ai-controller"
 import { useAiAttachments } from "./useAiAttachments"
 import { useAssistantSelectionRefs } from "@/components/chat/useAssistantSelectionRefs"
 import { useLauncherAiActions } from "./useLauncherAiActions"
@@ -38,7 +51,12 @@ import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
 import { useAgent } from "@/lib/use-agent"
 import { useThreadContext, useThreadControl, useThreadSelector } from "@/lib/thread-context"
-import { updateAgentThreadModel, updateAgentThreadPermissionMode } from "@/lib/agent-control"
+import {
+  stopAgentThread,
+  updateAgentThreadModel,
+  updateAgentThreadPermissionMode,
+  type AgentCommandActivity
+} from "@/lib/agent-control"
 import { cn } from "@/lib/utils"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 import { OpenTargetProvider } from "@/lib/open-target-context"
@@ -46,6 +64,7 @@ import { listNativeLauncherSourceMentions } from "@extension-host/index"
 import { isThreadPinned } from "@shared/thread-sidebar"
 import { useWorkspaceFileMentions, type ComposerAreaHandle } from "@/composer-area"
 import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
+import { areComposerCommandInputsEqual } from "@shared/agent-command"
 import {
   buildLauncherSelectionPromptText,
   type LauncherSelectionContext
@@ -58,6 +77,18 @@ import type { LauncherSearchResult } from "@shared/launcher-search"
 const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
 const DEFAULT_AGENT_CAN_FORK = true
 const EMPTY_TODOS: readonly Todo[] = []
+
+function getApprovalSubmissionKey(threadId: string, approvalId: string): string {
+  return JSON.stringify([threadId, approvalId])
+}
+
+function useLatestCallback<TResult>(callback: () => TResult): () => TResult {
+  const callbackRef = useRef(callback)
+  useLayoutEffect(() => {
+    callbackRef.current = callback
+  }, [callback])
+  return useCallback(() => callbackRef.current(), [])
+}
 
 interface ThreadSearchState {
   activeIndex: number
@@ -168,7 +199,26 @@ export function LauncherAiPage(): React.JSX.Element {
   const hasRunInitialActionRef = useRef(false)
   const [navigationError, setNavigationError] = useState<string | null>(null)
   const [localComposerText, setLocalComposerText] = useState(() => initialSeedQuery)
+  const [composerRevision] = useState(createLauncherComposerRevisionLedger)
+  const markComposerChanged = useCallback((): void => {
+    composerRevision.markChanged()
+  }, [composerRevision])
+  const setComposerText = useCallback(
+    (value: string): void => {
+      markComposerChanged()
+      setLocalComposerText(value)
+    },
+    [markComposerChanged]
+  )
   const [approvalRejectFeedback, setApprovalRejectFeedback] = useState("")
+  const approvalFeedbackRevisionRef = useRef(0)
+  const setApprovalFeedback = useCallback((value: string): void => {
+    approvalFeedbackRevisionRef.current += 1
+    setApprovalRejectFeedback(value)
+  }, [])
+  const [pendingCommands, setPendingCommands] = useState<ReadonlyMap<string, AgentCommandActivity>>(
+    () => new Map()
+  )
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
   const [isComposerInputOverflowing, setIsComposerInputOverflowing] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
@@ -189,6 +239,23 @@ export function LauncherAiPage(): React.JSX.Element {
     seedQuery: initialSeedQuery
   })
   const threadId = threadNavigation.threadId
+  const handleCommandAdmitted = useCallback((activity: AgentCommandActivity): void => {
+    setPendingCommands((currentActivities) => {
+      const nextActivities = new Map(currentActivities)
+      nextActivities.set(activity.threadId, activity)
+      return nextActivities
+    })
+  }, [])
+  const handleCommandSettled = useCallback((activity: AgentCommandActivity): void => {
+    setPendingCommands((currentActivities) => {
+      if (currentActivities.get(activity.threadId)?.commandId !== activity.commandId) {
+        return currentActivities
+      }
+      const nextActivities = new Map(currentActivities)
+      nextActivities.delete(activity.threadId)
+      return nextActivities
+    })
+  }, [])
   const workspaceFileMentionState = useWorkspaceFileMentions(threadId, mentionQuery)
   const {
     addSelectionRef,
@@ -215,13 +282,20 @@ export function LauncherAiPage(): React.JSX.Element {
     updateFreshDraft
   } = threadNavigation
   const agent = useAgent({
+    onCommandAdmitted: handleCommandAdmitted,
+    onCommandSettled: handleCommandSettled,
     threadId
   })
   const {
     control: agentControl,
-    view: { canStop, error: agentError, isBusy }
+    view: { canStop: runtimeCanStop, error: agentError, isBusy: runtimeIsBusy }
   } = agent
   const { stop } = agentControl
+  const pendingCommandForCurrentThread = threadId ? (pendingCommands.get(threadId) ?? null) : null
+  const hasPendingCommand = pendingCommands.size > 0
+  const hasPendingCurrentCommand = pendingCommandForCurrentThread !== null
+  const canStop = runtimeCanStop || hasPendingCurrentCommand
+  const isBusy = runtimeIsBusy || hasPendingCurrentCommand
   const {
     acceptClipboardAttachments,
     addSelectedFiles,
@@ -247,10 +321,21 @@ export function LauncherAiPage(): React.JSX.Element {
       inputRef.current?.focus()
     })
   }, [inputRef])
-  const pendingApproval = useThreadSelector(
+  const projectedPendingApproval = useThreadSelector(
     threadId,
     (state) => state?.agent.pendingApproval ?? null
   )
+  const [settledApprovalKeys, setSettledApprovalKeys] = useState<ReadonlySet<string>>(
+    () => new Set()
+  )
+  const projectedApprovalKey =
+    threadId && projectedPendingApproval
+      ? getApprovalSubmissionKey(threadId, projectedPendingApproval.id)
+      : null
+  const pendingApproval =
+    projectedApprovalKey && settledApprovalKeys.has(projectedApprovalKey)
+      ? null
+      : projectedPendingApproval
   const followUpQueue = useThreadSelector(threadId, (state) => state?.agent.followUpQueue ?? null)
   const activeRun = useThreadSelector(threadId, (state) => state?.agent.activeRun ?? null)
   const currentModelId =
@@ -267,6 +352,31 @@ export function LauncherAiPage(): React.JSX.Element {
     null
   const todos = useThreadSelector(threadId, (state) => state?.agent.todos ?? EMPTY_TODOS)
   const query = localComposerText
+  const getCurrentMessageInput = useCallback((): ComposerMessageInput => {
+    const input = inputRef.current
+    const refs =
+      input && "getModelText" in input
+        ? [...input.getRefs(), ...attachmentMessageRefs, ...assistantSelectionRefs]
+        : [...attachmentMessageRefs, ...assistantSelectionRefs]
+    const text = input && "getModelText" in input ? input.getModelText() : query
+
+    if (selectionContext) {
+      return {
+        refs,
+        text: buildLauncherSelectionPromptText({
+          selection: selectionContext,
+          userText: text
+        })
+      }
+    }
+
+    return {
+      refs,
+      text
+    }
+  }, [assistantSelectionRefs, attachmentMessageRefs, inputRef, query, selectionContext])
+  const getLatestCurrentMessageInput = useLatestCallback(getCurrentMessageInput)
+  const getLatestTarget = useLatestCallback(() => threadNavigation.target)
   useAiCoreLifecycle({
     onLauncherShown: () => {
       if (host.threads.mode !== "launcher" || !threadId) {
@@ -301,11 +411,51 @@ export function LauncherAiPage(): React.JSX.Element {
     clearAllAttachments()
     clearSelectionRefs()
   }, [clearAllAttachments, clearSelectionRefs])
+  const handleAcceptedComposerInput = useCallback(
+    (submittedInput: ComposerMessageInput, acceptedThreadId: string): void => {
+      if (!composerRevision.takeIfCurrent(submittedInput)) {
+        return
+      }
+
+      const submittedTarget = threadNavigation.target
+      const latestTarget = getLatestTarget()
+      if (
+        !isLauncherCommandTargetCurrent({
+          acceptedThreadId,
+          currentTarget: latestTarget,
+          submittedTarget
+        })
+      ) {
+        return
+      }
+
+      if (!areComposerCommandInputsEqual(getLatestCurrentMessageInput(), submittedInput)) {
+        return
+      }
+
+      setComposerText("")
+      clearTransientInputState()
+      if (selection && selectionContext) {
+        void selection.clearContext(selectionContext.id)
+      }
+      setMentionQuery(null)
+    },
+    [
+      clearTransientInputState,
+      composerRevision,
+      getLatestCurrentMessageInput,
+      getLatestTarget,
+      selection,
+      selectionContext,
+      setComposerText,
+      threadNavigation.target
+    ]
+  )
   const hasPendingApproval = Boolean(pendingApproval)
   const threadError = agentError ?? navigationError
   const canSubmitComposerDraft = !hasPendingApproval && hasComposerMessageInputContent(messageInput)
-  const primaryActionDisabled = !canSubmitComposerDraft
-  const showStopAction = canStop && !canSubmitComposerDraft
+  const primaryActionDisabled = hasPendingCommand || !canSubmitComposerDraft
+  const showStopAction = canStop && (hasPendingCurrentCommand || !canSubmitComposerDraft)
   let launcherInputStatus: "idle" | "pending" = "idle"
   if (isBusy) {
     launcherInputStatus = "pending"
@@ -367,11 +517,13 @@ export function LauncherAiPage(): React.JSX.Element {
   const showFollowUpQueue = Boolean(
     !isApprovalPending && threadId && followUpQueue && followUpQueue.count > 0
   )
+  const [commandSubmissionGate] = useState(createLauncherCommandSubmissionGate)
   const controller = useMemo(
     () =>
       createLauncherAiController({
         agentControl,
         branchThreadUntilMessage,
+        commandSubmissionGate,
         createBranchThread,
         createThread,
         currentModelId,
@@ -380,17 +532,14 @@ export function LauncherAiPage(): React.JSX.Element {
         draftTarget,
         goToNextThread,
         goToPreviousThread,
+        hasPendingCommand,
         hasPendingApproval,
         isBusy,
-        onDidInvoke: () => {
-          clearTransientInputState()
-          if (selection && selectionContext) {
-            void selection.clearContext(selectionContext.id)
-          }
-          setMentionQuery(null)
-        },
+        onCommandAdmitted: handleCommandAdmitted,
+        onCommandSettled: handleCommandSettled,
+        onDidInvoke: handleAcceptedComposerInput,
         setNavigationError,
-        setLocalComposerText,
+        setLocalComposerText: setComposerText,
         startFreshDraftTarget,
         threadId,
         title: copy.launcher.aiThreadTitle,
@@ -414,7 +563,7 @@ export function LauncherAiPage(): React.JSX.Element {
     [
       agentControl,
       branchThreadUntilMessage,
-      clearTransientInputState,
+      commandSubmissionGate,
       copy.launcher.aiThreadTitle,
       createBranchThread,
       createThread,
@@ -424,10 +573,13 @@ export function LauncherAiPage(): React.JSX.Element {
       draftTarget,
       goToNextThread,
       goToPreviousThread,
+      handleCommandAdmitted,
+      handleCommandSettled,
+      handleAcceptedComposerInput,
+      hasPendingCommand,
       hasPendingApproval,
       isBusy,
-      selection,
-      selectionContext,
+      setComposerText,
       startFreshDraftTarget,
       threadId,
       threadContext,
@@ -448,6 +600,42 @@ export function LauncherAiPage(): React.JSX.Element {
     setQuery,
     startFreshDraft
   } = controller
+  const handleAcceptClipboardAttachments = useCallback((): void => {
+    acceptClipboardAttachments()
+    markComposerChanged()
+  }, [acceptClipboardAttachments, markComposerChanged])
+  const handleAddSelectedFiles = useCallback(
+    async (files: FileList | File[]): Promise<void> => {
+      markComposerChanged()
+      await addSelectedFiles(files)
+    },
+    [addSelectedFiles, markComposerChanged]
+  )
+  const handleRemoveAttachment = useCallback(
+    (attachmentId: string): void => {
+      removeAttachment(attachmentId)
+      markComposerChanged()
+    },
+    [markComposerChanged, removeAttachment]
+  )
+  const handleAddSelectionRef = useCallback(
+    (ref: Parameters<typeof addSelectionRef>[0]): void => {
+      addSelectionRef(ref)
+      markComposerChanged()
+    },
+    [addSelectionRef, markComposerChanged]
+  )
+  const handleRemoveSelectionRef = useCallback(
+    (ref: Parameters<typeof removeSelectionRef>[0]): void => {
+      removeSelectionRef(ref)
+      markComposerChanged()
+    },
+    [markComposerChanged, removeSelectionRef]
+  )
+  const handleClearSelectionRefs = useCallback((): void => {
+    clearSelectionRefs()
+    markComposerChanged()
+  }, [clearSelectionRefs, markComposerChanged])
   const canGoToNextChat = canGoToNextThread
   const canGoToPreviousChat = canGoToPreviousThread
   const openAttachmentPicker = useCallback((): void => {
@@ -493,44 +681,28 @@ export function LauncherAiPage(): React.JSX.Element {
     [branchThread, clearTransientInputState, focusComposerOnNextFrame]
   )
   const handleStop = useCallback(async (): Promise<void> => {
+    if (pendingCommandForCurrentThread) {
+      await stopAgentThread(pendingCommandForCurrentThread.threadId)
+      return
+    }
     await stop()
-  }, [stop])
+  }, [pendingCommandForCurrentThread, stop])
   const handleOpenModelPicker = useCallback(async (): Promise<void> => {
     setShowModelPicker(true)
   }, [])
-  const getCurrentMessageInput = useCallback((): ComposerMessageInput => {
-    const input = inputRef.current
-    const refs =
-      input && "getModelText" in input
-        ? [...input.getRefs(), ...attachmentMessageRefs, ...assistantSelectionRefs]
-        : [...attachmentMessageRefs, ...assistantSelectionRefs]
-    const text = input && "getModelText" in input ? input.getModelText() : query
-
-    if (selectionContext) {
-      return {
-        refs,
-        text: buildLauncherSelectionPromptText({
-          selection: selectionContext,
-          userText: text
-        })
-      }
-    }
-
-    return {
-      refs,
-      text
-    }
-  }, [assistantSelectionRefs, attachmentMessageRefs, inputRef, query, selectionContext])
   const submitCurrentInput = useCallback((): void => {
-    runPrimaryAction(getCurrentMessageInput())
-  }, [getCurrentMessageInput, runPrimaryAction])
+    const input = getCurrentMessageInput()
+    composerRevision.register(input)
+    runPrimaryAction(input)
+  }, [composerRevision, getCurrentMessageInput, runPrimaryAction])
   const dismissSelectionContext = useCallback((): void => {
     if (!selection || !selectionContext) {
       return
     }
 
+    markComposerChanged()
     void selection.clearContext(selectionContext.id)
-  }, [selection, selectionContext])
+  }, [markComposerChanged, selection, selectionContext])
   const editQueuedFollowUp = useCallback(
     async (item: JingleAgentFollowUpQueueItem): Promise<void> => {
       if (!threadControl) {
@@ -572,26 +744,69 @@ export function LauncherAiPage(): React.JSX.Element {
     },
     [activeRun, threadControl]
   )
+  const getLatestPendingApprovalId = useLatestCallback(() => pendingApproval?.id ?? null)
+  const submitApprovalDecision = useCallback(
+    (decision: Parameters<typeof handleApprovalDecision>[0]): void => {
+      const submittedApprovalId = pendingApproval?.id ?? null
+      const submittedThreadId = threadId
+      const submittedFeedback = approvalRejectFeedback
+      const submittedFeedbackRevision = approvalFeedbackRevisionRef.current
+      void handleApprovalDecision(decision).then((accepted) => {
+        if (accepted && submittedApprovalId !== null && submittedThreadId !== null) {
+          const submittedApprovalKey = getApprovalSubmissionKey(
+            submittedThreadId,
+            submittedApprovalId
+          )
+          setSettledApprovalKeys((currentKeys) => {
+            if (currentKeys.has(submittedApprovalKey)) {
+              return currentKeys
+            }
+            const nextKeys = new Set(currentKeys)
+            nextKeys.add(submittedApprovalKey)
+            return nextKeys
+          })
+        }
+        const currentApprovalId = getLatestPendingApprovalId()
+        if (
+          (currentApprovalId !== null && currentApprovalId !== submittedApprovalId) ||
+          approvalFeedbackRevisionRef.current !== submittedFeedbackRevision
+        ) {
+          return
+        }
+        if (!accepted && currentApprovalId !== null) {
+          return
+        }
+        setApprovalRejectFeedback((currentFeedback) =>
+          currentFeedback === submittedFeedback ? "" : currentFeedback
+        )
+      })
+    },
+    [
+      approvalRejectFeedback,
+      getLatestPendingApprovalId,
+      handleApprovalDecision,
+      pendingApproval?.id,
+      threadId
+    ]
+  )
   const submitApprovalRejectFeedback = useCallback((): void => {
     if (!pendingApproval) {
       return
     }
 
     const feedback = approvalRejectFeedback.trim()
-    void handleApprovalDecision({
+    submitApprovalDecision({
       type: "reject",
       ...(feedback ? { feedback } : {})
     })
-    setApprovalRejectFeedback("")
-  }, [approvalRejectFeedback, handleApprovalDecision, pendingApproval])
+  }, [approvalRejectFeedback, pendingApproval, submitApprovalDecision])
   const submitApprovalAccept = useCallback((): void => {
     if (!pendingApproval) {
       return
     }
 
-    void handleApprovalDecision({ type: "approve" })
-    setApprovalRejectFeedback("")
-  }, [handleApprovalDecision, pendingApproval])
+    submitApprovalDecision({ type: "approve" })
+  }, [pendingApproval, submitApprovalDecision])
   const handleComposerKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLElement>): void => {
       const input = inputRef.current
@@ -1257,7 +1472,7 @@ export function LauncherAiPage(): React.JSX.Element {
                     isHydrating={isHydratingThread}
                     isLoading={isBusy}
                     loadingReason={threadLoadingReason}
-                    onAddAssistantSelectionRef={addSelectionRef}
+                    onAddAssistantSelectionRef={handleAddSelectionRef}
                     onBranch={conversationBranchHandler}
                     onEditLastUserMessage={editLastUserMessage}
                     onRetry={runPrimaryAction}
@@ -1283,8 +1498,7 @@ export function LauncherAiPage(): React.JSX.Element {
                         actionsPlacement="external"
                         key={pendingApproval.id}
                         onDecision={(decision) => {
-                          void handleApprovalDecision(decision)
-                          setApprovalRejectFeedback("")
+                          submitApprovalDecision(decision)
                         }}
                         rejectFeedback={approvalRejectFeedback}
                         rejectFeedbackPlacement="external"
@@ -1312,7 +1526,7 @@ export function LauncherAiPage(): React.JSX.Element {
                     maxHeight="var(--launcher-ai-composer-input-max-h)"
                     minHeight="var(--launcher-ai-composer-input-min-h)"
                     onSubmit={isApprovalPending ? undefined : submitCurrentInput}
-                    onValueChange={isApprovalPending ? setApprovalRejectFeedback : setQuery}
+                    onValueChange={isApprovalPending ? setApprovalFeedback : setQuery}
                     value={isApprovalPending ? approvalRejectFeedback : query}
                   >
                     <input
@@ -1326,7 +1540,7 @@ export function LauncherAiPage(): React.JSX.Element {
                       ).join(",")}
                       onChange={(event) => {
                         if (event.target.files) {
-                          void addSelectedFiles(event.target.files)
+                          void handleAddSelectedFiles(event.target.files)
                         }
                         event.target.value = ""
                       }}
@@ -1422,20 +1636,20 @@ export function LauncherAiPage(): React.JSX.Element {
                             <LauncherAttachmentStrip
                               attachments={clipboardCandidateAttachments}
                               intent="candidate"
-                              onAccept={acceptClipboardAttachments}
+                              onAccept={handleAcceptClipboardAttachments}
                               onRemove={dismissClipboardCandidate}
                               removeLabel={copy.launcher.clearClipboardContext}
                             />
                             <LauncherAttachmentStrip
                               attachments={attachments}
-                              onRemove={removeAttachment}
+                              onRemove={handleRemoveAttachment}
                             />
                             <AssistantSelectionReferencePill
                               className="px-[var(--jingle-space-1)]"
                               refs={assistantSelectionRefs}
                               removable
-                              onClear={clearSelectionRefs}
-                              onRemove={removeSelectionRef}
+                              onClear={handleClearSelectionRefs}
+                              onRemove={handleRemoveSelectionRef}
                             />
                           </>
                         ) : null}
@@ -1454,6 +1668,7 @@ export function LauncherAiPage(): React.JSX.Element {
                             <button
                               type="button"
                               className="min-h-8 rounded-full px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              disabled={hasPendingCommand}
                               onClick={submitApprovalRejectFeedback}
                             >
                               {copy.toolCall.decline}
@@ -1461,10 +1676,23 @@ export function LauncherAiPage(): React.JSX.Element {
                             <button
                               type="button"
                               className="min-h-8 rounded-full bg-foreground px-[var(--jingle-space-3)] [font-size:var(--jingle-font-body)] font-semibold text-background shadow-[0_6px_16px_rgba(32,38,45,0.14)] transition-transform hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
+                              disabled={hasPendingCommand}
                               onClick={submitApprovalAccept}
                             >
                               {copy.toolCall.accept}
                             </button>
+                            {hasPendingCurrentCommand ? (
+                              <PromptInputAction
+                                onClick={() => {
+                                  void handleStop()
+                                }}
+                                onMouseDown={(event) => event.preventDefault()}
+                                icon={<Square className="size-[var(--jingle-icon-compact)]" />}
+                                label={copy.launcher.aiStopLabel}
+                                title={copy.launcher.aiStopLabel}
+                                tooltip={copy.launcher.aiStopLabel}
+                              />
+                            ) : null}
                           </>
                         ) : null}
 

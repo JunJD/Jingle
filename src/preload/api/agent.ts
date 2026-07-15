@@ -1,28 +1,69 @@
-import type { AgentThreadEvent } from "@shared/agent-thread-contract"
 import type {
   JingleAgentFollowUpAction,
   JingleAgentFollowUpQueueItem,
   JingleAgentSteerResult,
-  JingleAgentRuntimeReplayOptions,
-  JingleAgentRuntimeSubscription,
-  JingleRuntimeEventBatch
+  JingleAgentRuntimeReplayOptions
 } from "@jingle/agent-client"
 import type { HITLDecision } from "@shared/hitl"
 import type { AgentInvokeMessage, ComposerMessageInput } from "@shared/message-content"
 import type { PermissionModeName } from "@shared/permission-mode"
 import type { AgentThreadEventSubscriptionSurface } from "@shared/agent-thread-contract"
+import {
+  getAgentCommandLifecycleChannel,
+  type AgentCommandLifecycleEvent,
+  type AgentCommandOutcome
+} from "@shared/agent-command"
 import { invokeIpc, ipcRenderer } from "../ipc"
 import {
   buildAgentConnectThreadEventsIpcPayload,
+  buildAgentDisconnectThreadEventsIpcPayload,
   buildAgentInvokeIpcPayload,
   buildAgentResumeIpcPayload
 } from "./agent-payload"
+import { createAgentThreadEventsApi } from "./agent-thread-events"
 
 function getThreadEventsChannel(threadId: string): string {
   return `agent:thread-events:${threadId}`
 }
 
+const agentThreadEventsApi = createAgentThreadEventsApi({
+  connect: (threadId, options) =>
+    invokeIpc(
+      "agent:connectThreadEvents",
+      buildAgentConnectThreadEventsIpcPayload(threadId, options)
+    ),
+  disconnect: (threadId, subscriptionToken) =>
+    invokeIpc(
+      "agent:disconnectThreadEvents",
+      buildAgentDisconnectThreadEventsIpcPayload(threadId, subscriptionToken)
+    ),
+  listen: (threadId, listener) => {
+    const channel = getThreadEventsChannel(threadId)
+    const ipcListener = (_event: unknown, batch: Parameters<typeof listener>[0]): void => {
+      listener(batch)
+    }
+    ipcRenderer.on(channel, ipcListener)
+    return () => ipcRenderer.removeListener(channel, ipcListener)
+  },
+  reportError: (message, error) => {
+    console.error(message, error)
+  }
+})
+
 export const agentApi = {
+  observeCommandLifecycle: (
+    commandId: string,
+    listener: (event: AgentCommandLifecycleEvent) => void
+  ): (() => void) => {
+    const channel = getAgentCommandLifecycleChannel(commandId)
+    const ipcListener = (_event: unknown, lifecycleEvent: AgentCommandLifecycleEvent): void => {
+      if (lifecycleEvent.commandId === commandId) {
+        listener(lifecycleEvent)
+      }
+    }
+    ipcRenderer.on(channel, ipcListener)
+    return () => ipcRenderer.removeListener(channel, ipcListener)
+  },
   invoke: (
     threadId: string,
     message: AgentInvokeMessage,
@@ -32,8 +73,8 @@ export const agentApi = {
     followUpAction?: JingleAgentFollowUpAction,
     expectedRunId?: string | null,
     expectedTurnId?: string | null
-  ): void => {
-    ipcRenderer.send(
+  ): Promise<AgentCommandOutcome> => {
+    return invokeIpc<AgentCommandOutcome>(
       "agent:invoke",
       buildAgentInvokeIpcPayload({
         expectedRunId,
@@ -53,8 +94,8 @@ export const agentApi = {
     modelId?: string,
     permissionMode?: PermissionModeName,
     temporaryMode?: boolean
-  ): void => {
-    ipcRenderer.send("agent:editLastUserMessageAndInvoke", {
+  ): Promise<AgentCommandOutcome> => {
+    return invokeIpc<AgentCommandOutcome>("agent:editLastUserMessageAndInvoke", {
       threadId,
       message,
       modelId,
@@ -62,8 +103,12 @@ export const agentApi = {
       temporaryMode
     })
   },
-  resume: (threadId: string, decision: HITLDecision, modelId?: string): void => {
-    ipcRenderer.send(
+  resume: (
+    threadId: string,
+    decision: HITLDecision,
+    modelId?: string
+  ): Promise<AgentCommandOutcome> => {
+    return invokeIpc<AgentCommandOutcome>(
       "agent:resume",
       buildAgentResumeIpcPayload({
         threadId,
@@ -107,63 +152,13 @@ export const agentApi = {
     }
     return invokeIpc("agent:steerFollowUp", payload)
   },
-  connectThreadEvents: (
-    threadId: string,
-    onBatch: (batch: JingleRuntimeEventBatch<AgentThreadEvent>) => void,
-    options: JingleAgentRuntimeReplayOptions & {
-      surface?: AgentThreadEventSubscriptionSurface
-    } = {}
-  ): JingleAgentRuntimeSubscription => {
-    const channel = getThreadEventsChannel(threadId)
-    let disposed = false
-
-    const listener = (_event: unknown, batch: JingleRuntimeEventBatch<AgentThreadEvent>): void => {
-      if (disposed) {
-        return
-      }
-
-      onBatch(batch)
-    }
-
-    ipcRenderer.on(channel, listener)
-
-    const ready: Promise<void> = invokeIpc(
-      "agent:connectThreadEvents",
-      buildAgentConnectThreadEventsIpcPayload(threadId, options)
-    )
-      .then(() => undefined)
-      .catch((error) => {
-        if (!disposed) {
-          console.error("[Agent] Failed to subscribe thread events:", error)
-        }
-        throw error
-      })
-    ready.catch(() => {})
-
-    const cleanup = (() => {
-      if (disposed) {
-        return
-      }
-
-      disposed = true
-      ipcRenderer.removeListener(channel, listener)
-      void invokeIpc("agent:disconnectThreadEvents", { threadId }).catch((error) => {
-        console.error("[Agent] Failed to unsubscribe thread events:", error)
-      })
-    }) as JingleAgentRuntimeSubscription
-
-    cleanup.ready = ready
-    return cleanup
-  },
+  connectThreadEvents: agentThreadEventsApi.connectThreadEvents,
   replayThreadEvents: (
     threadId: string,
     options: JingleAgentRuntimeReplayOptions & {
       surface?: AgentThreadEventSubscriptionSurface
     } = {}
   ): Promise<void> => {
-    return invokeIpc(
-      "agent:connectThreadEvents",
-      buildAgentConnectThreadEventsIpcPayload(threadId, options)
-    ).then(() => undefined)
+    return agentThreadEventsApi.replayThreadEvents(threadId, options)
   }
 }

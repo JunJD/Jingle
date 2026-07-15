@@ -1,14 +1,15 @@
-import {
-  abortJingleAgentRun,
-  completeJingleAgentRun,
-  failJingleAgentRun
-} from "./run-completion"
+import { abortJingleAgentRun, completeJingleAgentRun, failJingleAgentRun } from "./run-completion"
 import type {
-  CreateRuntimeThreadFactoryInput,
-  RuntimeRunLifecycleControllerContract
+  RuntimeResumeRunStart,
+  RuntimeRunLifecycleControllerContract,
+  RuntimeRunStart
 } from "./runtime-contract"
 import type { JingleContextInclusionStateItem } from "./context-inclusion-state"
-import type { RuntimeThreadRunLifecycleControl } from "./runtime-thread"
+import type {
+  RuntimeThreadExecutionBinder,
+  RuntimeThreadFactoryInput,
+  RuntimeThreadRunLifecycleControl
+} from "./runtime-thread"
 import type { RuntimeThreadContext } from "./runtime-thread-context"
 
 export interface RuntimeThreadRunLifecycleControlInput<
@@ -21,19 +22,18 @@ export interface RuntimeThreadRunLifecycleControlInput<
     TInvokeRunLifecycleInput,
     TResumeRunLifecycleInput
   >
+  bindExecution: RuntimeThreadExecutionBinder<TInvokeRunLifecycleInput, TResumeRunLifecycleInput>
   context: RuntimeThreadContext
 }
 
 export function createRuntimeThreadRunLifecycleControl<
   TContextInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem,
-  TGuardrailMetadata = Record<string, unknown>,
   TReview = unknown,
   TInvokeRunLifecycleInput = unknown,
   TResumeRunLifecycleInput = unknown
 >(
-  input: CreateRuntimeThreadFactoryInput<
+  input: RuntimeThreadFactoryInput<
     TContextInclusion,
-    TGuardrailMetadata,
     TReview,
     TInvokeRunLifecycleInput,
     TResumeRunLifecycleInput
@@ -45,7 +45,8 @@ export function createRuntimeThreadRunLifecycleControl<
   TResumeRunLifecycleInput
 > {
   return createRuntimeThreadRunLifecycleControlFromController({
-    runLifecycleController: input.host.control.runLifecycleController,
+    bindExecution: input.bindExecution,
+    runLifecycleController: input.runLifecycleController,
     context
   })
 }
@@ -66,7 +67,7 @@ export function createRuntimeThreadRunLifecycleControlFromController<
   TResumeRunLifecycleInput
 > {
   const lifecycle = input.runLifecycleController
-  const { runState, thread } = input.context
+  const { thread } = input.context
 
   return {
     abortRun: (abortInput) =>
@@ -78,24 +79,77 @@ export function createRuntimeThreadRunLifecycleControlFromController<
         threadId: thread.threadId
       }),
     beginInvokeRun: async (beginInput) => {
-      const runStart = await Promise.resolve(
-        lifecycle.beginInvokeRun({
-          invoke: beginInput.invoke,
-          threadId: thread.threadId
-        })
-      )
-      runState.currentRunId = runStart.runId
-      return runStart
+      const reservation = input.context.reserveRun()
+      let runStart: RuntimeRunStart | null = null
+      try {
+        runStart = await Promise.resolve(
+          lifecycle.beginInvokeRun({
+            invoke: beginInput.invoke,
+            threadId: thread.threadId
+          })
+        )
+        const publicStart = {
+          modelId: runStart.modelId,
+          recordingRefs: [...runStart.recordingRefs],
+          runId: runStart.runId
+        }
+        const admission = {
+          ...runStart,
+          createRunExecution: input.bindExecution.invoke({
+            invoke: beginInput.invoke,
+            start: runStart,
+            thread
+          })
+        }
+        input.context.admitRun(reservation, admission)
+        return publicStart
+      } catch (error) {
+        try {
+          if (runStart) {
+            await failStartedRunAdmission({ error, lifecycle, runStart, threadId: thread.threadId })
+          }
+          throw error
+        } finally {
+          input.context.releaseRunReservation(reservation)
+        }
+      }
     },
     beginResumeRun: async (beginInput) => {
-      const runStart = await Promise.resolve(
-        lifecycle.beginResumeRun({
-          resume: beginInput.resume,
-          threadId: thread.threadId
-        })
-      )
-      runState.currentRunId = runStart.runId
-      return runStart
+      const reservation = input.context.reserveRun()
+      let runStart: RuntimeResumeRunStart | null = null
+      try {
+        runStart = await Promise.resolve(
+          lifecycle.beginResumeRun({
+            resume: beginInput.resume,
+            threadId: thread.threadId
+          })
+        )
+        const publicStart = {
+          beforePendingHitlPersistence: runStart.beforePendingHitlPersistence,
+          modelId: runStart.modelId,
+          recordingRefs: [...runStart.recordingRefs],
+          runId: runStart.runId
+        }
+        const admission = {
+          ...runStart,
+          createRunExecution: input.bindExecution.resume({
+            resume: beginInput.resume,
+            start: runStart,
+            thread
+          })
+        }
+        input.context.admitRun(reservation, admission)
+        return publicStart
+      } catch (error) {
+        try {
+          if (runStart) {
+            await failStartedRunAdmission({ error, lifecycle, runStart, threadId: thread.threadId })
+          }
+          throw error
+        } finally {
+          input.context.releaseRunReservation(reservation)
+        }
+      }
     },
     completeRun: async (completionInput) => {
       const completion = await completeJingleAgentRun({
@@ -133,6 +187,52 @@ export function createRuntimeThreadRunLifecycleControlFromController<
         recordRunFinished: lifecycle.recordRunFinished,
         runId: failInput.runId,
         threadId: thread.threadId
-      })
+      }),
+    settleRun: async ({ runId }) => {
+      try {
+        await lifecycle.settleRun({
+          runId,
+          threadId: thread.threadId
+        })
+      } finally {
+        input.context.settleRun(runId)
+      }
+    }
+  }
+}
+
+async function failStartedRunAdmission(input: {
+  error: unknown
+  lifecycle: Pick<
+    RuntimeRunLifecycleControllerContract,
+    "markRunFailed" | "recordRunFinished" | "settleRun"
+  >
+  runStart: RuntimeRunStart
+  threadId: string
+}): Promise<void> {
+  const compensationErrors: unknown[] = []
+  try {
+    await failJingleAgentRun({
+      error: input.error,
+      markRunFailed: input.lifecycle.markRunFailed,
+      recordRunFinished: input.lifecycle.recordRunFinished,
+      runId: input.runStart.runId,
+      threadId: input.threadId
+    })
+  } catch (error) {
+    compensationErrors.push(error)
+  }
+
+  try {
+    await input.lifecycle.settleRun({ runId: input.runStart.runId, threadId: input.threadId })
+  } catch (error) {
+    compensationErrors.push(error)
+  }
+
+  if (compensationErrors.length > 0) {
+    throw new AggregateError(
+      [input.error, ...compensationErrors],
+      `[RuntimeThread] Run "${input.runStart.runId}" admission and compensation both failed.`
+    )
   }
 }

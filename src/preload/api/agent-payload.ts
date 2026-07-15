@@ -6,6 +6,7 @@ import type { HITLDecision } from "@shared/hitl"
 import type { AgentInvokeMessage } from "@shared/message-content"
 import type { PermissionModeName } from "@shared/permission-mode"
 import type { AgentThreadEventSubscriptionSurface } from "@shared/agent-thread-contract"
+import type { AgentThreadEventSubscriptionToken } from "@shared/agent-thread-contract"
 
 export interface AgentInvokeIpcPayload {
   readonly expectedRunId?: string | null
@@ -26,6 +27,11 @@ export interface AgentResumeIpcPayload {
 
 export interface AgentConnectThreadEventsIpcPayload extends JingleAgentRuntimeReplayOptions {
   readonly surface?: AgentThreadEventSubscriptionSurface
+  readonly threadId: string
+}
+
+export interface AgentDisconnectThreadEventsIpcPayload {
+  readonly subscriptionToken: AgentThreadEventSubscriptionToken
   readonly threadId: string
 }
 
@@ -113,9 +119,15 @@ export function buildAgentConnectThreadEventsIpcPayload(
     options.surface
   )
 
-  return withOptionalProperty(
-    withSurface,
-    "fromRevision",
-    options.fromRevision
-  )
+  return withOptionalProperty(withSurface, "fromRevision", options.fromRevision)
+}
+
+export function buildAgentDisconnectThreadEventsIpcPayload(
+  threadId: string,
+  subscriptionToken: AgentThreadEventSubscriptionToken
+): AgentDisconnectThreadEventsIpcPayload {
+  return {
+    subscriptionToken,
+    threadId
+  }
 }

@@ -51,6 +51,7 @@ const MEMORY_LIMITS = {
 } as const
 
 interface BuildContextPackInput {
+  signal?: AbortSignal
   temporaryMode?: boolean
   workspaceIdentity: JingleWorkspaceIdentity
 }
@@ -104,9 +105,7 @@ function filterMemoryType(
   memories: JingleMemoryRecord[],
   type: JingleMemoryRecord["type"]
 ): JingleMemoryRecord[] {
-  return memories
-    .filter((memory) => memory.type === type)
-    .slice(0, MEMORY_LIMITS[type])
+  return memories.filter((memory) => memory.type === type).slice(0, MEMORY_LIMITS[type])
 }
 
 export class JingleMemoryService {
@@ -142,10 +141,13 @@ export class JingleMemoryService {
   }
 
   async buildContextPack(input: BuildContextPackInput): Promise<JingleMemoryContextPack | null> {
-    const { workspaceIdentity } = input
+    const { signal, workspaceIdentity } = input
+    signal?.throwIfAborted()
     const fileContext = await this.sourceProvider.listContextItems(
-      workspaceIdentity.canonicalWorkspacePath
+      workspaceIdentity.canonicalWorkspacePath,
+      { signal }
     )
+    signal?.throwIfAborted()
 
     if (fileContext.diagnostics.length > 0) {
       console.warn("[JingleMemory] Failed to read context sources:", fileContext.diagnostics)
@@ -167,6 +169,7 @@ export class JingleMemoryService {
       status: "active",
       workspaceKey: workspaceIdentity.workspaceKey
     })
+    signal?.throwIfAborted()
     const structuredItems = [
       ...filterMemoryType(memories, "about_me"),
       ...filterMemoryType(memories, "workspace_context"),
@@ -254,9 +257,7 @@ export class JingleMemoryService {
     })
   }
 
-  listSuggestions(
-    input: ListJingleSuggestionsInput
-  ): Promise<JingleMemorySuggestionRecord[]> {
+  listSuggestions(input: ListJingleSuggestionsInput): Promise<JingleMemorySuggestionRecord[]> {
     return this.listSuggestionsForCurrentWorkspace(input)
   }
 
@@ -321,7 +322,9 @@ export class JingleMemoryService {
   private async resolveThreadOrCurrentWorkspaceIdentity(
     threadId: string | null
   ): Promise<JingleWorkspaceIdentity> {
-    const threadWorkspaceIdentity = threadId ? await this.getThreadWorkspaceIdentity(threadId) : null
+    const threadWorkspaceIdentity = threadId
+      ? await this.getThreadWorkspaceIdentity(threadId)
+      : null
     return threadWorkspaceIdentity ?? this.requireCurrentWorkspaceIdentity()
   }
 
@@ -396,7 +399,7 @@ export class JingleMemoryService {
   ): Promise<JingleMemorySuggestionRecord> {
     const resolvedWorkspaceIdentity =
       input.scope === "workspace"
-        ? workspaceIdentity ?? (await this.requireCurrentWorkspaceIdentity())
+        ? (workspaceIdentity ?? (await this.requireCurrentWorkspaceIdentity()))
         : null
 
     return createAgentMemorySuggestion({

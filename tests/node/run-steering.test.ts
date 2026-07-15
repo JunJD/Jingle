@@ -141,6 +141,24 @@ test("run steering keeps the active run alive at the next safe model boundary", 
   assert.equal(toolBoundary, undefined)
 })
 
+test("run steering rejects commands after the graph commits to final exit", () => {
+  const buffer = createAgentRunSteeringBuffer()
+  const afterAgent = getAfterAgentHook(createRunSteeringMiddleware(buffer))
+
+  assert.equal(afterAgent({ messages: [new AIMessage("done")] }, {}), undefined)
+  assert.equal(
+    buffer.accept({
+      message: {
+        content: "too late",
+        id: "steer-message-late",
+        text: "too late"
+      },
+      runId: "run-1"
+    }),
+    null
+  )
+})
+
 test("run steering re-enters the graph when a pending steer arrives before final exit", async () => {
   const buffer = createAgentRunSteeringBuffer()
   const observedModelCalls: unknown[][] = []

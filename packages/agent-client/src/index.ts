@@ -18,7 +18,8 @@ export type {
   JingleAgentSteerFailureReason,
   JingleAgentSteerResult,
   JingleAgentRunValidationInput,
-  JingleAgentRunValidator
+  JingleAgentRunValidator,
+  JingleAgentResumeDecision
 } from "./commands"
 export type {
   JingleAgentComposerMessageInput,
@@ -29,10 +30,12 @@ export type {
 export {
   buildJingleAgentCommandEnvelope,
   buildJingleAgentCommandMessage,
+  createJingleAgentFollowUpDrainRegistry,
   createEmptyJingleAgentFollowUpQueueSummary,
   buildJingleAgentModelMetadataUpdate,
   buildJingleAgentPermissionMetadataUpdate,
   buildJingleAgentResumeDecision,
+  getJingleAgentSteerRejectionMessage,
   resolveJingleAgentFollowUpDrainPlan,
   resolveJingleAgentEditReadiness,
   resolveJingleAgentFollowUpPlan,

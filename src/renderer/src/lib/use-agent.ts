@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { resolveJingleAgentFollowUpDrainPlan } from "@jingle/agent-client"
+import {
+  createJingleAgentFollowUpDrainRegistry,
+  resolveJingleAgentFollowUpDrainPlan
+} from "@jingle/agent-client"
 import { resolveJingleAgentViewState } from "@jingle/agent-react"
 import type { IpcErrorPayload } from "@shared/ipc-error"
 import { useThreadContext, useThreadSelector } from "./thread-context"
@@ -8,12 +11,15 @@ import {
   invokeAgentThread,
   resumeAgentThread,
   stopAgentThread,
+  type AgentCommandActivity,
   type AgentControl,
   type EditLastUserMessageAndInvokeInput,
   type AgentRunValidator
 } from "./agent-control"
 
 export interface UseAgentOptions {
+  onCommandAdmitted?: (activity: AgentCommandActivity) => void
+  onCommandSettled?: (activity: AgentCommandActivity) => void
   temporaryMode?: boolean
   threadId: string | null
   validateRun?: AgentRunValidator
@@ -36,7 +42,13 @@ export function useAgent(options: UseAgentOptions): {
   control: AgentControl
   view: AgentView
 } {
-  const { temporaryMode = false, threadId, validateRun } = options
+  const {
+    onCommandAdmitted,
+    onCommandSettled,
+    temporaryMode = false,
+    threadId,
+    validateRun
+  } = options
   const threadContext = useThreadContext()
   useEffect(() => {
     if (!threadId) {
@@ -49,7 +61,7 @@ export function useAgent(options: UseAgentOptions): {
   const runtimeStatus = useThreadSelector(threadId, (state) => state?.agent.status ?? null)
   const followUpQueue = useThreadSelector(threadId, (state) => state?.agent.followUpQueue ?? null)
   const threadError = useThreadSelector(threadId, (state) => state?.agent.error ?? null)
-  const drainingFollowUpRequestIdRef = useRef<string | null>(null)
+  const followUpDrainRegistryRef = useRef(createJingleAgentFollowUpDrainRegistry())
   const [dismissedThreadError, setDismissedThreadError] = useState<DismissedThreadError | null>(
     null
   )
@@ -61,10 +73,10 @@ export function useAgent(options: UseAgentOptions): {
       : threadError
 
   useEffect(() => {
-    if (runtimeStatus !== "idle") {
-      drainingFollowUpRequestIdRef.current = null
+    if (threadId && runtimeStatus !== "idle") {
+      followUpDrainRegistryRef.current.clear(threadId)
     }
-  }, [runtimeStatus])
+  }, [runtimeStatus, threadId])
 
   const clearError = useCallback((): void => {
     setDismissedThreadError({ error: threadError, threadId })
@@ -84,18 +96,22 @@ export function useAgent(options: UseAgentOptions): {
           await threadContext.getThreadControl(targetThreadId).agent.enqueueFollowUp(queuedInput)
         },
         onLocalError: setLocalError,
+        onCommandAdmitted,
+        onCommandSettled,
         temporaryMode,
         threadContext,
         threadId: targetThreadId,
         validateRun
       })
     },
-    [temporaryMode, threadContext, threadId, validateRun]
+    [onCommandAdmitted, onCommandSettled, temporaryMode, threadContext, threadId, validateRun]
   )
 
   useEffect(() => {
     const drainPlan = resolveJingleAgentFollowUpDrainPlan({
-      activeRequestId: drainingFollowUpRequestIdRef.current,
+      activeRequestId: threadId
+        ? followUpDrainRegistryRef.current.getActiveRequestId(threadId)
+        : null,
       nextRequestId: followUpQueue?.nextRequestId,
       runtimeStatus,
       threadId
@@ -104,34 +120,45 @@ export function useAgent(options: UseAgentOptions): {
       return
     }
 
-    drainingFollowUpRequestIdRef.current = drainPlan.requestId
+    const lease = followUpDrainRegistryRef.current.acquire(drainPlan.threadId, drainPlan.requestId)
+    if (lease === null) {
+      return
+    }
     const control = threadContext.getThreadControl(drainPlan.threadId)
     void (async () => {
-      const item = await control.agent.takeFollowUp(drainPlan.requestId)
-      if (!item) {
-        drainingFollowUpRequestIdRef.current = null
-        return
-      }
+      try {
+        const item = await control.agent.takeFollowUp(drainPlan.requestId)
+        if (!item) {
+          return
+        }
 
-      const didInvoke = await invokeAgentThread({
-        messageInput: item.messageInput,
-        onQueueFollowUp: async (queuedInput) => {
-          await control.agent.enqueueFollowUp(queuedInput)
-        },
-        onLocalError: setLocalError,
-        temporaryMode,
-        threadContext,
-        threadId: drainPlan.threadId,
-        validateRun
-      })
-      if (!didInvoke) {
-        await control.agent.restoreFollowUp(item)
-        drainingFollowUpRequestIdRef.current = null
+        const didInvoke = await invokeAgentThread({
+          messageInput: item.messageInput,
+          onQueueFollowUp: async (queuedInput) => {
+            await control.agent.enqueueFollowUp(queuedInput)
+          },
+          onLocalError: setLocalError,
+          onCommandAdmitted,
+          onCommandSettled,
+          temporaryMode,
+          threadContext,
+          threadId: drainPlan.threadId,
+          validateRun
+        })
+        if (!didInvoke) {
+          await control.agent.restoreFollowUp(item)
+        }
+      } catch (error) {
+        setLocalError(error instanceof Error ? error.message : String(error))
+      } finally {
+        lease.release()
       }
     })()
   }, [
     followUpQueue?.nextRequestId,
     runtimeStatus,
+    onCommandAdmitted,
+    onCommandSettled,
     temporaryMode,
     threadContext,
     threadId,
@@ -147,13 +174,15 @@ export function useAgent(options: UseAgentOptions): {
         messageId,
         messageInput,
         onLocalError: setLocalError,
+        onCommandAdmitted,
+        onCommandSettled,
         temporaryMode,
         threadContext,
         threadId: invokeOptions?.threadId ?? threadId,
         validateRun
       })
     },
-    [temporaryMode, threadContext, threadId, validateRun]
+    [onCommandAdmitted, onCommandSettled, temporaryMode, threadContext, threadId, validateRun]
   )
 
   const stop = useCallback(async (): Promise<void> => {
@@ -164,12 +193,14 @@ export function useAgent(options: UseAgentOptions): {
     async (decision): Promise<boolean> => {
       return resumeAgentThread({
         decision,
+        onCommandAdmitted,
+        onCommandSettled,
         onLocalError: setLocalError,
         threadContext,
         threadId
       })
     },
-    [threadContext, threadId]
+    [onCommandAdmitted, onCommandSettled, threadContext, threadId]
   )
 
   const view = useMemo<AgentView>(

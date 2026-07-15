@@ -38,7 +38,11 @@ export interface AgentRunPendingSteer<
 }
 
 export interface AgentRunSteeringBufferPort {
-  drainForModelCall: () => Promise<AgentRunPendingSteer[]>
+  close: () => void
+  drainForModelCall: () => {
+    reportApplied: () => void
+    steers: AgentRunPendingSteer[]
+  }
   hasPending: () => boolean
 }
 
@@ -46,13 +50,14 @@ export interface AgentRunSteeringBufferOptions<
   TContent extends MessageContent = MessageContent,
   TRefs extends readonly unknown[] = readonly unknown[]
 > {
-  onSteersApplied?: (steers: AppliedAgentSteer<TContent, TRefs>[]) => Promise<void> | void
+  onSteersApplied?: (steers: AppliedAgentSteer<TContent, TRefs>[]) => void
 }
 
 export class AgentRunSteeringBuffer<
   TContent extends MessageContent = MessageContent,
   TRefs extends readonly unknown[] = readonly unknown[]
 > {
+  private accepting = true
   private readonly pendingSteers: AgentRunPendingSteer<TContent, TRefs>[] = []
 
   constructor(private readonly options: AgentRunSteeringBufferOptions<TContent, TRefs> = {}) {}
@@ -61,7 +66,11 @@ export class AgentRunSteeringBuffer<
     acceptedAt?: Date
     message: AgentRunSteerMessage<TContent, TRefs>
     runId: string | null
-  }): AppliedAgentSteer<TContent, TRefs> {
+  }): AppliedAgentSteer<TContent, TRefs> | null {
+    if (!this.accepting) {
+      return null
+    }
+
     const accepted: AppliedAgentSteer<TContent, TRefs> = {
       acceptedAt: input.acceptedAt ?? new Date(),
       content: input.message.content,
@@ -77,16 +86,27 @@ export class AgentRunSteeringBuffer<
     return accepted
   }
 
+  close(): void {
+    this.accepting = false
+  }
+
   hasPending(): boolean {
     return this.pendingSteers.length > 0
   }
 
-  async drainForModelCall(): Promise<AgentRunPendingSteer<TContent, TRefs>[]> {
+  drainForModelCall(): {
+    reportApplied: () => void
+    steers: AgentRunPendingSteer<TContent, TRefs>[]
+  } {
     const steers = this.pendingSteers.splice(0)
-    if (steers.length > 0) {
-      await this.options.onSteersApplied?.(steers.map((steer) => steer.accepted))
+    return {
+      reportApplied: () => {
+        if (steers.length > 0) {
+          this.options.onSteersApplied?.(steers.map((steer) => steer.accepted))
+        }
+      },
+      steers
     }
-    return steers
   }
 }
 
@@ -183,6 +203,7 @@ export function createRunSteeringMiddleware(
       hook: (state) => {
         // Final answers leave the afterModel router before honoring jumpTo.
         if (!shouldContinueForPendingSteers(buffer, state.messages)) {
+          buffer.close()
           return
         }
 
@@ -200,18 +221,21 @@ export function createRunSteeringMiddleware(
         return handler(request)
       }
 
-      const steers = await buffer.drainForModelCall()
+      const drained = buffer.drainForModelCall()
+      const { steers } = drained
       if (steers.length === 0) {
         return handler(request)
       }
 
-      return handler({
+      const response = handler({
         ...request,
         messages: [
           ...request.messages,
           ...steers.map((steer) => createSteeringHumanMessage(steer.message))
         ]
       })
+      drained.reportApplied()
+      return response
     }
   })
 }

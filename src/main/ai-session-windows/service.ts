@@ -1,4 +1,4 @@
-import type { BrowserWindow } from "electron"
+import type { BrowserWindow, WebContents } from "electron"
 import { randomUUID } from "node:crypto"
 import {
   PINNED_AI_SESSION_WINDOW_LIMIT,
@@ -16,6 +16,7 @@ export interface AiSessionWindowsRuntime {
   setPinnedAiSessionWindowRestoreState: (
     state: PinnedAiSessionWindowRestoreState
   ) => PinnedAiSessionWindowRestoreState
+  setPinnedAiSessionWindowThreadId: (window: BrowserWindow, threadId: string) => void
 }
 
 export class AiSessionWindowsService {
@@ -77,6 +78,11 @@ export class AiSessionWindowsService {
     }
   }
 
+  isPinnedWindowSender(windowId: string, sender: WebContents): boolean {
+    const window = this.pinnedWindows.get(windowId)
+    return window?.webContents === sender && !sender.isDestroyed()
+  }
+
   updatePinnedWindowThread(
     params: UpdatePinnedAiSessionWindowThreadParams
   ): UpdatePinnedAiSessionWindowThreadResult {
@@ -110,16 +116,16 @@ export class AiSessionWindowsService {
       }
     }
 
+    this.runtime.setPinnedAiSessionWindowThreadId(window, params.threadId)
+
     if (this.pinnedWindowIdsByThread.get(currentThreadId) === params.windowId) {
       this.pinnedWindowIdsByThread.delete(currentThreadId)
     }
-    if (!this.isApplicationQuitting) {
-      this.removePinnedThread(currentThreadId)
-    }
-
     this.pinnedThreadIdsByWindow.set(params.windowId, params.threadId)
     this.pinnedWindowIdsByThread.set(params.threadId, params.windowId)
-    this.recordPinnedThread(params.threadId)
+    if (!this.isApplicationQuitting) {
+      this.replacePinnedThreadRecord(currentThreadId, params.threadId)
+    }
 
     return {
       ok: true
@@ -178,23 +184,45 @@ export class AiSessionWindowsService {
   }
 
   private recordPinnedThread(threadId: string): void {
-    const state = this.runtime.getPinnedAiSessionWindowRestoreState()
-    if (state.threadIds.includes(threadId)) {
-      return
-    }
-
-    this.runtime.setPinnedAiSessionWindowRestoreState({
-      threadIds: [...state.threadIds, threadId]
+    this.updatePinnedWindowRestoreProjection("record", (threadIds) => {
+      return threadIds.includes(threadId) ? threadIds : [...threadIds, threadId]
     })
   }
 
   private removePinnedThread(threadId: string): void {
-    const state = this.runtime.getPinnedAiSessionWindowRestoreState()
-    const threadIds = state.threadIds.filter((candidate) => candidate !== threadId)
-    if (threadIds.length === state.threadIds.length) {
-      return
-    }
+    this.updatePinnedWindowRestoreProjection("remove", (threadIds) =>
+      threadIds.filter((candidate) => candidate !== threadId)
+    )
+  }
 
-    this.runtime.setPinnedAiSessionWindowRestoreState({ threadIds })
+  private replacePinnedThreadRecord(currentThreadId: string, nextThreadId: string): void {
+    this.updatePinnedWindowRestoreProjection("replace", (threadIds) => [
+      ...threadIds.filter(
+        (candidate) => candidate !== currentThreadId && candidate !== nextThreadId
+      ),
+      nextThreadId
+    ])
+  }
+
+  private updatePinnedWindowRestoreProjection(
+    operation: "record" | "remove" | "replace",
+    project: (threadIds: string[]) => string[]
+  ): void {
+    try {
+      const state = this.runtime.getPinnedAiSessionWindowRestoreState()
+      const threadIds = project(state.threadIds)
+      if (
+        threadIds.length === state.threadIds.length &&
+        threadIds.every((threadId, index) => threadId === state.threadIds[index])
+      ) {
+        return
+      }
+      this.runtime.setPinnedAiSessionWindowRestoreState({ threadIds })
+    } catch (error) {
+      console.warn("[AiSessionWindows] Failed to update pinned window restore projection.", {
+        error,
+        operation
+      })
+    }
   }
 }

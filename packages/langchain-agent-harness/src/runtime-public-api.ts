@@ -1,7 +1,4 @@
-export type {
-  CreateRuntimeInput,
-  Runtime
-} from "./runtime"
+export type { CreateRuntimeInput, Runtime } from "./runtime"
 export { createRuntime } from "./runtime"
 
 export type {
@@ -11,8 +8,12 @@ export type {
   RuntimeCompactResult,
   RuntimeCompactTrigger,
   RuntimeCompleteOperation,
+  RuntimeDeferredOperationKind,
   RuntimeDrainOperation,
+  RuntimeDurableOperation,
+  RuntimeDurableOperationKind,
   RuntimeFailOperation,
+  RuntimeInternalControlKind,
   RuntimeInvokeInitialState,
   RuntimeInvokeOperation,
   RuntimeOperation,
@@ -34,10 +35,7 @@ export {
   RUNTIME_OPERATION_SURFACE
 } from "./runtime-operation"
 export type { RuntimeRunStreamOptions } from "./runtime-execution"
-export type {
-  RuntimeRunContextScope,
-  RuntimeThreadScope
-} from "./runtime-scope"
+export type { RuntimeRunContextScope, RuntimeThreadScope } from "./runtime-scope"
 
 export type {
   RuntimeApproval,
@@ -92,10 +90,7 @@ export type {
   RuntimePublicSurfaceStability
 } from "./runtime-workbench"
 
-export {
-  RUNTIME_PACKAGE_EXPORT_BOUNDARY,
-  RUNTIME_WORKBENCH_CONTRACT
-} from "./runtime-workbench"
+export { RUNTIME_PACKAGE_EXPORT_BOUNDARY, RUNTIME_WORKBENCH_CONTRACT } from "./runtime-workbench"
 
 export type {
   RuntimeObservationBoundaryContract,
@@ -115,9 +110,7 @@ export type {
   RuntimeSessionBoundaryContract,
   RuntimeThreadSessionPolicy
 } from "./runtime-session"
-export {
-  RUNTIME_SESSION_BOUNDARY
-} from "./runtime-session"
+export { RUNTIME_SESSION_BOUNDARY } from "./runtime-session"
 
 export type {
   RuntimeChildWorkBoundaryContract,
@@ -164,7 +157,6 @@ export type {
   RuntimeArtifactPresentationProvider,
   RuntimeArtifactPresentationResult,
   RuntimeBackend,
-  RuntimeCapabilities,
   RuntimeContextRetrievalConfig,
   RuntimeContextRetrievalProvider,
   RuntimeContextRetrievalResult,
@@ -214,12 +206,19 @@ export type {
   RuntimeThreadDrainResult,
   RuntimeThreadFailInput,
   RuntimeThreadInput,
+  RuntimeThreadInvokeRun,
+  RuntimeThreadInvokeRunExecutionInput,
   RuntimeThreadInvokeInput,
   RuntimeThreadOperationControl,
+  RuntimeThreadResumeRun,
+  RuntimeThreadResumeRunExecutionInput,
   RuntimeThreadResumeInput,
   RuntimeThreadRoleContract,
   RuntimeThreadRoleId,
   RuntimeThreadRoleVisibility,
+  RuntimeThreadRun,
+  RuntimeThreadRunExecutionInput,
+  RuntimeThreadRunResult,
   RuntimeThreadRunLifecycleControl,
   RuntimeThreadStreamControl
 } from "./runtime-thread"

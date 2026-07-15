@@ -1,34 +1,27 @@
-import type { BaseCallbackHandler } from "@langchain/core/callbacks/base"
 import type { BaseMessage, MessageContent } from "@langchain/core/messages"
 import type { RunnableConfig } from "@langchain/core/runnables"
 import type { RuntimeRunLifecycleSubmittedFacts } from "./runtime-contract"
 import type { RuntimeCompaction, RuntimeRecordingRef } from "./runtime-state"
-import {
-  RUNTIME_CHILD_WORK_BOUNDARY,
-  type RuntimeChildWorkCapability
-} from "./runtime-child-work"
-import {
-  RUNTIME_SHELL_BOUNDARY,
-  type RuntimeShellCapability
-} from "./runtime-shell"
-import type { AgentRunSteeringBufferPort } from "./run-steering"
+import { RUNTIME_CHILD_WORK_BOUNDARY, type RuntimeChildWorkCapability } from "./runtime-child-work"
+import { RUNTIME_SHELL_BOUNDARY, type RuntimeShellCapability } from "./runtime-shell"
 
+export type RuntimeDurableOperationKind = "invoke" | "resume"
+export type RuntimeDeferredOperationKind = "compact"
+export type RuntimeInternalControlKind = "drain" | "complete" | "fail" | "abort"
 export type RuntimeOperationKind =
-  | "invoke"
-  | "resume"
-  | "drain"
-  | "complete"
-  | "fail"
-  | "abort"
-  | "compact"
+  | RuntimeDurableOperationKind
+  | RuntimeDeferredOperationKind
+  | RuntimeInternalControlKind
 
 export type RuntimeDeferredOperationCapability =
+  | "compact"
   | RuntimeChildWorkCapability
   | RuntimeShellCapability
 
 export interface RuntimeOperationSurfaceContract {
+  durable: readonly RuntimeDurableOperationKind[]
   entries: readonly RuntimeOperationEntryContract[]
-  supported: readonly RuntimeOperationKind[]
+  internal: readonly RuntimeInternalControlKind[]
   deferred: readonly RuntimeDeferredOperationCapability[]
   toolApprovalEntry: "resume"
 }
@@ -41,6 +34,7 @@ export type RuntimeOperationEntryId =
 export type RuntimeOperationEntryStatus =
   | "deferred-capability"
   | "implemented-operation"
+  | "internal-control"
   | "resume-mediated"
 
 export interface RuntimeOperationEntryContract {
@@ -82,9 +76,9 @@ export const RUNTIME_OPERATION_SURFACE = {
       checkpointBoundary: "stable-checkpoint",
       graphLoop: "outside-model-tool-loop",
       id: "compact",
-      operationKind: "compact",
+      operationKind: "not-introduced",
       owner: "RuntimeThreadOperationControl",
-      status: "implemented-operation"
+      status: "deferred-capability"
     },
     {
       checkpointBoundary: "external",
@@ -92,7 +86,7 @@ export const RUNTIME_OPERATION_SURFACE = {
       id: "drain",
       operationKind: "drain",
       owner: "RuntimeThreadStreamControl",
-      status: "implemented-operation"
+      status: "internal-control"
     },
     {
       checkpointBoundary: "stable-checkpoint",
@@ -100,7 +94,7 @@ export const RUNTIME_OPERATION_SURFACE = {
       id: "complete",
       operationKind: "complete",
       owner: "RuntimeThreadRunLifecycleControl",
-      status: "implemented-operation"
+      status: "internal-control"
     },
     {
       checkpointBoundary: "external",
@@ -108,7 +102,7 @@ export const RUNTIME_OPERATION_SURFACE = {
       id: "fail",
       operationKind: "fail",
       owner: "RuntimeThreadRunLifecycleControl",
-      status: "implemented-operation"
+      status: "internal-control"
     },
     {
       checkpointBoundary: "external",
@@ -116,7 +110,7 @@ export const RUNTIME_OPERATION_SURFACE = {
       id: "abort",
       operationKind: "abort",
       owner: "RuntimeThreadRunLifecycleControl",
-      status: "implemented-operation"
+      status: "internal-control"
     },
     {
       checkpointBoundary: "stable-checkpoint",
@@ -143,8 +137,13 @@ export const RUNTIME_OPERATION_SURFACE = {
       status: "deferred-capability"
     }
   ],
-  supported: ["invoke", "resume", "drain", "complete", "fail", "abort", "compact"],
-  deferred: [...RUNTIME_CHILD_WORK_BOUNDARY.capabilities, RUNTIME_SHELL_BOUNDARY.capability],
+  durable: ["invoke", "resume"],
+  internal: ["drain", "complete", "fail", "abort"],
+  deferred: [
+    "compact",
+    ...RUNTIME_CHILD_WORK_BOUNDARY.capabilities,
+    RUNTIME_SHELL_BOUNDARY.capability
+  ],
   toolApprovalEntry: "resume"
 } as const satisfies RuntimeOperationSurfaceContract
 
@@ -155,13 +154,7 @@ export interface RuntimeRunContext {
 }
 
 export interface RuntimeOperationBase extends RuntimeRunContext {
-  kind: RuntimeOperationKind
-}
-
-export interface RuntimeRunExecutionOptions {
-  callbacks?: BaseCallbackHandler[]
-  modelId?: string
-  steeringBuffer?: AgentRunSteeringBufferPort | null
+  kind: RuntimeDurableOperationKind
 }
 
 export type RuntimeRunStreamChunk = [mode: string, data: unknown]
@@ -181,9 +174,7 @@ export interface RuntimeToolApprovalDecision {
 
 export type RuntimeToolApprovalDecisionType = "approve" | "reject"
 
-export interface RuntimeInvokeOperation<TContextInclusion = unknown>
-  extends RuntimeOperationBase,
-    RuntimeRunExecutionOptions {
+export interface RuntimeInvokeOperation<TContextInclusion = unknown> extends RuntimeOperationBase {
   contextInclusions: TContextInclusion[]
   kind: "invoke"
   message: RuntimeSubmittedMessage
@@ -192,9 +183,7 @@ export interface RuntimeInvokeOperation<TContextInclusion = unknown>
   title?: string | null
 }
 
-export interface RuntimeResumeOperation<TContextInclusion = unknown>
-  extends RuntimeOperationBase,
-    RuntimeRunExecutionOptions {
+export interface RuntimeResumeOperation<TContextInclusion = unknown> extends RuntimeOperationBase {
   contextInclusions?: TContextInclusion[]
   decision: RuntimeToolApprovalDecision
   kind: "resume"
@@ -203,7 +192,7 @@ export interface RuntimeResumeOperation<TContextInclusion = unknown>
 
 export interface RuntimeDrainOperation<
   TChunk extends RuntimeRunStreamChunk
-> extends RuntimeOperationBase {
+> extends RuntimeRunContext {
   beforePendingHitlPersistence?: () => Promise<void> | void
   kind: "drain"
   onChunk: (chunk: TChunk) => Promise<void> | void
@@ -212,17 +201,17 @@ export interface RuntimeDrainOperation<
 }
 
 export interface RuntimeCompleteOperation<TContextInclusion = unknown>
-  extends RuntimeOperationBase, RuntimeRunLifecycleSubmittedFacts<TContextInclusion> {
+  extends RuntimeRunContext, RuntimeRunLifecycleSubmittedFacts<TContextInclusion> {
   expectedMessageId?: string
   interrupted: boolean
   kind: "complete"
 }
 
-export interface RuntimeAbortOperation extends RuntimeOperationBase {
+export interface RuntimeAbortOperation extends RuntimeRunContext {
   kind: "abort"
 }
 
-export interface RuntimeFailOperation extends RuntimeOperationBase {
+export interface RuntimeFailOperation extends RuntimeRunContext {
   error: unknown
   kind: "fail"
 }
@@ -235,7 +224,7 @@ export interface RuntimeCompactInput {
   trigger: RuntimeCompactTrigger
 }
 
-export interface RuntimeCompactOperation extends RuntimeOperationBase, RuntimeCompactInput {
+export interface RuntimeCompactOperation extends RuntimeRunContext, RuntimeCompactInput {
   kind: "compact"
 }
 
@@ -246,12 +235,17 @@ export interface RuntimeCompactResult {
   messageCountBeforeCompaction: number
 }
 
+export type RuntimeDurableOperation<TContextInclusion = unknown> =
+  | RuntimeInvokeOperation<TContextInclusion>
+  | RuntimeResumeOperation<TContextInclusion>
+
+// RuntimeGraph still consumes these internal controls from config. They are execution protocol
+// messages, not durable RuntimeOperation facts or public RuntimeThread commands.
 export type RuntimeOperation<
   TContextInclusion = unknown,
   TChunk extends RuntimeRunStreamChunk = RuntimeRunStreamChunk
 > =
-  | RuntimeInvokeOperation<TContextInclusion>
-  | RuntimeResumeOperation<TContextInclusion>
+  | RuntimeDurableOperation<TContextInclusion>
   | RuntimeDrainOperation<TChunk>
   | RuntimeCompleteOperation<TContextInclusion>
   | RuntimeAbortOperation

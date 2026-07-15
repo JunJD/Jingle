@@ -8,15 +8,15 @@ import {
   RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY,
   type ResolvedExtensionAiCapability
 } from "@shared/extension-sources"
+import { getRun, mapRunRow, updateRun } from "../db/runs"
+import { getPrismaClient } from "../db/client"
 import {
-  createRun,
-  getRun,
-  updateRun,
-} from "../db/runs"
-import {
-  getThread,
-  updateThread
-} from "../db/threads"
+  appendAgentEventsInTransaction,
+  commitAgentEventProjectionState,
+  type AppendAgentEventInput
+} from "../db/agent-events"
+import { serializeJsonValue } from "../db/utils"
+import { getThread, updateThread } from "../db/threads"
 import { hasPendingHitlRequestForRun } from "../db/hitl"
 import { getCheckpointer } from "../checkpointer/runtime-checkpointer-manager"
 import { extractThreadFactsFromCheckpoint } from "./runtime-state"
@@ -30,6 +30,11 @@ import {
   JINGLE_MEMORY_TEMPORARY_MODE_METADATA_KEY,
   type JingleMemoryContextSnapshot
 } from "@shared/jingle-memory"
+import {
+  createRunResumedEventInput,
+  createRunStartedEventInput,
+  createUserMessageCreatedEventInput
+} from "./event-recorder"
 
 type PersistedRunStatus = "pending" | "running" | "error" | "success" | "interrupted"
 type ExistingRun = NonNullable<Awaited<ReturnType<typeof getRun>>>
@@ -41,40 +46,84 @@ export interface SyncedRunCheckpointFacts {
   status: PersistedRunStatus
 }
 
-const runMetadataUpdateQueues = new Map<string, Promise<void>>()
+interface BeginAgentRunOptions {
+  aiCapabilities?: ResolvedExtensionAiCapability[]
+  jingleMemoryContextSnapshot?: JingleMemoryContextSnapshot | null
+  jingleMemoryTemporaryMode?: boolean
+  permissionMode?: PermissionModeName
+  startEvent: {
+    contentPreview: string
+    refs: unknown[]
+    userMessageId: string
+  }
+}
+
+const runMetadataUpdateQueues = new Map<string, Promise<unknown>>()
 
 export async function beginAgentRun(
   threadId: string,
-  modelId?: string,
-  options?: {
-    aiCapabilities?: ResolvedExtensionAiCapability[]
-    jingleMemoryContextSnapshot?: JingleMemoryContextSnapshot | null
-    jingleMemoryTemporaryMode?: boolean
-    permissionMode?: PermissionModeName
-  }
+  modelId: string | undefined,
+  options: BeginAgentRunOptions
 ): Promise<{ run: ExistingRun; runId: string }> {
   const runId = randomUUID()
   const permissionMode = options?.permissionMode ?? DEFAULT_PERMISSION_MODE
   const aiCapabilities = options?.aiCapabilities ?? []
 
-  const run = await createRun(runId, threadId, {
-    status: "running",
-    metadata: {
-      modelId: modelId ?? null,
-      [RUN_PERMISSION_MODE_SNAPSHOT_METADATA_KEY]: permissionMode,
-      [JINGLE_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY]: options?.jingleMemoryContextSnapshot ?? null,
-      [JINGLE_MEMORY_TEMPORARY_MODE_METADATA_KEY]: options?.jingleMemoryTemporaryMode ?? false,
-      [RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY]:
-        createRunExtensionAiCapabilitiesSnapshot({
-          aiCapabilities,
-          runId
-        })
-    }
+  const metadata = {
+    modelId: modelId ?? null,
+    [RUN_PERMISSION_MODE_SNAPSHOT_METADATA_KEY]: permissionMode,
+    [JINGLE_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY]: options?.jingleMemoryContextSnapshot ?? null,
+    [JINGLE_MEMORY_TEMPORARY_MODE_METADATA_KEY]: options?.jingleMemoryTemporaryMode ?? false,
+    [RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY]: createRunExtensionAiCapabilitiesSnapshot(
+      {
+        aiCapabilities,
+        runId
+      }
+    )
+  }
+  const startEventInputs: AppendAgentEventInput[] = [
+    createRunStartedEventInput({
+      modelId,
+      permissionMode,
+      runId,
+      threadId,
+      userMessageId: options.startEvent.userMessageId
+    }),
+    createUserMessageCreatedEventInput({
+      contentPreview: options.startEvent.contentPreview,
+      refs: options.startEvent.refs,
+      runId,
+      threadId,
+      userMessageId: options.startEvent.userMessageId
+    })
+  ]
+  const prisma = getPrismaClient()
+  // Admission owns one durable commit; cancellation retains the run lease until it settles.
+  const run = await prisma.$transaction(async (transaction) => {
+    const now = BigInt(Date.now())
+    const row = await transaction.run.create({
+      data: {
+        assistantId: null,
+        createdAt: now,
+        kwargs: null,
+        metadata: serializeJsonValue(metadata),
+        runId,
+        status: "running",
+        threadId,
+        updatedAt: now
+      }
+    })
+    await appendAgentEventsInTransaction(transaction, startEventInputs, { now })
+    await transaction.thread.update({
+      data: {
+        status: "busy",
+        updatedAt: now
+      },
+      where: { threadId }
+    })
+    return mapRunRow(row)
   })
-
-  await updateThread(threadId, {
-    status: "busy"
-  })
+  commitAgentEventProjectionState(startEventInputs)
 
   return {
     run,
@@ -104,24 +153,26 @@ async function updateRunMetadata(
     status?: string
   }
 ): Promise<void> {
-  const previous = runMetadataUpdateQueues.get(runId) ?? Promise.resolve()
-  const next = previous
-    .catch(() => undefined)
-    .then(async () => {
-      const run = await getRun(runId)
-      if (!run) {
-        return
-      }
+  await withRunMetadataLock(runId, async () => {
+    const run = await getRun(runId)
+    if (!run) {
+      return
+    }
 
-      await updateRun(runId, {
-        ...(input.status !== undefined ? { status: input.status } : {}),
-        metadata: input.merge(run)
-      })
+    await updateRun(runId, {
+      ...(input.status !== undefined ? { status: input.status } : {}),
+      metadata: input.merge(run)
     })
+  })
+}
+
+async function withRunMetadataLock<T>(runId: string, operation: () => Promise<T>): Promise<T> {
+  const previous = runMetadataUpdateQueues.get(runId) ?? Promise.resolve()
+  const next = previous.catch(() => undefined).then(operation)
 
   runMetadataUpdateQueues.set(runId, next)
   try {
-    await next
+    return await next
   } finally {
     if (runMetadataUpdateQueues.get(runId) === next) {
       runMetadataUpdateQueues.delete(runId)
@@ -162,33 +213,65 @@ function mergeRunErrorMetadata(run: ExistingRun, error: unknown): Record<string,
 export async function resumeAgentRun(
   threadId: string,
   runId: string,
-  metadata?: Record<string, unknown>
-): Promise<string> {
-  const existing = await getRun(runId)
-
-  if (!existing) {
-    throw new Error(`[Agent] Cannot resume missing run "${runId}".`)
+  metadata: Record<string, unknown> | undefined,
+  options: {
+    resumeEvent: {
+      modelId?: string
+      requestId: string
+    }
   }
+): Promise<{ run: ExistingRun; runId: string }> {
+  const resumeEventInputs: AppendAgentEventInput[] = [
+    createRunResumedEventInput({
+      modelId: options.resumeEvent.modelId,
+      requestId: options.resumeEvent.requestId,
+      runId,
+      threadId
+    })
+  ]
+  const run = await withRunMetadataLock(runId, async () => {
+    const prisma = getPrismaClient()
+    // Resume facts and the busy transition must become visible as one generation.
+    return prisma.$transaction(async (transaction) => {
+      const existingRow = await transaction.run.findUnique({ where: { runId } })
+      if (!existingRow) {
+        throw new Error(`[Agent] Cannot resume missing run "${runId}".`)
+      }
 
-  if (existing.thread_id !== threadId) {
-    throw new Error(
-      `[Agent] Cannot resume run "${runId}" from thread "${threadId}"; actual thread is "${existing.thread_id}".`
-    )
-  }
+      const existing = mapRunRow(existingRow)
+      if (existing.thread_id !== threadId) {
+        throw new Error(
+          `[Agent] Cannot resume run "${runId}" from thread "${threadId}"; actual thread is "${existing.thread_id}".`
+        )
+      }
 
-  if (existing.status && !["pending", "running", "interrupted"].includes(existing.status)) {
-    throw new Error(`[Agent] Cannot resume run "${runId}" from status "${existing.status}".`)
-  }
+      if (existing.status && !["pending", "running", "interrupted"].includes(existing.status)) {
+        throw new Error(`[Agent] Cannot resume run "${runId}" from status "${existing.status}".`)
+      }
 
-  await updateRunMetadata(runId, {
-    status: "running",
-    merge: (run) => mergeRunResumeMetadata(run, metadata)
+      const now = BigInt(Date.now())
+      const resumedRow = await transaction.run.update({
+        data: {
+          metadata: serializeJsonValue(mergeRunResumeMetadata(existing, metadata)),
+          status: "running",
+          updatedAt: now
+        },
+        where: { runId }
+      })
+      await appendAgentEventsInTransaction(transaction, resumeEventInputs, { now })
+      await transaction.thread.update({
+        data: {
+          status: "busy",
+          updatedAt: now
+        },
+        where: { threadId }
+      })
+      return mapRunRow(resumedRow)
+    })
   })
+  commitAgentEventProjectionState(resumeEventInputs)
 
-  await updateThread(threadId, {
-    status: "busy"
-  })
-  return runId
+  return { run, runId }
 }
 
 export async function syncRunFromLatestCheckpointFacts(

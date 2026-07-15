@@ -10,7 +10,10 @@ import { AiSessionWindowsService, type AiSessionWindowsRuntime } from "./service
 
 const AI_SESSION_WINDOWS_RUNTIME_TOKEN = Symbol("AiSessionWindowsRuntime")
 
-type AiSessionWindowsModuleRuntime = Pick<AiSessionWindowsRuntime, "createPinnedAiSessionWindow">
+type AiSessionWindowsModuleRuntime = Pick<
+  AiSessionWindowsRuntime,
+  "createPinnedAiSessionWindow" | "setPinnedAiSessionWindowThreadId"
+>
 
 export function registerAiSessionWindowsModule(
   container: DependencyContainer,
@@ -32,7 +35,8 @@ export function registerAiSessionWindowsModule(
         },
         createPinnedAiSessionWindow: runtime.createPinnedAiSessionWindow,
         getPinnedAiSessionWindowRestoreState,
-        setPinnedAiSessionWindowRestoreState
+        setPinnedAiSessionWindowRestoreState,
+        setPinnedAiSessionWindowThreadId: runtime.setPinnedAiSessionWindowThreadId
       })
     })
   })

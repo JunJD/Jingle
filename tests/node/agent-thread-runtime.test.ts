@@ -6,9 +6,7 @@ import {
   readJingleToolExecutionTiming,
   reduceJingleAgentThreadRuntimeEvent
 } from "@jingle/agent-client"
-import {
-  createDefaultAgentThreadRuntimeState
-} from "../../src/shared/agent-thread-contract"
+import { createDefaultAgentThreadRuntimeState } from "../../src/shared/agent-thread-contract"
 import type { JingleActiveAgentRun } from "@jingle/agent-client"
 import type { HITLRequest } from "../../src/shared/hitl"
 import type { Message } from "../../src/shared/app-types"
@@ -350,6 +348,15 @@ test("agent thread runtime preserves pending approval while a paused run resumes
     runId: "run-1",
     type: "approval.requested"
   })
+  const cancelledBeforeResume = reduceJingleAgentThreadRuntimeEvent(interruptedState, {
+    completedAt: new Date("2026-06-19T10:02:00.000Z"),
+    durationMs: 0,
+    error: null,
+    revision: 4,
+    runId: "run-1",
+    status: "cancelled",
+    type: "run.finished"
+  })
   const resumedState = reduceJingleAgentThreadRuntimeEvent(interruptedState, {
     revision: 4,
     run: {
@@ -365,6 +372,8 @@ test("agent thread runtime preserves pending approval while a paused run resumes
     type: "approval.cleared"
   })
 
+  assert.equal(cancelledBeforeResume.pendingApproval, pendingApproval)
+  assert.equal(cancelledBeforeResume.status, "cancelled")
   assert.equal(resumedState.status, "running")
   assert.equal(resumedState.pendingApproval, pendingApproval)
   assert.equal(clearedState.pendingApproval, null)
@@ -554,11 +563,14 @@ test("agent thread runtime marks message-bound evidence unavailable when its mes
 })
 
 test("agent thread runtime ignores stale event revisions", () => {
-  const state = reduceJingleAgentThreadRuntimeEvent(createDefaultAgentThreadRuntimeState("thread-1"), {
-    revision: 7,
-    run: createActiveRun(),
-    type: "run.started"
-  })
+  const state = reduceJingleAgentThreadRuntimeEvent(
+    createDefaultAgentThreadRuntimeState("thread-1"),
+    {
+      revision: 7,
+      run: createActiveRun(),
+      type: "run.started"
+    }
+  )
   const staleState = reduceJingleAgentThreadRuntimeEvent(state, {
     completedAt: RUN_COMPLETED_AT,
     durationMs: 6_000,
@@ -712,21 +724,24 @@ test("agent thread runtime truncates messages after an edited user message", () 
 })
 
 test("agent thread runtime stores follow-up queue facts", () => {
-  const queued = reduceJingleAgentThreadRuntimeEvent(createDefaultAgentThreadRuntimeState("thread-1"), {
-    revision: 1,
-    summary: {
-      count: 2,
-      items: [
-        {
-          messageInput: { refs: [], text: "queued follow-up" },
-          requestId: "request-1",
-          text: "queued follow-up"
-        }
-      ],
-      nextRequestId: "request-1"
-    },
-    type: "followUp.queueChanged"
-  })
+  const queued = reduceJingleAgentThreadRuntimeEvent(
+    createDefaultAgentThreadRuntimeState("thread-1"),
+    {
+      revision: 1,
+      summary: {
+        count: 2,
+        items: [
+          {
+            messageInput: { refs: [], text: "queued follow-up" },
+            requestId: "request-1",
+            text: "queued follow-up"
+          }
+        ],
+        nextRequestId: "request-1"
+      },
+      type: "followUp.queueChanged"
+    }
+  )
 
   assert.deepEqual(queued.followUpQueue, {
     count: 2,

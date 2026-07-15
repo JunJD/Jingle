@@ -31,27 +31,33 @@ import type {
   RuntimeArtifactPresentationProviderContract,
   RuntimeExtensionToolsProviderContract
 } from "./runtime-tools"
-import type {
-  RuntimeRunCapabilityScope,
-  RuntimeThreadScope
-} from "./runtime-scope"
+import type { RuntimeRunCapabilityScope, RuntimeThreadScope } from "./runtime-scope"
 
 export type RuntimeBackendContract = JingleFilesystemMiddlewareOptions["backend"] &
   JingleSkillsMiddlewareOptions["backend"]
 export type RuntimeModelContract = JingleSummarizationMiddlewareOptions["model"]
 export type RuntimeSkillSourcesContract = JingleSkillsMiddlewareOptions["sources"]
 
-export type RuntimeModelProviderFactory = (
-  scope: RuntimeRunCapabilityScope
-) => RuntimeModelContract | Promise<RuntimeModelContract>
+export interface RuntimeResourceResolutionContext {
+  /** Capability resolution belongs to the active run and must stop when this signal aborts. */
+  signal: AbortSignal
+}
 
+export type RuntimeModelProviderFactory = (
+  scope: RuntimeRunCapabilityScope,
+  context: RuntimeResourceResolutionContext
+) => RuntimeModelContract
+
+/** Checkpointers are manager-owned; the provider must make only this run's wait abortable. */
 export type RuntimeCheckpointProvider = (
-  scope: RuntimeThreadScope
+  scope: RuntimeThreadScope,
+  context: RuntimeResourceResolutionContext
 ) => BaseCheckpointSaver<string | number> | Promise<BaseCheckpointSaver<string | number>>
 
 export type RuntimeBackendProvider = (
-  scope: RuntimeThreadScope
-) => RuntimeBackendContract | Promise<RuntimeBackendContract>
+  scope: RuntimeThreadScope,
+  context: RuntimeResourceResolutionContext
+) => RuntimeBackendContract
 
 export type RuntimeSystemPromptProvider = (scope: RuntimeThreadScope) => string
 
@@ -60,12 +66,14 @@ export type RuntimeSkillSourcesProvider = (scope: RuntimeThreadScope) => Runtime
 export type RuntimePromptTextProvider = (scope: RuntimeThreadScope) => string
 
 export type RuntimeApprovalControllerProvider = (
-  scope: RuntimeRunCapabilityScope
-) => RuntimeApprovalControllerContract | Promise<RuntimeApprovalControllerContract>
+  scope: RuntimeRunCapabilityScope,
+  context: RuntimeResourceResolutionContext
+) => RuntimeApprovalControllerContract
 
 export type RuntimeCompactionControllerProvider = (
-  scope: RuntimeRunCapabilityScope
-) => JingleSummarizationController | Promise<JingleSummarizationController>
+  scope: RuntimeRunCapabilityScope,
+  context: RuntimeResourceResolutionContext
+) => JingleSummarizationController
 
 export interface RuntimeGuardrailConfig<TMetadata = Record<string, unknown>> {
   applyMetadata?: (
@@ -108,8 +116,13 @@ export interface RuntimeRunLifecycleSubmittedFacts<TContextInclusion = unknown> 
 }
 
 export interface RuntimeRunStart {
+  modelId: string
   recordingRefs: RuntimeRecordingRef[]
   runId: string
+}
+
+export interface RuntimeResumeRunStart extends RuntimeRunStart {
+  beforePendingHitlPersistence: () => Promise<void> | void
 }
 
 export interface RuntimeRunLifecycleControllerContract<
@@ -117,14 +130,16 @@ export interface RuntimeRunLifecycleControllerContract<
   TInvokeRunLifecycleInput = unknown,
   TResumeRunLifecycleInput = unknown
 > {
+  /** Returns the durable start fact; the controller must compensate before rejecting after commit. */
   beginInvokeRun: (input: {
     invoke: TInvokeRunLifecycleInput
     threadId: string
   }) => Promise<RuntimeRunStart> | RuntimeRunStart
+  /** Returns the durable resume fact; the controller must compensate before rejecting after commit. */
   beginResumeRun: (input: {
     resume: TResumeRunLifecycleInput
     threadId: string
-  }) => Promise<RuntimeRunStart> | RuntimeRunStart
+  }) => Promise<RuntimeResumeRunStart> | RuntimeResumeRunStart
   useCheckpointPersistence: () => boolean
   finalizeRunWithoutCheckpoint: (
     input: {
@@ -158,6 +173,7 @@ export interface RuntimeRunLifecycleControllerContract<
     status: "interrupted"
     threadId: string
   }) => Promise<void> | void
+  settleRun: (input: { runId: string; threadId: string }) => Promise<void> | void
   syncRunFromLatestCheckpoint: (
     input: {
       expectedMessageId?: string
@@ -295,20 +311,4 @@ export interface RuntimeResolvedHostContract<
   environment: RuntimeResolvedEnvironmentHostContract
   execution: RuntimeResolvedExecutionHostContract
   observation: RuntimeObservationHostContract
-}
-
-export interface CreateRuntimeThreadFactoryInput<
-  TContextInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem,
-  TGuardrailMetadata = Record<string, unknown>,
-  TReview = unknown,
-  TInvokeRunLifecycleInput = unknown,
-  TResumeRunLifecycleInput = unknown
-> {
-  host: RuntimeHostContract<
-    TContextInclusion,
-    TGuardrailMetadata,
-    TReview,
-    TInvokeRunLifecycleInput,
-    TResumeRunLifecycleInput
-  >
 }

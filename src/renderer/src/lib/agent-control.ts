@@ -16,23 +16,37 @@ import {
 } from "@jingle/agent-client"
 import type { ComposerMessageInput } from "@shared/message-content"
 import { type PermissionModeName } from "@shared/permission-mode"
+import type { AgentCommandLifecycleEvent, AgentCommandOutcome } from "@shared/agent-command"
 import type { ThreadContextValue } from "./thread-context"
 
 export type AgentRunValidationInput = JingleAgentRunValidationInput
 
 export type AgentRunValidator = JingleAgentRunValidator
 
+export interface AgentCommandActivity {
+  commandId: string
+  threadId: string
+}
+
+interface AgentCommandLifecycleCallbacks {
+  onCommandAdmitted?: (activity: AgentCommandActivity) => void
+  onCommandSettled?: (activity: AgentCommandActivity) => void
+}
+
 export interface AgentControl {
   clearError: () => void
   editLastUserMessageAndInvoke: (
     input: EditLastUserMessageAndInvokeInput,
-    options?: { threadId?: string }
+    options?: AgentCommandLifecycleCallbacks & { threadId?: string }
   ) => Promise<boolean>
   invoke: (
     input: ComposerMessageInput,
-    options?: { followUpAction?: JingleAgentFollowUpAction; threadId?: string }
+    options?: {
+      followUpAction?: JingleAgentFollowUpAction
+      threadId?: string
+    } & AgentCommandLifecycleCallbacks
   ) => Promise<boolean>
-  resume: (decision: HITLDecision) => Promise<boolean>
+  resume: (decision: HITLDecision, options?: AgentCommandLifecycleCallbacks) => Promise<boolean>
   stop: () => Promise<void>
 }
 
@@ -59,8 +73,13 @@ export interface InvokeAgentThreadInput {
   followUpAction?: JingleAgentFollowUpAction
   onQueueFollowUp?: (messageInput: ComposerMessageInput) => Promise<void> | void
   onLocalError?: (error: string | null) => void
+  onCommandAdmitted?: (activity: AgentCommandActivity) => void
+  onCommandSettled?: (activity: AgentCommandActivity) => void
   temporaryMode?: boolean
-  threadContext: Pick<ThreadContextValue, "awaitThreadRuntime" | "getAgentCommandState">
+  threadContext: Pick<
+    ThreadContextValue,
+    "awaitThreadRuntime" | "getAgentCommandState" | "loadThreadData"
+  >
   threadId: string | null
   validateRun?: AgentRunValidator
   messageInput: ComposerMessageInput
@@ -73,6 +92,82 @@ export interface EditLastUserMessageAndInvokeInput {
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function acceptAgentCommandOutcome(
+  outcome: AgentCommandOutcome,
+  onLocalError?: (error: string | null) => void
+): boolean {
+  if (outcome.type === "rejected") {
+    onLocalError?.(outcome.error.message)
+    return false
+  }
+
+  return true
+}
+
+type AgentCommandProjectionEvent = Extract<
+  AgentCommandLifecycleEvent,
+  { type: "projection_applied" | "projection_failed" }
+>
+
+function observeAgentCommandLifecycle(input: {
+  commandId: string
+  onAdmitted?: (activity: AgentCommandActivity) => void
+  threadId: string
+}): {
+  dispose(): void
+  projection: Promise<AgentCommandProjectionEvent>
+} {
+  let resolveProjection!: (event: AgentCommandProjectionEvent) => void
+  let projectionSettled = false
+  const projection = new Promise<AgentCommandProjectionEvent>((resolve) => {
+    resolveProjection = resolve
+  })
+  const dispose = window.api.agent.observeCommandLifecycle(input.commandId, (event) => {
+    if (event.threadId !== input.threadId) {
+      return
+    }
+
+    if (event.type === "admitted") {
+      input.onAdmitted?.({ commandId: input.commandId, threadId: input.threadId })
+      return
+    }
+
+    if (!projectionSettled) {
+      projectionSettled = true
+      resolveProjection(event)
+    }
+  })
+
+  return { dispose, projection }
+}
+
+async function resolveAgentCommandProjection(input: {
+  event: AgentCommandProjectionEvent
+  onLocalError?: (error: string | null) => void
+  threadContext: Pick<ThreadContextValue, "loadThreadData">
+  threadId: string
+}): Promise<void> {
+  const projectionError =
+    input.event.type === "projection_failed" ? input.event.error.message : null
+  if (projectionError) {
+    input.onLocalError?.(projectionError)
+  }
+
+  try {
+    await input.threadContext.loadThreadData(input.threadId)
+    if (projectionError === null) {
+      input.onLocalError?.(null)
+    }
+  } catch (error) {
+    const synchronizationError = toErrorMessage(error)
+    input.onLocalError?.(
+      projectionError
+        ? `${projectionError} Thread reload failed: ${synchronizationError}`
+        : `Agent command projection could not be synchronized: ${synchronizationError}`
+    )
+  }
 }
 
 async function updateAgentThreadMetadata(input: {
@@ -183,25 +278,46 @@ export async function invokeAgentThread(input: InvokeAgentThreadInput): Promise<
       return true
     }
 
-    window.api.agent.invoke(
-      input.threadId,
-      buildJingleAgentCommandMessage({
-        envelope: commandEnvelope,
-        messageId: crypto.randomUUID()
-      }),
-      commandState.currentModel,
-      commandState.permissionMode,
-      input.temporaryMode ?? false,
-      followUpPlan.action,
-      followUpPlan.action === "steer" && commandState.activeRun
-        ? commandState.activeRun.runId
-        : undefined,
-      followUpPlan.action === "steer" && commandState.activeRun
-        ? commandState.activeRun.turnId
-        : undefined
-    )
+    const commandId = crypto.randomUUID()
+    const activity = { commandId, threadId: input.threadId }
+    const lifecycle = observeAgentCommandLifecycle({
+      commandId,
+      onAdmitted: input.onCommandAdmitted,
+      threadId: input.threadId
+    })
+    try {
+      const outcome: AgentCommandOutcome = await window.api.agent.invoke(
+        input.threadId,
+        buildJingleAgentCommandMessage({
+          envelope: commandEnvelope,
+          messageId: commandId
+        }),
+        commandState.currentModel,
+        commandState.permissionMode,
+        input.temporaryMode ?? false,
+        followUpPlan.action,
+        followUpPlan.action === "steer" && commandState.activeRun
+          ? commandState.activeRun.runId
+          : undefined,
+        followUpPlan.action === "steer" && commandState.activeRun
+          ? commandState.activeRun.turnId
+          : undefined
+      )
 
-    return true
+      if (!acceptAgentCommandOutcome(outcome, input.onLocalError)) {
+        return false
+      }
+      await resolveAgentCommandProjection({
+        event: await lifecycle.projection,
+        onLocalError: input.onLocalError,
+        threadContext,
+        threadId: input.threadId
+      })
+      return true
+    } finally {
+      lifecycle.dispose()
+      input.onCommandSettled?.(activity)
+    }
   } catch (error) {
     input.onLocalError?.(toErrorMessage(error))
     return false
@@ -254,18 +370,39 @@ export async function editLastUserMessageAndInvokeAgentThread(
 
     input.onLocalError?.(null)
 
-    window.api.agent.editLastUserMessageAndInvoke(
-      input.threadId,
-      buildJingleAgentCommandMessage({
-        envelope: commandEnvelope,
-        messageId: input.messageId
-      }),
-      commandState.currentModel,
-      commandState.permissionMode,
-      input.temporaryMode ?? false
-    )
+    const commandId = input.messageId
+    const activity = { commandId, threadId: input.threadId }
+    const lifecycle = observeAgentCommandLifecycle({
+      commandId,
+      onAdmitted: input.onCommandAdmitted,
+      threadId: input.threadId
+    })
+    try {
+      const outcome = await window.api.agent.editLastUserMessageAndInvoke(
+        input.threadId,
+        buildJingleAgentCommandMessage({
+          envelope: commandEnvelope,
+          messageId: input.messageId
+        }),
+        commandState.currentModel,
+        commandState.permissionMode,
+        input.temporaryMode ?? false
+      )
 
-    return true
+      if (!acceptAgentCommandOutcome(outcome, input.onLocalError)) {
+        return false
+      }
+      await resolveAgentCommandProjection({
+        event: await lifecycle.projection,
+        onLocalError: input.onLocalError,
+        threadContext,
+        threadId: input.threadId
+      })
+      return true
+    } finally {
+      lifecycle.dispose()
+      input.onCommandSettled?.(activity)
+    }
   } catch (error) {
     input.onLocalError?.(toErrorMessage(error))
     return false
@@ -280,8 +417,10 @@ export async function stopAgentThread(threadId: string | null): Promise<void> {
 
 export async function resumeAgentThread(input: {
   decision: HITLDecision
+  onCommandAdmitted?: (activity: AgentCommandActivity) => void
+  onCommandSettled?: (activity: AgentCommandActivity) => void
   onLocalError?: (error: string | null) => void
-  threadContext: Pick<ThreadContextValue, "getAgentCommandState">
+  threadContext: Pick<ThreadContextValue, "getAgentCommandState" | "loadThreadData">
   threadId: string | null
 }): Promise<boolean> {
   if (!input.threadId) {
@@ -305,15 +444,36 @@ export async function resumeAgentThread(input: {
 
   try {
     input.onLocalError?.(null)
-    window.api.agent.resume(
-      input.threadId,
-      buildJingleAgentResumeDecision({
-        decision: input.decision,
-        pendingApproval: commandState.pendingApproval
-      }),
-      commandState.currentModel
-    )
-    return true
+    const commandId = commandState.pendingApproval.id
+    const activity = { commandId, threadId: input.threadId }
+    const lifecycle = observeAgentCommandLifecycle({
+      commandId,
+      onAdmitted: input.onCommandAdmitted,
+      threadId: input.threadId
+    })
+    try {
+      const outcome = await window.api.agent.resume(
+        input.threadId,
+        buildJingleAgentResumeDecision({
+          decision: input.decision,
+          pendingApproval: commandState.pendingApproval
+        }),
+        commandState.currentModel
+      )
+      if (!acceptAgentCommandOutcome(outcome, input.onLocalError)) {
+        return false
+      }
+      await resolveAgentCommandProjection({
+        event: await lifecycle.projection,
+        onLocalError: input.onLocalError,
+        threadContext: input.threadContext,
+        threadId: input.threadId
+      })
+      return true
+    } finally {
+      lifecycle.dispose()
+      input.onCommandSettled?.(activity)
+    }
   } catch (error) {
     input.onLocalError?.(toErrorMessage(error))
     return false

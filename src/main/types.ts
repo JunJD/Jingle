@@ -1,18 +1,25 @@
 import type { AgentInvokeMessage, ComposerMessageInput } from "@shared/message-content"
 import type { AppLocale } from "@shared/i18n"
-import type { HITLDecision, HITLRequest } from "@shared/hitl"
+import type { HITLRequest } from "@shared/hitl"
 import type { PermissionModeName } from "@shared/permission-mode"
 import type { AgentFollowUpMode } from "@shared/agent-follow-up"
 import type { ArtifactRecord } from "@shared/artifacts"
 import type { JingleTodo } from "@jingle/agent-client"
-import type { AgentThreadEventSubscriptionSurface } from "@shared/agent-thread-contract"
+import type {
+  AgentThreadEventSubscriptionSurface,
+  AgentThreadEventSubscriptionToken
+} from "@shared/agent-thread-contract"
 import type {
   CustomProviderInput,
   ProviderId,
   SetDefaultModelOptions,
   ToolCall
 } from "@shared/app-types"
-import type { JingleAgentFollowUpAction, JingleAgentFollowUpQueueItem } from "@jingle/agent-client"
+import type {
+  JingleAgentFollowUpAction,
+  JingleAgentFollowUpQueueItem,
+  JingleAgentResumeDecision
+} from "@jingle/agent-client"
 import type { AgentContextInclusion } from "@shared/jingle-memory"
 export type { HITLDecision, HITLRequest } from "@shared/hitl"
 export type {
@@ -55,7 +62,7 @@ export interface AgentEditLastUserMessageAndInvokeParams extends AgentInvokePara
 
 export interface AgentResumeParams {
   threadId: string
-  decision: HITLDecision
+  decision: JingleAgentResumeDecision
   modelId?: string
 }
 
@@ -65,7 +72,12 @@ export interface AgentCancelParams {
 
 export interface AgentConnectThreadEventsParams {
   fromRevision?: number
-  surface: AgentThreadEventSubscriptionSurface
+  surface?: AgentThreadEventSubscriptionSurface
+  threadId: string
+}
+
+export interface AgentDisconnectThreadEventsParams {
+  subscriptionToken: AgentThreadEventSubscriptionToken
   threadId: string
 }
 

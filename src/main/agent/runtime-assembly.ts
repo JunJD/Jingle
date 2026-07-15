@@ -1,8 +1,4 @@
-import type {
-  CreateRuntimeInput,
-  Runtime,
-  RuntimeRunContext
-} from "@jingle/langchain-agent-harness"
+import type { CreateRuntimeInput, Runtime } from "@jingle/langchain-agent-harness"
 import { createRuntime } from "@jingle/langchain-agent-harness"
 import type { JingleTitleGenerationModel } from "@jingle/langchain-agent-harness/transitional"
 import {
@@ -52,7 +48,6 @@ import { buildAgentRunTraceConfig } from "../observability/agent-trace"
 import { getDevtoolsNetworkRecorder } from "@jingle/devtools-network/main"
 import {
   createRuntimeRunLifecycleController,
-  type AgentRuntimeRunFacts,
   type JingleInvokeRunLifecycleInput,
   type JingleResumeRunLifecycleInput
 } from "./run-lifecycle-controller"
@@ -83,226 +78,244 @@ export interface CreateAgentRuntimeInput {
   workspaceService: WorkspaceService
 }
 
-interface AgentRuntimeRunFactRegistry {
-  delete(runId: string): void
-  get(runId: string): AgentRuntimeRunFacts
-  set(runId: string, facts: AgentRuntimeRunFacts): void
-}
+type JingleExecutionInput = JingleInvokeRunLifecycleInput | JingleResumeRunLifecycleInput
+type JingleExecutionCapabilities = ReturnType<JingleRuntimeInput["bindExecution"]["invoke"]>
 
 export function createAgentRuntime(input: CreateAgentRuntimeInput): JingleRuntime {
   return createRuntime(createAgentRuntimeInput(input))
 }
 
 function createAgentRuntimeInput(input: CreateAgentRuntimeInput): JingleRuntimeInput {
-  const runFacts = createAgentRuntimeRunFactRegistry()
   const runLifecycleController = createRuntimeRunLifecycleController({
-    jingleMemoryService: input.jingleMemoryService,
-    onRunStarted: ({ facts, runId }) => runFacts.set(runId, facts),
-    onRunSettled: ({ runId }) => runFacts.delete(runId)
+    jingleMemoryService: input.jingleMemoryService
   })
+  const bindExecution: JingleRuntimeInput["bindExecution"] = {
+    invoke: ({ invoke, start }) => createAgentExecutionCapabilities(input, invoke, start.modelId),
+    resume: ({ resume, start }) => createAgentExecutionCapabilities(input, resume, start.modelId)
+  }
 
   return {
-    capabilities: {
-      model: {
-        model: (scope) =>
-          getChatModelInstance({
-            modelId: readRunModelId(scope, runFacts),
-            parallelToolCalls: false
-          })
+    bindExecution,
+    control: {
+      pauseController: createRuntimePauseController(),
+      runLifecycleController
+    }
+  }
+}
+
+function createAgentExecutionCapabilities(
+  input: CreateAgentRuntimeInput,
+  executionInput: JingleExecutionInput,
+  modelId: string
+): JingleExecutionCapabilities {
+  const {
+    extensionAiRuntime,
+    jingleMemoryContextPack,
+    jingleMemoryTemporaryMode,
+    permissionMode,
+    workspaceIdentity
+  } = executionInput
+
+  return {
+    model: {
+      model: () =>
+        getChatModelInstance({
+          modelId,
+          parallelToolCalls: false
+        })
+    },
+    checkpoint: {
+      checkpointer: (thread, resolution) =>
+        resolveManagedRuntimeCheckpointer(thread.threadId, resolution.signal)
+    },
+    tools: {
+      artifactPresentation: (thread) => ({
+        presentArtifacts: createArtifactPresentationHandler({
+          threadId: thread.threadId,
+          workspacePath: thread.workspacePath
+        })
+      }),
+      backend: (thread) =>
+        new LocalSandbox({
+          rootDir: thread.workspacePath,
+          virtualMode: false,
+          timeout: 120_000,
+          maxOutputBytes: 100_000
+        }),
+      desktopAutomationTools: {
+        clickScreenPoint: async (toolInput) => {
+          const request = parseClickScreenPointRequest(toolInput)
+          return clickScreenPoint(request, desktopAutomationRunner)
+        },
+        findAxElements: async (toolInput) => {
+          const request = parseFindAxElementsRequest(toolInput)
+          return findAxElements(request, desktopAutomationRunner)
+        },
+        openApplication: async (toolInput) => {
+          const request = parseOpenApplicationRequest(toolInput)
+          return openApplication(request, desktopAutomationRunner)
+        },
+        openDesktopRoute: async (toolInput) => {
+          const request = parseOpenDesktopRouteRequest(toolInput)
+          return openDesktopRoute(request, desktopAutomationRunner)
+        },
+        pressAxElement: async (toolInput) => {
+          const request = parsePressAxElementRequest(toolInput)
+          return pressAxElement(request, desktopAutomationRunner)
+        }
       },
-      checkpoint: {
-        checkpointer: (thread) => getCheckpointer(thread.threadId)
-      },
-      tools: {
-        artifactPresentation: (thread) => ({
-          presentArtifacts: createArtifactPresentationHandler({
-            threadId: thread.threadId,
+      extensionAiTools: (run) =>
+        extensionAiRuntime.createToolsOptions({
+          runId: run.runId,
+          threadId: run.threadId,
+          workspacePath: run.workspacePath
+        }),
+      skillSources: (thread) =>
+        buildJingleSkillSources({
+          configuredSources: getAgentConfig().skillSources,
+          jingleHomeDir: getJingleHomeDir(),
+          workspacePath: thread.workspacePath
+        }),
+      webTools: {
+        searchWeb
+      }
+    },
+    context: {
+      contextRetrieval: (run) =>
+        createAgentContextInclusionToolHandlers({
+          threadId: run.threadId
+        }),
+      guardrail: (thread) => ({
+        applyMetadata: applyGuardrailMetadata,
+        provider: createExecuteCommandGuardrailProvider({
+          classifier: new JustBashExecuteCommandClassifier(),
+          predictor: new JustBashMutationPredictor({
             workspacePath: thread.workspacePath
           })
+        })
+      }),
+      memory: (run) =>
+        createJingleMemoryHarnessPortOptions({
+          allowSuggestions:
+            !jingleMemoryTemporaryMode &&
+            input.jingleMemoryService.getSettings().useMemory === true,
+          contextPack: jingleMemoryContextPack,
+          service: input.jingleMemoryService,
+          temporaryMode: jingleMemoryTemporaryMode,
+          threadId: run.threadId,
+          workspaceIdentity
         }),
-        backend: (thread) =>
-          new LocalSandbox({
-            rootDir: thread.workspacePath,
+      systemPrompt: (thread) => buildJingleSystemPrompt(thread.workspacePath),
+      workspaceFileContext: (thread) => ({
+        resolveContext: createWorkspaceFileContextResolver({
+          threadId: thread.threadId,
+          workspaceService: input.workspaceService
+        })
+      })
+    },
+    control: {
+      approvalController: () => ({
+        allowedDecisions: getDefaultHitlAllowedDecisions(),
+        policyRuntime: createToolPermissionRuntime({
+          extensionToolPolicyProvider: extensionAiRuntime.approvalPolicyProvider,
+          permissionMode
+        })
+      })
+    },
+    observation: {
+      trace: {
+        createRunConfig: ({ runId, source, threadId }) =>
+          buildAgentRunTraceConfig({
+            modelId,
+            permissionMode,
+            runId,
+            source,
+            threadId
+          }),
+        recordEvent: async ({ event, runId, threadId }) => {
+          getDevtoolsNetworkRecorder().append({
+            channel: event.type,
+            metadata: {
+              runId,
+              threadId
+            },
+            payload: event.payload,
+            source: "agent-trace",
+            status: "sent"
+          })
+          await appendAgentEventSafely({
+            payload: event.payload,
+            runId,
+            threadId,
+            type: event.type
+          })
+        }
+      }
+    },
+    compaction: {
+      summarization: (scope) =>
+        createRuntimeCompactionSummarizationController({
+          backend: new LocalSandbox({
+            rootDir: scope.workspacePath,
             virtualMode: false,
             timeout: 120_000,
             maxOutputBytes: 100_000
           }),
-        desktopAutomationTools: {
-          clickScreenPoint: async (toolInput) => {
-            const request = parseClickScreenPointRequest(toolInput)
-            return clickScreenPoint(request, desktopAutomationRunner)
-          },
-          findAxElements: async (toolInput) => {
-            const request = parseFindAxElementsRequest(toolInput)
-            return findAxElements(request, desktopAutomationRunner)
-          },
-          openApplication: async (toolInput) => {
-            const request = parseOpenApplicationRequest(toolInput)
-            return openApplication(request, desktopAutomationRunner)
-          },
-          openDesktopRoute: async (toolInput) => {
-            const request = parseOpenDesktopRouteRequest(toolInput)
-            return openDesktopRoute(request, desktopAutomationRunner)
-          },
-          pressAxElement: async (toolInput) => {
-            const request = parsePressAxElementRequest(toolInput)
-            return pressAxElement(request, desktopAutomationRunner)
-          }
-        },
-        extensionAiTools: (run) =>
-          runFacts.get(run.runId).extensionAiRuntime.createToolsOptions({
-            runId: run.runId,
-            threadId: run.threadId,
-            workspacePath: run.workspacePath
-          }),
-        skillSources: (thread) =>
-          buildJingleSkillSources({
-            configuredSources: getAgentConfig().skillSources,
-            jingleHomeDir: getJingleHomeDir(),
-            workspacePath: thread.workspacePath
-          }),
-        webTools: {
-          searchWeb
-        }
-      },
-      context: {
-        contextRetrieval: (run) =>
-          createAgentContextInclusionToolHandlers({
-            threadId: run.threadId
-          }),
-        guardrail: (thread) => ({
-          applyMetadata: applyGuardrailMetadata,
-          provider: createExecuteCommandGuardrailProvider({
-            classifier: new JustBashExecuteCommandClassifier(),
-            predictor: new JustBashMutationPredictor({
-              workspacePath: thread.workspacePath
-            })
-          })
-        }),
-        memory: (run: RuntimeRunContext) => {
-          const facts = runFacts.get(run.runId)
-          return createJingleMemoryHarnessPortOptions({
-            allowSuggestions:
-              !facts.jingleMemoryTemporaryMode &&
-              input.jingleMemoryService.getSettings().useMemory === true,
-            contextPack: facts.jingleMemoryContextPack,
-            service: input.jingleMemoryService,
-            temporaryMode: facts.jingleMemoryTemporaryMode,
-            threadId: run.threadId,
-            workspaceIdentity: facts.workspaceIdentity
-          })
-        },
-        systemPrompt: (thread) => buildJingleSystemPrompt(thread.workspacePath),
-        workspaceFileContext: (thread) => ({
-          resolveContext: createWorkspaceFileContextResolver({
-            threadId: thread.threadId,
-            workspaceService: input.workspaceService
+          model: getChatModelInstance({
+            modelId,
+            parallelToolCalls: false
           })
         })
-      },
-      control: {
-        approvalController: (scope) => {
-          const facts = runFacts.get(scope.runId)
-          return {
-            allowedDecisions: getDefaultHitlAllowedDecisions(),
-            policyRuntime: createToolPermissionRuntime({
-              extensionToolPolicyProvider: facts.extensionAiRuntime.approvalPolicyProvider,
-              permissionMode: facts.permissionMode
-            })
-          }
+    },
+    prompt: {
+      executeToolDescription: (thread) => buildJingleExecuteToolDescription(thread.workspacePath),
+      filesystemSystemPrompt: (thread) => buildJingleFilesystemSystemPrompt(thread.workspacePath),
+      titleGenerator: createJingleTitleGenerator({
+        createModel: createThreadTitleModel,
+        onError: (error) => {
+          console.warn("[TitleMiddleware] Failed to generate title.", error)
         },
-        pauseController: createRuntimePauseController(),
-        runLifecycleController
-      },
-      observation: {
-        trace: {
-          createRunConfig: ({ runId, source, threadId }) =>
-            buildAgentRunTraceConfig({
-              modelId: runFacts.get(runId).modelId,
-              permissionMode: runFacts.get(runId).permissionMode,
-              runId,
-              source,
-              threadId
-            }),
-          recordEvent: async ({ event, runId, threadId }) => {
-            getDevtoolsNetworkRecorder().append({
-              channel: event.type,
-              metadata: {
-                runId,
-                threadId
-              },
-              payload: event.payload,
-              source: "agent-trace",
-              status: "sent"
-            })
-            await appendAgentEventSafely({
-              payload: event.payload,
-              runId,
-              threadId,
-              type: event.type
-            })
-          }
-        }
-      },
-      compaction: {
-        summarization: (scope) =>
-          createRuntimeCompactionSummarizationController({
-            backend: new LocalSandbox({
-              rootDir: scope.workspacePath,
-              virtualMode: false,
-              timeout: 120_000,
-              maxOutputBytes: 100_000
-            }),
-            model: getChatModelInstance({
-              modelId: readRunModelId(scope, runFacts),
-              parallelToolCalls: false
-            })
-          })
-      },
-      prompt: {
-        executeToolDescription: (thread) => buildJingleExecuteToolDescription(thread.workspacePath),
-        filesystemSystemPrompt: (thread) => buildJingleFilesystemSystemPrompt(thread.workspacePath),
-        titleGenerator: createJingleTitleGenerator({
-          createModel: createThreadTitleModel,
-          onError: (error) => {
-            console.warn("[TitleMiddleware] Failed to generate title.", error)
-          },
-          timeoutMs: TITLE_GENERATION_TIMEOUT_MS
-        })
-      }
+        timeoutMs: TITLE_GENERATION_TIMEOUT_MS
+      })
     }
   }
 }
 
-function readRunModelId(
-  scope: { modelId?: string; runId: string },
-  runFacts: AgentRuntimeRunFactRegistry
-): string | undefined {
-  if (scope.modelId) {
-    return scope.modelId
-  }
+function resolveManagedRuntimeCheckpointer(
+  threadId: string,
+  signal: AbortSignal
+): ReturnType<typeof getCheckpointer> {
+  signal.throwIfAborted()
+  // The manager owns and caches the saver; this run only owns its abortable wait.
+  const pending = getCheckpointer(threadId)
 
-  return runFacts.get(scope.runId).modelId
-}
-
-function createAgentRuntimeRunFactRegistry(): AgentRuntimeRunFactRegistry {
-  const factsByRunId = new Map<string, AgentRuntimeRunFacts>()
-
-  return {
-    delete(runId) {
-      factsByRunId.delete(runId)
-    },
-    get(runId) {
-      const facts = factsByRunId.get(runId)
-      if (!facts) {
-        throw new Error(`[Runtime] Missing run facts for run "${runId}".`)
-      }
-      return facts
-    },
-    set(runId, facts) {
-      factsByRunId.set(runId, facts)
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const finish = (operation: () => void): void => {
+      if (settled) return
+      settled = true
+      signal.removeEventListener("abort", onAbort)
+      operation()
     }
-  }
+    const onAbort = (): void => {
+      finish(() => reject(signal.reason))
+    }
+
+    signal.addEventListener("abort", onAbort, { once: true })
+    if (signal.aborted) onAbort()
+    pending.then(
+      (checkpointer) => {
+        finish(() => resolve(checkpointer))
+      },
+      (error: unknown) => {
+        if (settled) {
+          console.error("[Runtime] Managed checkpointer failed after run cancellation.", error)
+          return
+        }
+        finish(() => reject(error))
+      }
+    )
+  })
 }
 
 function applyGuardrailMetadata(

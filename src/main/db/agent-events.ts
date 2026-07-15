@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto"
+import type { Prisma } from "@prisma/client"
 import { getPrismaClient } from "./client"
 import { markAgentTraceProjectionError, projectAgentTraceForRun } from "./agent-traces"
 import { serializeJsonValue, toNumber } from "./utils"
@@ -141,7 +142,10 @@ function resolveAggregate(input: AppendAgentEventInput): {
   }
 }
 
-function prepareAgentEventInput(input: AppendAgentEventInput, now: bigint): PreparedAgentEventInput {
+function prepareAgentEventInput(
+  input: AppendAgentEventInput,
+  now: bigint
+): PreparedAgentEventInput {
   const aggregate = resolveAggregate(input)
   const payload = serializeJsonValue(normalizeAgentEventPayload(input.type, input.payload)) ?? "{}"
   const metadata = serializeJsonValue(input.metadata) ?? null
@@ -162,7 +166,7 @@ function prepareAgentEventInput(input: AppendAgentEventInput, now: bigint): Prep
   }
 }
 
-function updateTraceProjectionState(inputs: readonly AppendAgentEventInput[]): void {
+export function commitAgentEventProjectionState(inputs: readonly AppendAgentEventInput[]): void {
   const requestedProjectionByRunId = new Map<string, "dirty" | "enqueue">()
   for (const input of inputs) {
     if (!input.runId) {
@@ -188,53 +192,93 @@ function updateTraceProjectionState(inputs: readonly AppendAgentEventInput[]): v
   }
 }
 
+function prepareAgentEventBatch(
+  inputs: readonly AppendAgentEventInput[],
+  now: bigint
+): {
+  firstEvent: PreparedAgentEventInput
+  prepared: PreparedAgentEventInput[]
+} {
+  if (inputs.length === 0) {
+    throw new Error("[AgentEventRecorder] Cannot prepare an empty agent event batch.")
+  }
+
+  const prepared = inputs.map((input) => prepareAgentEventInput(input, now))
+  const firstEvent = prepared[0]
+  for (const event of prepared) {
+    if (
+      event.aggregateId !== firstEvent.aggregateId ||
+      event.aggregateType !== firstEvent.aggregateType
+    ) {
+      throw new Error("[AgentEventRecorder] appendAgentEvents requires one aggregate per batch.")
+    }
+  }
+
+  return { firstEvent, prepared }
+}
+
+export async function appendAgentEventsInTransaction(
+  transaction: Prisma.TransactionClient,
+  inputs: readonly AppendAgentEventInput[],
+  options: { now?: bigint } = {}
+): Promise<AgentEventRow[]> {
+  if (inputs.length === 0) {
+    return []
+  }
+
+  const now = options.now ?? BigInt(Date.now())
+  const { firstEvent, prepared } = prepareAgentEventBatch(inputs, now)
+  const sequence = await transaction.agentEventSequence.upsert({
+    where: {
+      aggregateId: firstEvent.aggregateId
+    },
+    create: {
+      aggregateId: firstEvent.aggregateId,
+      aggregateType: firstEvent.aggregateType,
+      seq: prepared.length,
+      updatedAt: now
+    },
+    update: {
+      aggregateType: firstEvent.aggregateType,
+      seq: {
+        increment: prepared.length
+      },
+      updatedAt: now
+    }
+  })
+  const firstSeq = sequence.seq - prepared.length + 1
+  const rows = prepared.map((event, index) => ({
+    aggregateId: event.aggregateId,
+    aggregateType: event.aggregateType,
+    checkpointId: event.checkpointId,
+    createdAt: event.createdAt,
+    eventId: event.eventId,
+    metadata: event.metadata,
+    payload: event.payload,
+    runId: event.runId,
+    schemaVersion: event.schemaVersion,
+    seq: firstSeq + index,
+    threadId: event.threadId,
+    traceId: event.traceId,
+    type: event.type
+  }))
+
+  await transaction.agentEvent.createMany({ data: rows })
+  return rows.map(mapAgentEventRow)
+}
+
 export async function appendAgentEvent(input: AppendAgentEventInput): Promise<AgentEventRow> {
   const prisma = getPrismaClient()
-  const now = BigInt(Date.now())
-  const prepared = prepareAgentEventInput(input, now)
+  const rows = await prisma.$transaction((transaction) =>
+    appendAgentEventsInTransaction(transaction, [input])
+  )
+  const row = rows[0]
+  if (!row) {
+    throw new Error("[AgentEventRecorder] Single-event append produced no row.")
+  }
 
-  const row = await prisma.$transaction(async (tx) => {
-    const sequence = await tx.agentEventSequence.upsert({
-      where: {
-        aggregateId: prepared.aggregateId
-      },
-      create: {
-        aggregateId: prepared.aggregateId,
-        aggregateType: prepared.aggregateType,
-        seq: 1,
-        updatedAt: now
-      },
-      update: {
-        aggregateType: prepared.aggregateType,
-        seq: {
-          increment: 1
-        },
-        updatedAt: now
-      }
-    })
-
-    return tx.agentEvent.create({
-      data: {
-        aggregateId: prepared.aggregateId,
-        aggregateType: prepared.aggregateType,
-        checkpointId: prepared.checkpointId,
-        createdAt: prepared.createdAt,
-        eventId: prepared.eventId,
-        metadata: prepared.metadata,
-        payload: prepared.payload,
-        runId: prepared.runId,
-        schemaVersion: prepared.schemaVersion,
-        seq: sequence.seq,
-        threadId: prepared.threadId,
-        traceId: prepared.traceId,
-        type: prepared.type
-      }
-    })
-  })
-
-  updateTraceProjectionState([input])
-
-  return mapAgentEventRow(row)
+  commitAgentEventProjectionState([input])
+  return row
 }
 
 export async function appendAgentEvents(
@@ -245,60 +289,12 @@ export async function appendAgentEvents(
   }
 
   const prisma = getPrismaClient()
-  const now = BigInt(Date.now())
-  const prepared = inputs.map((input) => prepareAgentEventInput(input, now))
-  const [firstEvent] = prepared
-  for (const event of prepared) {
-    if (
-      event.aggregateId !== firstEvent.aggregateId ||
-      event.aggregateType !== firstEvent.aggregateType
-    ) {
-      throw new Error("[AgentEventRecorder] appendAgentEvents requires one aggregate per batch.")
-    }
-  }
+  const rows = await prisma.$transaction((transaction) =>
+    appendAgentEventsInTransaction(transaction, inputs)
+  )
 
-  const rows = await prisma.$transaction(async (tx) => {
-    const sequence = await tx.agentEventSequence.upsert({
-      where: {
-        aggregateId: firstEvent.aggregateId
-      },
-      create: {
-        aggregateId: firstEvent.aggregateId,
-        aggregateType: firstEvent.aggregateType,
-        seq: prepared.length,
-        updatedAt: now
-      },
-      update: {
-        aggregateType: firstEvent.aggregateType,
-        seq: {
-          increment: prepared.length
-        },
-        updatedAt: now
-      }
-    })
-    const firstSeq = sequence.seq - prepared.length + 1
-    const rowsToCreate = prepared.map((event, index) => ({
-      aggregateId: event.aggregateId,
-      aggregateType: event.aggregateType,
-      checkpointId: event.checkpointId,
-      createdAt: event.createdAt,
-      eventId: event.eventId,
-      metadata: event.metadata,
-      payload: event.payload,
-      runId: event.runId,
-      schemaVersion: event.schemaVersion,
-      seq: firstSeq + index,
-      threadId: event.threadId,
-      traceId: event.traceId,
-      type: event.type
-    }))
-
-    await tx.agentEvent.createMany({ data: rowsToCreate })
-    return rowsToCreate
-  })
-
-  updateTraceProjectionState(inputs)
-  return rows.map(mapAgentEventRow)
+  commitAgentEventProjectionState(inputs)
+  return rows
 }
 
 export async function appendAgentEventSafely(

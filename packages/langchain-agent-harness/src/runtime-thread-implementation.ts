@@ -1,21 +1,23 @@
 import type {
-  CreateRuntimeThreadFactoryInput,
   RuntimePauseControllerContract,
   RuntimeRunLifecycleControllerContract
 } from "./runtime-contract"
-import type { RuntimeThreadScope } from "./runtime-scope"
 import type { JingleContextInclusionStateItem } from "./context-inclusion-state"
-import type { RuntimeThread } from "./runtime-thread"
+import type { RuntimeThreadScope } from "./runtime-scope"
+import type {
+  RuntimeThread,
+  RuntimeThreadFactoryInput,
+  RuntimeThreadOperationControl,
+  RuntimeThreadRunLifecycleControl,
+  RuntimeThreadStreamControl
+} from "./runtime-thread"
 import type { RuntimeExecutionFactory } from "./runtime-execution-factory"
 import { createRuntimeThreadRunLifecycleControl } from "./runtime-thread-lifecycle"
 import { createRuntimeThreadRunLifecycleControlFromController } from "./runtime-thread-lifecycle"
 import { createRuntimeThreadOperationControl } from "./runtime-thread-operations"
-import {
-  createRuntimeThreadContext,
-  createRuntimeThreadContextFromControls
-} from "./runtime-thread-context"
-import { createRuntimeThreadStreamDrainControl } from "./runtime-thread-stream"
+import { createRuntimeThreadContext, type RuntimeThreadContext } from "./runtime-thread-context"
 import { createRuntimeThreadStreamDrainControlFromController } from "./runtime-thread-stream"
+import { createRuntimeThreadInvokeRun, createRuntimeThreadResumeRun } from "./runtime-thread-run"
 
 export interface RuntimeThreadControlsInput<
   TContextInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem,
@@ -35,27 +37,26 @@ export interface RuntimeThreadControlsInput<
 
 export function createRuntimeThread<
   TContextInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem,
-  TGuardrailMetadata = Record<string, unknown>,
   TReview = unknown,
   TInvokeRunLifecycleInput = unknown,
   TResumeRunLifecycleInput = unknown
 >(
-  input: CreateRuntimeThreadFactoryInput<
+  input: RuntimeThreadFactoryInput<
     TContextInclusion,
-    TGuardrailMetadata,
     TReview,
     TInvokeRunLifecycleInput,
     TResumeRunLifecycleInput
   >,
-  threadInput: RuntimeThreadScope
+  context: RuntimeThreadContext
 ): RuntimeThread<TContextInclusion, TInvokeRunLifecycleInput, TResumeRunLifecycleInput> {
-  const context = createRuntimeThreadContext(input, threadInput)
-
-  return {
-    ...createRuntimeThreadRunLifecycleControl(input, context),
-    ...createRuntimeThreadOperationControl<TContextInclusion>(context),
-    ...createRuntimeThreadStreamDrainControl(input, context.thread)
-  }
+  return createRuntimeThreadControl({
+    lifecycle: createRuntimeThreadRunLifecycleControl(input, context),
+    operations: createRuntimeThreadOperationControl<TContextInclusion>(context),
+    stream: createRuntimeThreadStreamDrainControlFromController({
+      pauseController: input.pauseController,
+      thread: context.thread
+    })
+  })
 }
 
 export function createRuntimeThreadFromControls<
@@ -71,20 +72,57 @@ export function createRuntimeThreadFromControls<
     TResumeRunLifecycleInput
   >
 ): RuntimeThread<TContextInclusion, TInvokeRunLifecycleInput, TResumeRunLifecycleInput> {
-  const context = createRuntimeThreadContextFromControls({
-    createRunExecution: input.createRunExecution,
-    thread: input.thread
-  })
+  const context = createRuntimeThreadContext(input.thread)
+  const bindExecution = {
+    invoke: () => input.createRunExecution,
+    resume: () => input.createRunExecution
+  }
 
-  return {
-    ...createRuntimeThreadRunLifecycleControlFromController({
+  return createRuntimeThreadControl({
+    lifecycle: createRuntimeThreadRunLifecycleControlFromController({
+      bindExecution,
       runLifecycleController: input.runLifecycleController,
       context
     }),
-    ...createRuntimeThreadOperationControl<TContextInclusion>(context),
-    ...createRuntimeThreadStreamDrainControlFromController({
+    operations: createRuntimeThreadOperationControl<TContextInclusion>(context),
+    stream: createRuntimeThreadStreamDrainControlFromController({
       pauseController: input.pauseController,
       thread: context.thread
     })
+  })
+}
+
+function createRuntimeThreadControl<
+  TContextInclusion extends JingleContextInclusionStateItem,
+  TInvokeRunLifecycleInput,
+  TResumeRunLifecycleInput
+>(input: {
+  lifecycle: RuntimeThreadRunLifecycleControl<
+    TContextInclusion,
+    TInvokeRunLifecycleInput,
+    TResumeRunLifecycleInput
+  >
+  operations: RuntimeThreadOperationControl<TContextInclusion>
+  stream: RuntimeThreadStreamControl
+}): RuntimeThread<TContextInclusion, TInvokeRunLifecycleInput, TResumeRunLifecycleInput> {
+  const controls = {
+    lifecycle: input.lifecycle,
+    operations: input.operations,
+    stream: input.stream
+  }
+
+  return {
+    compact: input.operations.compact,
+    startInvoke: async (invoke) =>
+      createRuntimeThreadInvokeRun({
+        controls,
+        start: await input.lifecycle.beginInvokeRun({ invoke })
+      }),
+    startResume: async (resume) =>
+      createRuntimeThreadResumeRun({
+        controls,
+        decision: resume.decision,
+        start: await input.lifecycle.beginResumeRun({ resume })
+      })
   }
 }

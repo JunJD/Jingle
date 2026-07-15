@@ -34,8 +34,13 @@ export interface CreateAgentRunHandleOptions {
   workspacePath: string
 }
 
+type BddRunStreamChunk = [mode: string, data: unknown]
+
 interface BddAgentRuntime {
-  stream: (input: unknown, options: { signal: AbortSignal }) => Promise<AsyncIterable<unknown>>
+  stream: (
+    input: unknown,
+    options: { signal: AbortSignal }
+  ) => Promise<AsyncIterable<BddRunStreamChunk>>
 }
 
 interface BddRunOperationInput {
@@ -44,8 +49,14 @@ interface BddRunOperationInput {
 
 interface BddRunOperation {
   compact(input: RuntimeCompactInput): Promise<RuntimeCompactResult>
-  streamInvoke(input: unknown, options: { signal: AbortSignal }): Promise<AsyncIterable<unknown>>
-  streamResume(input: unknown, options: { signal: AbortSignal }): Promise<AsyncIterable<unknown>>
+  streamInvoke(
+    input: unknown,
+    options: { signal: AbortSignal }
+  ): Promise<AsyncIterable<BddRunStreamChunk>>
+  streamResume(
+    input: unknown,
+    options: { signal: AbortSignal }
+  ): Promise<AsyncIterable<BddRunStreamChunk>>
 }
 
 export interface AgentRunHandle {
@@ -56,9 +67,7 @@ export interface AgentRunHandle {
   >
 }
 
-export async function createAgentRunHandle(
-  options: CreateAgentRunHandleOptions
-): Promise<AgentRunHandle> {
+export function createAgentRunHandle(options: CreateAgentRunHandleOptions): AgentRunHandle {
   const { runtime, threadId, workspacePath } = options
 
   if (!threadId) {

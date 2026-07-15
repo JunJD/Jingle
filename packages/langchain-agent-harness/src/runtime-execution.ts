@@ -1,20 +1,27 @@
+import type { BaseCallbackHandler } from "@langchain/core/callbacks/base"
 import type { RunnableConfig } from "@langchain/core/runnables"
-import type {
-  RuntimeCompactInput,
-  RuntimeCompactResult,
-  RuntimeRunExecutionOptions
-} from "./runtime-operation"
+import type { AgentRunSteeringBufferPort } from "./run-steering"
+import type { RuntimeRunStreamChunk } from "./runtime-operation"
 
-export interface RuntimeRunExecutionInput extends RuntimeRunExecutionOptions {
+export interface RuntimeRunExecutionInput {
+  callbacks?: BaseCallbackHandler[]
+  modelId: string
   runId: string
+  signal: AbortSignal
+  steeringBuffer?: AgentRunSteeringBufferPort | null
 }
 
 export type RuntimeRunStream<TChunk = unknown> = Promise<AsyncIterable<TChunk>>
 
 export interface RuntimeRunExecution {
-  compact(input: RuntimeCompactInput): Promise<RuntimeCompactResult>
-  streamInvoke<TInput>(input: TInput, options: RuntimeRunStreamOptions): RuntimeRunStream
-  streamResume<TInput>(input: TInput, options: RuntimeRunStreamOptions): RuntimeRunStream
+  streamInvoke<TInput>(
+    input: TInput,
+    options: RuntimeRunStreamOptions
+  ): RuntimeRunStream<RuntimeRunStreamChunk>
+  streamResume<TInput>(
+    input: TInput,
+    options: RuntimeRunStreamOptions
+  ): RuntimeRunStream<RuntimeRunStreamChunk>
 }
 
 export interface RuntimeRunStreamOptions {

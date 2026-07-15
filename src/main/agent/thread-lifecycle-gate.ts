@@ -33,6 +33,9 @@ export type ThreadRunClaim =
   | {
       status: "deleting"
     }
+  | {
+      status: "running"
+    }
 
 export class ThreadLifecycleGate {
   private readonly deletions = new Map<string, Promise<void>>()
@@ -49,10 +52,8 @@ export class ThreadLifecycleGate {
         return { status: "deleting" }
       }
 
-      await this.stopActiveRun(threadId)
-
-      if (this.deletions.has(threadId)) {
-        return { status: "deleting" }
+      if (this.runs.has(threadId)) {
+        return { status: "running" }
       }
 
       const controller = new AbortController()

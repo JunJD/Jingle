@@ -5,35 +5,32 @@ import {
 } from "./runtime-operation-payload"
 import type { RuntimeThreadOperationControl } from "./runtime-thread"
 import type { RuntimeThreadContext } from "./runtime-thread-context"
+import type { RuntimeExecutionContext } from "./runtime-execution-context"
 
 export function createRuntimeThreadOperationControl<
   TContextInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem
->(
-  context: RuntimeThreadContext
-): RuntimeThreadOperationControl<TContextInclusion> {
-  const { createRunExecution, runState } = context
+>(context: RuntimeThreadContext): RuntimeThreadOperationControl<TContextInclusion> {
+  const readRunExecution = async (executionContext: RuntimeExecutionContext<TContextInclusion>) => {
+    context.activateRun(executionContext)
+    return executionContext.resolveExecution()
+  }
 
   return {
-    compact: async (compactInput) => {
-      if (!runState.currentRunId) {
-        throw new Error("[RuntimeThread] Cannot compact before beginning a run.")
-      }
-      return (await createRunExecution({ runId: runState.currentRunId })).compact(compactInput)
+    compact: async () => {
+      throw new Error(
+        "[RuntimeThread] Compact is an independent operation and is not available before Pause 4."
+      )
     },
     invoke: async (invokeInput, streamOptions) => {
-      runState.currentRunId = invokeInput.runId
-
-      return (await createRunExecution(invokeInput)).streamInvoke(
+      return (await readRunExecution(streamOptions.executionContext)).streamInvoke(
         buildRuntimeInvokeInitialState(invokeInput),
-        streamOptions
+        { signal: streamOptions.signal }
       )
     },
     resume: async (resumeInput, streamOptions) => {
-      runState.currentRunId = resumeInput.runId
-
-      return (await createRunExecution(resumeInput)).streamResume(
+      return (await readRunExecution(streamOptions.executionContext)).streamResume(
         buildRuntimeResumeCommand(resumeInput),
-        streamOptions
+        { signal: streamOptions.signal }
       )
     }
   }

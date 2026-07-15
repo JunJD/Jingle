@@ -10,10 +10,26 @@ const PINNED_AI_SESSION_WINDOW_WIDTH = 1040
 const PINNED_AI_SESSION_WINDOW_HEIGHT = 640
 const PINNED_AI_SESSION_WINDOW_MIN_WIDTH = 560
 const PINNED_AI_SESSION_WINDOW_MIN_HEIGHT = 420
-const pinnedAiSessionWindowWebContents = new WeakSet<WebContents>()
+const pinnedAiSessionWindowThreads = new WeakMap<WebContents, string>()
 
 export function isPinnedAiSessionWindowWebContents(webContents: WebContents): boolean {
-  return pinnedAiSessionWindowWebContents.has(webContents) && !webContents.isDestroyed()
+  return getPinnedAiSessionWindowThreadId(webContents) !== null
+}
+
+export function getPinnedAiSessionWindowThreadId(webContents: WebContents): string | null {
+  if (webContents.isDestroyed()) {
+    return null
+  }
+
+  return pinnedAiSessionWindowThreads.get(webContents) ?? null
+}
+
+export function setPinnedAiSessionWindowThreadId(webContents: WebContents, threadId: string): void {
+  if (webContents.isDestroyed() || !pinnedAiSessionWindowThreads.has(webContents)) {
+    throw new Error("Pinned AI session window is not available for thread reassignment.")
+  }
+
+  pinnedAiSessionWindowThreads.set(webContents, threadId)
 }
 
 export interface CreatePinnedAiSessionWindowInput {
@@ -51,7 +67,7 @@ export function createPinnedAiSessionWindow(
       sandbox: false
     }
   })
-  pinnedAiSessionWindowWebContents.add(window.webContents)
+  pinnedAiSessionWindowThreads.set(window.webContents, input.threadId)
 
   attachWindowDiagnostics(window, PINNED_AI_SESSION_WINDOW_KIND)
   lockFixedWindowZoom(window)

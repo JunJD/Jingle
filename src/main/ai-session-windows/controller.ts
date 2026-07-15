@@ -6,6 +6,7 @@ import type {
   UpdatePinnedAiSessionWindowThreadResult
 } from "@shared/ai-session-window"
 import { registerIpcHandle } from "../ipc/handle"
+import { JingleIpcError } from "../ipc/error"
 import { AiSessionWindowsService } from "./service"
 
 export class AiSessionWindowsController {
@@ -24,9 +25,23 @@ export class AiSessionWindowsController {
       ipcMain,
       "ai-session-windows:updatePinnedThread",
       (
-        _event,
+        event,
         params: UpdatePinnedAiSessionWindowThreadParams
       ): UpdatePinnedAiSessionWindowThreadResult => {
+        if (event.senderFrame !== event.sender.mainFrame) {
+          throw new JingleIpcError({
+            channel: "ai-session-windows:updatePinnedThread",
+            code: "PERMISSION_DENIED",
+            message: "Pinned AI session thread updates require the window's main frame."
+          })
+        }
+        if (!this.aiSessionWindowsService.isPinnedWindowSender(params.windowId, event.sender)) {
+          throw new JingleIpcError({
+            channel: "ai-session-windows:updatePinnedThread",
+            code: "PERMISSION_DENIED",
+            message: "Pinned AI session windows can only update their own thread binding."
+          })
+        }
         return this.aiSessionWindowsService.updatePinnedWindowThread(params)
       }
     )

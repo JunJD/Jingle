@@ -255,6 +255,7 @@ export interface NativeExtensionInvokeContext {
 }
 
 export interface NativeExtensionMainDefinition {
+  dispose?: () => Promise<void> | void
   service?: NativeExtensionService
   tools?: ExtensionToolDefinition[]
 }
@@ -585,8 +586,7 @@ export function listMissingRequiredNativeExtensionPreferences(
   locale: AppLocale = DEFAULT_APP_LOCALE
 ): string[] {
   return schema.flatMap((preference) =>
-    preference.required &&
-    isMissingRequiredNativeExtensionPreferenceValue(values[preference.name])
+    preference.required && isMissingRequiredNativeExtensionPreferenceValue(values[preference.name])
       ? [getNativeExtensionPreferenceDisplayName(preference, locale)]
       : []
   )

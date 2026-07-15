@@ -1,8 +1,10 @@
 import { decodeMessagesStreamPayload, decodeValuesStreamPayload } from "./agent-stream-codec"
 import {
+  appendAgentEvent,
   appendAgentEventSafely,
   appendAgentEventsSafely,
-  enqueueAgentTraceProjection
+  enqueueAgentTraceProjection,
+  type AppendAgentEventInput
 } from "../db/agent-events"
 import { JingleIpcError } from "../ipc/error"
 import { enqueueThreadDigestProjection } from "../projection/thread-digest-queue"
@@ -151,14 +153,16 @@ function recordAgentStreamForDevtools(input: {
   }
 }
 
-export async function recordRunStarted(input: {
+export interface RunStartedEventInput {
   modelId?: string
   permissionMode: string
   runId: string
   threadId: string
   userMessageId: string
-}): Promise<void> {
-  await appendAgentEventSafely({
+}
+
+export function createRunStartedEventInput(input: RunStartedEventInput): AppendAgentEventInput {
+  return {
     payload: {
       model: input.modelId ?? null,
       permissionMode: input.permissionMode,
@@ -168,16 +172,22 @@ export async function recordRunStarted(input: {
     runId: input.runId,
     threadId: input.threadId,
     type: "run.started"
-  })
+  }
 }
 
-export async function recordRunResumed(input: {
+export async function recordRunStarted(input: RunStartedEventInput): Promise<void> {
+  await appendAgentEvent(createRunStartedEventInput(input))
+}
+
+export interface RunResumedEventInput {
   modelId?: string
   requestId: string
   runId: string
   threadId: string
-}): Promise<void> {
-  await appendAgentEventSafely({
+}
+
+export function createRunResumedEventInput(input: RunResumedEventInput): AppendAgentEventInput {
+  return {
     payload: {
       model: input.modelId ?? null,
       requestId: input.requestId,
@@ -186,17 +196,25 @@ export async function recordRunResumed(input: {
     runId: input.runId,
     threadId: input.threadId,
     type: "run.resumed"
-  })
+  }
 }
 
-export async function recordUserMessageCreated(input: {
+export async function recordRunResumed(input: RunResumedEventInput): Promise<void> {
+  await appendAgentEvent(createRunResumedEventInput(input))
+}
+
+export interface UserMessageCreatedEventInput {
   contentPreview: string
   refs: unknown[]
   runId: string
   threadId: string
   userMessageId: string
-}): Promise<void> {
-  await appendAgentEventSafely({
+}
+
+export function createUserMessageCreatedEventInput(
+  input: UserMessageCreatedEventInput
+): AppendAgentEventInput {
+  return {
     payload: {
       contentPreview: input.contentPreview,
       refs: input.refs,
@@ -205,7 +223,11 @@ export async function recordUserMessageCreated(input: {
     runId: input.runId,
     threadId: input.threadId,
     type: "message.user.created"
-  })
+  }
+}
+
+export async function recordUserMessageCreated(input: UserMessageCreatedEventInput): Promise<void> {
+  await appendAgentEvent(createUserMessageCreatedEventInput(input))
 }
 
 export async function recordApprovalResolved(input: {
@@ -319,10 +341,7 @@ async function recordAgentStreamBoundaryEventsUnsafe(input: {
         })
       }
 
-      if (
-        assistant.usageMetadata &&
-        !input.state.completedAssistantMessageIds.has(assistant.id)
-      ) {
+      if (assistant.usageMetadata && !input.state.completedAssistantMessageIds.has(assistant.id)) {
         input.state.completedAssistantMessageIds.add(assistant.id)
         await appendAgentEventSafely({
           payload: {

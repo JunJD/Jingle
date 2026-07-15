@@ -1,38 +1,12 @@
 import { persistJingleValuesHitlRequest } from "./langgraph-hitl-reader"
 import { drainRuntimeRunStream } from "./run-stream"
-import type {
-  CreateRuntimeThreadFactoryInput,
-  RuntimePauseControllerContract
-} from "./runtime-contract"
-import type { JingleContextInclusionStateItem } from "./context-inclusion-state"
+import type { RuntimePauseControllerContract } from "./runtime-contract"
 import type { RuntimeThreadScope } from "./runtime-scope"
 import type { RuntimeThreadStreamControl } from "./runtime-thread"
 
 export interface RuntimeThreadStreamDrainControlInput<TReview = unknown> {
   pauseController: RuntimePauseControllerContract<TReview>
   thread: RuntimeThreadScope
-}
-
-export function createRuntimeThreadStreamDrainControl<
-  TContextInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem,
-  TGuardrailMetadata = Record<string, unknown>,
-  TReview = unknown,
-  TInvokeRunLifecycleInput = unknown,
-  TResumeRunLifecycleInput = unknown
->(
-  input: CreateRuntimeThreadFactoryInput<
-    TContextInclusion,
-    TGuardrailMetadata,
-    TReview,
-    TInvokeRunLifecycleInput,
-    TResumeRunLifecycleInput
-  >,
-  threadInput: RuntimeThreadScope
-): RuntimeThreadStreamControl {
-  return createRuntimeThreadStreamDrainControlFromController({
-    pauseController: input.host.control.pauseController,
-    thread: threadInput
-  })
 }
 
 export function createRuntimeThreadStreamDrainControlFromController<TReview = unknown>(
@@ -43,9 +17,11 @@ export function createRuntimeThreadStreamDrainControlFromController<TReview = un
       let beforePendingHitlPersistenceApplied = false
       const result = await drainRuntimeRunStream({
         onChunk: async (chunk) => {
+          drainInput.signal.throwIfAborted()
           const [mode, data] = chunk
           if (drainInput.beforePendingHitlPersistence && !beforePendingHitlPersistenceApplied) {
             await drainInput.beforePendingHitlPersistence()
+            drainInput.signal.throwIfAborted()
             beforePendingHitlPersistenceApplied = true
           }
           const interrupted = await persistJingleValuesHitlRequest({
@@ -56,6 +32,7 @@ export function createRuntimeThreadStreamDrainControlFromController<TReview = un
             threadId: input.thread.threadId,
             upsertPendingHitlRequest: input.pauseController.upsertPendingHitlRequest
           })
+          drainInput.signal.throwIfAborted()
           await drainInput.onChunk(chunk)
           return interrupted
         },

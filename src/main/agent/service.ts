@@ -30,36 +30,32 @@ import {
   type AgentRunSteeringBuffer,
   type AppliedAgentSteer
 } from "@jingle/langchain-agent-harness/transitional"
-import type { RuntimeThread } from "@jingle/langchain-agent-harness"
+import type { RuntimeThreadRun } from "@jingle/langchain-agent-harness"
 import type { JingleAgentSteerResult } from "@jingle/agent-client"
 import { runtimeUsesCheckpointPersistence } from "../checkpointer/runtime-checkpointer-manager"
-import type {
-  JingleInvokeRunLifecycleInput,
-  JingleResumeRunLifecycleInput
-} from "./run-lifecycle-controller"
 import {
   createAgentStreamBoundaryRecorderState,
-  recordAgentStreamBoundaryEvents,
-  recordApprovalResolved,
-  recordRunResumed,
-  recordRunStarted,
-  recordUserMessageCreated
+  recordAgentStreamBoundaryEvents
 } from "./event-recorder"
 import { ThreadLifecycleGate, type ThreadRunLease } from "./thread-lifecycle-gate"
-import { getHitlRequest, resolveHitlRequest } from "../db/hitl"
+import { getHitlRequest } from "../db/hitl"
 import { getRun } from "../db/runs"
 import { getThread } from "../db/threads"
 import { listProjectedThreadMessages } from "../db/message-state"
-import { buildIpcErrorEvent, JingleIpcError } from "../ipc/error"
+import { buildIpcErrorEvent, buildIpcErrorPayload, JingleIpcError } from "../ipc/error"
 import { JingleMemoryService } from "../jingle-memory/service"
 import { WorkspaceService } from "../workspace/service"
 import { readRunPermissionModeSnapshot, readThreadPermissionMode } from "./permission-mode"
 import { resolveJingleWorkspaceIdentity } from "../workspace/identity"
-import { getAgentConfig } from "../preferences"
+import { getAgentConfig, getDefaultModelId } from "../preferences"
 import {
-  listNativeExtensionMainDefinitions,
-  listNativeExtensionManifests
+  listNativeExtensionManifests,
+  readNativeExtensionMainDefinitionRegistrySnapshot
 } from "../services/native-extensions"
+import {
+  listUnavailableExtensionMainDefinitions,
+  type ExtensionMainDefinitionRegistrySnapshot
+} from "../extensions/registry/main-definition-registry"
 import type {
   AgentContextInclusion,
   JingleMemoryContextSnapshot,
@@ -72,12 +68,21 @@ import type {
   AgentResumeParams,
   HITLDecision
 } from "../types"
+import type { AgentCommandOutcome } from "@shared/agent-command"
 
 export type AgentStreamPayload =
   | { type: "done" }
   | { type: "cancelled" }
   | {
       type: "error"
+      error: string
+      code?: string
+      details?: string[]
+      message?: string
+      status?: number
+    }
+  | {
+      type: "run_rejected"
       error: string
       code?: string
       details?: string[]
@@ -94,47 +99,152 @@ export interface AgentStreamSink {
 
 type AgentInvokeChannel = "agent:editLastUserMessageAndInvoke" | "agent:invoke"
 type AgentRunChannel = AgentInvokeChannel | "agent:resume"
-type AgentStreamChunk = [mode: string, data: unknown]
-type JingleRuntimeThread = RuntimeThread<
-  AgentContextInclusion,
-  JingleInvokeRunLifecycleInput,
-  JingleResumeRunLifecycleInput
->
+type AgentRunRejection = Extract<AgentCommandOutcome, { type: "rejected" }>
 type AgentRunSteerContent = AgentInvokeMessage["content"]
 type AgentRunSteerRefs = NonNullable<AgentInvokeMessage["refs"]>
 type JingleAppliedAgentSteer = AppliedAgentSteer<AgentRunSteerContent, AgentRunSteerRefs>
 type JingleAgentRunSteeringBuffer = AgentRunSteeringBuffer<AgentRunSteerContent, AgentRunSteerRefs>
 
+interface AgentExtensionRegistryReader {
+  listManifests: () => ReturnType<typeof listNativeExtensionManifests>
+  readMainDefinitionSnapshot: () => ExtensionMainDefinitionRegistrySnapshot
+}
+
+const DEFAULT_AGENT_EXTENSION_REGISTRY_READER: AgentExtensionRegistryReader = {
+  listManifests: () => listNativeExtensionManifests(process.platform),
+  readMainDefinitionSnapshot: readNativeExtensionMainDefinitionRegistrySnapshot
+}
+
 interface ActiveAgentServiceRun {
   controller: AbortController
-  runId: string | null
-  thread: JingleRuntimeThread | null
+  markPreparationSettled(): void
+  markSettled(): void
+  preparationSettled: Promise<void>
+  run: RuntimeThreadRun | null
+  settled: Promise<void>
   steeringBuffer: JingleAgentRunSteeringBuffer
   turnId: string | null
 }
 
-interface AgentRunOptions {
+function createActiveAgentServiceRun(input: {
+  controller: AbortController
+  steeringBuffer: JingleAgentRunSteeringBuffer
+  turnId: string | null
+}): ActiveAgentServiceRun {
+  let markPreparationSettled!: () => void
+  let markSettled!: () => void
+  const preparationSettled = new Promise<void>((resolve) => {
+    markPreparationSettled = resolve
+  })
+  const settled = new Promise<void>((resolve) => {
+    markSettled = resolve
+  })
+
+  return {
+    ...input,
+    markPreparationSettled,
+    markSettled,
+    preparationSettled,
+    run: null,
+    settled
+  }
+}
+
+type ResolvedHitlDecision = Record<string, unknown> &
+  HITLDecision & { request_id: string; tool_call_id: string }
+
+interface AgentRunOptions<TAccepted = void> {
   channel?: AgentInvokeChannel
   getMessageIdsToRemove?: () => Promise<string[]>
-  onRunAccepted?: () => Promise<void> | void
-  onSteersApplied?: (steers: JingleAppliedAgentSteer[]) => Promise<void> | void
+  onCoreAdmitted?: () => void
+  onCommandOutcome?: (outcome: AgentCommandOutcome) => void
+  onRunAccepted?: (accepted: TAccepted) => void
+  onSteersApplied?: (steers: JingleAppliedAgentSteer[]) => void
+}
+
+interface AgentCommandOutcomeReporter {
+  hasReported(): boolean
+  reject(channel: AgentRunChannel, error: unknown): void
+  report(outcome: AgentCommandOutcome): void
+  wasAccepted(): boolean
+}
+
+function createAgentCommandOutcomeReporter(
+  onOutcome: ((outcome: AgentCommandOutcome) => void) | undefined
+): AgentCommandOutcomeReporter {
+  let accepted = false
+  let reported = false
+  const report = (outcome: AgentCommandOutcome): void => {
+    if (reported) {
+      throw new Error("Agent command reported more than one outcome.")
+    }
+    accepted = outcome.type === "accepted"
+    reported = true
+    onOutcome?.(outcome)
+  }
+
+  return {
+    hasReported: () => reported,
+    reject: (channel, error) => {
+      report({
+        error: buildIpcErrorPayload(channel, error),
+        type: "rejected"
+      })
+    },
+    report,
+    wasAccepted: () => accepted
+  }
+}
+
+function createAgentCommandCancelledError(channel: AgentRunChannel): JingleIpcError {
+  return new JingleIpcError({
+    channel,
+    code: "CANCELLED",
+    message: "Agent command was cancelled before execution started."
+  })
+}
+
+/**
+ * Stops awaiting a side-effect-free setup read when the run is cancelled.
+ *
+ * The operation may finish later, so callers must only use this for reads or
+ * process-owned immutable caches. Both late fulfillment and rejection remain
+ * observed by the attached handlers and cannot re-enter the run lifecycle.
+ */
+function awaitAbortableSetupRead<T>(signal: AbortSignal, operation: () => Promise<T>): Promise<T> {
+  signal.throwIfAborted()
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false
+    const finish = (complete: () => void): void => {
+      if (settled) {
+        return
+      }
+      settled = true
+      signal.removeEventListener("abort", handleAbort)
+      complete()
+    }
+    const handleAbort = (): void => {
+      finish(() => reject(signal.reason))
+    }
+
+    signal.addEventListener("abort", handleAbort, { once: true })
+    Promise.resolve()
+      .then(() => {
+        signal.throwIfAborted()
+        return operation()
+      })
+      .then(
+        (value) => finish(() => resolve(value)),
+        (error: unknown) => finish(() => reject(error))
+      )
+  })
 }
 
 interface AgentSteerActiveRunOptions {
   acceptedAt?: Date
   expectedRunId?: string | null
   expectedTurnId?: string | null
-}
-
-function mapDecisionToHitlStatus(decision: HITLDecision["type"]): "approved" | "rejected" {
-  switch (decision) {
-    case "approve":
-      return "approved"
-    case "reject":
-      return "rejected"
-  }
-
-  throw new Error(`[Agent] Unsupported HITL decision type: ${decision}`)
 }
 
 async function readMessageIdsAfterLatestUserMessage(input: {
@@ -183,6 +293,7 @@ async function readMessageIdsAfterLatestUserMessage(input: {
 interface ResumeTarget {
   requestId: string
   runId: string
+  toolCallId: string
 }
 
 function readJingleMemoryContextSnapshot(
@@ -261,6 +372,14 @@ async function resolveResumeTarget(
     })
   }
 
+  if (!request.tool_call_id) {
+    throw new JingleIpcError({
+      channel: "agent:resume",
+      code: "FAILED_PRECONDITION",
+      message: `[Agent] HITL request "${requestId}" is missing tool_call_id.`
+    })
+  }
+
   if (
     decision?.tool_call_id &&
     request.tool_call_id &&
@@ -275,22 +394,60 @@ async function resolveResumeTarget(
 
   return {
     requestId: request.request_id,
-    runId: request.run_id
+    runId: request.run_id,
+    toolCallId: request.tool_call_id
   }
+}
+
+async function resolveReportableRunError(input: {
+  error: unknown
+  executionStarted: boolean
+  run: RuntimeThreadRun | null
+  signal: AbortSignal
+}): Promise<unknown | null> {
+  if (!input.executionStarted && input.signal.aborted) {
+    if (!input.run) {
+      return null
+    }
+    try {
+      await input.run.abort()
+      return null
+    } catch (abortError) {
+      return abortError
+    }
+  }
+  if (input.executionStarted) {
+    return input.error
+  }
+  if (!input.run) {
+    return isAbortLikeError(input.error, input.signal) ? null : input.error
+  }
+
+  try {
+    return (await input.run.fail(input.error)) ? input.error : null
+  } catch (settlementError) {
+    return settlementError
+  }
+}
+
+function reportAgentRuntimeError(input: {
+  channel: AgentRunChannel
+  error: unknown
+  label: string
+  sink: AgentStreamSink
+}): void {
+  const normalizedError = normalizeAgentRuntimeError(input.channel, input.error)
+  if (!isModelAuthenticationError(input.error)) {
+    console.error(input.label, input.error)
+  }
+  input.sink.send({
+    type: "error",
+    ...buildIpcErrorEvent(input.channel, normalizedError)
+  })
 }
 
 function cloneStreamDataForIpc<T>(value: T): T {
   return structuredClone(value)
-}
-
-function requireActiveRunThread(input: {
-  runId: string
-  thread: JingleRuntimeThread | null
-}): JingleRuntimeThread {
-  if (!input.thread) {
-    throw new Error(`[Agent] Active run "${input.runId}" has no harness thread.`)
-  }
-  return input.thread
 }
 
 export function serializeStreamChunkForIpc(
@@ -311,6 +468,36 @@ export function serializeStreamChunkForIpc(
   )
 }
 
+function readExtensionMainDefinitionsForRun(input: {
+  channel: AgentRunChannel
+  readSnapshot: () => ExtensionMainDefinitionRegistrySnapshot
+  requiredExtensionNames: Iterable<string>
+}) {
+  const snapshot = input.readSnapshot()
+  const unavailableDefinitions = listUnavailableExtensionMainDefinitions(
+    snapshot,
+    input.requiredExtensionNames
+  )
+  if (unavailableDefinitions.length > 0) {
+    throw new JingleIpcError({
+      channel: input.channel,
+      code: "UNAVAILABLE",
+      details: unavailableDefinitions.map(({ extensionName, state }) => {
+        const stateDescription =
+          state === "pending"
+            ? "is still loading"
+            : state === "failed"
+              ? "failed to load"
+              : "is not registered"
+        return `Extension "${extensionName}" main definition ${stateDescription}.`
+      }),
+      message: "Required extension tools are not available for this run."
+    })
+  }
+
+  return new Map(snapshot.definitions)
+}
+
 export class AgentService {
   private readonly activeRuns = new Map<string, ActiveAgentServiceRun>()
   private readonly agentRuntime: ReturnType<typeof createAgentRuntime>
@@ -318,7 +505,8 @@ export class AgentService {
   constructor(
     private readonly jingleMemoryService: JingleMemoryService,
     private readonly threadLifecycleGate: ThreadLifecycleGate,
-    private readonly workspaceService: WorkspaceService
+    private readonly workspaceService: WorkspaceService,
+    private readonly extensionRegistryReader: AgentExtensionRegistryReader = DEFAULT_AGENT_EXTENSION_REGISTRY_READER
   ) {
     this.agentRuntime = createAgentRuntime({
       jingleMemoryService,
@@ -326,17 +514,46 @@ export class AgentService {
     })
   }
 
-  private sendThreadDeletingError(channel: AgentRunChannel, sink: AgentStreamSink): void {
-    sink.send({
-      type: "error",
-      ...buildIpcErrorEvent(
-        channel,
-        new JingleIpcError({
-          channel,
-          code: "CONFLICT",
-          message: "This thread is being deleted."
-        })
-      )
+  private rejectThreadRun(input: {
+    channel: AgentRunChannel
+    message: string
+    sink: AgentStreamSink
+  }): AgentRunRejection {
+    const error = buildIpcErrorPayload(
+      input.channel,
+      new JingleIpcError({
+        channel: input.channel,
+        code: "CONFLICT",
+        message: input.message
+      })
+    )
+    input.sink.send({
+      error: error.message,
+      type: "run_rejected",
+      ...error
+    })
+    return { error, type: "rejected" }
+  }
+
+  private sendThreadDeletingError(
+    channel: AgentRunChannel,
+    sink: AgentStreamSink
+  ): AgentRunRejection {
+    return this.rejectThreadRun({
+      channel,
+      message: "This thread is being deleted.",
+      sink
+    })
+  }
+
+  private sendThreadRunActiveError(
+    channel: AgentRunChannel,
+    sink: AgentStreamSink
+  ): AgentRunRejection {
+    return this.rejectThreadRun({
+      channel,
+      message: "Agent run is already in progress; follow-ups must be queued or steered.",
+      sink
     })
   }
 
@@ -344,14 +561,107 @@ export class AgentService {
     threadId: string,
     channel: AgentRunChannel,
     sink: AgentStreamSink
-  ): Promise<ThreadRunLease | null> {
+  ): Promise<
+    | { lease: ThreadRunLease; outcome: Extract<AgentCommandOutcome, { type: "accepted" }> }
+    | { lease: null; outcome: Extract<AgentCommandOutcome, { type: "rejected" }> }
+  > {
     const claim = await this.threadLifecycleGate.claimRun(threadId)
     if (claim.status === "deleting") {
-      this.sendThreadDeletingError(channel, sink)
-      return null
+      return {
+        lease: null,
+        outcome: this.sendThreadDeletingError(channel, sink)
+      }
     }
 
-    return claim.lease
+    if (claim.status === "running") {
+      return {
+        lease: null,
+        outcome: this.sendThreadRunActiveError(channel, sink)
+      }
+    }
+
+    return {
+      lease: claim.lease,
+      outcome: { disposition: "run", type: "accepted" }
+    }
+  }
+
+  private dispatchRun(
+    channel: AgentRunChannel,
+    start: (reportOutcome: (outcome: AgentCommandOutcome) => void) => Promise<void>
+  ): Promise<AgentCommandOutcome> {
+    return new Promise<AgentCommandOutcome>((resolve) => {
+      let outcomeReported = false
+      const reportOutcome = (outcome: AgentCommandOutcome): void => {
+        if (outcomeReported) {
+          throw new Error("Agent command reported more than one outcome.")
+        }
+        outcomeReported = true
+        resolve(outcome)
+      }
+
+      try {
+        void start(reportOutcome).then(
+          () => {
+            if (!outcomeReported) {
+              resolve({
+                error: buildIpcErrorPayload(
+                  channel,
+                  new Error("Agent command completed without reporting an outcome.")
+                ),
+                type: "rejected"
+              })
+            }
+          },
+          (error: unknown) => {
+            if (!outcomeReported) {
+              resolve({
+                error: buildIpcErrorPayload(channel, error),
+                type: "rejected"
+              })
+            }
+          }
+        )
+      } catch (error) {
+        resolve({
+          error: buildIpcErrorPayload(channel, error),
+          type: "rejected"
+        })
+      }
+    })
+  }
+
+  dispatchInvoke(
+    params: AgentInvokeParams,
+    sink: AgentStreamSink,
+    options?: Omit<AgentRunOptions, "onCommandOutcome">
+  ): Promise<AgentCommandOutcome> {
+    return this.dispatchRun("agent:invoke", (reportOutcome) => {
+      return this.invoke(params, sink, { ...options, onCommandOutcome: reportOutcome })
+    })
+  }
+
+  dispatchEditLastUserMessageAndInvoke(
+    params: AgentEditLastUserMessageAndInvokeParams,
+    sink: AgentStreamSink,
+    options?: Omit<AgentRunOptions, "onCommandOutcome">
+  ): Promise<AgentCommandOutcome> {
+    return this.dispatchRun("agent:editLastUserMessageAndInvoke", (reportOutcome) => {
+      return this.editLastUserMessageAndInvoke(params, sink, {
+        ...options,
+        onCommandOutcome: reportOutcome
+      })
+    })
+  }
+
+  dispatchResume(
+    params: AgentResumeParams,
+    sink: AgentStreamSink,
+    options?: Omit<AgentRunOptions<ResolvedHitlDecision>, "onCommandOutcome">
+  ): Promise<AgentCommandOutcome> {
+    return this.dispatchRun("agent:resume", (reportOutcome) => {
+      return this.resume(params, sink, { ...options, onCommandOutcome: reportOutcome })
+    })
   }
 
   async editLastUserMessageAndInvoke(
@@ -375,7 +685,7 @@ export class AgentService {
     {
       threadId,
       message,
-      modelId,
+      modelId: requestedModelId,
       permissionMode: requestedPermissionMode,
       temporaryMode = false
     }: AgentInvokeParams,
@@ -383,6 +693,8 @@ export class AgentService {
     options?: AgentRunOptions
   ): Promise<void> {
     const channel = options?.channel ?? "agent:invoke"
+    const commandOutcome = createAgentCommandOutcomeReporter(options?.onCommandOutcome)
+    const modelId = requestedModelId ?? getDefaultModelId("llm")
     const messagePreview = summarizeMessageContent(message.content)
 
     console.log("[Agent] Received invoke request:", {
@@ -393,49 +705,52 @@ export class AgentService {
       permissionMode: requestedPermissionMode
     })
 
-    const lease = await this.claimThreadRun(threadId, channel, sink)
+    const claim = await this.claimThreadRun(threadId, channel, sink)
+    const lease = claim.lease
     if (!lease) {
+      commandOutcome.report(claim.outcome)
       return
     }
     const abortController = lease.abortController
-    const activeRun: ActiveAgentServiceRun = {
+    const activeRun = createActiveAgentServiceRun({
       controller: abortController,
-      runId: null,
-      thread: null,
       steeringBuffer: createAgentRunSteeringBuffer({
         onSteersApplied: options?.onSteersApplied
       }),
       turnId: message.id
-    }
+    })
+    let commandRejectionError: unknown = null
+    let didReportRuntimeError = false
+    let runExecutionStarted = false
     this.activeRuns.set(threadId, activeRun)
+    options?.onCoreAdmitted?.()
 
     try {
-      const thread = await getThread(threadId)
-      const workspacePath = await this.workspaceService.getWorkspacePath(threadId)
+      const thread = await awaitAbortableSetupRead(abortController.signal, () =>
+        getThread(threadId)
+      )
+      const workspacePath = await awaitAbortableSetupRead(abortController.signal, () =>
+        this.workspaceService.getWorkspacePath(threadId)
+      )
 
       if (!workspacePath) {
-        sink.send({
-          type: "error",
-          ...buildIpcErrorEvent(
-            channel,
-            new JingleIpcError({
-              channel,
-              code: "FAILED_PRECONDITION",
-              message: "Please select a workspace folder before sending messages."
-            })
-          )
+        const error = new JingleIpcError({
+          channel,
+          code: "FAILED_PRECONDITION",
+          message: "Please select a workspace folder before sending messages."
         })
+        commandOutcome.reject(channel, error)
         return
       }
 
       const normalizedRefs = normalizeComposerMessageRefs(message.refs)
-      const messageIdsToRemove = (await options?.getMessageIdsToRemove?.()) ?? []
-
-      await options?.onRunAccepted?.()
+      const messageIdsToRemove = options?.getMessageIdsToRemove
+        ? await awaitAbortableSetupRead(abortController.signal, options.getMessageIdsToRemove)
+        : []
 
       const permissionMode = requestedPermissionMode ?? readThreadPermissionMode(thread)
       const locale = getAgentConfig().locale
-      const extensionManifests = listNativeExtensionManifests(process.platform)
+      const extensionManifests = this.extensionRegistryReader.listManifests()
       const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefsFromManifests(
         normalizedRefs,
         extensionManifests,
@@ -455,7 +770,11 @@ export class AgentService {
         process.platform,
         "en-US"
       )
-      const extensionMainDefinitions = await listNativeExtensionMainDefinitions(process.platform)
+      const extensionMainDefinitions = readExtensionMainDefinitionsForRun({
+        channel,
+        readSnapshot: this.extensionRegistryReader.readMainDefinitionSnapshot,
+        requiredExtensionNames: aiCapabilities.map(({ extensionName }) => extensionName)
+      })
       const extensionToolRegistry = createNativeExtensionToolRegistry({
         definitions: extensionMainDefinitions,
         manifests: extensionManifests
@@ -475,11 +794,16 @@ export class AgentService {
             platform: process.platform
           }
         )
-      const workspaceIdentity = await resolveJingleWorkspaceIdentity(workspacePath)
-      const jingleMemoryContextPack = await this.jingleMemoryService.buildContextPack({
-        temporaryMode,
-        workspaceIdentity
-      })
+      const workspaceIdentity = await awaitAbortableSetupRead(abortController.signal, () =>
+        resolveJingleWorkspaceIdentity(workspacePath, { signal: abortController.signal })
+      )
+      const jingleMemoryContextPack = await awaitAbortableSetupRead(abortController.signal, () =>
+        this.jingleMemoryService.buildContextPack({
+          signal: abortController.signal,
+          temporaryMode,
+          workspaceIdentity
+        })
+      )
       const extensionAiRuntime = createExtensionAiRuntime({
         aiCapabilities,
         aiCapabilityCatalog: extensionToolRegistry.withCatalogToolAccess(aiCapabilityCatalog),
@@ -502,33 +826,42 @@ export class AgentService {
         return
       }
 
-      const runHandle = await createAgentRunHandle({
+      abortController.signal.throwIfAborted()
+      const runHandle = createAgentRunHandle({
         jingleMemoryService: this.jingleMemoryService,
         runtime: this.agentRuntime,
         threadId,
         steeringBuffer: activeRun.steeringBuffer,
         workspacePath
       })
-      activeRun.thread = runHandle.thread
 
       if (abortController.signal.aborted) {
         return
       }
 
-      const { recordingRefs, runId } = await runHandle.thread.beginInvokeRun({
-        invoke: {
-          aiCapabilities,
-          extensionAiRuntime,
-          jingleMemoryContextPack,
-          jingleMemoryContextSnapshot:
-            this.jingleMemoryService.createContextSnapshot(jingleMemoryContextPack),
-          jingleMemoryTemporaryMode: jingleMemoryContextPack?.temporaryMode === true,
-          modelId,
-          permissionMode,
-          workspaceIdentity
-        }
+      const run = await runHandle.thread.startInvoke({
+        aiCapabilities,
+        extensionAiRuntime,
+        jingleMemoryContextPack,
+        jingleMemoryContextSnapshot:
+          this.jingleMemoryService.createContextSnapshot(jingleMemoryContextPack),
+        jingleMemoryTemporaryMode: jingleMemoryContextPack?.temporaryMode === true,
+        modelId,
+        permissionMode,
+        userMessage: {
+          contentPreview: messagePreview,
+          id: message.id,
+          refs: normalizedRefs
+        },
+        workspaceIdentity
       })
-      activeRun.runId = runId
+      activeRun.run = run
+      const { runId } = run
+      if (abortController.signal.aborted) {
+        activeRun.markPreparationSettled()
+        await run.abort()
+        return
+      }
       const providedInclusions = jingleMemoryContextPack
         ? buildProvidedContextInclusions({
             contextPack: jingleMemoryContextPack,
@@ -536,20 +869,11 @@ export class AgentService {
             threadId
           })
         : []
-      await recordRunStarted({
-        modelId,
-        permissionMode,
-        runId,
-        threadId,
-        userMessageId: message.id
-      })
-      await recordUserMessageCreated({
-        contentPreview: messagePreview,
-        refs: normalizedRefs,
-        runId,
-        threadId,
-        userMessageId: message.id
-      })
+      abortController.signal.throwIfAborted()
+      options?.onRunAccepted?.()
+      commandOutcome.report(claim.outcome)
+      abortController.signal.throwIfAborted()
+      activeRun.markPreparationSettled()
       sink.send({ type: "run_started", runId })
 
       if (providedInclusions.length > 0) {
@@ -572,29 +896,18 @@ export class AgentService {
           ? thread.title
           : null
 
-      const stream = await runHandle.thread.invoke(
-        {
-          contextInclusions: providedInclusions,
-          message: {
-            content: message.content,
-            id: message.id,
-            refs: normalizedRefs
-          },
-          modelId,
-          recordingRefs,
-          removeMessageIds: messageIdsToRemove,
-          runId,
-          steeringBuffer: activeRun.steeringBuffer,
-          title: initialTitle
-        },
-        {
-          signal: abortController.signal
-        }
-      )
       const boundaryRecorderState = createAgentStreamBoundaryRecorderState()
-
-      const { interrupted } = await runHandle.thread.drainRunStream<AgentStreamChunk>({
+      runExecutionStarted = true
+      const result = await run.execute({
+        contextInclusions: providedInclusions,
+        expectedMessageId: message.id,
+        message: {
+          content: message.content,
+          id: message.id,
+          refs: normalizedRefs
+        },
         onChunk: async (chunk) => {
+          abortController.signal.throwIfAborted()
           const [mode, data] = chunk
           const serializedData = serializeStreamChunkForIpc(mode, data, { threadId, runId })
           sink.send({
@@ -611,106 +924,138 @@ export class AgentService {
             threadId
           })
         },
-        runId,
+        removeMessageIds: messageIdsToRemove,
         signal: abortController.signal,
-        stream: stream as AsyncIterable<AgentStreamChunk>
+        steeringBuffer: activeRun.steeringBuffer,
+        title: initialTitle
       })
+      activeRun.steeringBuffer.close()
 
-      if (!abortController.signal.aborted) {
-        await runHandle.thread.completeRun({
-          expectedMessageId: message.id,
-          interrupted,
-          runId,
-          submittedContextInclusions: providedInclusions,
-          submittedRecordingRefs: recordingRefs
-        })
+      if (result.status === "completed") {
         sink.send({ type: "done" })
       }
     } catch (error) {
-      if (!isAbortLikeError(error, abortController.signal)) {
-        const normalizedError = normalizeAgentRuntimeError(channel, error)
-        if (activeRun.runId) {
-          const runFailure = {
-            error: normalizedError,
-            runId: activeRun.runId
-          }
-          await requireActiveRunThread({
-            runId: activeRun.runId,
-            thread: activeRun.thread
-          }).failRun(runFailure)
-        }
-        if (!isModelAuthenticationError(error)) {
-          console.error("[Agent] Error:", error)
-        }
-        sink.send({
-          type: "error",
-          ...buildIpcErrorEvent(channel, normalizedError)
+      activeRun.steeringBuffer.close()
+      activeRun.markPreparationSettled()
+      if (!commandOutcome.hasReported()) {
+        commandRejectionError = abortController.signal.aborted
+          ? createAgentCommandCancelledError(channel)
+          : error
+      }
+      const reportableError = await resolveReportableRunError({
+        error,
+        executionStarted: runExecutionStarted,
+        run: activeRun.run,
+        signal: abortController.signal
+      })
+      if (reportableError && commandOutcome.wasAccepted()) {
+        didReportRuntimeError = true
+        reportAgentRuntimeError({
+          channel,
+          error: reportableError,
+          label: "[Agent] Error:",
+          sink
         })
       }
     } finally {
-      const currentRun = this.activeRuns.get(threadId)
-      if (currentRun === activeRun && abortController.signal.aborted && activeRun.runId) {
-        await requireActiveRunThread({
-          runId: activeRun.runId,
-          thread: activeRun.thread
-        }).abortRun({
-          runId: activeRun.runId
-        })
+      activeRun.steeringBuffer.close()
+      activeRun.markPreparationSettled()
+      if (
+        !commandOutcome.hasReported() &&
+        commandRejectionError === null &&
+        abortController.signal.aborted
+      ) {
+        commandRejectionError = createAgentCommandCancelledError(channel)
       }
-      if (this.activeRuns.get(threadId) === activeRun) {
-        this.activeRuns.delete(threadId)
+      try {
+        const currentRun = this.activeRuns.get(threadId)
+        if (currentRun === activeRun && abortController.signal.aborted && activeRun.run) {
+          try {
+            await activeRun.run.abort()
+          } catch (error) {
+            if (!didReportRuntimeError) {
+              reportAgentRuntimeError({
+                channel,
+                error,
+                label: "[Agent] Abort persistence error:",
+                sink
+              })
+            }
+          }
+        }
+      } finally {
+        if (this.activeRuns.get(threadId) === activeRun) {
+          this.activeRuns.delete(threadId)
+        }
+        try {
+          lease.complete()
+        } finally {
+          activeRun.markSettled()
+          if (!commandOutcome.hasReported() && commandRejectionError !== null) {
+            commandOutcome.reject(channel, commandRejectionError)
+          }
+        }
       }
-      lease.complete()
     }
   }
 
   async resume(
-    { threadId, decision, modelId }: AgentResumeParams,
+    { threadId, decision, modelId: requestedModelId }: AgentResumeParams,
     sink: AgentStreamSink,
-    options?: AgentRunOptions
+    options?: AgentRunOptions<ResolvedHitlDecision>
   ): Promise<void> {
-    console.log("[Agent] Received resume request:", { threadId, decision, modelId })
+    const channel = "agent:resume" as const
+    const commandOutcome = createAgentCommandOutcomeReporter(options?.onCommandOutcome)
+    console.log("[Agent] Received resume request:", {
+      threadId,
+      decision,
+      modelId: requestedModelId
+    })
 
-    const lease = await this.claimThreadRun(threadId, "agent:resume", sink)
+    const claim = await this.claimThreadRun(threadId, "agent:resume", sink)
+    const lease = claim.lease
     if (!lease) {
+      commandOutcome.report(claim.outcome)
       return
     }
     const abortController = lease.abortController
-    const activeRun: ActiveAgentServiceRun = {
+    const activeRun = createActiveAgentServiceRun({
       controller: abortController,
-      runId: null,
-      thread: null,
       steeringBuffer: createAgentRunSteeringBuffer({
         onSteersApplied: options?.onSteersApplied
       }),
       turnId: null
-    }
+    })
+    let commandRejectionError: unknown = null
+    let didReportRuntimeError = false
+    let runExecutionStarted = false
     this.activeRuns.set(threadId, activeRun)
-    const decisionType = decision.type
-    let runId: string | null = null
-
+    options?.onCoreAdmitted?.()
     try {
-      const workspacePath = await this.workspaceService.getWorkspacePath(threadId)
+      const workspacePath = await awaitAbortableSetupRead(abortController.signal, () =>
+        this.workspaceService.getWorkspacePath(threadId)
+      )
 
       if (!workspacePath) {
-        sink.send({
-          type: "error",
-          ...buildIpcErrorEvent(
-            "agent:resume",
-            new JingleIpcError({
-              channel: "agent:resume",
-              code: "FAILED_PRECONDITION",
-              message: "Workspace path is required"
-            })
-          )
+        const error = new JingleIpcError({
+          channel,
+          code: "FAILED_PRECONDITION",
+          message: "Workspace path is required"
         })
+        commandOutcome.reject(channel, error)
         return
       }
 
-      const resumeTarget = await resolveResumeTarget(threadId, decision)
-      const targetRun = await getRun(resumeTarget.runId)
+      const resumeTarget = await awaitAbortableSetupRead(abortController.signal, () =>
+        resolveResumeTarget(threadId, decision)
+      )
+      const targetRun = await awaitAbortableSetupRead(abortController.signal, () =>
+        getRun(resumeTarget.runId)
+      )
       const targetJingleMemoryContextSnapshot = readJingleMemoryContextSnapshot(targetRun?.metadata)
-      const currentWorkspaceIdentity = await resolveJingleWorkspaceIdentity(workspacePath)
+      const currentWorkspaceIdentity = await awaitAbortableSetupRead(abortController.signal, () =>
+        resolveJingleWorkspaceIdentity(workspacePath, { signal: abortController.signal })
+      )
       if (
         targetJingleMemoryContextSnapshot &&
         targetJingleMemoryContextSnapshot.workspaceKey !== currentWorkspaceIdentity.workspaceKey
@@ -725,20 +1070,23 @@ export class AgentService {
         return
       }
 
-      await options?.onRunAccepted?.()
-
-      const sourceRun = await getRun(resumeTarget.runId)
+      const sourceRun = await awaitAbortableSetupRead(abortController.signal, () =>
+        getRun(resumeTarget.runId)
+      )
       if (!sourceRun) {
         throw new Error(`[Agent] Missing resume source run "${resumeTarget.runId}".`)
       }
+      const modelId = requestedModelId ?? getDefaultModelId("llm")
       const permissionMode = readRunPermissionModeSnapshot(sourceRun)
       const resumedJingleMemoryContextSnapshot = readJingleMemoryContextSnapshot(sourceRun.metadata)
       const jingleMemoryContextPack = this.jingleMemoryService.rebuildContextPackFromSnapshot(
         resumedJingleMemoryContextSnapshot
       )
-      const resumedWorkspaceIdentity = await resolveJingleWorkspaceIdentity(workspacePath)
+      const resumedWorkspaceIdentity = await awaitAbortableSetupRead(abortController.signal, () =>
+        resolveJingleWorkspaceIdentity(workspacePath, { signal: abortController.signal })
+      )
       const locale = getAgentConfig().locale
-      const extensionManifests = listNativeExtensionManifests(process.platform)
+      const extensionManifests = this.extensionRegistryReader.listManifests()
       const aiCapabilitySnapshots = readRunExtensionAiCapabilitiesSnapshotFromMetadata(
         sourceRun.metadata
       )
@@ -755,7 +1103,11 @@ export class AgentService {
         process.platform,
         "en-US"
       )
-      const extensionMainDefinitions = await listNativeExtensionMainDefinitions(process.platform)
+      const extensionMainDefinitions = readExtensionMainDefinitionsForRun({
+        channel,
+        readSnapshot: this.extensionRegistryReader.readMainDefinitionSnapshot,
+        requiredExtensionNames: runtimeAiCapabilities.map(({ extensionName }) => extensionName)
+      })
       const extensionToolRegistry = createNativeExtensionToolRegistry({
         definitions: extensionMainDefinitions,
         manifests: extensionManifests
@@ -792,35 +1144,57 @@ export class AgentService {
         threadId,
         workspacePath
       })
-      const runHandle = await createAgentRunHandle({
+      abortController.signal.throwIfAborted()
+      const runHandle = createAgentRunHandle({
         jingleMemoryService: this.jingleMemoryService,
         runtime: this.agentRuntime,
         threadId,
         steeringBuffer: activeRun.steeringBuffer,
         workspacePath
       })
-      activeRun.thread = runHandle.thread
 
       if (abortController.signal.aborted) {
         return
       }
 
-      const { recordingRefs, runId: resumedRunId } = await runHandle.thread.beginResumeRun({
-        resume: {
-          aiCapabilities: runtimeAiCapabilities,
-          extensionAiRuntime,
-          jingleMemoryContextPack,
-          jingleMemoryTemporaryMode: jingleMemoryContextPack?.temporaryMode === true,
-          modelId,
-          permissionMode,
-          requestId: resumeTarget.requestId,
-          runId: resumeTarget.runId,
-          source: "resume",
-          workspaceIdentity: resumedWorkspaceIdentity
-        }
+      const resolvedHitlDecision: ResolvedHitlDecision = {
+        type: decision.type,
+        request_id: resumeTarget.requestId,
+        tool_call_id: resumeTarget.toolCallId,
+        ...(decision.feedback !== undefined ? { feedback: decision.feedback } : {})
+      }
+      const run = await runHandle.thread.startResume({
+        aiCapabilities: runtimeAiCapabilities,
+        decision: resolvedHitlDecision,
+        extensionAiRuntime,
+        jingleMemoryContextPack,
+        jingleMemoryTemporaryMode: jingleMemoryContextPack?.temporaryMode === true,
+        modelId,
+        permissionMode,
+        runId: resumeTarget.runId,
+        source: "resume",
+        workspaceIdentity: resumedWorkspaceIdentity
       })
-      runId = resumedRunId
-      activeRun.runId = resumedRunId
+      activeRun.run = run
+      const resumedRunId = run.runId
+      let didSendResumedRunStarted = false
+      const sendResumedRunStarted = (): void => {
+        if (didSendResumedRunStarted) {
+          return
+        }
+        didSendResumedRunStarted = true
+        sink.send({ type: "run_started", runId: resumedRunId })
+      }
+      const acceptCommittedResumeDecision = (): void => {
+        options?.onRunAccepted?.(resolvedHitlDecision)
+        sendResumedRunStarted()
+        commandOutcome.report(claim.outcome)
+      }
+      if (abortController.signal.aborted) {
+        activeRun.markPreparationSettled()
+        await run.abort()
+        return
+      }
 
       const resumeContextInclusions = jingleMemoryContextPack
         ? buildProvidedContextInclusions({
@@ -829,55 +1203,17 @@ export class AgentService {
             threadId
           })
         : []
-      await recordRunResumed({
-        modelId,
-        requestId: resumeTarget.requestId,
-        runId: resumedRunId,
-        threadId
-      })
-      sink.send({ type: "run_started", runId: resumedRunId })
+      abortController.signal.throwIfAborted()
+      activeRun.markPreparationSettled()
 
-      if (abortController.signal.aborted) {
-        return
-      }
-
-      const resolvedHitlDecision = {
-        type: decision.type,
-        request_id: resumeTarget.requestId,
-        tool_call_id: decision.tool_call_id,
-        feedback: decision.feedback
-      }
-      const resolveConsumedHitlRequest = async (): Promise<void> => {
-        await resolveHitlRequest(
-          resumeTarget.requestId,
-          mapDecisionToHitlStatus(decisionType),
-          resolvedHitlDecision
-        )
-        await recordApprovalResolved({
-          decision,
-          requestId: resumeTarget.requestId,
-          runId: resumedRunId,
-          threadId
-        })
-      }
-      const stream = await runHandle.thread.resume(
-        {
-          contextInclusions: resumeContextInclusions,
-          decision: resolvedHitlDecision,
-          modelId,
-          recordingRefs,
-          runId: resumedRunId,
-          steeringBuffer: activeRun.steeringBuffer
-        },
-        {
-          signal: abortController.signal
-        }
-      )
       const boundaryRecorderState = createAgentStreamBoundaryRecorderState()
-
-      const drainResult = await runHandle.thread.drainRunStream<AgentStreamChunk>({
-        beforePendingHitlPersistence: resolveConsumedHitlRequest,
+      runExecutionStarted = true
+      const result = await run.execute({
+        contextInclusions: resumeContextInclusions,
+        onDecisionCommitted: acceptCommittedResumeDecision,
         onChunk: async (chunk) => {
+          abortController.signal.throwIfAborted()
+          sendResumedRunStarted()
           const [mode, data] = chunk
           const serializedData = serializeStreamChunkForIpc(mode, data, {
             threadId,
@@ -897,66 +1233,77 @@ export class AgentService {
             threadId
           })
         },
-        runId: resumedRunId,
         signal: abortController.signal,
-        stream: stream as AsyncIterable<AgentStreamChunk>
+        steeringBuffer: activeRun.steeringBuffer
       })
-      const { interrupted } = drainResult
+      activeRun.steeringBuffer.close()
 
-      if (!abortController.signal.aborted) {
-        if (!drainResult.beforePendingHitlPersistenceApplied) {
-          await resolveConsumedHitlRequest()
-        }
-        await runHandle.thread.completeRun({
-          interrupted,
-          runId: resumedRunId,
-          submittedContextInclusions: resumeContextInclusions,
-          submittedRecordingRefs: recordingRefs
-        })
+      if (result.status === "completed") {
+        sendResumedRunStarted()
         sink.send({ type: "done" })
       }
     } catch (error) {
-      if (!isAbortLikeError(error, abortController.signal)) {
-        if (runId) {
-          const normalizedError = normalizeAgentRuntimeError("agent:resume", error)
-          const runFailure = {
-            error: normalizedError,
-            runId
-          }
-          await requireActiveRunThread({
-            runId,
-            thread: activeRun.thread
-          }).failRun(runFailure)
-          if (!isModelAuthenticationError(error)) {
-            console.error("[Agent] Resume error:", error)
-          }
-          sink.send({
-            type: "error",
-            ...buildIpcErrorEvent("agent:resume", normalizedError)
-          })
-          return
-        }
-
-        if (!isModelAuthenticationError(error)) {
-          console.error("[Agent] Resume error:", error)
-        }
-        sink.send({
-          type: "error",
-          ...buildIpcErrorEvent("agent:resume", error)
+      activeRun.steeringBuffer.close()
+      activeRun.markPreparationSettled()
+      if (!commandOutcome.hasReported()) {
+        commandRejectionError = abortController.signal.aborted
+          ? createAgentCommandCancelledError(channel)
+          : error
+      }
+      const reportableError = await resolveReportableRunError({
+        error,
+        executionStarted: runExecutionStarted,
+        run: activeRun.run,
+        signal: abortController.signal
+      })
+      if (reportableError && commandOutcome.wasAccepted()) {
+        didReportRuntimeError = true
+        reportAgentRuntimeError({
+          channel: "agent:resume",
+          error: reportableError,
+          label: "[Agent] Resume error:",
+          sink
         })
       }
     } finally {
-      const currentRun = this.activeRuns.get(threadId)
-      if (currentRun === activeRun && abortController.signal.aborted && runId) {
-        await requireActiveRunThread({
-          runId,
-          thread: activeRun.thread
-        }).abortRun({ runId })
+      activeRun.steeringBuffer.close()
+      activeRun.markPreparationSettled()
+      if (
+        !commandOutcome.hasReported() &&
+        commandRejectionError === null &&
+        abortController.signal.aborted
+      ) {
+        commandRejectionError = createAgentCommandCancelledError(channel)
       }
-      if (this.activeRuns.get(threadId) === activeRun) {
-        this.activeRuns.delete(threadId)
+      try {
+        const currentRun = this.activeRuns.get(threadId)
+        if (currentRun === activeRun && abortController.signal.aborted && activeRun.run) {
+          try {
+            await activeRun.run.abort()
+          } catch (error) {
+            if (!didReportRuntimeError) {
+              reportAgentRuntimeError({
+                channel: "agent:resume",
+                error,
+                label: "[Agent] Resume abort persistence error:",
+                sink
+              })
+            }
+          }
+        }
+      } finally {
+        if (this.activeRuns.get(threadId) === activeRun) {
+          this.activeRuns.delete(threadId)
+        }
+        try {
+          lease.complete()
+        } finally {
+          activeRun.markSettled()
+          if (!commandOutcome.hasReported() && commandRejectionError !== null) {
+            commandOutcome.reject(channel, commandRejectionError)
+          }
+        }
       }
-      lease.complete()
     }
   }
 
@@ -965,18 +1312,22 @@ export class AgentService {
     if (!activeRun) {
       return false
     }
+    if (activeRun.controller.signal.aborted) {
+      await activeRun.settled
+      return false
+    }
 
     activeRun.controller.abort()
-    this.activeRuns.delete(threadId)
-    if (activeRun.runId) {
-      await requireActiveRunThread({
-        runId: activeRun.runId,
-        thread: activeRun.thread
-      }).abortRun({
-        runId: activeRun.runId
-      })
+    let didAbort = true
+    try {
+      await activeRun.preparationSettled
+      if (activeRun.run) {
+        didAbort = await activeRun.run.abort()
+      }
+    } finally {
+      await activeRun.settled
     }
-    return true
+    return didAbort
   }
 
   steerActiveRun(
@@ -985,9 +1336,10 @@ export class AgentService {
     options: AgentSteerActiveRunOptions = {}
   ): JingleAgentSteerResult {
     const activeRun = this.activeRuns.get(threadId)
-    if (!activeRun) {
+    if (!activeRun || activeRun.controller.signal.aborted) {
       return { reason: "no_active_run", type: "rejected" }
     }
+    const activeRunId = activeRun.run?.runId ?? null
 
     if (
       options.expectedTurnId &&
@@ -996,20 +1348,16 @@ export class AgentService {
     ) {
       return {
         reason: "active_turn_mismatch",
-        runId: activeRun.runId,
+        runId: activeRunId,
         turnId: activeRun.turnId,
         type: "rejected"
       }
     }
 
-    if (
-      options.expectedRunId &&
-      activeRun.runId !== null &&
-      activeRun.runId !== options.expectedRunId
-    ) {
+    if (options.expectedRunId && activeRunId !== null && activeRunId !== options.expectedRunId) {
       return {
         reason: "active_run_mismatch",
-        runId: activeRun.runId,
+        runId: activeRunId,
         turnId: activeRun.turnId,
         type: "rejected"
       }
@@ -1023,8 +1371,11 @@ export class AgentService {
         refs: normalizeComposerMessageRefs(message.refs),
         text: extractMessageText(message.content).trim()
       },
-      runId: activeRun.runId
+      runId: activeRunId
     })
+    if (!accepted) {
+      return { reason: "no_active_run", type: "rejected" }
+    }
     return { runId: accepted.runId, turnId: activeRun.turnId, type: "accepted" }
   }
 }

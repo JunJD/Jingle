@@ -1,8 +1,7 @@
-import type {
-  RuntimeRunLifecycleController,
-  RuntimeRecordingRef
-} from "@jingle/langchain-agent-harness"
+import type { RuntimeRecordingRef } from "@jingle/langchain-agent-harness"
+import type { RuntimeRunLifecycleController } from "@jingle/langchain-agent-harness"
 import { createJingleAgentTraceRecordingRef } from "@jingle/langchain-agent-harness/transitional"
+import type { HITLDecision } from "@shared/hitl"
 import type { AgentContextInclusion } from "@shared/jingle-memory"
 import type { ResolvedExtensionAiCapability } from "@shared/extension-sources"
 import type { PermissionModeName } from "@shared/permission-mode"
@@ -12,10 +11,10 @@ import type {
   JingleWorkspaceIdentity
 } from "@shared/jingle-memory"
 import { runtimeUsesCheckpointPersistence } from "../checkpointer/runtime-checkpointer-manager"
-import { getRun } from "../db/runs"
+import { resolveHitlRequest } from "../db/hitl"
 import type { JingleMemoryService } from "../jingle-memory/service"
 import type { createExtensionAiRuntime } from "./extension-ai-runtime"
-import { recordRunFinished, recordRunInterrupted } from "./event-recorder"
+import { recordApprovalResolved, recordRunFinished, recordRunInterrupted } from "./event-recorder"
 import {
   beginAgentRun,
   finalizeRunWithoutCheckpoint,
@@ -25,35 +24,30 @@ import {
   syncRunFromLatestCheckpointFacts
 } from "./persistence"
 
-export interface AgentRuntimeRunFacts {
-  aiCapabilities: ResolvedExtensionAiCapability[]
-  extensionAiRuntime: ReturnType<typeof createExtensionAiRuntime>
-  jingleMemoryContextPack: JingleMemoryContextPack | null
-  jingleMemoryTemporaryMode: boolean
-  modelId?: string
-  permissionMode: PermissionModeName
-  workspaceIdentity: JingleWorkspaceIdentity
-}
-
 export interface JingleInvokeRunLifecycleInput {
   aiCapabilities: ResolvedExtensionAiCapability[]
   extensionAiRuntime: ReturnType<typeof createExtensionAiRuntime>
   jingleMemoryContextPack: JingleMemoryContextPack | null
   jingleMemoryContextSnapshot: JingleMemoryContextSnapshot | null
   jingleMemoryTemporaryMode: boolean
-  modelId?: string
+  modelId: string
   permissionMode: PermissionModeName
+  userMessage: {
+    contentPreview: string
+    id: string
+    refs: unknown[]
+  }
   workspaceIdentity: JingleWorkspaceIdentity
 }
 
 export interface JingleResumeRunLifecycleInput {
   aiCapabilities: ResolvedExtensionAiCapability[]
+  decision: HITLDecision & { request_id: string; tool_call_id: string }
   extensionAiRuntime: ReturnType<typeof createExtensionAiRuntime>
   jingleMemoryContextPack: JingleMemoryContextPack | null
   jingleMemoryTemporaryMode: boolean
-  modelId?: string
+  modelId: string
   permissionMode: PermissionModeName
-  requestId: string
   runId: string
   source: "resume"
   workspaceIdentity: JingleWorkspaceIdentity
@@ -67,12 +61,6 @@ export type JingleRuntimeRunLifecycleController = RuntimeRunLifecycleController<
 
 export function createRuntimeRunLifecycleController(input: {
   jingleMemoryService?: JingleMemoryService | null
-  onRunSettled?: (input: { runId: string; threadId: string }) => void
-  onRunStarted?: (input: {
-    facts: AgentRuntimeRunFacts
-    runId: string
-    threadId: string
-  }) => void
 }): JingleRuntimeRunLifecycleController {
   const jingleMemoryService = input.jingleMemoryService ?? null
 
@@ -82,22 +70,15 @@ export function createRuntimeRunLifecycleController(input: {
         aiCapabilities: invoke.aiCapabilities,
         jingleMemoryContextSnapshot: invoke.jingleMemoryContextSnapshot,
         jingleMemoryTemporaryMode: invoke.jingleMemoryTemporaryMode,
-        permissionMode: invoke.permissionMode
-      })
-      input.onRunStarted?.({
-        facts: {
-          aiCapabilities: invoke.aiCapabilities,
-          extensionAiRuntime: invoke.extensionAiRuntime,
-          jingleMemoryContextPack: invoke.jingleMemoryContextPack,
-          jingleMemoryTemporaryMode: invoke.jingleMemoryTemporaryMode,
-          modelId: invoke.modelId,
-          permissionMode: invoke.permissionMode,
-          workspaceIdentity: invoke.workspaceIdentity
-        },
-        runId,
-        threadId
+        permissionMode: invoke.permissionMode,
+        startEvent: {
+          contentPreview: invoke.userMessage.contentPreview,
+          refs: invoke.userMessage.refs,
+          userMessageId: invoke.userMessage.id
+        }
       })
       return {
+        modelId: invoke.modelId,
         recordingRefs: [
           createJingleAgentTraceRecordingRef({
             createdAt: new Date(run.created_at).toISOString(),
@@ -109,29 +90,41 @@ export function createRuntimeRunLifecycleController(input: {
       }
     },
     beginResumeRun: async ({ resume, threadId }) => {
-      const runId = await resumeAgentRun(threadId, resume.runId, {
-        source: resume.source,
-        modelId: resume.modelId ?? null,
-        requestId: resume.requestId
-      })
-      const run = await getRun(runId)
-      if (!run) {
-        throw new Error(`[Agent] Missing resumed run "${runId}".`)
-      }
-      input.onRunStarted?.({
-        facts: {
-          aiCapabilities: resume.aiCapabilities,
-          extensionAiRuntime: resume.extensionAiRuntime,
-          jingleMemoryContextPack: resume.jingleMemoryContextPack,
-          jingleMemoryTemporaryMode: resume.jingleMemoryTemporaryMode,
-          modelId: resume.modelId,
-          permissionMode: resume.permissionMode,
-          workspaceIdentity: resume.workspaceIdentity
+      const { run, runId } = await resumeAgentRun(
+        threadId,
+        resume.runId,
+        {
+          source: resume.source,
+          modelId: resume.modelId ?? null,
+          requestId: resume.decision.request_id
         },
-        runId,
-        threadId
-      })
+        {
+          resumeEvent: {
+            modelId: resume.modelId,
+            requestId: resume.decision.request_id
+          }
+        }
+      )
       return {
+        beforePendingHitlPersistence: async () => {
+          await resolveHitlRequest(
+            resume.decision.request_id,
+            resolveHitlRequestStatus(resume.decision.type),
+            {
+              feedback: resume.decision.feedback,
+              request_id: resume.decision.request_id,
+              tool_call_id: resume.decision.tool_call_id,
+              type: resume.decision.type
+            }
+          )
+          await recordApprovalResolved({
+            decision: resume.decision,
+            requestId: resume.decision.request_id,
+            runId,
+            threadId
+          })
+        },
+        modelId: resume.modelId,
         recordingRefs: [
           createJingleAgentTraceRecordingRef({
             createdAt: new Date(run.created_at).toISOString(),
@@ -157,11 +150,9 @@ export function createRuntimeRunLifecycleController(input: {
     },
     markRunAborted: async ({ runId, threadId }) => {
       await markRunAborted(threadId, runId)
-      input.onRunSettled?.({ runId, threadId })
     },
     markRunFailed: async ({ error, runId, threadId }) => {
       await markRunFailed(threadId, runId, error)
-      input.onRunSettled?.({ runId, threadId })
     },
     recordMemoryRecordingRefs: ({ recordingRefs, runId, threadId }) =>
       recordJingleMemoryRecordingRefs({
@@ -172,9 +163,9 @@ export function createRuntimeRunLifecycleController(input: {
       }),
     recordRunFinished: async (event) => {
       await recordRunFinished(event)
-      input.onRunSettled?.({ runId: event.runId, threadId: event.threadId })
     },
     recordRunInterrupted,
+    settleRun: () => undefined,
     syncRunFromLatestCheckpoint: async ({
       expectedMessageId,
       interrupted,
@@ -200,6 +191,18 @@ export function createRuntimeRunLifecycleController(input: {
     },
     useCheckpointPersistence: runtimeUsesCheckpointPersistence
   }
+}
+
+function resolveHitlRequestStatus(type: HITLDecision["type"]): "approved" | "rejected" {
+  switch (type) {
+    case "approve":
+      return "approved"
+    case "reject":
+      return "rejected"
+  }
+
+  const unsupportedType: never = type
+  throw new Error(`[Agent] Unsupported HITL decision type: ${String(unsupportedType)}`)
 }
 
 async function recordJingleMemoryRecordingRefs(input: {

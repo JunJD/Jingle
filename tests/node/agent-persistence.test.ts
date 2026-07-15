@@ -7,6 +7,10 @@ import test, { mock } from "node:test"
 import { emptyCheckpoint } from "@langchain/langgraph-checkpoint"
 import type { SerializerProtocol } from "@langchain/langgraph-checkpoint"
 import { appleRemindersManifest } from "../../installable-extensions/apple-reminders/manifest"
+import { appleRemindersMain } from "../../installable-extensions/apple-reminders/main"
+import type { AgentService } from "../../src/main/agent/service"
+import { ExtensionMainDefinitionRegistry } from "../../src/main/extensions/registry/main-definition-registry"
+import type { ExtensionMainRef } from "../../src/main/extensions/registry/types"
 
 const repoRoot = process.cwd()
 const originalJingleHome = process.env.JINGLE_HOME
@@ -43,13 +47,18 @@ async function createWorkspaceServiceForTest() {
 
 async function createAgentServiceForTest(
   input: {
+    extensionRegistryReader?: unknown
     jingleMemoryService?: unknown
     threadLifecycleGate?: unknown
+    workspaceService?: unknown
   } = {}
 ) {
   const { AgentService } = await import("../../src/main/agent/service")
   const { JingleMemoryService } = await import("../../src/main/jingle-memory/service")
   const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
+  const { startNativeExtensionMainDefinitionRegistry } =
+    await import("../../src/main/services/native-extensions")
+  startNativeExtensionMainDefinitionRegistry()
 
   return new AgentService(
     (input.jingleMemoryService ?? new JingleMemoryService()) as ConstructorParameters<
@@ -58,8 +67,77 @@ async function createAgentServiceForTest(
     (input.threadLifecycleGate ?? new ThreadLifecycleGate()) as ConstructorParameters<
       typeof AgentService
     >[1],
-    await createWorkspaceServiceForTest()
+    (input.workspaceService ?? (await createWorkspaceServiceForTest())) as ConstructorParameters<
+      typeof AgentService
+    >[2],
+    input.extensionRegistryReader as ConstructorParameters<typeof AgentService>[3]
   )
+}
+
+function createExtensionMainDefinitionRegistryForAdmission(
+  state: "failed" | "pending" | "ready"
+): ExtensionMainDefinitionRegistry {
+  const entries: Array<{ extensionName: string; mainRef: ExtensionMainRef }> = []
+  if (state === "pending") {
+    entries.push({
+      extensionName: "apple-reminders",
+      mainRef: {
+        extensionName: "apple-reminders",
+        kind: "module",
+        modulePath: "/never/apple-reminders-main.mjs",
+        trust: "trusted",
+        version: "1.0.0"
+      }
+    })
+  } else {
+    entries.push({
+      extensionName: "apple-reminders",
+      mainRef: {
+        definition: appleRemindersMain,
+        extensionName: "apple-reminders",
+        kind: "in-memory",
+        trust: "trusted",
+        version: "1.0.0"
+      }
+    })
+  }
+  if (state === "ready") {
+    entries.push({
+      extensionName: "unrelated-never",
+      mainRef: {
+        extensionName: "unrelated-never",
+        kind: "module",
+        modulePath: "/never/unrelated-main.mjs",
+        trust: "trusted",
+        version: "1.0.0"
+      }
+    })
+  }
+
+  const registry = new ExtensionMainDefinitionRegistry({
+    entries,
+    loadDefinition: () => new Promise(() => {}),
+    onError: () => undefined,
+    shutdownTimeoutMs: 5,
+    ...(state === "failed"
+      ? {
+          validateDefinition: () => {
+            throw new Error("injected main definition failure")
+          }
+        }
+      : {})
+  })
+  registry.start()
+  return registry
+}
+
+function createAppleRemindersSourceRef() {
+  return {
+    extensionName: "apple-reminders",
+    name: "Apple Reminders",
+    sourceId: "appleReminders",
+    type: "extension-source" as const
+  }
 }
 
 async function createThreadsServiceForTest(input: { threadLifecycleGate?: unknown } = {}) {
@@ -97,7 +175,7 @@ test.before(async () => {
     cwd: repoRoot,
     env: {
       ...process.env,
-      JINGLE_HOME: jingleHome,
+      JINGLE_HOME: jingleHome
     }
   })
 })
@@ -193,10 +271,19 @@ test("resume primitives target the request's run instead of the latest active ru
   const request = await getHitlRequest("request-older")
   assert.equal(request?.run_id, olderRunId)
 
-  await resumeAgentRun(threadId, request!.run_id!, {
-    requestId: request!.request_id,
-    source: "resume"
-  })
+  await resumeAgentRun(
+    threadId,
+    request!.run_id!,
+    {
+      requestId: request!.request_id,
+      source: "resume"
+    },
+    {
+      resumeEvent: {
+        requestId: request!.request_id
+      }
+    }
+  )
   await resolveHitlRequest(request!.request_id, "approved", {
     request_id: request!.request_id,
     tool_call_id: request!.tool_call_id,
@@ -212,6 +299,93 @@ test("resume primitives target the request's run instead of the latest active ru
   assert.equal(latestRun?.status, "interrupted")
   assert.equal(resolvedRequest?.status, "approved")
   assert.equal(untouchedRequest?.status, "pending")
+})
+
+test("beginAgentRun rolls back the run row when marking the thread busy fails", async () => {
+  const { createThread, getPrismaClient, getThread } = await loadDbModules()
+  const { beginAgentRun } = await import("../../src/main/agent/persistence")
+  const threadId = "thread-begin-transaction-rollback"
+  const triggerName = "fail_begin_thread_busy_update"
+  const prisma = getPrismaClient()
+  const sequenceCountBefore = await prisma.agentEventSequence.count()
+
+  await createThread(threadId)
+  await prisma.$executeRawUnsafe(`
+    CREATE TRIGGER "${triggerName}"
+    BEFORE UPDATE OF "status" ON "threads"
+    WHEN NEW."thread_id" = '${threadId}' AND NEW."status" = 'busy'
+    BEGIN
+      SELECT RAISE(FAIL, 'injected thread update failure');
+    END
+  `)
+
+  try {
+    await assert.rejects(
+      beginAgentRun(threadId, "gpt-test", {
+        startEvent: {
+          contentPreview: "rollback invoke",
+          refs: [],
+          userMessageId: "message-begin-rollback"
+        }
+      })
+    )
+  } finally {
+    await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${triggerName}"`)
+  }
+
+  assert.equal(await prisma.run.count({ where: { threadId } }), 0)
+  assert.equal(await prisma.agentEvent.count({ where: { threadId } }), 0)
+  assert.equal(await prisma.agentEventSequence.count(), sequenceCountBefore)
+  assert.equal((await getThread(threadId))?.status, "idle")
+})
+
+test("resumeAgentRun rolls back the run update when marking the thread busy fails", async () => {
+  const { createRun, createThread, getPrismaClient, getRun, getThread } = await loadDbModules()
+  const { resumeAgentRun } = await import("../../src/main/agent/persistence")
+  const threadId = "thread-resume-transaction-rollback"
+  const runId = "run-resume-transaction-rollback"
+  const triggerName = "fail_resume_thread_busy_update"
+  const prisma = getPrismaClient()
+  const sequenceCountBefore = await prisma.agentEventSequence.count()
+
+  await createThread(threadId)
+  await createRun(runId, threadId, {
+    metadata: { existing: true },
+    status: "interrupted"
+  })
+  await prisma.$executeRawUnsafe(`
+    CREATE TRIGGER "${triggerName}"
+    BEFORE UPDATE OF "status" ON "threads"
+    WHEN NEW."thread_id" = '${threadId}' AND NEW."status" = 'busy'
+    BEGIN
+      SELECT RAISE(FAIL, 'injected thread update failure');
+    END
+  `)
+
+  try {
+    await assert.rejects(
+      resumeAgentRun(
+        threadId,
+        runId,
+        { requestId: "request-rollback" },
+        {
+          resumeEvent: {
+            modelId: "gpt-test",
+            requestId: "request-rollback"
+          }
+        }
+      )
+    )
+  } finally {
+    await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${triggerName}"`)
+  }
+
+  const run = await getRun(runId)
+  assert.equal(run?.status, "interrupted")
+  assert.deepEqual(JSON.parse(run?.metadata ?? "{}"), { existing: true })
+  assert.equal((await getThread(threadId))?.status, "idle")
+  assert.equal(await prisma.agentEvent.count({ where: { runId } }), 0)
+  assert.equal(await prisma.agentEventSequence.count(), sequenceCountBefore)
 })
 
 test("agent resume keeps HITL request pending when resumed stream fails before first chunk", async () => {
@@ -238,11 +412,12 @@ test("agent resume keeps HITL request pending when resumed stream fails before f
   })
 
   const events: Array<{ type: string }> = []
+  let outcome: Awaited<ReturnType<AgentService["dispatchResume"]>> | null = null
   process.env.JINGLE_BDD_AGENT_RUNTIME = "scripted"
   try {
-    await (
+    outcome = await (
       await createAgentServiceForTest()
-    ).resume(
+    ).dispatchResume(
       {
         decision: {
           feedback: "bdd:fail-before-first-chunk",
@@ -268,12 +443,11 @@ test("agent resume keeps HITL request pending when resumed stream fails before f
   }
 
   const request = await getHitlRequest(requestId)
+  assert.ok(outcome)
   assert.equal(request?.status, "pending")
   assert.equal(request?.decision, null)
-  assert.deepEqual(
-    events.map((event) => event.type),
-    ["run_started", "error"]
-  )
+  assert.equal(outcome.type, "rejected")
+  assert.deepEqual(events, [])
 })
 
 test("agent resume rejects workspace mismatch before mutating the run", async () => {
@@ -318,10 +492,11 @@ test("agent resume rejects workspace mismatch before mutating the run", async ()
   })
 
   const events: Array<{ details?: string[]; type: string }> = []
+  let outcome: Awaited<ReturnType<AgentService["dispatchResume"]>> | null = null
   try {
-    await (
+    outcome = await (
       await createAgentServiceForTest()
-    ).resume(
+    ).dispatchResume(
       {
         decision: {
           request_id: requestId,
@@ -345,19 +520,21 @@ test("agent resume rejects workspace mismatch before mutating the run", async ()
   }
 
   const run = await getRun(runId)
+  assert.ok(outcome)
   assert.equal(run?.status, "interrupted")
-  assert.deepEqual(
-    events.map((event) => event.type),
-    ["error"]
-  )
+  assert.deepEqual(events, [])
+  assert.equal(outcome.type, "rejected")
+  assert.equal(outcome.type === "rejected" ? outcome.error.code : null, "FAILED_PRECONDITION")
   assert.equal(
-    events[0].details?.some((detail) => detail.includes("fork_current_workspace")),
+    outcome.type === "rejected" &&
+      outcome.error.details?.some((detail) => detail.includes("fork_current_workspace")),
     true
   )
 })
 
 test("agent resume seeds frozen provided context inclusions into resumed runtime state", async () => {
-  const { createRun, createThread, updateThread, upsertHitlRequest } = await loadDbModules()
+  const { createRun, createThread, getHitlRequest, updateThread, upsertHitlRequest } =
+    await loadDbModules()
   const { JINGLE_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY } =
     await import("../../src/shared/jingle-memory")
   const consoleLog = mock.method(console, "log", () => {})
@@ -409,6 +586,7 @@ test("agent resume seeds frozen provided context inclusions into resumed runtime
   })
 
   const events: Array<{ data?: unknown; mode?: string; type: string }> = []
+  let acceptedDecision: Record<string, unknown> | null = null
 
   try {
     process.env.JINGLE_BDD_AGENT_RUNTIME = "scripted"
@@ -417,7 +595,7 @@ test("agent resume seeds frozen provided context inclusions into resumed runtime
     ).resume(
       {
         decision: {
-          request_id: requestId,
+          request_id: `  ${requestId}  `,
           tool_call_id: "tool-call-resume-context-inclusions",
           type: "approve"
         },
@@ -426,6 +604,11 @@ test("agent resume seeds frozen provided context inclusions into resumed runtime
       },
       {
         send: (event) => events.push(event as (typeof events)[number])
+      },
+      {
+        onRunAccepted: (decision) => {
+          acceptedDecision = decision
+        }
       }
     )
   } finally {
@@ -445,9 +628,21 @@ test("agent resume seeds frozen provided context inclusions into resumed runtime
     contextInclusions?.[0]?.id,
     "ctx:run-resume-context-inclusions:provided:memory:memory-resume-context"
   )
+  assert.equal(events[0]?.type, "run_started")
+  assert.deepEqual(acceptedDecision, {
+    request_id: requestId,
+    tool_call_id: "tool-call-resume-context-inclusions",
+    type: "approve"
+  })
+  const resolvedRequest = await getHitlRequest(requestId)
+  assert.deepEqual(JSON.parse(resolvedRequest?.decision ?? "null"), {
+    request_id: requestId,
+    tool_call_id: "tool-call-resume-context-inclusions",
+    type: "approve"
+  })
 })
 
-test("agent cancel covers invoke setup before a run id exists", async () => {
+test("agent cancel releases pending invoke setup and ignores its late fulfillment", async () => {
   const { createThread, getPrismaClient } = await loadDbModules()
   const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
   const consoleLog = mock.method(console, "log", () => {})
@@ -456,28 +651,26 @@ test("agent cancel covers invoke setup before a run id exists", async () => {
   await createThread(threadId)
   await bindThreadWorkspace(threadId, repoRoot)
 
-  let releaseContextPack: () => void = () => {
-    throw new Error("Context pack build was not reached.")
-  }
-  const contextPackGate = new Promise<void>((resolve) => {
-    releaseContextPack = resolve
-  })
   let contextPackStarted = false
+  let resolveLateContextPack!: (value: null) => void
+  const lateContextPack = new Promise<null>((resolve) => {
+    resolveLateContextPack = resolve
+  })
   const memoryService = {
     buildContextPack: async () => {
       contextPackStarted = true
-      await contextPackGate
-      return null
+      return lateContextPack
     },
     createContextSnapshot: () => null,
     recordInclusions: async () => undefined
   }
   const lifecycleGate = new ThreadLifecycleGate()
+  const events: Array<{ type: string }> = []
   const agentService = await createAgentServiceForTest({
     jingleMemoryService: memoryService,
     threadLifecycleGate: lifecycleGate
   })
-  const invoke = agentService.invoke(
+  const invoke = agentService.dispatchInvoke(
     {
       message: {
         content: "cancel before run id",
@@ -487,7 +680,7 @@ test("agent cancel covers invoke setup before a run id exists", async () => {
       threadId
     },
     {
-      send: () => undefined
+      send: (event) => events.push(event)
     }
   )
 
@@ -496,15 +689,449 @@ test("agent cancel covers invoke setup before a run id exists", async () => {
       await new Promise<void>((resolve) => setImmediate(resolve))
     }
 
-    assert.equal(await agentService.cancel({ threadId }), true)
-    releaseContextPack()
-    await invoke
+    const cancel = agentService.cancel({ threadId })
+    const duplicateCancel = agentService.cancel({ threadId })
+    assert.deepEqual(
+      agentService.steerActiveRun(threadId, {
+        content: "ignored after cancellation",
+        id: "message-steer-after-cancel"
+      }),
+      { reason: "no_active_run", type: "rejected" }
+    )
+    assert.equal(await cancel, true)
+    assert.equal(await duplicateCancel, false)
+    const outcome = await invoke
+    assert.equal(outcome.type, "rejected")
+    assert.equal(outcome.type === "rejected" ? outcome.error.code : null, "CANCELLED")
 
     const runs = await getPrismaClient().run.findMany({ where: { threadId } })
     assert.equal(runs.length, 0)
+    assert.equal(
+      events.some((event) => event.type === "run_started"),
+      false
+    )
+
+    const reclaimed = await lifecycleGate.claimRun(threadId)
+    assert.equal(reclaimed.status, "accepted")
+    if (reclaimed.status === "accepted") {
+      reclaimed.lease.complete()
+    }
+
+    resolveLateContextPack(null)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    assert.equal(await getPrismaClient().run.count({ where: { threadId } }), 0)
+    assert.equal(events.length, 0)
   } finally {
     consoleLog.mock.restore()
   }
+})
+
+test("agent cancel releases pending resume setup and observes its late rejection", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
+  const threadId = "thread-cancel-resume-before-run"
+  let workspaceResolutionStarted!: () => void
+  const workspaceResolutionEntered = new Promise<void>((resolve) => {
+    workspaceResolutionStarted = resolve
+  })
+  let rejectLateWorkspaceResolution!: (error: Error) => void
+  const lateWorkspaceResolution = new Promise<string | null>((_resolve, reject) => {
+    rejectLateWorkspaceResolution = reject
+  })
+  const workspaceService = {
+    getWorkspacePath: async () => {
+      workspaceResolutionStarted()
+      return lateWorkspaceResolution
+    }
+  }
+  const lifecycleGate = new ThreadLifecycleGate()
+  await createThread(threadId)
+  const agentService = await createAgentServiceForTest({
+    threadLifecycleGate: lifecycleGate,
+    workspaceService
+  })
+  const resume = agentService.dispatchResume(
+    {
+      decision: {
+        request_id: "request-cancel-resume-before-run",
+        tool_call_id: "tool-call-cancel-resume-before-run",
+        type: "approve"
+      },
+      modelId: "bdd",
+      threadId
+    },
+    { send: () => undefined }
+  )
+
+  await workspaceResolutionEntered
+  assert.equal(await agentService.cancel({ threadId }), true)
+  const outcome = await resume
+  assert.equal(outcome.type, "rejected")
+  assert.equal(outcome.type === "rejected" ? outcome.error.code : null, "CANCELLED")
+  assert.equal(await agentService.cancel({ threadId }), false)
+  assert.equal(await getPrismaClient().run.count({ where: { threadId } }), 0)
+
+  const reclaimed = await lifecycleGate.claimRun(threadId)
+  assert.equal(reclaimed.status, "accepted")
+  if (reclaimed.status === "accepted") {
+    reclaimed.lease.complete()
+  }
+
+  rejectLateWorkspaceResolution(new Error("late workspace resolution failure"))
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(await getPrismaClient().run.count({ where: { threadId } }), 0)
+})
+
+test("invoke admission atomically records one start and one user message event", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const consoleLog = mock.method(console, "log", () => {})
+  const previousRuntimeMode = process.env.JINGLE_BDD_AGENT_RUNTIME
+  const threadId = "thread-atomic-invoke-admission"
+
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+  process.env.JINGLE_BDD_AGENT_RUNTIME = "scripted"
+
+  const prisma = getPrismaClient()
+  const events: Array<{ runId?: string; type: string }> = []
+  const agentService = await createAgentServiceForTest()
+
+  try {
+    await agentService.invoke(
+      {
+        message: {
+          content: "atomic invoke admission",
+          id: "message-atomic-invoke"
+        },
+        modelId: "bdd",
+        threadId
+      },
+      {
+        send: (event) =>
+          events.push({
+            runId: event.type === "run_started" ? event.runId : undefined,
+            type: event.type
+          })
+      }
+    )
+    const runId = events.find((event) => event.type === "run_started")?.runId
+    assert.ok(runId)
+    const preparationEvents = await prisma.agentEvent.findMany({
+      orderBy: { seq: "asc" },
+      where: {
+        runId,
+        type: { in: ["run.started", "message.user.created"] }
+      }
+    })
+    assert.deepEqual(
+      preparationEvents.map((event) => [event.seq, event.type]),
+      [
+        [1, "run.started"],
+        [2, "message.user.created"]
+      ]
+    )
+    assert.equal(
+      JSON.parse(preparationEvents[1]?.payload ?? "{}").userMessageId,
+      "message-atomic-invoke"
+    )
+  } finally {
+    if (previousRuntimeMode === undefined) {
+      delete process.env.JINGLE_BDD_AGENT_RUNTIME
+    } else {
+      process.env.JINGLE_BDD_AGENT_RUNTIME = previousRuntimeMode
+    }
+    consoleLog.mock.restore()
+  }
+})
+
+test("invoke command reports missing workspace before accepting the command", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const threadId = "thread-invoke-missing-workspace"
+  await createThread(threadId)
+  const agentService = await createAgentServiceForTest()
+  const events: string[] = []
+
+  const outcome = await agentService.dispatchInvoke(
+    {
+      message: { content: "hello", id: "message-missing-workspace" },
+      modelId: "bdd",
+      threadId
+    },
+    { send: (event) => events.push(event.type) }
+  )
+
+  assert.deepEqual(outcome, {
+    error: {
+      channel: "agent:invoke",
+      code: "FAILED_PRECONDITION",
+      message: "Please select a workspace folder before sending messages.",
+      status: 412
+    },
+    type: "rejected"
+  })
+  assert.deepEqual(events, [])
+  assert.equal(await getPrismaClient().run.count({ where: { threadId } }), 0)
+})
+
+test("invoke admission rejects a required extension whose process definition is pending", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const consoleLog = mock.method(console, "log", () => {})
+  const consoleWarn = mock.method(console, "warn", () => {})
+  const threadId = "thread-extension-main-pending"
+  const registry = createExtensionMainDefinitionRegistryForAdmission("pending")
+
+  try {
+    await createThread(threadId)
+    await bindThreadWorkspace(threadId, repoRoot)
+    const agentService = await createAgentServiceForTest({
+      extensionRegistryReader: {
+        listManifests: () => [appleRemindersManifest],
+        readMainDefinitionSnapshot: () => registry.readSnapshot()
+      }
+    })
+    const outcome = await agentService.dispatchInvoke(
+      {
+        message: {
+          content: "use reminders",
+          id: "message-extension-main-pending",
+          refs: [createAppleRemindersSourceRef()]
+        },
+        modelId: "bdd",
+        threadId
+      },
+      { send: () => undefined }
+    )
+
+    assert.equal(outcome.type, "rejected")
+    assert.equal(outcome.type === "rejected" ? outcome.error.code : null, "UNAVAILABLE")
+    assert.deepEqual(outcome.type === "rejected" ? outcome.error.details : null, [
+      'Extension "apple-reminders" main definition is still loading.'
+    ])
+    assert.equal(await getPrismaClient().run.count({ where: { threadId } }), 0)
+  } finally {
+    await registry.dispose()
+    consoleLog.mock.restore()
+    consoleWarn.mock.restore()
+  }
+})
+
+test("invoke admission rejects a required extension whose process definition failed", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const consoleLog = mock.method(console, "log", () => {})
+  const consoleWarn = mock.method(console, "warn", () => {})
+  const threadId = "thread-extension-main-failed"
+  const registry = createExtensionMainDefinitionRegistryForAdmission("failed")
+
+  try {
+    await createThread(threadId)
+    await bindThreadWorkspace(threadId, repoRoot)
+    const agentService = await createAgentServiceForTest({
+      extensionRegistryReader: {
+        listManifests: () => [appleRemindersManifest],
+        readMainDefinitionSnapshot: () => registry.readSnapshot()
+      }
+    })
+    const outcome = await agentService.dispatchInvoke(
+      {
+        message: {
+          content: "use reminders",
+          id: "message-extension-main-failed",
+          refs: [createAppleRemindersSourceRef()]
+        },
+        modelId: "bdd",
+        threadId
+      },
+      { send: () => undefined }
+    )
+
+    assert.equal(outcome.type, "rejected")
+    assert.equal(outcome.type === "rejected" ? outcome.error.code : null, "UNAVAILABLE")
+    assert.deepEqual(outcome.type === "rejected" ? outcome.error.details : null, [
+      'Extension "apple-reminders" main definition failed to load.'
+    ])
+    assert.equal(await getPrismaClient().run.count({ where: { threadId } }), 0)
+  } finally {
+    await registry.dispose()
+    consoleLog.mock.restore()
+    consoleWarn.mock.restore()
+  }
+})
+
+test("invoke admission uses a ready required definition without waiting for unrelated modules", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const consoleLog = mock.method(console, "log", () => {})
+  const consoleWarn = mock.method(console, "warn", () => {})
+  const previousRuntimeMode = process.env.JINGLE_BDD_AGENT_RUNTIME
+  const threadId = "thread-extension-main-ready"
+  const registry = createExtensionMainDefinitionRegistryForAdmission("ready")
+  process.env.JINGLE_BDD_AGENT_RUNTIME = "scripted"
+
+  try {
+    await createThread(threadId)
+    await bindThreadWorkspace(threadId, repoRoot)
+    const agentService = await createAgentServiceForTest({
+      extensionRegistryReader: {
+        listManifests: () => [appleRemindersManifest],
+        readMainDefinitionSnapshot: () => registry.readSnapshot()
+      }
+    })
+    const events: string[] = []
+    const outcome = await agentService.dispatchInvoke(
+      {
+        message: {
+          content: "bdd:long",
+          id: "message-extension-main-ready",
+          refs: [createAppleRemindersSourceRef()]
+        },
+        modelId: "bdd",
+        threadId
+      },
+      { send: (event) => events.push(event.type) }
+    )
+
+    assert.deepEqual(outcome, { disposition: "run", type: "accepted" })
+    assert.equal(await getPrismaClient().run.count({ where: { threadId } }), 1)
+    assert.equal(events.includes("run_rejected"), false)
+    assert.equal(await agentService.cancel({ threadId }), true)
+  } finally {
+    if (previousRuntimeMode === undefined) {
+      delete process.env.JINGLE_BDD_AGENT_RUNTIME
+    } else {
+      process.env.JINGLE_BDD_AGENT_RUNTIME = previousRuntimeMode
+    }
+    await registry.dispose()
+    consoleLog.mock.restore()
+    consoleWarn.mock.restore()
+  }
+})
+
+test("concurrent invoke cannot replace an active run while its projection is pending", async () => {
+  const { createThread, getPrismaClient, getRun } = await loadDbModules()
+  const consoleLog = mock.method(console, "log", () => {})
+  const previousRuntimeMode = process.env.JINGLE_BDD_AGENT_RUNTIME
+  const threadId = "thread-concurrent-invoke-projection-pending"
+  let releaseProjection!: () => void
+  let projectionStarted!: () => void
+  let firstRunId: string | null = null
+  const projectionEntered = new Promise<void>((resolve) => {
+    projectionStarted = resolve
+  })
+  const projection = new Promise<void>((resolve) => {
+    releaseProjection = resolve
+  })
+
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+  process.env.JINGLE_BDD_AGENT_RUNTIME = "scripted"
+
+  const agentService = await createAgentServiceForTest()
+  const firstEvents: Array<{ runId?: string; type: string }> = []
+  const secondEvents: Array<{ code?: string; type: string }> = []
+  const firstOutcome = await agentService.dispatchInvoke(
+    {
+      message: {
+        content: "bdd:long",
+        id: "message-concurrent-invoke-first"
+      },
+      modelId: "bdd",
+      threadId
+    },
+    {
+      send: (event) => {
+        firstEvents.push({
+          runId: "runId" in event ? event.runId : undefined,
+          type: event.type
+        })
+      }
+    },
+    {
+      onRunAccepted: () => {
+        projectionStarted()
+        void projection
+      }
+    }
+  )
+
+  try {
+    await projectionEntered
+    assert.deepEqual(firstOutcome, { disposition: "run", type: "accepted" })
+    firstRunId = firstEvents.find((event) => event.type === "run_started")?.runId ?? null
+
+    const secondOutcome = await agentService.dispatchInvoke(
+      {
+        message: {
+          content: "must not replace the first run",
+          id: "message-concurrent-invoke-second"
+        },
+        modelId: "bdd",
+        threadId
+      },
+      {
+        send: (event) => {
+          secondEvents.push({
+            code: "code" in event ? event.code : undefined,
+            type: event.type
+          })
+        }
+      }
+    )
+
+    assert.deepEqual(secondOutcome, {
+      error: {
+        channel: "agent:invoke",
+        code: "CONFLICT",
+        message: "Agent run is already in progress; follow-ups must be queued or steered.",
+        status: 409
+      },
+      type: "rejected"
+    })
+    assert.deepEqual(secondEvents, [{ code: "CONFLICT", type: "run_rejected" }])
+    assert.ok(firstRunId)
+    assert.equal((await getRun(firstRunId))?.status, "running")
+    assert.equal(await getPrismaClient().run.count({ where: { threadId } }), 1)
+
+    assert.equal(await agentService.cancel({ threadId }), true)
+    assert.equal((await getRun(firstRunId))?.status, "interrupted")
+  } finally {
+    releaseProjection()
+    if (previousRuntimeMode === undefined) {
+      delete process.env.JINGLE_BDD_AGENT_RUNTIME
+    } else {
+      process.env.JINGLE_BDD_AGENT_RUNTIME = previousRuntimeMode
+    }
+    consoleLog.mock.restore()
+  }
+})
+
+test("resume admission atomically records one resume event", async () => {
+  const { createRun, createThread, getPrismaClient, getRun, getThread } = await loadDbModules()
+  const { resumeAgentRun } = await import("../../src/main/agent/persistence")
+  const threadId = "thread-atomic-resume-admission"
+  const runId = "run-atomic-resume-admission"
+  const requestId = "request-atomic-resume-admission"
+
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "interrupted" })
+  await resumeAgentRun(
+    threadId,
+    runId,
+    { requestId, source: "resume" },
+    { resumeEvent: { modelId: "gpt-test", requestId } }
+  )
+
+  assert.equal((await getRun(runId))?.status, "running")
+  assert.equal((await getThread(threadId))?.status, "busy")
+  const events = await getPrismaClient().agentEvent.findMany({
+    orderBy: { seq: "asc" },
+    where: { runId, type: "run.resumed" }
+  })
+  assert.equal(events.length, 1)
+  assert.equal(events[0]?.seq, 1)
+  assert.deepEqual(JSON.parse(events[0]?.payload ?? "{}"), {
+    model: "gpt-test",
+    requestId,
+    source: "resume"
+  })
 })
 
 test("agent cancel records one aborted lifecycle for an active run", async () => {
@@ -660,7 +1287,7 @@ test("agent deletion gate rejects invoke while thread deletion is active", async
       }
     )
 
-    assert.deepEqual(events, [{ code: "CONFLICT", type: "error" }])
+    assert.deepEqual(events, [{ code: "CONFLICT", type: "run_rejected" }])
     assert.equal(runAccepted, false)
     const runs = await getPrismaClient().run.findMany({ where: { threadId } })
     assert.equal(runs.length, 0)
@@ -738,7 +1365,12 @@ test("agent run metadata snapshots permission mode and preserves it through resu
 
   const { runId } = await beginAgentRun(threadId, "gpt-test", {
     aiCapabilities,
-    permissionMode: "auto"
+    permissionMode: "auto",
+    startEvent: {
+      contentPreview: "permission snapshot",
+      refs: [],
+      userMessageId: "message-permission-snapshot"
+    }
   })
   const createdRun = await getRun(runId)
   assert.equal(readRunPermissionModeSnapshot(createdRun), "auto")
@@ -762,10 +1394,19 @@ test("agent run metadata snapshots permission mode and preserves it through resu
     aiCapabilitiesSnapshot
   )
 
-  await resumeAgentRun(threadId, runId, {
-    requestId: "request-1",
-    source: "resume"
-  })
+  await resumeAgentRun(
+    threadId,
+    runId,
+    {
+      requestId: "request-1",
+      source: "resume"
+    },
+    {
+      resumeEvent: {
+        requestId: "request-1"
+      }
+    }
+  )
 
   const resumedRun = await getRun(runId)
   assert.equal(readRunPermissionModeSnapshot(resumedRun), "auto")
@@ -1041,7 +1682,12 @@ test("agent run memory snapshot stores frozen context content", async () => {
   await createRun("run-memory-snapshot-source", threadId)
 
   const { runId } = await beginAgentRun(threadId, "gpt-test", {
-    jingleMemoryContextSnapshot: service.createContextSnapshot(contextPack)
+    jingleMemoryContextSnapshot: service.createContextSnapshot(contextPack),
+    startEvent: {
+      contentPreview: "memory snapshot",
+      refs: [],
+      userMessageId: "message-memory-snapshot"
+    }
   })
   const run = await getRun(runId)
   const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
@@ -1224,7 +1870,12 @@ test("run metadata updates preserve loaded extension snapshots and resume metada
 
   const { runId } = await beginAgentRun(threadId, "gpt-test", {
     aiCapabilities: [],
-    permissionMode: "ask-to-edit"
+    permissionMode: "ask-to-edit",
+    startEvent: {
+      contentPreview: "extension metadata merge",
+      refs: [],
+      userMessageId: "message-extension-metadata-merge"
+    }
   })
   const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefsFromManifests(
     [
@@ -1246,10 +1897,19 @@ test("run metadata updates preserve loaded extension snapshots and resume metada
     updateRunExtensionAiCapabilitiesSnapshot(runId, {
       aiCapabilities
     }),
-    resumeAgentRun(threadId, runId, {
-      requestId: "request-loaded-extension",
-      source: "resume"
-    })
+    resumeAgentRun(
+      threadId,
+      runId,
+      {
+        requestId: "request-loaded-extension",
+        source: "resume"
+      },
+      {
+        resumeEvent: {
+          requestId: "request-loaded-extension"
+        }
+      }
+    )
   ])
 
   const run = await getRun(runId)
@@ -2202,9 +2862,8 @@ test("runtime checkpointer stores message facts in the checkpoint transaction", 
 })
 
 test("closeRuntimeCheckpointers closes checkpointers without a message projection queue", async () => {
-  const { closeRuntimeCheckpointers, getCheckpointer } = await import(
-    "../../src/main/checkpointer/runtime-checkpointer-manager"
-  )
+  const { closeRuntimeCheckpointers, getCheckpointer } =
+    await import("../../src/main/checkpointer/runtime-checkpointer-manager")
   const threadId = "thread-close-runtime-no-search-projection"
   const firstSaver = await getCheckpointer(threadId)
 
@@ -2381,7 +3040,7 @@ test("thread-scoped checkpoint reads keep run ids out of conversation resume con
   const firstRunScoped = await saver.getTuple({
     configurable: {
       checkpoint_run_id: firstRunId,
-      thread_id: threadId,
+      thread_id: threadId
     }
   })
 
@@ -2391,7 +3050,7 @@ test("thread-scoped checkpoint reads keep run ids out of conversation resume con
   assert.equal(firstRunScoped?.config.configurable?.run_id, firstRunId)
 })
 
-test("thread delete waits for active runtime setup before removing metadata", async () => {
+test("thread delete cancels never-resolving read-only runtime setup before removing metadata", async () => {
   const { createThread, getThread } = await loadDbModules()
   const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
   const consoleLog = mock.method(console, "log", () => {})
@@ -2400,18 +3059,11 @@ test("thread delete waits for active runtime setup before removing metadata", as
   await createThread(threadId)
   await bindThreadWorkspace(threadId, repoRoot)
 
-  let releaseContextPack: () => void = () => {
-    throw new Error("Context pack build was not reached.")
-  }
-  const contextPackGate = new Promise<void>((resolve) => {
-    releaseContextPack = resolve
-  })
   let contextPackStarted = false
   const memoryService = {
     buildContextPack: async () => {
       contextPackStarted = true
-      await contextPackGate
-      return null
+      return new Promise<null>(() => {})
     },
     createContextSnapshot: () => null,
     recordInclusions: async () => undefined
@@ -2444,12 +3096,8 @@ test("thread delete waits for active runtime setup before removing metadata", as
       await new Promise<void>((resolve) => setImmediate(resolve))
     }
 
-    const deletion = service.delete(threadId)
-    await new Promise<void>((resolve) => setImmediate(resolve))
-    assert.notEqual(await getThread(threadId), null)
-
-    releaseContextPack()
-    await Promise.all([invoke, deletion])
+    await service.delete(threadId)
+    await invoke
     assert.equal(await getThread(threadId), null)
   } finally {
     consoleLog.mock.restore()

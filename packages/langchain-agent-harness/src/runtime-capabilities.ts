@@ -36,9 +36,7 @@ import type {
 } from "./runtime-context"
 import type { JingleDesktopAutomationToolHandlers } from "./desktop-automation-tools"
 import type { JingleSummarizationController } from "./harness-runtime/summarization"
-import type {
-  RuntimeObservationCapabilities
-} from "./runtime-observation"
+import type { RuntimeObservationCapabilities } from "./runtime-observation"
 import type {
   RuntimeArtifactPresentationConfig,
   RuntimeArtifactPresentationContext,
@@ -126,22 +124,22 @@ export interface RuntimeCheckpointCapability {
 }
 
 export interface RuntimeToolCapabilities {
-  artifactPresentation?: RuntimeArtifactPresentationProvider
-  backend?: RuntimeBackendProvider
-  desktopAutomationTools?: RuntimeDesktopAutomationTools
-  extensionAiTools?: RuntimeExtensionToolsProvider
-  skillSources?: RuntimeSkillSourcesProvider
-  webTools?: RuntimeWebTools
+  artifactPresentation: RuntimeArtifactPresentationProvider
+  backend: RuntimeBackendProvider
+  desktopAutomationTools: RuntimeDesktopAutomationTools
+  extensionAiTools: RuntimeExtensionToolsProvider
+  skillSources: RuntimeSkillSourcesProvider
+  webTools: RuntimeWebTools
 }
 
 export interface RuntimeContextCapabilities<
   TContextInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem,
   TGuardrailMetadata = Record<string, unknown>
 > {
-  contextRetrieval?: RuntimeContextRetrievalProvider<TContextInclusion>
-  guardrail?: RuntimeGuardrailProvider<TGuardrailMetadata>
+  contextRetrieval: RuntimeContextRetrievalProvider<TContextInclusion>
+  guardrail: RuntimeGuardrailProvider<TGuardrailMetadata>
   memory?: RuntimeMemoryProvider<TContextInclusion>
-  systemPrompt?: RuntimeSystemPromptProvider
+  systemPrompt: RuntimeSystemPromptProvider
   workspaceFileContext?: RuntimeWorkspaceFileContextProvider
 }
 
@@ -151,9 +149,8 @@ export interface RuntimeControlCapabilities<
   TInvokeRunLifecycleInput = unknown,
   TResumeRunLifecycleInput = unknown
 > {
-  approvalController?: RuntimeApprovalControllerProvider
-  pauseController?: RuntimePauseController<TReview>
-  runLifecycleController?: RuntimeRunLifecycleController<
+  pauseController: RuntimePauseController<TReview>
+  runLifecycleController: RuntimeRunLifecycleController<
     TContextInclusion,
     TInvokeRunLifecycleInput,
     TResumeRunLifecycleInput
@@ -161,33 +158,27 @@ export interface RuntimeControlCapabilities<
 }
 
 export interface RuntimeCompactionCapabilities {
-  summarization?: RuntimeCompactionControllerProvider
+  summarization: RuntimeCompactionControllerProvider
 }
 
 export interface RuntimePromptCapabilities {
-  executeToolDescription?: RuntimePromptTextProvider
-  filesystemSystemPrompt?: RuntimePromptTextProvider
-  titleGenerator?: RuntimeTitleGenerator
+  executeToolDescription: RuntimePromptTextProvider
+  filesystemSystemPrompt: RuntimePromptTextProvider
+  titleGenerator: RuntimeTitleGenerator
 }
 
-export interface RuntimeCapabilities<
+export interface RuntimeExecutionCapabilities<
   TContextInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem,
-  TGuardrailMetadata = Record<string, unknown>,
-  TReview = unknown,
-  TInvokeRunLifecycleInput = unknown,
-  TResumeRunLifecycleInput = unknown
+  TGuardrailMetadata = Record<string, unknown>
 > {
-  checkpoint?: RuntimeCheckpointCapability
-  compaction?: RuntimeCompactionCapabilities
-  context?: RuntimeContextCapabilities<TContextInclusion, TGuardrailMetadata>
-  control?: RuntimeControlCapabilities<
-    TContextInclusion,
-    TReview,
-    TInvokeRunLifecycleInput,
-    TResumeRunLifecycleInput
-  >
-  model?: RuntimeModelCapability
+  checkpoint: RuntimeCheckpointCapability
+  compaction: RuntimeCompactionCapabilities
+  context: RuntimeContextCapabilities<TContextInclusion, TGuardrailMetadata>
+  control: {
+    approvalController: RuntimeApprovalControllerProvider
+  }
+  model: RuntimeModelCapability
   observation?: RuntimeObservationCapabilities
-  prompt?: RuntimePromptCapabilities
-  tools?: RuntimeToolCapabilities
+  prompt: RuntimePromptCapabilities
+  tools: RuntimeToolCapabilities
 }

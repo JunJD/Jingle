@@ -40,6 +40,10 @@ import {
   resolveNativeMenuBarService
 } from "./native-menu-bar/module"
 import {
+  disposeNativeExtensionMainDefinitionRegistry,
+  startNativeExtensionMainDefinitionRegistry
+} from "./services/native-extensions"
+import {
   registerNativeExtensionsIpcHandlers,
   registerNativeExtensionsModule,
   resolveNativeExtensionsService
@@ -48,10 +52,7 @@ import {
   registerModelProviderIpcHandlers,
   registerModelProviderModule
 } from "./model-provider/module"
-import {
-  registerJingleMemoryIpcHandlers,
-  registerJingleMemoryModule
-} from "./jingle-memory/module"
+import { registerJingleMemoryIpcHandlers, registerJingleMemoryModule } from "./jingle-memory/module"
 import { registerOpenTargetsIpcHandlers, registerOpenTargetsModule } from "./open-targets/module"
 import {
   getGlobalShortcutAccelerator,
@@ -100,6 +101,7 @@ export interface MainCompositionContext {
   quitApplication: () => void
   showLauncherWindow: () => void
   showMainSubject: () => void
+  setPinnedAiSessionWindowThreadId: AiSessionWindowsRuntime["setPinnedAiSessionWindowThreadId"]
   toggleLauncherWindow: () => void
 }
 
@@ -151,6 +153,7 @@ export class MainCompositionRoot {
   }
 
   startServices(): void {
+    startNativeExtensionMainDefinitionRegistry()
     const nativeMenuBarService = resolveNativeMenuBarService(this.dependencyContainer)
     nativeMenuBarService.initialize({
       getLauncherWindow: this.context.getLauncherWindow
@@ -183,7 +186,7 @@ export class MainCompositionRoot {
       })
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
     this.dependencyContainer.resolve(AiSessionWindowsService).markApplicationQuitting()
     this.stopNativeIslandAgentStatus?.()
     this.stopNativeIslandAgentStatus = null
@@ -194,6 +197,7 @@ export class MainCompositionRoot {
     resolveExtensionRuntimeManager(this.dependencyContainer).dispose()
     resolveNativeMenuBarService(this.dependencyContainer).dispose()
     unregisterGlobalShortcutService()
+    await disposeNativeExtensionMainDefinitionRegistry()
   }
 
   async handleOAuthCallback(rawUrl: string): Promise<void> {
@@ -244,7 +248,8 @@ export function createMainCompositionRoot(
   childContainer.registerInstance<MainCompositionContext>(MAIN_COMPOSITION_CONTEXT_TOKEN, context)
   registerAgentModule(childContainer)
   registerAiSessionWindowsModule(childContainer, {
-    createPinnedAiSessionWindow: context.createPinnedAiSessionWindow
+    createPinnedAiSessionWindow: context.createPinnedAiSessionWindow,
+    setPinnedAiSessionWindowThreadId: context.setPinnedAiSessionWindowThreadId
   })
   registerArtifactsModule(childContainer)
   registerExternalLinksModule(childContainer)

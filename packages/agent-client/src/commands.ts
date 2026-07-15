@@ -93,6 +93,21 @@ export function shouldSurfaceJingleSteerRejection(reason: JingleAgentSteerFailur
   }
 }
 
+export function getJingleAgentSteerRejectionMessage(reason: JingleAgentSteerFailureReason): string {
+  switch (reason) {
+    case "active_run_mismatch":
+      return "Agent run changed before the queued follow-up could steer it"
+    case "active_turn_mismatch":
+      return "Agent turn changed before the queued follow-up could steer it"
+    case "invalid_message":
+      return "Queued follow-up is empty and cannot steer the active run"
+    case "no_active_run":
+      return "Agent run is not available for steering"
+    case "queue_item_not_found":
+      return "Queued follow-up is no longer available"
+  }
+}
+
 export function summarizeJingleAgentFollowUpQueue(
   items: readonly JingleAgentFollowUpQueueItem[]
 ): JingleAgentFollowUpQueueSummary {
@@ -125,6 +140,44 @@ export type JingleAgentFollowUpDrainPlan =
   | {
       type: "idle"
     }
+
+export interface JingleAgentFollowUpDrainLease {
+  release(): void
+}
+
+export interface JingleAgentFollowUpDrainRegistry {
+  acquire(threadId: string, requestId: string): JingleAgentFollowUpDrainLease | null
+  clear(threadId: string): void
+  getActiveRequestId(threadId: string): string | null
+}
+
+export function createJingleAgentFollowUpDrainRegistry(): JingleAgentFollowUpDrainRegistry {
+  const activeDrains = new Map<string, { requestId: string; token: symbol }>()
+
+  return {
+    acquire(threadId, requestId) {
+      if (activeDrains.has(threadId)) {
+        return null
+      }
+
+      const token = Symbol("jingle-agent-follow-up-drain")
+      activeDrains.set(threadId, { requestId, token })
+      return {
+        release() {
+          if (activeDrains.get(threadId)?.token === token) {
+            activeDrains.delete(threadId)
+          }
+        }
+      }
+    },
+    clear(threadId) {
+      activeDrains.delete(threadId)
+    },
+    getActiveRequestId(threadId) {
+      return activeDrains.get(threadId)?.requestId ?? null
+    }
+  }
+}
 
 export interface JingleAgentApprovalDecision {
   feedback?: string

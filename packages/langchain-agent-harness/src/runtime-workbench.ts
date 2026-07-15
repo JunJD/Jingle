@@ -20,9 +20,7 @@ export type RuntimePackageEntrypointId = "root" | "transitional"
 
 export type RuntimePackageEntrypointName = "." | "./transitional"
 
-export type RuntimePackageEntrypointRole =
-  | "public-runtime-facade"
-  | "migration-debt"
+export type RuntimePackageEntrypointRole = "public-runtime-facade" | "migration-debt"
 
 export interface RuntimePackageEntrypointContract {
   entrypoint: RuntimePackageEntrypointName
@@ -38,9 +36,7 @@ export type RuntimePublicSurfaceCapability =
   | "store"
   | "thread"
 
-export type RuntimePublicSurfaceStability =
-  | "target"
-  | "transitional"
+export type RuntimePublicSurfaceStability = "target" | "transitional"
 
 export type RuntimePublicSurfaceRole =
   | "operation-contract"
@@ -52,10 +48,10 @@ export type RuntimePublicSurfaceRole =
 
 export interface RuntimeCreationAssemblyContract {
   acceptedBy: "createRuntime"
-  inputField: "capabilities"
+  inputFields: readonly ["bindExecution", "control"]
   reason: string
-  stability: "transitional"
-  targetApi: false
+  stability: "target"
+  targetApi: true
 }
 
 export interface RuntimePublicSurfaceContract {
@@ -119,11 +115,11 @@ export interface RuntimePackageExportBoundaryContract {
 export const RUNTIME_WORKBENCH_CONTRACT = {
   creationAssembly: {
     acceptedBy: "createRuntime",
-    inputField: "capabilities",
+    inputFields: ["bindExecution", "control"],
     reason:
-      "CreateRuntimeInput.capabilities is a structured runtime capability object, not a module manifest array. Flue's source model uses authored agent/tool/profile/session entities instead of making a module array the harness API; our package keeps LangGraph as the execution engine while making capability ownership explicit.",
-    stability: "transitional",
-    targetApi: false
+      "createRuntime owns one runtime instance. Durable admission binds required per-run execution capabilities, while control owns pause and run lifecycle behavior.",
+    stability: "target",
+    targetApi: true
   },
   entrypoints: {
     root: {
@@ -150,19 +146,11 @@ export const RUNTIME_WORKBENCH_CONTRACT = {
     "transitional-helpers"
   ],
   publicName: "Runtime",
-  publicSurface: [
-    "createRuntime",
-    "thread",
-    "operation",
-    "state",
-    "store",
-    "observation"
-  ],
+  publicSurface: ["createRuntime", "thread", "operation", "state", "store", "observation"],
   publicSurfaceContracts: {
     createRuntime: {
       capability: "createRuntime",
-      reason:
-        "Create the runtime workbench. This remains the package root creation function.",
+      reason: "Create the runtime workbench. This remains the package root creation function.",
       role: "runtime-creation",
       stability: "target",
       targetApi: true
@@ -178,23 +166,21 @@ export const RUNTIME_WORKBENCH_CONTRACT = {
     operation: {
       capability: "operation",
       reason:
-        "RuntimeOperation is the auditable state-change input for invoke, resume, compact, and future child work.",
+        "RuntimeDurableOperation is the auditable invoke/resume state-change input. Drain and terminal requests are internal run controls; compact remains deferred until Pause 4 provides checkpoint CAS.",
       role: "operation-contract",
       stability: "target",
       targetApi: true
     },
     state: {
       capability: "state",
-      reason:
-        "RuntimeState is the checkpointed recoverable fact schema consumed by RuntimeGraph.",
+      reason: "RuntimeState is the checkpointed recoverable fact schema consumed by RuntimeGraph.",
       role: "recoverable-state-contract",
       stability: "target",
       targetApi: true
     },
     store: {
       capability: "store",
-      reason:
-        "Store contracts separate checkpoint, product DB, and projection ownership.",
+      reason: "Store contracts separate checkpoint, product DB, and projection ownership.",
       role: "store-boundary-contract",
       stability: "target",
       targetApi: true
@@ -202,7 +188,7 @@ export const RUNTIME_WORKBENCH_CONTRACT = {
     thread: {
       capability: "thread",
       reason:
-        "RuntimeThread is the current public control surface for invoke/resume/compact and run lifecycle.",
+        "RuntimeThread is the public invoke/resume and run lifecycle control surface. Compact is currently unsupported and deferred to Pause 4.",
       role: "public-control-surface",
       stability: "target",
       targetApi: true
@@ -264,8 +250,5 @@ export const RUNTIME_PACKAGE_EXPORT_BOUNDARY = {
   }
 } as const satisfies RuntimePackageExportBoundaryContract
 
-export {
-  RUNTIME_CHILD_WORK_BOUNDARY,
-  RUNTIME_SESSION_BOUNDARY
-} from "./runtime-session"
+export { RUNTIME_CHILD_WORK_BOUNDARY, RUNTIME_SESSION_BOUNDARY } from "./runtime-session"
 export type { RuntimeThreadSessionPolicy }

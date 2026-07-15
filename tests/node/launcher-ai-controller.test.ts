@@ -1,6 +1,11 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { createLauncherAiController } from "../../src/renderer/src/ai-core/launcher-ai-controller"
+import {
+  createLauncherAiController,
+  createLauncherComposerRevisionLedger,
+  createLauncherCommandSubmissionGate,
+  isLauncherCommandTargetCurrent
+} from "../../src/renderer/src/ai-core/launcher-ai-controller"
 import type { AgentControl } from "../../src/renderer/src/lib/use-agent"
 import type { AiCoreThreadCreateInput } from "../../src/renderer/src/ai-core/AiCoreHost"
 import type { ComposerMessageInput } from "../../src/shared/message-content"
@@ -8,15 +13,77 @@ import type { PermissionModeName } from "../../src/shared/permission-mode"
 import type { ThreadWorkspaceKind } from "../../src/shared/thread-workspace"
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "../../src/shared/launcher-ai"
 
+test("launcher command acceptance stays bound to its submitted navigation target", () => {
+  const submittedThread = { kind: "thread", threadId: "thread-1" } as const
+  const submittedDraft = {
+    kind: "draft",
+    modelId: null,
+    permissionMode: "ask-to-edit",
+    workspaceKind: "projectless",
+    workspacePath: null
+  } as const
+
+  assert.equal(
+    isLauncherCommandTargetCurrent({
+      acceptedThreadId: "thread-1",
+      currentTarget: submittedThread,
+      submittedTarget: submittedThread
+    }),
+    true
+  )
+  assert.equal(
+    isLauncherCommandTargetCurrent({
+      acceptedThreadId: "thread-1",
+      currentTarget: { kind: "thread", threadId: "thread-1" },
+      submittedTarget: submittedThread
+    }),
+    false
+  )
+  assert.equal(
+    isLauncherCommandTargetCurrent({
+      acceptedThreadId: "created-thread",
+      currentTarget: { kind: "thread", threadId: "created-thread" },
+      submittedTarget: submittedDraft
+    }),
+    true
+  )
+  assert.equal(
+    isLauncherCommandTargetCurrent({
+      acceptedThreadId: "created-thread",
+      currentTarget: submittedDraft,
+      submittedTarget: submittedDraft
+    }),
+    false
+  )
+})
+
+test("launcher composer revision ledger rejects ABA-equivalent drafts", () => {
+  const ledger = createLauncherComposerRevisionLedger()
+  const submitted = { refs: [], text: "same text" }
+  ledger.register(submitted)
+  ledger.markChanged()
+  ledger.markChanged()
+  assert.equal(ledger.takeIfCurrent(submitted), false)
+
+  const current = { refs: [], text: "same text" }
+  ledger.register(current)
+  assert.equal(ledger.takeIfCurrent(current), true)
+  assert.equal(ledger.takeIfCurrent(current), false)
+})
+
 function createControllerHarness(input?: {
+  commandSubmissionGate?: ReturnType<typeof createLauncherCommandSubmissionGate>
   draftWorkspaceKind?: ThreadWorkspaceKind
   draftWorkspacePath?: string | null
   invokeGate?: Promise<void>
   invokeResult?: boolean
   isBusy?: boolean
+  hasPendingCommand?: boolean
+  resumeGate?: Promise<void>
   resumeResult?: boolean
   threadId?: string | null
 }): {
+  acceptedInputs: Array<{ input: ComposerMessageInput; threadId: string }>
   controller: ReturnType<typeof createLauncherAiController>
   createdThreads: AiCoreThreadCreateInput[]
   editedMessages: Array<{
@@ -40,6 +107,7 @@ function createControllerHarness(input?: {
     threadId: string
   }>
 } {
+  const acceptedInputs: Array<{ input: ComposerMessageInput; threadId: string }> = []
   const createdThreads: AiCoreThreadCreateInput[] = []
   const editedMessages: Array<{
     input: { messageId: string; messageInput: ComposerMessageInput }
@@ -76,11 +144,13 @@ function createControllerHarness(input?: {
       return input?.invokeResult ?? true
     },
     resume: async (decision) => {
+      await input?.resumeGate
       resumedDecisions.push(decision)
       return input?.resumeResult ?? true
     }
   }
   return {
+    acceptedInputs,
     controller: createLauncherAiController({
       agentControl,
       branchThreadUntilMessage: async () => ({
@@ -88,6 +158,7 @@ function createControllerHarness(input?: {
         threadId: "branched",
         workspacePath: "/workspace"
       }),
+      commandSubmissionGate: input?.commandSubmissionGate ?? createLauncherCommandSubmissionGate(),
       createBranchThread: async () => ({
         modelId: "model",
         threadId: "branched",
@@ -115,8 +186,13 @@ function createControllerHarness(input?: {
           },
       goToNextThread: async () => null,
       goToPreviousThread: async () => null,
+      hasPendingCommand: input?.hasPendingCommand ?? false,
       hasPendingApproval: false,
       isBusy: input?.isBusy ?? false,
+      onDidInvoke: (messageInput, threadId) => {
+        acceptedInputs.push({ input: messageInput, threadId })
+        localComposerTexts.push("")
+      },
       setNavigationError: (error) => {
         navigationErrors.push(error)
       },
@@ -183,6 +259,7 @@ test("launcher AI controller creates a draft thread before invoking agent comman
     }
   ])
   assert.deepEqual(harness.invoked, [{ input: messageInput, threadId: "created-thread" }])
+  assert.deepEqual(harness.acceptedInputs, [{ input: messageInput, threadId: "created-thread" }])
   assert.deepEqual(harness.localComposerTexts, [""])
 })
 
@@ -306,6 +383,42 @@ test("launcher AI controller ignores duplicate submits while invoke is in flight
   assert.deepEqual(harness.localComposerTexts, [""])
 })
 
+test("launcher AI controller keeps duplicate submit guard across controller recreation", async () => {
+  let releaseInvoke: () => void = () => {
+    throw new Error("Invoke was not started.")
+  }
+  const invokeGate = new Promise<void>((resolve) => {
+    releaseInvoke = resolve
+  })
+  const commandSubmissionGate = createLauncherCommandSubmissionGate()
+  const firstHarness = createControllerHarness({
+    commandSubmissionGate,
+    invokeGate,
+    threadId: "existing-thread"
+  })
+  const recreatedHarness = createControllerHarness({
+    commandSubmissionGate,
+    threadId: "existing-thread"
+  })
+  const messageInput: ComposerMessageInput = {
+    refs: [],
+    text: "继续"
+  }
+
+  firstHarness.controller.runPrimaryAction(messageInput)
+  recreatedHarness.controller.runPrimaryAction(messageInput)
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(firstHarness.invoked, [])
+  assert.deepEqual(recreatedHarness.invoked, [])
+
+  releaseInvoke()
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(firstHarness.invoked, [{ input: messageInput, threadId: "existing-thread" }])
+  assert.deepEqual(recreatedHarness.invoked, [])
+})
+
 test("launcher AI controller keeps local composer when invoke fails", async () => {
   const harness = createControllerHarness({
     invokeResult: false,
@@ -395,4 +508,54 @@ test("launcher AI controller returns approval resume command result", async () =
 
   assert.equal(didResume, false)
   assert.deepEqual(harness.resumedDecisions, [{ type: "approve" }])
+})
+
+test("launcher AI controller submits one approval decision across controller recreation", async () => {
+  let releaseResume: () => void = () => {
+    throw new Error("Resume was not started.")
+  }
+  const resumeGate = new Promise<void>((resolve) => {
+    releaseResume = resolve
+  })
+  const commandSubmissionGate = createLauncherCommandSubmissionGate()
+  const firstHarness = createControllerHarness({
+    commandSubmissionGate,
+    resumeGate,
+    threadId: "existing-thread"
+  })
+  const recreatedHarness = createControllerHarness({
+    commandSubmissionGate,
+    threadId: "existing-thread"
+  })
+
+  const approving = firstHarness.controller.handleApprovalDecision({ type: "approve" })
+  const rejected = await recreatedHarness.controller.handleApprovalDecision({
+    feedback: "changed my mind",
+    type: "reject"
+  })
+
+  assert.equal(rejected, false)
+  assert.deepEqual(firstHarness.resumedDecisions, [])
+  assert.deepEqual(recreatedHarness.resumedDecisions, [])
+
+  releaseResume()
+  assert.equal(await approving, true)
+  assert.deepEqual(firstHarness.resumedDecisions, [{ type: "approve" }])
+  assert.deepEqual(recreatedHarness.resumedDecisions, [])
+})
+
+test("launcher AI controller blocks approval while an admitted command awaits projection", async () => {
+  const harness = createControllerHarness({
+    hasPendingCommand: true,
+    threadId: "existing-thread"
+  })
+
+  assert.equal(
+    await harness.controller.handleApprovalDecision({
+      feedback: "must not race",
+      type: "reject"
+    }),
+    false
+  )
+  assert.deepEqual(harness.resumedDecisions, [])
 })

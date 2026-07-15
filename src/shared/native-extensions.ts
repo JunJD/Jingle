@@ -256,6 +256,7 @@ export interface NativeExtensionInvokeContext {
 }
 
 export interface NativeExtensionMainDefinition {
+  dispose?: () => Promise<void> | void
   service?: NativeExtensionService
   tools?: ExtensionToolDefinition[]
 }

@@ -396,6 +396,14 @@ test("launcher AI thread loading copy distinguishes restore from opening", async
     /if \(!restoredThreadId\) \{[\s\S]*?setTarget\(\{[\s\S]*?kind: "draft"/
   )
   assert.match(navigationSource, /const navigationVersionRef = useRef\(0\)/)
+  assert.match(
+    navigationSource,
+    /expectedNavigationVersion !== undefined[\s\S]*?expectedNavigationVersion !== navigationVersionRef\.current[\s\S]*?return/
+  )
+  assert.match(
+    navigationSource,
+    /const expectedNavigationVersion = navigationVersionRef\.current[\s\S]*?await activateThread\(createdThread\.threadId, "opening", expectedNavigationVersion\)/
+  )
   const startFreshDraftBody = navigationSource.match(
     /const startFreshDraft = useCallback\([\s\S]*?const updateFreshDraft = useCallback/
   )
@@ -409,6 +417,42 @@ test("launcher AI thread loading copy distinguishes restore from opening", async
   assert.match(conversationSource, /copy\.launcher\.openingThread/)
   assert.doesNotMatch(conversationSource, /copy\.launcher\.loadingThread/)
   assert.doesNotMatch(messagesSource, /loadingThread/)
+})
+
+test("launcher approval feedback clears only after an accepted resume command", async () => {
+  const pageSource = await readWorkspaceFile("src/renderer/src/ai-core/LauncherAiPage.tsx")
+
+  assert.match(
+    pageSource,
+    /handleApprovalDecision\(decision\)\.then\(\(accepted\) => \{[\s\S]*?if \([\s\S]*?!accepted[\s\S]*?setApprovalRejectFeedback\(\(currentFeedback\) =>[\s\S]*?currentFeedback === submittedFeedback/
+  )
+  assert.doesNotMatch(
+    pageSource,
+    /void handleApprovalDecision\([^)]*\)[\s\S]{0,100}setApprovalRejectFeedback\(""\)/
+  )
+})
+
+test("launcher composer invalidates submitted revisions before async input mutations", async () => {
+  const pageSource = await readWorkspaceFile("src/renderer/src/ai-core/LauncherAiPage.tsx")
+  const addSelectedFilesBody = pageSource.match(
+    /const handleAddSelectedFiles = useCallback\([\s\S]*?const handleRemoveAttachment/
+  )
+  const dismissSelectionBody = pageSource.match(
+    /const dismissSelectionContext = useCallback\([\s\S]*?const editQueuedFollowUp/
+  )
+
+  assert.ok(addSelectedFilesBody, "handleAddSelectedFiles should exist")
+  assert.ok(dismissSelectionBody, "dismissSelectionContext should exist")
+  assert.ok(
+    addSelectedFilesBody[0].indexOf("markComposerChanged()") <
+      addSelectedFilesBody[0].indexOf("await addSelectedFiles(files)"),
+    "file selection must invalidate the submitted revision before asynchronous file reads"
+  )
+  assert.ok(
+    dismissSelectionBody[0].indexOf("markComposerChanged()") <
+      dismissSelectionBody[0].indexOf("selection.clearContext(selectionContext.id)"),
+    "selection dismissal must invalidate the submitted revision before clearing context"
+  )
 })
 
 test("chat tool details stay out of the collapsed streaming render path", async () => {

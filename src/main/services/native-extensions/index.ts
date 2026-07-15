@@ -1,6 +1,5 @@
 import {
   type InstalledNativeExtensionSettingsSchema,
-  type NativeExtensionMainDefinition,
   type NativeExtensionInvokeRequest,
   type NativeExtensionLauncherCatalogProjection,
   type NativeExtensionPackageManifest,
@@ -15,6 +14,10 @@ import { DEFAULT_APP_LOCALE, resolveLocalizedText } from "@shared/i18n"
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
 import { getDefaultExtensionRegistryService } from "../../extensions/registry/default-registry"
 import { loadExtensionMainDefinition } from "../../extensions/registry/main-loader"
+import {
+  ExtensionMainDefinitionRegistry,
+  type ExtensionMainDefinitionRegistrySnapshot
+} from "../../extensions/registry/main-definition-registry"
 import {
   resolveNativeExtensionExecutionContext,
   type NativeExtensionExecutionContextSnapshot
@@ -90,6 +93,45 @@ for (const definition of nativeExtensionDefinitions) {
   validateNativeExtensionService(definition.manifest.name, manifestRpcMethods, service)
 }
 
+const nativeExtensionMainDefinitionRegistry = new ExtensionMainDefinitionRegistry({
+  entries: nativeExtensionDefinitions.flatMap((definition) =>
+    definition.main
+      ? [
+          {
+            extensionName: definition.manifest.name,
+            mainRef: definition.main
+          }
+        ]
+      : []
+  ),
+  loadDefinition: loadExtensionMainDefinition,
+  onError: ({ error, extensionName, phase }) => {
+    console.error(
+      `[NativeExtensions] Failed to ${phase} trusted main definition "${extensionName}".`,
+      error
+    )
+  },
+  validateDefinition: (extensionName, definition) => {
+    const runtimeDefinition = nativeExtensionDefinitionMap.get(extensionName)
+    if (!runtimeDefinition) {
+      throw new Error(`Unknown native extension "${extensionName}"`)
+    }
+
+    const manifestRpcMethods = runtimeDefinition.manifest.rpcMethods ?? []
+    const service = definition.service
+    if (!service) {
+      if (manifestRpcMethods.length > 0) {
+        throw new Error(
+          `Native extension "${extensionName}" declares RPC methods but has no registered main-side service`
+        )
+      }
+      return
+    }
+
+    validateNativeExtensionService(extensionName, manifestRpcMethods, service)
+  }
+})
+
 export function listNativeExtensionSettingsSchemas(): InstalledNativeExtensionSettingsSchema[] {
   return nativeExtensionDefinitions.map((definition) =>
     toInstalledNativeExtensionSettingsSchema(definition.manifest)
@@ -145,28 +187,16 @@ export function listNativeExtensionSourceMentions(
   return sourceMentions
 }
 
-export async function listNativeExtensionMainDefinitions(
-  platform = process.platform
-): Promise<Map<string, NativeExtensionMainDefinition>> {
-  const definitionPromises: Array<Promise<readonly [string, NativeExtensionMainDefinition]>> = []
-  for (const extensionPackage of nativeExtensionRegistry.listEnabledPackages(platform)) {
-    if (!extensionPackage.main) {
-      continue
-    }
+export function startNativeExtensionMainDefinitionRegistry(): void {
+  nativeExtensionMainDefinitionRegistry.start()
+}
 
-    if (extensionPackage.main.kind === "module" && extensionPackage.main.trust !== "trusted") {
-      continue
-    }
+export function readNativeExtensionMainDefinitionRegistrySnapshot(): ExtensionMainDefinitionRegistrySnapshot {
+  return nativeExtensionMainDefinitionRegistry.readSnapshot()
+}
 
-    definitionPromises.push(
-      loadExtensionMainDefinition(extensionPackage.main).then(
-        (definition) => [extensionPackage.manifest.name, definition] as const
-      )
-    )
-  }
-  const definitions = await Promise.all(definitionPromises)
-
-  return new Map(definitions)
+export function disposeNativeExtensionMainDefinitionRegistry(): Promise<void> {
+  return nativeExtensionMainDefinitionRegistry.dispose()
 }
 
 export async function invokeNativeExtension(
@@ -198,7 +228,12 @@ export async function invokeNativeExtensionWithContext(
     throw new Error(`Native extension "${request.extensionName}" does not expose RPC methods`)
   }
 
-  const mainDefinition = await loadExtensionMainDefinition(definition.main)
+  const mainDefinition = nativeExtensionMainDefinitionRegistry.getDefinition(request.extensionName)
+  if (!mainDefinition) {
+    throw new Error(
+      `Native extension "${request.extensionName}" main definition is not available in the process registry`
+    )
+  }
   const service = mainDefinition.service
   if (!service) {
     throw new Error(`Native extension "${request.extensionName}" does not expose RPC methods`)

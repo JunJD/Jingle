@@ -328,7 +328,7 @@ function reduceJingleAgentThreadRuntimeEventInternal(
       return {
         ...state,
         activeRun: null,
-        pendingApproval: event.status === "cancelled" ? null : state.pendingApproval,
+        pendingApproval: state.pendingApproval,
         revision: event.revision,
         status:
           event.status === "failed"

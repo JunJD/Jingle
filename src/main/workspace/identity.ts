@@ -6,33 +6,58 @@ import type { JingleWorkspaceIdentity } from "@shared/jingle-memory"
 
 const execFileAsync = promisify(execFile)
 
-async function resolveCanonicalWorkspacePath(workspacePath: string): Promise<string> {
+interface ResolveJingleWorkspaceIdentityOptions {
+  signal?: AbortSignal
+}
+
+async function resolveCanonicalWorkspacePath(
+  workspacePath: string,
+  options: ResolveJingleWorkspaceIdentityOptions
+): Promise<string> {
   const resolved = resolve(workspacePath)
+  options.signal?.throwIfAborted()
 
   try {
-    return await realpath(resolved)
+    const canonicalPath = await realpath(resolved)
+    options.signal?.throwIfAborted()
+    return canonicalPath
   } catch {
+    options.signal?.throwIfAborted()
     return resolved
   }
 }
 
-async function resolveGitRoot(workspacePath: string): Promise<string | null> {
+async function resolveGitRoot(
+  workspacePath: string,
+  options: ResolveJingleWorkspaceIdentityOptions
+): Promise<string | null> {
+  options.signal?.throwIfAborted()
   try {
-    const result = await execFileAsync("git", ["-C", workspacePath, "rev-parse", "--show-toplevel"], {
-      timeout: 2_000
-    })
+    const result = await execFileAsync(
+      "git",
+      ["-C", workspacePath, "rev-parse", "--show-toplevel"],
+      {
+        signal: options.signal,
+        timeout: 2_000
+      }
+    )
+    options.signal?.throwIfAborted()
     const gitRoot = result.stdout.trim()
     return gitRoot.length > 0 ? gitRoot : null
   } catch {
+    options.signal?.throwIfAborted()
     return null
   }
 }
 
 export async function resolveJingleWorkspaceIdentity(
-  workspacePath: string
+  workspacePath: string,
+  options: ResolveJingleWorkspaceIdentityOptions = {}
 ): Promise<JingleWorkspaceIdentity> {
-  const canonicalWorkspacePath = await resolveCanonicalWorkspacePath(workspacePath)
-  const gitRoot = await resolveGitRoot(canonicalWorkspacePath)
+  options.signal?.throwIfAborted()
+  const canonicalWorkspacePath = await resolveCanonicalWorkspacePath(workspacePath, options)
+  const gitRoot = await resolveGitRoot(canonicalWorkspacePath, options)
+  options.signal?.throwIfAborted()
 
   return {
     canonicalWorkspacePath,

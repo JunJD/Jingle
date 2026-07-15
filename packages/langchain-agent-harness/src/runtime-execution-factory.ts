@@ -1,21 +1,14 @@
-import { createJingleCompactionController } from "./compaction-controller"
 import { createRuntimeGraphEngine } from "./harness-runtime"
 import { buildRuntimeInvokeConfig, buildRuntimeResumeConfig } from "./run-config"
 import { assembleRuntimeExecution } from "./runtime-execution-assembly"
 import { createRuntimeObservationExecution } from "./runtime-observation-capability"
-import type {
-  RuntimeHostContract,
-  RuntimeResolvedHostContract
-} from "./runtime-contract"
+import type { RuntimeHostContract, RuntimeResolvedHostContract } from "./runtime-contract"
 import type {
   RuntimeRunCapabilityScope,
   RuntimeRunContextScope,
   RuntimeThreadScope
 } from "./runtime-scope"
-import type {
-  RuntimeRunExecution,
-  RuntimeRunExecutionInput
-} from "./runtime-execution"
+import type { RuntimeRunExecution, RuntimeRunExecutionInput } from "./runtime-execution"
 import type { JingleContextInclusionStateItem } from "./context-inclusion-state"
 
 export interface RuntimeExecutionFactoryInput<
@@ -35,6 +28,7 @@ export interface RuntimeExecutionFactoryInput<
   thread: RuntimeThreadScope
 }
 
+/** The factory must settle when operationInput.signal aborts; RuntimeThread waits for it. */
 export type RuntimeExecutionFactory = (
   operationInput: RuntimeRunExecutionInput
 ) => Promise<RuntimeRunExecution>
@@ -55,6 +49,7 @@ export function createRuntimeExecutionFactory<
   >
 ): RuntimeExecutionFactory {
   return async (operationInput) => {
+    operationInput.signal.throwIfAborted()
     const runContext: RuntimeRunContextScope = {
       ...input.thread,
       runId: operationInput.runId
@@ -66,14 +61,11 @@ export function createRuntimeExecutionFactory<
     const resolvedHost = await resolveRuntimeHostForRun({
       capabilityScope,
       host: input.host,
+      signal: operationInput.signal,
       thread: input.thread
     })
-    const {
-      checkpoint,
-      control,
-      execution: executionHost,
-      observation
-    } = resolvedHost
+    operationInput.signal.throwIfAborted()
+    const { checkpoint, control, execution: executionHost, observation } = resolvedHost
     const observationExecution = createRuntimeObservationExecution({
       modelId: operationInput.modelId,
       observation,
@@ -86,12 +78,10 @@ export function createRuntimeExecutionFactory<
       thread: input.thread
     })
     const compactionSummarization = control.compaction.summarization
+    operationInput.signal.throwIfAborted()
     const agent = createRuntimeGraphEngine({
       approvalController: control.approvalController,
-      callbacks: [
-        ...observationExecution.callbacks,
-        ...(operationInput.callbacks ?? [])
-      ],
+      callbacks: [...observationExecution.callbacks, ...(operationInput.callbacks ?? [])],
       checkpointer: checkpoint.checkpointer,
       compaction: {
         summarization: compactionSummarization
@@ -101,19 +91,7 @@ export function createRuntimeExecutionFactory<
       systemPrompt: executionHost.systemPrompt,
       traceConfig: observationExecution.runtimeTraceConfig
     })
-    const compactionController = createJingleCompactionController({
-      runtime: agent,
-      summarization: compactionSummarization
-    })
-
     return {
-      compact: (compactInput) =>
-        compactionController.compact({
-          ...compactInput,
-          runId: operationInput.runId,
-          threadId: input.thread.threadId,
-          workspacePath: input.thread.workspacePath
-        }),
       streamInvoke: (streamInput, streamOptions) =>
         agent.stream(
           streamInput,
@@ -159,6 +137,7 @@ async function resolveRuntimeHostForRun<
     TInvokeRunLifecycleInput,
     TResumeRunLifecycleInput
   >
+  signal: AbortSignal
   thread: RuntimeThreadScope
 }): Promise<
   RuntimeResolvedHostContract<
@@ -169,24 +148,36 @@ async function resolveRuntimeHostForRun<
     TResumeRunLifecycleInput
   >
 > {
-  const { capabilityScope, host, thread } = input
+  const { capabilityScope, host, signal, thread } = input
+  const resolution = { signal }
+  signal.throwIfAborted()
+  const checkpointer = await host.checkpoint.checkpointer(thread, resolution)
+  signal.throwIfAborted()
+  const approvalController = host.control.approvalController(capabilityScope, resolution)
+  signal.throwIfAborted()
+  const compactionSummarization = host.control.compaction.summarization(capabilityScope, resolution)
+  signal.throwIfAborted()
+  const backend = host.environment.backend(thread, resolution)
+  signal.throwIfAborted()
+  const model = host.execution.model(capabilityScope, resolution)
+  signal.throwIfAborted()
 
   return {
     checkpoint: {
-      checkpointer: await host.checkpoint.checkpointer(thread)
+      checkpointer
     },
     context: host.context,
     control: {
-      approvalController: await host.control.approvalController(capabilityScope),
+      approvalController,
       compaction: {
-        summarization: await host.control.compaction.summarization(capabilityScope)
+        summarization: compactionSummarization
       },
       pauseController: host.control.pauseController,
       runLifecycleController: host.control.runLifecycleController
     },
     environment: {
       artifactPresentation: host.environment.artifactPresentation,
-      backend: await host.environment.backend(thread),
+      backend,
       desktopAutomationTools: host.environment.desktopAutomationTools,
       executeToolDescription: host.environment.executeToolDescription(thread),
       extensionAiTools: host.environment.extensionAiTools,
@@ -195,7 +186,7 @@ async function resolveRuntimeHostForRun<
       webTools: host.environment.webTools
     },
     execution: {
-      model: await host.execution.model(capabilityScope),
+      model,
       systemPrompt: host.execution.systemPrompt(thread)
     },
     observation: host.observation

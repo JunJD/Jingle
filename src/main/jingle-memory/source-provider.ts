@@ -56,15 +56,32 @@ function listFileSources(workspacePath: string): FileContextSource[] {
   return listDefaultFileSources(workspacePath)
 }
 
-async function readFileContextContent(path: string): Promise<{
+interface JingleMemoryContextReadOptions {
+  signal?: AbortSignal
+}
+
+async function readFileContextContent(
+  path: string,
+  options: JingleMemoryContextReadOptions
+): Promise<{
   content: string | null
   error: string | null
   exists: boolean
 }> {
+  options.signal?.throwIfAborted()
   try {
-    const content = (await readFile(path, "utf8")).slice(0, MAX_FILE_CONTENT_BYTES).trim()
+    const content = (
+      await readFile(path, {
+        encoding: "utf8",
+        signal: options.signal
+      })
+    )
+      .slice(0, MAX_FILE_CONTENT_BYTES)
+      .trim()
+    options.signal?.throwIfAborted()
     return { content: content || null, error: null, exists: true }
   } catch (error) {
+    options.signal?.throwIfAborted()
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return { content: null, error: null, exists: false }
     }
@@ -78,12 +95,13 @@ async function readFileContextContent(path: string): Promise<{
 }
 
 async function toFileContextItem(
-  source: FileContextSource
+  source: FileContextSource,
+  options: JingleMemoryContextReadOptions
 ): Promise<{
   diagnostic: JingleMemoryContextDiagnostic | null
   item: JingleMemoryContextItem | null
 }> {
-  const result = await readFileContextContent(source.path)
+  const result = await readFileContextContent(source.path, options)
   if (result.error) {
     return {
       diagnostic: {
@@ -116,9 +134,10 @@ async function toFileContextItem(
 }
 
 async function toContextSourceRecord(
-  source: FileContextSource
+  source: FileContextSource,
+  options: JingleMemoryContextReadOptions
 ): Promise<JingleContextSourceRecord> {
-  const result = await readFileContextContent(source.path)
+  const result = await readFileContextContent(source.path, options)
   return {
     content: result.content,
     error: result.error,
@@ -132,18 +151,33 @@ async function toContextSourceRecord(
 }
 
 export class JingleMemorySourceProvider {
-  async listContextItems(workspacePath: string): Promise<{
+  async listContextItems(
+    workspacePath: string,
+    options: JingleMemoryContextReadOptions = {}
+  ): Promise<{
     diagnostics: JingleMemoryContextDiagnostic[]
     items: JingleMemoryContextItem[]
   }> {
-    const results = await Promise.all(listFileSources(workspacePath).map(toFileContextItem))
+    options.signal?.throwIfAborted()
+    const results = await Promise.all(
+      listFileSources(workspacePath).map((source) => toFileContextItem(source, options))
+    )
+    options.signal?.throwIfAborted()
     return {
       diagnostics: results.flatMap((result) => (result.diagnostic ? [result.diagnostic] : [])),
       items: results.flatMap((result) => (result.item ? [result.item] : []))
     }
   }
 
-  async listContextSources(workspacePath: string): Promise<JingleContextSourceRecord[]> {
-    return Promise.all(listFileSources(workspacePath).map(toContextSourceRecord))
+  async listContextSources(
+    workspacePath: string,
+    options: JingleMemoryContextReadOptions = {}
+  ): Promise<JingleContextSourceRecord[]> {
+    options.signal?.throwIfAborted()
+    const sources = await Promise.all(
+      listFileSources(workspacePath).map((source) => toContextSourceRecord(source, options))
+    )
+    options.signal?.throwIfAborted()
+    return sources
   }
 }

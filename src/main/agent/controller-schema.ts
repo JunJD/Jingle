@@ -1,6 +1,7 @@
 import type {
   AgentCancelParams,
   AgentConnectThreadEventsParams,
+  AgentDisconnectThreadEventsParams,
   AgentEditLastUserMessageAndInvokeParams,
   AgentFollowUpQueueItemParams,
   AgentFollowUpQueueMessageParams,
@@ -99,7 +100,7 @@ const hitlDecisionSchema = z
   .object({
     feedback: optionalNormalizedTrimmedStringSchema,
     request_id: nonEmptyTrimmedStringSchema,
-    tool_call_id: optionalNormalizedTrimmedStringSchema,
+    tool_call_id: nonEmptyTrimmedStringSchema,
     type: z.enum(["approve", "reject"])
   })
   .strict()
@@ -121,7 +122,14 @@ export const agentCancelParamsSchema = z
 export const agentConnectThreadEventsParamsSchema = z
   .object({
     fromRevision: z.number().int().nonnegative().optional(),
-    surface: agentThreadEventSubscriptionSurfaceSchema.default("launcher"),
+    surface: agentThreadEventSubscriptionSurfaceSchema.optional(),
+    threadId: nonEmptyTrimmedStringSchema
+  })
+  .strict()
+
+export const agentDisconnectThreadEventsParamsSchema = z
+  .object({
+    subscriptionToken: nonEmptyTrimmedStringSchema,
     threadId: nonEmptyTrimmedStringSchema
   })
   .strict()
@@ -199,6 +207,16 @@ export function parseAgentConnectThreadEventsParams(
   return parseIpcPayloadWithSchema(
     "agent:connectThreadEvents",
     agentConnectThreadEventsParamsSchema,
+    value
+  )
+}
+
+export function parseAgentDisconnectThreadEventsParams(
+  value: unknown
+): AgentDisconnectThreadEventsParams {
+  return parseIpcPayloadWithSchema(
+    "agent:disconnectThreadEvents",
+    agentDisconnectThreadEventsParamsSchema,
     value
   )
 }

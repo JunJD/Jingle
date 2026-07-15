@@ -5,7 +5,10 @@ import { closeDatabase, initializeDatabase } from "./db/lifecycle"
 import { closeRuntimeCheckpointers } from "./checkpointer/runtime-checkpointer-manager"
 import { createMainCompositionRoot, type MainCompositionRoot } from "./composition-root"
 import { createLauncherWindow, showLauncherWindow } from "./windows/launcher-window"
-import { createPinnedAiSessionWindow } from "./windows/pinned-ai-session-window"
+import {
+  createPinnedAiSessionWindow,
+  setPinnedAiSessionWindowThreadId
+} from "./windows/pinned-ai-session-window"
 import { createSettingsWindow, showSettingsWindow } from "./windows/settings-window"
 import { registerNativeExtensionAssetProtocol } from "./native-extensions/asset-protocol"
 import { NATIVE_EXTENSION_ASSET_PROTOCOL } from "./native-extensions/assets"
@@ -334,6 +337,9 @@ if (hasSingleInstanceLock) {
       quitApplication: () => app.quit(),
       showLauncherWindow: showLauncher,
       showMainSubject: showLauncher,
+      setPinnedAiSessionWindowThreadId: (window, threadId) => {
+        setPinnedAiSessionWindowThreadId(window.webContents, threadId)
+      },
       toggleLauncherWindow: toggleLauncher
     })
     mainCompositionRoot.registerIpcHandlers()

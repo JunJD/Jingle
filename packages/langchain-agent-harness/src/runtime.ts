@@ -1,9 +1,22 @@
-import { createRuntimeThreadFactory } from "./runtime-thread-factory"
-import type { RuntimeHostContract } from "./runtime-contract"
-import type { RuntimeThread, RuntimeThreadInput } from "./runtime-thread"
-import type { RuntimeCapabilities } from "./runtime-capabilities"
-import { createRuntimeObservationSink } from "./runtime-observation"
 import type { JingleContextInclusionStateItem } from "./context-inclusion-state"
+import type {
+  RuntimeControlCapabilities,
+  RuntimeExecutionCapabilities
+} from "./runtime-capabilities"
+import type { RuntimeHostContract } from "./runtime-contract"
+import {
+  createRuntimeExecutionFactory,
+  type RuntimeExecutionFactory
+} from "./runtime-execution-factory"
+import { createRuntimeObservationSink } from "./runtime-observation"
+import { createRuntimeThreadFactory } from "./runtime-thread-factory"
+import type {
+  RuntimeThread,
+  RuntimeThreadFactoryInput,
+  RuntimeThreadInput,
+  RuntimeThreadInvokeExecutionBindingInput,
+  RuntimeThreadResumeExecutionBindingInput
+} from "./runtime-thread"
 
 export interface Runtime<
   TContextInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem,
@@ -15,6 +28,18 @@ export interface Runtime<
   ): RuntimeThread<TContextInclusion, TInvokeRunLifecycleInput, TResumeRunLifecycleInput>
 }
 
+export interface RuntimeInvokeExecutionResolutionInput<
+  TInvokeRunLifecycleInput = unknown
+> extends RuntimeThreadInvokeExecutionBindingInput<TInvokeRunLifecycleInput> {
+  signal: AbortSignal
+}
+
+export interface RuntimeResumeExecutionResolutionInput<
+  TResumeRunLifecycleInput = unknown
+> extends RuntimeThreadResumeExecutionBindingInput<TResumeRunLifecycleInput> {
+  signal: AbortSignal
+}
+
 export interface CreateRuntimeInput<
   TContextInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem,
   TGuardrailMetadata = Record<string, unknown>,
@@ -22,9 +47,16 @@ export interface CreateRuntimeInput<
   TInvokeRunLifecycleInput = unknown,
   TResumeRunLifecycleInput = unknown
 > {
-  capabilities: RuntimeCapabilities<
+  bindExecution: {
+    invoke(
+      input: RuntimeInvokeExecutionResolutionInput<TInvokeRunLifecycleInput>
+    ): RuntimeExecutionCapabilities<TContextInclusion, TGuardrailMetadata>
+    resume(
+      input: RuntimeResumeExecutionResolutionInput<TResumeRunLifecycleInput>
+    ): RuntimeExecutionCapabilities<TContextInclusion, TGuardrailMetadata>
+  }
+  control: RuntimeControlCapabilities<
     TContextInclusion,
-    TGuardrailMetadata,
     TReview,
     TInvokeRunLifecycleInput,
     TResumeRunLifecycleInput
@@ -45,19 +77,30 @@ export function createRuntime<
     TInvokeRunLifecycleInput,
     TResumeRunLifecycleInput
   >
-): Runtime<
-  TContextInclusion,
-  TInvokeRunLifecycleInput,
-  TResumeRunLifecycleInput
-> {
+): Runtime<TContextInclusion, TInvokeRunLifecycleInput, TResumeRunLifecycleInput> {
+  const bindExecution: RuntimeThreadFactoryInput<
+    TContextInclusion,
+    TReview,
+    TInvokeRunLifecycleInput,
+    TResumeRunLifecycleInput
+  >["bindExecution"] = {
+    invoke: (binding) =>
+      createBoundRuntimeExecution({
+        binding: (signal) => input.bindExecution.invoke({ ...binding, signal }),
+        control: input.control,
+        thread: binding.thread
+      }),
+    resume: (binding) =>
+      createBoundRuntimeExecution({
+        binding: (signal) => input.bindExecution.resume({ ...binding, signal }),
+        control: input.control,
+        thread: binding.thread
+      })
+  }
   const threadFactory = createRuntimeThreadFactory({
-    host: createRuntimeHost<
-      TContextInclusion,
-      TGuardrailMetadata,
-      TReview,
-      TInvokeRunLifecycleInput,
-      TResumeRunLifecycleInput
-    >(input.capabilities)
+    bindExecution,
+    pauseController: input.control.pauseController,
+    runLifecycleController: input.control.runLifecycleController
   })
 
   return {
@@ -67,16 +110,46 @@ export function createRuntime<
   }
 }
 
-function createRuntimeHost<
-  TContextInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem,
-  TGuardrailMetadata = Record<string, unknown>,
-  TReview = unknown,
-  TInvokeRunLifecycleInput = unknown,
-  TResumeRunLifecycleInput = unknown
->(
-  contribution: RuntimeCapabilities<
+function createBoundRuntimeExecution<
+  TContextInclusion extends JingleContextInclusionStateItem,
+  TGuardrailMetadata,
+  TReview,
+  TInvokeRunLifecycleInput,
+  TResumeRunLifecycleInput
+>(input: {
+  binding: (
+    signal: AbortSignal
+  ) => RuntimeExecutionCapabilities<TContextInclusion, TGuardrailMetadata>
+  control: RuntimeControlCapabilities<
     TContextInclusion,
-    TGuardrailMetadata,
+    TReview,
+    TInvokeRunLifecycleInput,
+    TResumeRunLifecycleInput
+  >
+  thread: RuntimeThreadInput
+}): RuntimeExecutionFactory {
+  return async (operationInput) => {
+    operationInput.signal.throwIfAborted()
+    const capabilities = input.binding(operationInput.signal)
+    operationInput.signal.throwIfAborted()
+    const factory = createRuntimeExecutionFactory({
+      host: createRuntimeHost(capabilities, input.control),
+      thread: input.thread
+    })
+    return factory(operationInput)
+  }
+}
+
+function createRuntimeHost<
+  TContextInclusion extends JingleContextInclusionStateItem,
+  TGuardrailMetadata,
+  TReview,
+  TInvokeRunLifecycleInput,
+  TResumeRunLifecycleInput
+>(
+  contribution: RuntimeExecutionCapabilities<TContextInclusion, TGuardrailMetadata>,
+  controlInput: RuntimeControlCapabilities<
+    TContextInclusion,
     TReview,
     TInvokeRunLifecycleInput,
     TResumeRunLifecycleInput
@@ -88,98 +161,41 @@ function createRuntimeHost<
   TInvokeRunLifecycleInput,
   TResumeRunLifecycleInput
 > {
-  const execution = {
-    model: requireRuntimeContribution(contribution.model?.model, "model.model"),
-    systemPrompt: requireRuntimeContribution(
-      contribution.context?.systemPrompt,
-      "context.systemPrompt"
-    )
-  }
-  const checkpoint = {
-    checkpointer: requireRuntimeContribution(
-      contribution.checkpoint?.checkpointer,
-      "checkpoint.checkpointer"
-    )
-  }
-  const environment = {
-    artifactPresentation: requireRuntimeContribution(
-      contribution.tools?.artifactPresentation,
-      "tools.artifactPresentation"
-    ),
-    backend: requireRuntimeContribution(contribution.tools?.backend, "tools.backend"),
-    desktopAutomationTools: requireRuntimeContribution(
-      contribution.tools?.desktopAutomationTools,
-      "tools.desktopAutomationTools"
-    ),
-    executeToolDescription: requireRuntimeContribution(
-      contribution.prompt?.executeToolDescription,
-      "prompt.executeToolDescription"
-    ),
-    extensionAiTools: requireRuntimeContribution(
-      contribution.tools?.extensionAiTools,
-      "tools.extensionAiTools"
-    ),
-    filesystemSystemPrompt: requireRuntimeContribution(
-      contribution.prompt?.filesystemSystemPrompt,
-      "prompt.filesystemSystemPrompt"
-    ),
-    skillSources: requireRuntimeContribution(
-      contribution.tools?.skillSources,
-      "tools.skillSources"
-    ),
-    webTools: requireRuntimeContribution(contribution.tools?.webTools, "tools.webTools")
-  }
-  const context = {
-    contextRetrieval: requireRuntimeContribution(
-      contribution.context?.contextRetrieval,
-      "context.contextRetrieval"
-    ),
-    guardrail: requireRuntimeContribution(contribution.context?.guardrail, "context.guardrail"),
-    memory: contribution.context?.memory,
-    titleGenerator: requireRuntimeContribution(
-      contribution.prompt?.titleGenerator,
-      "prompt.titleGenerator"
-    ),
-    workspaceFileContext: contribution.context?.workspaceFileContext
-  }
-  const control = {
-    approvalController: requireRuntimeContribution(
-      contribution.control?.approvalController,
-      "control.approvalController"
-    ),
-    compaction: {
-      summarization: requireRuntimeContribution(
-        contribution.compaction?.summarization,
-        "compaction.summarization"
-      )
-    },
-    pauseController: requireRuntimeContribution(
-      contribution.control?.pauseController,
-      "control.pauseController"
-    ),
-    runLifecycleController: requireRuntimeContribution(
-      contribution.control?.runLifecycleController,
-      "control.runLifecycleController"
-    )
-  }
-  const observation = {
-    sink: createRuntimeObservationSink(contribution.observation)
-  }
-
   return {
-    checkpoint,
-    context,
-    control,
-    environment,
-    execution,
-    observation
+    checkpoint: {
+      checkpointer: contribution.checkpoint.checkpointer
+    },
+    context: {
+      contextRetrieval: contribution.context.contextRetrieval,
+      guardrail: contribution.context.guardrail,
+      memory: contribution.context.memory,
+      titleGenerator: contribution.prompt.titleGenerator,
+      workspaceFileContext: contribution.context.workspaceFileContext
+    },
+    control: {
+      approvalController: contribution.control.approvalController,
+      compaction: {
+        summarization: contribution.compaction.summarization
+      },
+      pauseController: controlInput.pauseController,
+      runLifecycleController: controlInput.runLifecycleController
+    },
+    environment: {
+      artifactPresentation: contribution.tools.artifactPresentation,
+      backend: contribution.tools.backend,
+      desktopAutomationTools: contribution.tools.desktopAutomationTools,
+      executeToolDescription: contribution.prompt.executeToolDescription,
+      extensionAiTools: contribution.tools.extensionAiTools,
+      filesystemSystemPrompt: contribution.prompt.filesystemSystemPrompt,
+      skillSources: contribution.tools.skillSources,
+      webTools: contribution.tools.webTools
+    },
+    execution: {
+      model: contribution.model.model,
+      systemPrompt: contribution.context.systemPrompt
+    },
+    observation: {
+      sink: createRuntimeObservationSink(contribution.observation)
+    }
   }
-}
-
-function requireRuntimeContribution<T>(value: T | undefined, path: string): T {
-  if (value === undefined) {
-    throw new Error(`[Runtime] Missing runtime capability contribution: ${path}.`)
-  }
-
-  return value
 }

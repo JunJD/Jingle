@@ -25,7 +25,7 @@ export interface UpdateRunInput {
   kwargs?: Record<string, unknown> | string | null
 }
 
-function mapRunRow(row: {
+export function mapRunRow(row: {
   runId: string
   threadId: string
   assistantId: string | null
