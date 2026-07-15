@@ -61,33 +61,30 @@ export function PageDetail({ page, setRecentPage, users }: PageDetailProps) {
 
   const pageName = getPageName(page);
 
-  const { data, isLoading, mutate } = useCachedPromise(
-    async (id) => {
-      const fetchedPageContent = await fetchPageContent(id);
+  const { data: pageContent, isLoading, mutate } = useCachedPromise(fetchPageContent, [page.id]);
+  const propertiesInPagePreviews = getPreferenceValues<Preferences>().properties_in_page_previews === true;
+  const pageMarkdown = useMemo(() => {
+    const blocks: string[] = [];
 
-      const blocks: string[] = [];
-
-      if (getPreferenceValues<Preferences>().properties_in_page_previews) {
-        for (const [key, value] of Object.entries(page.properties)) {
-          const propertyText = pagePropertyToText(value, users);
-          if (propertyText) {
-            blocks.push(`**${key}**: ${propertyText}\n`);
-          }
+    if (propertiesInPagePreviews) {
+      for (const [key, value] of Object.entries(page.properties)) {
+        const propertyText = pagePropertyToText(value, users);
+        if (propertyText) {
+          blocks.push(`**${key}**: ${propertyText}\n`);
         }
       }
+    }
 
-      if (blocks.length > 0) {
-        blocks.push("---\n");
-      }
+    if (blocks.length > 0) {
+      blocks.push("---\n");
+    }
 
-      if (fetchedPageContent && fetchedPageContent.markdown) {
-        blocks.push(fetchedPageContent.markdown);
-      }
+    if (pageContent?.markdown) {
+      blocks.push(pageContent.markdown);
+    }
 
-      return { markdown: blocks.join("\n") };
-    },
-    [page.id],
-  );
+    return blocks.join("\n");
+  }, [page.properties, pageContent, propertiesInPagePreviews, users]);
 
   useEffect(() => {
     setRecentPage(page);
@@ -137,7 +134,7 @@ export function PageDetail({ page, setRecentPage, users }: PageDetailProps) {
 
   return (
     <Detail
-      markdown={`# ${page.title}\n` + (data ? data.markdown : "*Loading...*")}
+      markdown={`# ${page.title}\n` + (isLoading && pageContent === undefined ? "*Loading...*" : pageMarkdown)}
       isLoading={isLoading}
       navigationTitle={pageName}
       {...(showMetadata
