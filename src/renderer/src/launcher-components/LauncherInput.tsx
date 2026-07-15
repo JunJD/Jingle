@@ -98,7 +98,7 @@ function LauncherInputStatusIndicator(props: {
           />
         </>
       ) : (
-        <span className="animate-tactical-pulse h-[var(--jingle-status-dot-size)] w-[var(--jingle-status-dot-size)] rounded-full bg-current" />
+        <span className="h-[var(--jingle-status-dot-size)] w-[var(--jingle-status-dot-size)] rounded-full bg-current" />
       )}
     </div>
   )

@@ -2593,42 +2593,6 @@ body[data-platform="darwin"][data-window="pinned-ai-session"] .launcher-chrome-h
   border-color: var(--status-info);
 }
 
-/* Pulse animation for live indicators */
-@keyframes tactical-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.5;
-  }
-}
-
-.animate-tactical-pulse {
-  animation: tactical-pulse 2s ease-in-out infinite;
-}
-
-@keyframes launcher-jump-orbit {
-  from {
-    stroke-dashoffset: 0;
-  }
-
-  to {
-    stroke-dashoffset: -100;
-  }
-}
-
-@keyframes launcher-jump-orbit-reverse {
-  from {
-    stroke-dashoffset: 100;
-  }
-
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
 @keyframes launcher-page-enter-forward {
   from {
     opacity: 0;
@@ -2744,14 +2708,6 @@ body[data-platform="darwin"][data-window="pinned-ai-session"] .launcher-chrome-h
   stroke: color-mix(in srgb, var(--primary) 78%, var(--status-nominal));
   stroke-width: 7.6;
   opacity: 0.96;
-}
-
-.launcher-jump-orbit-primary {
-  animation: launcher-jump-orbit 2.2s linear infinite;
-}
-
-.launcher-jump-orbit-secondary {
-  animation: launcher-jump-orbit-reverse 3s linear infinite;
 }
 
 .launcher-translate-stage {
@@ -3140,9 +3096,7 @@ body[data-platform="darwin"][data-window="pinned-ai-session"] .launcher-chrome-h
 
 @media (prefers-reduced-motion: reduce) {
   .launcher-shell-intelligence-glow,
-  .launcher-page-transition-panel,
-  .launcher-jump-orbit-primary,
-  .launcher-jump-orbit-secondary {
+  .launcher-page-transition-panel {
     animation: none;
   }
 }
