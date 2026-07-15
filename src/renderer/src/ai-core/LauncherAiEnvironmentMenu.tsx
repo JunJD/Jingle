@@ -1,4 +1,4 @@
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
+import * as DropdownMenu from "@/components/ui/dropdown-menu"
 import { Info } from "lucide-react"
 import type { Todo } from "@/types"
 import { cn } from "@/lib/utils"
@@ -85,7 +85,7 @@ export function LauncherAiEnvironmentMenu(
           onMouseDown={(event) => event.preventDefault()}
           className={cn(
             "launcher-ai-environment-menu__trigger launcher-icon-button flex h-[var(--launcher-icon-button-size)] w-[var(--launcher-icon-button-size)] shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground",
-            "data-[state=open]:bg-background-secondary/70 data-[state=open]:text-foreground"
+            "aria-[expanded=true]:bg-background-secondary/70 aria-[expanded=true]:text-foreground"
           )}
         >
           <Info className="size-[var(--jingle-icon-sm)]" />

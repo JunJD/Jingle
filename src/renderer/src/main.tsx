@@ -7,6 +7,7 @@ import { DEFAULT_APP_THEME_SETTINGS } from "@shared/app-theme"
 import { IPC_NETWORK_WINDOW_KIND } from "@jingle/devtools-network"
 import { applyAppThemeSettings } from "./lib/app-theme"
 import { installRendererDiagnostics } from "./lib/diagnostics"
+import { installInputModalityTracking } from "./lib/input-modality"
 import { RendererRoot } from "./RendererRoot"
 import "./index.css"
 
@@ -20,6 +21,7 @@ document.documentElement.dataset.platform = platform
 document.body.dataset.platform = platform
 
 installRendererDiagnostics()
+installInputModalityTracking()
 
 applyAppThemeSettings(DEFAULT_APP_THEME_SETTINGS)
 

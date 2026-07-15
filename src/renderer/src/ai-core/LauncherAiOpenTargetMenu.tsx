@@ -1,4 +1,4 @@
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
+import * as DropdownMenu from "@/components/ui/dropdown-menu"
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { OpenTarget } from "@shared/open-targets"
 import { ChevronDown, FolderOpen, MonitorUp, Terminal } from "lucide-react"
@@ -157,7 +157,7 @@ export function LauncherAiOpenTargetMenu(props: LauncherAiOpenTargetMenuProps): 
             onMouseDown={(event) => event.preventDefault()}
             className={cn(
               "launcher-ai-open-target-control__chevron launcher-icon-button",
-              "data-[state=open]:bg-background-secondary/70 data-[state=open]:text-foreground"
+              "aria-[expanded=true]:bg-background-secondary/70 aria-[expanded=true]:text-foreground"
             )}
           >
             <ChevronDown className="size-[var(--jingle-icon-xs)]" />

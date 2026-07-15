@@ -1,4 +1,4 @@
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
+import * as DropdownMenu from "@/components/ui/dropdown-menu"
 import {
   BookOpenText,
   Clock,
@@ -155,7 +155,7 @@ export function LauncherAiThreadMenu(props: LauncherAiThreadMenuProps): React.JS
           onMouseDown={(event) => event.preventDefault()}
           className={cn(
             "launcher-icon-button launcher-thread-menu__trigger flex h-[var(--launcher-icon-button-size)] w-[var(--launcher-icon-button-size)] shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground",
-            "data-[state=open]:bg-background-secondary/70 data-[state=open]:text-foreground"
+            "aria-[expanded=true]:bg-background-secondary/70 aria-[expanded=true]:text-foreground"
           )}
         >
           <MoreHorizontal className="size-[var(--jingle-icon-sm)]" />

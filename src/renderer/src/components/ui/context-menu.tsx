@@ -5,6 +5,11 @@ import * as ContextMenuPrimitive from "@radix-ui/react-context-menu"
 import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import {
+  useFloatingSurfaceRef,
+  withoutFloatingSurfaceForceMount,
+  type FloatingSurfacePrimitiveProps
+} from "./floating-surface"
 
 function ContextMenu({ ...props }: React.ComponentProps<typeof ContextMenuPrimitive.Root>) {
   return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />
@@ -20,8 +25,15 @@ function ContextMenuGroup({ ...props }: React.ComponentProps<typeof ContextMenuP
   return <ContextMenuPrimitive.Group data-slot="context-menu-group" {...props} />
 }
 
-function ContextMenuPortal({ ...props }: React.ComponentProps<typeof ContextMenuPrimitive.Portal>) {
-  return <ContextMenuPrimitive.Portal data-slot="context-menu-portal" {...props} />
+function ContextMenuPortal(
+  props: FloatingSurfacePrimitiveProps<React.ComponentProps<typeof ContextMenuPrimitive.Portal>>
+) {
+  return (
+    <ContextMenuPrimitive.Portal
+      data-slot="context-menu-portal"
+      {...withoutFloatingSurfaceForceMount(props)}
+    />
+  )
 }
 
 function ContextMenuSub({ ...props }: React.ComponentProps<typeof ContextMenuPrimitive.Sub>) {
@@ -58,34 +70,42 @@ function ContextMenuSubTrigger({
   )
 }
 
-function ContextMenuSubContent({
-  className,
-  ...props
-}: React.ComponentProps<typeof ContextMenuPrimitive.SubContent>) {
+function ContextMenuSubContent(
+  allProps: FloatingSurfacePrimitiveProps<
+    React.ComponentProps<typeof ContextMenuPrimitive.SubContent>
+  >
+) {
+  const { className, ref, ...props } = withoutFloatingSurfaceForceMount(allProps)
+  const surfaceRef = useFloatingSurfaceRef(ref)
+
   return (
     <ContextMenuPrimitive.SubContent
       data-slot="context-menu-sub-content"
       className={cn(
-        "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] overflow-hidden rounded-md border p-1 shadow-lg",
+        "jingle-floating-surface z-50 min-w-[8rem] origin-[var(--radix-context-menu-content-transform-origin)] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-lg",
         className
       )}
+      ref={surfaceRef}
       {...props}
     />
   )
 }
 
-function ContextMenuContent({
-  className,
-  ...props
-}: React.ComponentProps<typeof ContextMenuPrimitive.Content>) {
+function ContextMenuContent(
+  allProps: FloatingSurfacePrimitiveProps<React.ComponentProps<typeof ContextMenuPrimitive.Content>>
+) {
+  const { className, ref, ...props } = withoutFloatingSurfaceForceMount(allProps)
+  const surfaceRef = useFloatingSurfaceRef(ref)
+
   return (
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.Content
         data-slot="context-menu-content"
         className={cn(
-          "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] overflow-hidden rounded-md border p-1 shadow-md",
+          "jingle-floating-surface z-50 min-w-[8rem] origin-[var(--radix-context-menu-content-transform-origin)] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
           className
         )}
+        ref={surfaceRef}
         {...props}
       />
     </ContextMenuPrimitive.Portal>

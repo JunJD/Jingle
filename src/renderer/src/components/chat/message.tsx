@@ -1,7 +1,7 @@
 "use client"
 
 import { Button } from "../ui/button"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip"
 import { cn } from "@/lib/utils"
 import { cjk } from "@streamdown/cjk"
 import { code } from "@streamdown/code"

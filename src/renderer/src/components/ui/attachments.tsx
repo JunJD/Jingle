@@ -6,7 +6,7 @@ import {
   HoverCardContent,
   HoverCardPortal,
   HoverCardTrigger
-} from "@radix-ui/react-hover-card"
+} from "./hover-card"
 import { cn } from "@/lib/utils"
 
 import {

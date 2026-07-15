@@ -346,9 +346,14 @@
   --jingle-gap-md: var(--jingle-space-3);
   --jingle-gap-lg: var(--jingle-space-4);
 
+  --jingle-motion-duration-enter: 180ms;
+  --jingle-motion-duration-exit: 140ms;
+  --jingle-motion-duration-reduced: 90ms;
   --jingle-motion-duration-panel: 220ms;
   --jingle-motion-duration-panel-out: 180ms;
+  --jingle-motion-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --jingle-motion-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --jingle-floating-surface-closed-scale: 0.97;
 
   --jingle-icon-xs: 10px;
   --jingle-icon-sm: 14px;
@@ -422,6 +427,98 @@
   --window-chrome-muted: #8a929b;
   --window-controls-offset-inline: 18px;
   --window-controls-gap: 18px;
+}
+
+.jingle-floating-surface {
+  opacity: 1;
+  transform: scale(1);
+  transition:
+    opacity var(--jingle-motion-duration-exit) var(--jingle-motion-ease-out),
+    transform var(--jingle-motion-duration-exit) var(--jingle-motion-ease-out);
+}
+
+.jingle-floating-surface[data-jingle-floating-modality="pointer"][data-jingle-floating-enter="animated"]:is(
+    [data-state="open"],
+    [data-state="delayed-open"]
+  ) {
+  transition-duration: var(--jingle-motion-duration-enter);
+}
+
+.jingle-floating-surface[data-state="closed"] {
+  opacity: 0;
+  pointer-events: none !important;
+  transform: scale(var(--jingle-floating-surface-closed-scale));
+}
+
+.jingle-floating-surface[data-jingle-floating-modality="pointer"][data-state="closed"] {
+  animation: jingle-floating-surface-presence var(--jingle-motion-duration-exit)
+    var(--jingle-motion-ease-out);
+}
+
+.jingle-floating-surface[data-jingle-floating-modality="keyboard"],
+.jingle-floating-surface[data-state="instant-open"],
+.jingle-floating-surface[data-jingle-floating-enter="instant"]:not([data-state="closed"]),
+html[data-input-modality="keyboard"] .jingle-floating-surface:not([data-jingle-floating-modality]) {
+  transition-duration: 0ms;
+}
+
+@starting-style {
+  .jingle-floating-surface[data-jingle-floating-modality="pointer"][data-jingle-floating-enter="animated"]:is(
+      [data-state="open"],
+      [data-state="delayed-open"]
+    ) {
+    opacity: 0;
+    transform: scale(var(--jingle-floating-surface-closed-scale));
+  }
+}
+
+/* Radix Presence observes animation lifecycle, while transitions own every visual frame. */
+@keyframes jingle-floating-surface-presence {
+  from {
+    --jingle-floating-surface-presence: 0;
+  }
+
+  to {
+    --jingle-floating-surface-presence: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jingle-floating-surface {
+    transform: none;
+    transition: opacity var(--jingle-motion-duration-reduced) var(--jingle-motion-ease-out);
+  }
+
+  .jingle-floating-surface[data-state="closed"] {
+    transform: none;
+  }
+
+  .jingle-floating-surface[data-jingle-floating-modality="pointer"][data-state="closed"] {
+    animation-duration: var(--jingle-motion-duration-reduced);
+  }
+
+  .jingle-floating-surface[data-jingle-floating-modality="pointer"][data-jingle-floating-enter="animated"]:is(
+      [data-state="open"],
+      [data-state="delayed-open"]
+    ) {
+    transition-duration: var(--jingle-motion-duration-reduced);
+  }
+
+  .jingle-floating-surface[data-jingle-floating-modality="keyboard"],
+  .jingle-floating-surface[data-state="instant-open"],
+  .jingle-floating-surface[data-jingle-floating-enter="instant"]:not([data-state="closed"]) {
+    transition-duration: 0ms;
+  }
+
+  @starting-style {
+    .jingle-floating-surface[data-jingle-floating-modality="pointer"][data-jingle-floating-enter="animated"]:is(
+        [data-state="open"],
+        [data-state="delayed-open"]
+      ) {
+      opacity: 0;
+      transform: none;
+    }
+  }
 }
 
 body[data-window="launcher"],
@@ -679,7 +776,7 @@ body[data-window="pinned-ai-session"],
 .launcher-thread-menu__trigger:active,
 .launcher-thread-menu__trigger:focus,
 .launcher-thread-menu__trigger:focus-visible,
-.launcher-thread-menu__trigger[data-state="open"] {
+.launcher-thread-menu__trigger[aria-expanded="true"] {
   border: 0;
   box-shadow: none;
   outline: none;
@@ -889,7 +986,7 @@ body[data-window="pinned-ai-session"],
 .launcher-ai-open-target-control__chevron:active,
 .launcher-ai-open-target-control__chevron:focus,
 .launcher-ai-open-target-control__chevron:focus-visible,
-.launcher-ai-open-target-control__chevron[data-state="open"] {
+.launcher-ai-open-target-control__chevron[aria-expanded="true"] {
   border: 0;
   box-shadow: none;
   outline: none;
@@ -921,7 +1018,7 @@ body[data-window="pinned-ai-session"],
 .launcher-ai-environment-menu__trigger:active,
 .launcher-ai-environment-menu__trigger:focus,
 .launcher-ai-environment-menu__trigger:focus-visible,
-.launcher-ai-environment-menu__trigger[data-state="open"] {
+.launcher-ai-environment-menu__trigger[aria-expanded="true"] {
   border: 0;
   box-shadow: none;
   outline: none;

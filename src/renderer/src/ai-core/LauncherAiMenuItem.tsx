@@ -1,4 +1,4 @@
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
+import * as DropdownMenu from "@/components/ui/dropdown-menu"
 import type { ReactNode } from "react"
 
 function preventDefaultSelect(event: Event): void {

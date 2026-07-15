@@ -34,7 +34,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger
 } from "@/components/ui/context-menu"
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
+import * as DropdownMenu from "@/components/ui/dropdown-menu"
 import { formatRelativeTime } from "@/lib/utils"
 import type { AppLocale } from "@shared/i18n"
 

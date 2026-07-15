@@ -2,6 +2,11 @@ import * as React from "react"
 import * as PopoverPrimitive from "@radix-ui/react-popover"
 
 import { cn } from "@/lib/utils"
+import {
+  useFloatingSurfaceRef,
+  withoutFloatingSurfaceForceMount,
+  type FloatingSurfacePrimitiveProps
+} from "./floating-surface"
 
 function Popover({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Root>) {
   return <PopoverPrimitive.Root data-slot="popover" {...props} />
@@ -11,12 +16,18 @@ function PopoverTrigger({ ...props }: React.ComponentProps<typeof PopoverPrimiti
   return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />
 }
 
-function PopoverContent({
-  className,
-  align = "center",
-  sideOffset = 4,
-  ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Content>) {
+function PopoverContent(
+  allProps: FloatingSurfacePrimitiveProps<React.ComponentProps<typeof PopoverPrimitive.Content>>
+) {
+  const {
+    className,
+    align = "center",
+    ref,
+    sideOffset = 4,
+    ...props
+  } = withoutFloatingSurfaceForceMount(allProps)
+  const surfaceRef = useFloatingSurfaceRef(ref)
+
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Content
@@ -24,9 +35,10 @@ function PopoverContent({
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 origin-[var(--radix-popover-content-transform-origin)] rounded-[var(--jingle-radius-dialog)] border border-border bg-popover p-3 shadow-[0_14px_40px_rgba(0,0,0,0.22)] outline-none",
+          "jingle-floating-surface z-50 origin-[var(--radix-popover-content-transform-origin)] rounded-[var(--jingle-radius-dialog)] border border-border bg-popover p-3 text-popover-foreground shadow-[0_14px_40px_rgba(0,0,0,0.22)] outline-none",
           className
         )}
+        ref={surfaceRef}
         {...props}
       />
     </PopoverPrimitive.Portal>
