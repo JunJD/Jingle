@@ -105,24 +105,28 @@ function createApi(overrides: Partial<HistoryShellApi> = {}): HistoryShellApi {
         chatThreads: [],
         pinnedThreads: [],
         preferences: DEFAULT_THREAD_SIDEBAR_PREFERENCES,
+        projectCatalog: [],
         projectGroups: []
       }),
       reorderProjects: async () => ({
         chatThreads: [],
         pinnedThreads: [],
         preferences: DEFAULT_THREAD_SIDEBAR_PREFERENCES,
+        projectCatalog: [],
         projectGroups: []
       }),
       setOrganizeMode: async () => ({
         chatThreads: [],
         pinnedThreads: [],
         preferences: DEFAULT_THREAD_SIDEBAR_PREFERENCES,
+        projectCatalog: [],
         projectGroups: []
       }),
       setSortBy: async () => ({
         chatThreads: [],
         pinnedThreads: [],
         preferences: DEFAULT_THREAD_SIDEBAR_PREFERENCES,
+        projectCatalog: [],
         projectGroups: []
       })
     },
@@ -301,6 +305,7 @@ test("addSidebarProject creates a project from a selected folder and refreshes p
       ...DEFAULT_THREAD_SIDEBAR_PREFERENCES,
       organizeMode: "project" as const
     },
+    projectCatalog: [{ projectId: "/tmp/jingle", title: "jingle" }],
     projectGroups: [
       {
         projectId: "/tmp/jingle",

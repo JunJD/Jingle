@@ -59,7 +59,7 @@ export interface UpdateThreadInput {
   title?: string | null
 }
 
-function mapThreadRow(row: {
+export function mapThreadRow(row: {
   threadId: string
   createdAt: bigint
   updatedAt: bigint

@@ -29,6 +29,17 @@ export {
   upsertProject,
   upsertThreadWorkspaceBinding
 } from "./thread-workspace"
+export {
+  addThreadWorkflowLabel,
+  createClassifiedThread,
+  ensureDefaultProjectWorkflowTaxonomy,
+  getThreadWorkflowSummary,
+  listProjectWorkflowDefinitions,
+  listThreadWorkflowSummaries,
+  removeThreadWorkflowLabel,
+  setThreadWorkflowStatus
+} from "./thread-workflow"
+export type { CreateClassifiedThreadInput } from "./thread-workflow"
 export type {
   ProjectRow,
   ThreadWorkspaceBindingRow,

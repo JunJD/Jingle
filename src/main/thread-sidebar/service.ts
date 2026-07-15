@@ -13,13 +13,16 @@ import {
   isThreadPinned,
   type ThreadSidebarOrganizeMode,
   type ThreadSidebarPreferences,
+  type ThreadSidebarProjectCatalogItem,
   type ThreadSidebarProjectGroup,
   type ThreadSidebarSortBy,
   type ThreadSidebarThreadItem,
   type ThreadSidebarView
 } from "@shared/thread-sidebar"
 import type { ProjectRecord, ThreadWorkspaceBindingRecord } from "@shared/thread-workspace"
+import type { ThreadWorkflowSummary } from "@shared/thread-workflow"
 import { ThreadSidebarRepository } from "./repository"
+import { ThreadWorkflowService } from "../thread-workflow/service"
 
 function resolveThreadWorkspaceKind(
   binding: ThreadWorkspaceBindingRecord | null
@@ -82,7 +85,8 @@ function resolveNullableWorkspacePath(
 
 function mapThreadItem(
   thread: ThreadRow,
-  binding: ThreadWorkspaceBindingRecord | null
+  binding: ThreadWorkspaceBindingRecord | null,
+  workflow: ThreadWorkflowSummary | null
 ): ThreadSidebarThreadItem {
   const metadata = parseThreadMetadata(thread)
 
@@ -93,6 +97,7 @@ function mapThreadItem(
     threadId: thread.thread_id,
     title: resolveThreadTitle(thread),
     updatedAt: new Date(thread.updated_at),
+    workflow,
     workspaceKind: resolveThreadWorkspaceKind(binding),
     workspacePath: resolveNullableWorkspacePath(binding)
   }
@@ -181,26 +186,40 @@ function mapProjectGroup(project: ProjectRecord): ThreadSidebarProjectGroup {
   }
 }
 
+function mapProjectCatalogItem(project: ProjectRecord): ThreadSidebarProjectCatalogItem {
+  return {
+    projectId: project.projectId,
+    title: project.displayName
+  }
+}
+
 export class ThreadSidebarService {
-  constructor(private readonly repository: ThreadSidebarRepository) {}
+  constructor(
+    private readonly repository: ThreadSidebarRepository,
+    private readonly threadWorkflowService = new ThreadWorkflowService()
+  ) {}
 
   async getView(): Promise<ThreadSidebarView> {
     const preferences = this.repository.getPreferences()
     const threads = await getActiveThreads()
-    const [projectRows, bindingRows] = await Promise.all([
+    const threadIds = threads.map((thread) => thread.thread_id)
+    const [projectRows, bindingRows, workflowSummaries] = await Promise.all([
       getProjects(),
-      getThreadWorkspaceBindings(threads.map((thread) => thread.thread_id))
+      getThreadWorkspaceBindings(threadIds),
+      this.threadWorkflowService.listThreadSummaries(threadIds)
     ])
     const projects = projectRows.map(mapProjectRecord)
+    const projectCatalog = projects.map(mapProjectCatalogItem)
     const bindings = new Map(
       bindingRows.map((binding) => [
         binding.thread_id,
         mapThreadWorkspaceBindingRecord(binding)
       ])
     )
+    const workflows = new Map(workflowSummaries.map((summary) => [summary.threadId, summary]))
     const items = threads.map((thread) => {
       const binding = bindings.get(thread.thread_id)
-      return mapThreadItem(thread, binding || null)
+      return mapThreadItem(thread, binding || null, workflows.get(thread.thread_id) || null)
     })
     const pinnedThreads = sortThreads(
       items.filter((thread) => thread.isPinned),
@@ -260,6 +279,7 @@ export class ThreadSidebarService {
       chatThreads,
       pinnedThreads,
       preferences,
+      projectCatalog,
       projectGroups
     }
   }

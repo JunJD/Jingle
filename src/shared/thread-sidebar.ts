@@ -1,4 +1,5 @@
 import type { ThreadWorkspaceKind } from "./thread-workspace"
+import type { ThreadWorkflowSummary } from "./thread-workflow"
 
 export const THREAD_PINNED_METADATA_KEY = "pinned"
 
@@ -23,6 +24,7 @@ export interface ThreadSidebarThreadItem {
   threadId: string
   title: string
   updatedAt: Date
+  workflow: ThreadWorkflowSummary | null
   workspaceKind: ThreadWorkspaceKind
   workspacePath: string | null
 }
@@ -35,10 +37,16 @@ export interface ThreadSidebarProjectGroup {
   workspacePath: string
 }
 
+export interface ThreadSidebarProjectCatalogItem {
+  projectId: string
+  title: string
+}
+
 export interface ThreadSidebarView {
   chatThreads: ThreadSidebarThreadItem[]
   pinnedThreads: ThreadSidebarThreadItem[]
   preferences: ThreadSidebarPreferences
+  projectCatalog: ThreadSidebarProjectCatalogItem[]
   projectGroups: ThreadSidebarProjectGroup[]
 }
 

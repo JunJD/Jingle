@@ -5,6 +5,7 @@ import type { ExtensionToolCallPresentation, ToolCallDisplay } from "./tool-pres
 import type { ThreadWorkspaceKind } from "./thread-workspace"
 import type { AgentContextInclusion } from "./jingle-memory"
 import type { AgentFollowUpMode } from "./agent-follow-up"
+import type { ThreadWorkflowCreateInput } from "./thread-workflow"
 import type { JingleTodo } from "@jingle/agent-client"
 export type { LocalizedText } from "./i18n"
 export type { HITLDecision, HITLRequest } from "./hitl"
@@ -24,6 +25,7 @@ export interface Thread {
 
 export interface CreateThreadInput {
   metadata?: Record<string, unknown>
+  workflow?: ThreadWorkflowCreateInput
   workspaceKind?: ThreadWorkspaceKind
   workspacePath?: string
 }

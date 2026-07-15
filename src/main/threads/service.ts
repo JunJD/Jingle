@@ -49,6 +49,7 @@ import { JingleIpcError } from "../ipc/error"
 import { ModelProviderService } from "../model-provider/service"
 import { SettingsService } from "../settings/service"
 import { ThreadWorkspaceService } from "../thread-workspace/service"
+import { ThreadWorkflowService } from "../thread-workflow/service"
 import { WorkspaceService } from "../workspace/service"
 import { rebuildMessageSearchIndexFromMessages } from "../db/message-search"
 import { formatDefaultThreadTitle } from "@shared/i18n"
@@ -270,7 +271,8 @@ export class ThreadsService {
     private readonly settingsService: SettingsService,
     private readonly workspaceService: WorkspaceService,
     private readonly threadWorkspaceService: ThreadWorkspaceService,
-    private readonly threadLifecycleGate = new ThreadLifecycleGate()
+    private readonly threadLifecycleGate = new ThreadLifecycleGate(),
+    private readonly threadWorkflowService = new ThreadWorkflowService()
   ) {}
 
   async getLatestRunSummary(threadId: string): Promise<{
@@ -441,6 +443,9 @@ export class ThreadsService {
 
   async create(input?: CreateThreadInput): Promise<Thread> {
     const threadId = uuid()
+    if (input?.workflow && input.workspaceKind !== "project") {
+      throw new Error("A classified thread workflow requires workspaceKind=project.")
+    }
     const { workspaceKind, workspacePath } = await this.resolveCreateThreadWorkspace(input)
     const nextMetadata: Record<string, unknown> = {
       model: this.modelProviderService.getDefaultModel("llm"),
@@ -453,6 +458,22 @@ export class ThreadsService {
         : formatDefaultThreadTitle(this.settingsService.getAgentConfig().locale)
     const { title: _ignoredTitle, ...threadMetadata } = nextMetadata
     void _ignoredTitle
+
+    if (input?.workflow) {
+      const project = await this.threadWorkspaceService.addProject(workspacePath)
+      const thread = await this.threadWorkflowService.createClassifiedThread({
+        metadata: threadMetadata,
+        project: {
+          canonicalWorkspacePath: project.canonicalWorkspacePath,
+          projectId: project.projectId,
+          workspaceKey: project.workspaceKey
+        },
+        threadId,
+        title,
+        workflow: input.workflow
+      })
+      return mapThreadRowToThread(thread, title)
+    }
 
     const thread = await dbCreateThread(threadId, {
       metadata: threadMetadata,

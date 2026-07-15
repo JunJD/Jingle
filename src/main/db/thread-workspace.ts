@@ -5,6 +5,7 @@ import type {
   ThreadWorkspaceBindingRecord,
   ThreadWorkspaceKind
 } from "@shared/thread-workspace"
+import { ensureDefaultProjectWorkflowTaxonomy } from "./thread-workflow"
 
 export interface ProjectRow {
   archived_at: number | null
@@ -130,26 +131,29 @@ export function mapThreadWorkspaceBindingRecord(
 export async function upsertProject(input: UpsertProjectInput): Promise<ProjectRow> {
   const prisma = getPrismaClient()
   const now = BigInt(Date.now())
-  const row = await prisma.project.upsert({
-    create: {
-      canonicalWorkspacePath: input.canonicalWorkspacePath,
-      createdAt: now,
-      displayName: input.displayName,
-      projectId: input.projectId,
-      updatedAt: now,
-      workspaceKey: input.workspaceKey
-    },
-    update: {
-      canonicalWorkspacePath: input.canonicalWorkspacePath,
-      displayName: input.displayName,
-      updatedAt: now
-    },
-    where: {
-      workspaceKey: input.workspaceKey
-    }
-  })
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.project.upsert({
+      create: {
+        canonicalWorkspacePath: input.canonicalWorkspacePath,
+        createdAt: now,
+        displayName: input.displayName,
+        projectId: input.projectId,
+        updatedAt: now,
+        workspaceKey: input.workspaceKey
+      },
+      update: {
+        canonicalWorkspacePath: input.canonicalWorkspacePath,
+        displayName: input.displayName,
+        updatedAt: now
+      },
+      where: {
+        workspaceKey: input.workspaceKey
+      }
+    })
+    await ensureDefaultProjectWorkflowTaxonomy(tx, row.projectId, now)
 
-  return mapProjectRow(row)
+    return mapProjectRow(row)
+  })
 }
 
 export async function getProjects(): Promise<ProjectRow[]> {

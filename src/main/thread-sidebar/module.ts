@@ -3,6 +3,7 @@ import { instanceCachingFactory, type DependencyContainer } from "tsyringe"
 import { ThreadSidebarController } from "./controller"
 import { ThreadSidebarRepository } from "./repository"
 import { ThreadSidebarService } from "./service"
+import { ThreadWorkflowService } from "../thread-workflow/service"
 
 export function registerThreadSidebarModule(container: DependencyContainer): void {
   container.register(ThreadSidebarRepository, {
@@ -12,7 +13,10 @@ export function registerThreadSidebarModule(container: DependencyContainer): voi
   })
   container.register(ThreadSidebarService, {
     useFactory: instanceCachingFactory((dependencyContainer) => {
-      return new ThreadSidebarService(dependencyContainer.resolve(ThreadSidebarRepository))
+      return new ThreadSidebarService(
+        dependencyContainer.resolve(ThreadSidebarRepository),
+        dependencyContainer.resolve(ThreadWorkflowService)
+      )
     })
   })
   container.register(ThreadSidebarController, {

@@ -1,5 +1,5 @@
 import "reflect-metadata"
-import type { BrowserWindow, IpcMain } from "electron"
+import { BrowserWindow, type IpcMain } from "electron"
 import { container, type DependencyContainer } from "tsyringe"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import { AgentThreadRunner } from "./agent/agent-thread-runner"
@@ -79,6 +79,12 @@ import {
   registerThreadWorkspaceIpcHandlers,
   registerThreadWorkspaceModule
 } from "./thread-workspace/module"
+import {
+  registerThreadWorkflowIpcHandlers,
+  registerThreadWorkflowModule
+} from "./thread-workflow/module"
+import { startThreadWorkflowRuntimeAutomation } from "./thread-workflow/runtime-automation"
+import { ThreadWorkflowService } from "./thread-workflow/service"
 import { registerThreadsIpcHandlers, registerThreadsModule } from "./threads/module"
 import {
   startLauncherSearchIndexRefresh,
@@ -110,6 +116,7 @@ const MAIN_COMPOSITION_CONTEXT_TOKEN = Symbol("MainCompositionContext")
 export class MainCompositionRoot {
   private stopNativeIslandAgentStatus: (() => void) | null = null
   private stopLauncherSearchIndexRefresh: (() => void) | null = null
+  private stopThreadWorkflowRuntimeAutomation: (() => Promise<void>) | null = null
 
   constructor(
     private readonly context: MainCompositionContext,
@@ -139,6 +146,7 @@ export class MainCompositionRoot {
     registerOpenTargetsIpcHandlers(this.dependencyContainer, ipcMain)
     registerSettingsIpcHandlers(this.dependencyContainer, ipcMain)
     registerThreadSidebarIpcHandlers(this.dependencyContainer, ipcMain)
+    registerThreadWorkflowIpcHandlers(this.dependencyContainer, ipcMain)
     registerThreadWorkspaceIpcHandlers(this.dependencyContainer, ipcMain)
     registerThreadsIpcHandlers(this.dependencyContainer, ipcMain)
     registerWorkspaceIpcHandlers(this.dependencyContainer, ipcMain)
@@ -163,6 +171,17 @@ export class MainCompositionRoot {
     this.stopNativeIslandAgentStatus = startNativeMinimalIslandAgentStatus(
       this.dependencyContainer.resolve(AgentThreadRunner)
     )
+    this.stopThreadWorkflowRuntimeAutomation = startThreadWorkflowRuntimeAutomation({
+      agentThreadRunner: this.dependencyContainer.resolve(AgentThreadRunner),
+      onChanged: (threadId) => {
+        for (const window of BrowserWindow.getAllWindows()) {
+          if (!window.isDestroyed()) {
+            window.webContents.send("threadWorkflow:changed", { threadId })
+          }
+        }
+      },
+      workflow: this.dependencyContainer.resolve(ThreadWorkflowService)
+    })
     this.applyShortcutSettings()
     this.stopLauncherSearchIndexRefresh?.()
     this.stopLauncherSearchIndexRefresh = startLauncherSearchIndexRefresh({
@@ -192,6 +211,11 @@ export class MainCompositionRoot {
     this.stopNativeIslandAgentStatus = null
     this.stopLauncherSearchIndexRefresh?.()
     this.stopLauncherSearchIndexRefresh = null
+    const stopThreadWorkflowRuntimeAutomation = this.stopThreadWorkflowRuntimeAutomation
+    this.stopThreadWorkflowRuntimeAutomation = null
+    if (stopThreadWorkflowRuntimeAutomation) {
+      await stopThreadWorkflowRuntimeAutomation()
+    }
     stopNativeSelectionCapture()
     resolveExtensionRuntimeMenuBarService(this.dependencyContainer).dispose()
     resolveExtensionRuntimeManager(this.dependencyContainer).dispose()
@@ -280,8 +304,9 @@ export function createMainCompositionRoot(
   })
   registerExtensionRuntimeModule(childContainer)
   registerShortcutsModule(childContainer)
-  registerThreadSidebarModule(childContainer)
   registerThreadWorkspaceModule(childContainer)
+  registerThreadWorkflowModule(childContainer)
+  registerThreadSidebarModule(childContainer)
   registerThreadsModule(childContainer)
   registerWorkspaceModule(childContainer)
   configureQuicklinksLauncherSearchProvider({

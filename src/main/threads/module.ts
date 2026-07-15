@@ -6,6 +6,7 @@ import { ArtifactsService } from "../artifacts/service"
 import { ModelProviderService } from "../model-provider/service"
 import { SettingsService } from "../settings/service"
 import { ThreadWorkspaceService } from "../thread-workspace/service"
+import { ThreadWorkflowService } from "../thread-workflow/service"
 import { WorkspaceService } from "../workspace/service"
 import { AgentThreadDataSnapshotService } from "./agent-thread-data-snapshot-service"
 import { ThreadsController } from "./controller"
@@ -20,7 +21,8 @@ export function registerThreadsModule(container: DependencyContainer): void {
         dependencyContainer.resolve(SettingsService),
         dependencyContainer.resolve(WorkspaceService),
         dependencyContainer.resolve(ThreadWorkspaceService),
-        dependencyContainer.resolve(ThreadLifecycleGate)
+        dependencyContainer.resolve(ThreadLifecycleGate),
+        dependencyContainer.resolve(ThreadWorkflowService)
       )
     })
   })
