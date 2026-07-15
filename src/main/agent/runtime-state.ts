@@ -14,7 +14,7 @@ import type {
 import type { HitlRequestRow } from "../db"
 import type { HITLRequest, Todo } from "../types"
 import type { AgentContextInclusion } from "@shared/jingle-memory"
-import { getDefaultHitlAllowedDecisions, normalizeHitlAllowedDecisions } from "@shared/hitl"
+import { isHitlDecisionType } from "@shared/hitl"
 import { parseToolApprovalItem } from "@shared/tool-approval"
 import {
   normalizeComposerMessageRefs,
@@ -48,6 +48,16 @@ function getRequiredHitlRowToolCallId(
   }
 
   throw new Error(`[RuntimeState] HITL request "${row.request_id}" is missing tool_call_id.`)
+}
+
+function parseHitlJson(row: HitlRequestRow, field: string, value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown
+  } catch (error) {
+    throw new Error(`[RuntimeState] HITL request "${row.request_id}" has invalid ${field}.`, {
+      cause: error
+    })
+  }
 }
 
 export function extractMessagesFromCheckpoint(
@@ -117,27 +127,33 @@ export function extractThreadFactsFromCheckpoint(
 }
 
 export function mapHitlRowToRequest(row: HitlRequestRow): HITLRequest {
-  let toolArgs: Record<string, unknown> = {}
-  let allowedDecisions: HITLRequest["allowed_decisions"] = getDefaultHitlAllowedDecisions()
-  let review: HITLRequest["review"] = null
   const toolCallId = getRequiredHitlRowToolCallId(row)
-
-  try {
-    toolArgs = JSON.parse(row.tool_args) as Record<string, unknown>
-  } catch {
-    toolArgs = {}
+  const parsedToolArgs = parseHitlJson(row, "tool_args", row.tool_args)
+  if (
+    typeof parsedToolArgs !== "object" ||
+    parsedToolArgs === null ||
+    Array.isArray(parsedToolArgs)
+  ) {
+    throw new Error(`[RuntimeState] HITL request "${row.request_id}" has invalid tool_args.`)
   }
 
-  try {
-    allowedDecisions = normalizeHitlAllowedDecisions(JSON.parse(row.allowed_decisions))
-  } catch {
-    allowedDecisions = getDefaultHitlAllowedDecisions()
+  const parsedAllowedDecisions = parseHitlJson(row, "allowed_decisions", row.allowed_decisions)
+  if (
+    !Array.isArray(parsedAllowedDecisions) ||
+    parsedAllowedDecisions.length === 0 ||
+    !parsedAllowedDecisions.every(isHitlDecisionType)
+  ) {
+    throw new Error(
+      `[RuntimeState] HITL request "${row.request_id}" has invalid allowed_decisions.`
+    )
   }
 
-  try {
-    review = parseToolApprovalItem(row.review_payload ? JSON.parse(row.review_payload) : null)
-  } catch {
-    review = null
+  const reviewPayload = row.review_payload
+    ? parseHitlJson(row, "review_payload", row.review_payload)
+    : null
+  const review = parseToolApprovalItem(reviewPayload)
+  if (reviewPayload !== null && review === null) {
+    throw new Error(`[RuntimeState] HITL request "${row.request_id}" has invalid review_payload.`)
   }
 
   return {
@@ -145,9 +161,9 @@ export function mapHitlRowToRequest(row: HitlRequestRow): HITLRequest {
     tool_call: {
       id: toolCallId,
       name: row.tool_name,
-      args: toolArgs
+      args: parsedToolArgs as Record<string, unknown>
     },
-    allowed_decisions: allowedDecisions,
+    allowed_decisions: parsedAllowedDecisions,
     review
   }
 }

@@ -371,3 +371,43 @@ test("mapHitlRowToRequest rejects rows without tool_call_id", () => {
 
   assert.throws(() => mapHitlRowToRequest(row), /missing tool_call_id/i)
 })
+
+test("mapHitlRowToRequest rejects malformed durable HITL facts", () => {
+  const createRow = (overrides: Partial<HitlRequestRow>): HitlRequestRow => ({
+    request_id: "request-corrupt",
+    thread_id: "thread-1",
+    run_id: "run-1",
+    tool_call_id: "tool-call-1",
+    tool_name: "execute",
+    tool_args: JSON.stringify({ command: "echo hello" }),
+    review_kind: null,
+    review_payload: null,
+    allowed_decisions: JSON.stringify(["approve", "reject"]),
+    status: "pending",
+    decision: null,
+    created_at: Date.now(),
+    updated_at: Date.now(),
+    resolved_at: null,
+    ...overrides
+  })
+
+  assert.throws(
+    () => mapHitlRowToRequest(createRow({ tool_args: "not-json" })),
+    /invalid tool_args/i
+  )
+  assert.throws(
+    () => mapHitlRowToRequest(createRow({ tool_args: JSON.stringify(["not", "an", "object"]) })),
+    /invalid tool_args/i
+  )
+  assert.throws(
+    () =>
+      mapHitlRowToRequest(
+        createRow({ allowed_decisions: JSON.stringify(["approve", "unknown"]) })
+      ),
+    /invalid allowed_decisions/i
+  )
+  assert.throws(
+    () => mapHitlRowToRequest(createRow({ review_payload: JSON.stringify({ kind: "unknown" }) })),
+    /invalid review_payload/i
+  )
+})
