@@ -1115,6 +1115,29 @@ test("AgentThreadRunner replays only events after the requested revision", async
   ])
 })
 
+test("AgentThreadRunner replays cancellation across a renderer subscription gap", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+
+  await hub.prepareInvoke("thread-cancel-replay", {
+    content: "long running task",
+    id: "user-1"
+  })
+  hub.disconnectThreadEvents("thread-cancel-replay", "extension-surface")
+  await hub.handlePayload("thread-cancel-replay", { type: "cancelled" })
+
+  const replayedTypes: string[] = []
+  await hub.connectThreadEvents(
+    "thread-cancel-replay",
+    "ai-surface",
+    (batch) => {
+      replayedTypes.push(...batch.events.map((event) => event.type))
+    },
+    { fromRevision: 2 }
+  )
+
+  assert.deepEqual(replayedTypes, ["run.finished"])
+})
+
 test("AgentThreadRunner preserves whitespace-only text chunks during token streaming", async () => {
   const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
 

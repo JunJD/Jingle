@@ -1500,10 +1500,11 @@ export class AgentThreadRunner {
 
   async handlePayload(threadId: string, payload: AgentStreamPayload): Promise<void> {
     const entry = await this.ensureEntry(threadId)
+    const previousRevision = entry.projector.readState().revision
     entry.projector.applyPayload(payload)
     this.notify(threadId)
     if (payload.type === "done" || payload.type === "cancelled" || payload.type === "error") {
-      entry.replayEvents = []
+      entry.replayEvents = entry.replayEvents.filter((event) => event.revision > previousRevision)
     }
   }
 
