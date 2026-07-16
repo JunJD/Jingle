@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react"
+import { useCallback, useEffect, useMemo } from "react"
 import {
   FALLBACK_SHELL_CONFIG,
   LAUNCHER_SEARCH_TRANSACTION_TIMEOUT_MS,
@@ -43,6 +43,8 @@ type LauncherHomeCommandId =
   | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionDown
   | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionUp
   | typeof LAUNCHER_COMMAND_IDS.searchExecuteSelection
+
+let latestLauncherIdleStateRequestId = 0
 
 function settleLauncherSearchResponses<T>(
   promises: Promise<T>[],
@@ -161,7 +163,6 @@ export function useLauncherSearchPage(props: {
     (state) => state.setUseWithDisabledCommandKeysLocal
   )
   const shellConfig: LauncherShellConfig = FALLBACK_SHELL_CONFIG
-  const idleStateRequestIdRef = useRef(0)
   const trimmedQuery = query.trim()
   const useWithCommands = useMemo(
     () =>
@@ -254,31 +255,44 @@ export function useLauncherSearchPage(props: {
     requestSelection: requestHomeInputSelection,
     setQuery
   })
-  const refreshIdleState = useCallback(async (): Promise<void> => {
-    const requestId = ++idleStateRequestIdRef.current
-    const [settings, launcherHistoryItems, localStartItems] = await Promise.all([
-      window.api.settings.getLauncherSettings(),
-      window.api.launcherHistory.list(),
-      window.api.localStart.list()
-    ])
-    if (requestId !== idleStateRequestIdRef.current) {
-      return
-    }
+  const refreshIdleState = useCallback(
+    async (
+      deadlineAt = Number.POSITIVE_INFINITY,
+      isCurrent: () => boolean = () => true
+    ): Promise<void> => {
+      const requestId = ++latestLauncherIdleStateRequestId
+      const [settings, launcherHistoryItems, localStartItems] = await Promise.all([
+        window.api.settings.getLauncherSettings(),
+        window.api.launcherHistory.list(),
+        window.api.localStart.list()
+      ])
+      if (
+        requestId !== latestLauncherIdleStateRequestId ||
+        Date.now() >= deadlineAt ||
+        !isCurrent()
+      ) {
+        return
+      }
 
-    applyIdleState({
-      historyItems: launcherHistoryItems,
-      idleItems: localStartItems,
-      useWithDisabledCommandKeys: settings.useWithDisabledCommandKeys,
-      windowMode: settings.windowMode
-    })
-  }, [applyIdleState])
+      applyIdleState({
+        historyItems: launcherHistoryItems,
+        idleItems: localStartItems,
+        useWithDisabledCommandKeys: settings.useWithDisabledCommandKeys,
+        windowMode: settings.windowMode
+      })
+    },
+    [applyIdleState]
+  )
   useEffect(() => {
-    void refreshIdleState()
-    const cleanupShown = window.api.launcher.onShown(() => {
-      return refreshIdleState()
+    void refreshIdleState().catch((error: unknown) => {
+      console.error("[launcher] failed to refresh idle state", error)
+    })
+    const cleanupShown = window.api.launcher.onShown((event) => {
+      return refreshIdleState(event.deadlineAt, event.isCurrent)
     })
 
     return () => {
+      latestLauncherIdleStateRequestId += 1
       cleanupShown()
     }
   }, [refreshIdleState])

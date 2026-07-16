@@ -9,7 +9,12 @@ import type {
 } from "@shared/launcher-search"
 import { invokeIpc, ipcRenderer } from "../ipc"
 
-type LauncherShownCallback = (event: LauncherShownEvent) => Promise<void> | void
+export interface LauncherShownCallbackEvent extends LauncherShownEvent {
+  deadlineAt: number
+  isCurrent: () => boolean
+}
+
+type LauncherShownCallback = (event: LauncherShownCallbackEvent) => Promise<void> | void
 
 const LAUNCHER_PRESENTATION_BUDGET_MS = 450
 const launcherShownCallbacks = new Set<LauncherShownCallback>()
@@ -109,7 +114,7 @@ function waitForAnimationFrame(deadline: number, signal: AbortSignal): Promise<b
 }
 
 async function settleLauncherShownCallbacks(
-  event: LauncherShownEvent,
+  event: LauncherShownCallbackEvent,
   deadline: number,
   signal: AbortSignal
 ): Promise<boolean> {
@@ -181,11 +186,76 @@ async function settleLauncherShownCallbacks(
   return true
 }
 
+async function invokeLauncherPresentUntilDeadline(
+  event: LauncherShownEvent,
+  deadline: number,
+  signal: AbortSignal
+): Promise<void> {
+  const remainingMs = deadline - Date.now()
+  if (remainingMs <= 0 || signal.aborted) {
+    return
+  }
+
+  const invokePromise = invokeIpc("launcher:present", event.presentationId).then(
+    () => ({ status: "settled" as const }),
+    (error: unknown) => ({ error, status: "failed" as const })
+  )
+  const outcome = await new Promise<
+    | { status: "aborted" }
+    | { error: unknown; status: "failed" }
+    | { status: "settled" }
+    | { status: "timed-out" }
+  >((resolve) => {
+    let settled = false
+    let timeout: ReturnType<typeof setTimeout> | null = null
+    const finish = (
+      result:
+        | { status: "aborted" }
+        | { error: unknown; status: "failed" }
+        | { status: "settled" }
+        | { status: "timed-out" }
+    ): void => {
+      if (settled) {
+        return
+      }
+
+      settled = true
+      if (timeout) {
+        clearTimeout(timeout)
+      }
+      signal.removeEventListener("abort", handleAbort)
+      resolve(result)
+    }
+    const handleAbort = (): void => finish({ status: "aborted" })
+
+    signal.addEventListener("abort", handleAbort, { once: true })
+    timeout = setTimeout(() => finish({ status: "timed-out" }), remainingMs)
+    void invokePromise.then(finish)
+    if (signal.aborted) {
+      handleAbort()
+    }
+  })
+
+  if (outcome.status === "failed") {
+    throw outcome.error
+  }
+  if (outcome.status === "timed-out") {
+    console.error("[launcher] present acknowledgement timed out", {
+      presentationId: event.presentationId
+    })
+  }
+}
+
 async function presentLauncherAfterShownCallbacks(
   event: LauncherShownEvent,
   signal: AbortSignal
 ): Promise<void> {
   const deadline = Date.now() + LAUNCHER_PRESENTATION_BUDGET_MS
+  const callbackEvent: LauncherShownCallbackEvent = {
+    ...event,
+    deadlineAt: deadline,
+    isCurrent: () => Date.now() < deadline && isCurrentLauncherPresentation(event, signal)
+  }
   const ready = await waitForRendererPresentationReady(deadline, signal)
   if (!ready || !isCurrentLauncherPresentation(event, signal)) {
     return
@@ -199,7 +269,7 @@ async function presentLauncherAfterShownCallbacks(
     return
   }
 
-  const callbacksSettled = await settleLauncherShownCallbacks(event, deadline, signal)
+  const callbacksSettled = await settleLauncherShownCallbacks(callbackEvent, deadline, signal)
   if (!callbacksSettled || !isCurrentLauncherPresentation(event, signal)) {
     return
   }
@@ -216,7 +286,7 @@ async function presentLauncherAfterShownCallbacks(
   if (!isCurrentLauncherPresentation(event, signal)) {
     return
   }
-  await invokeIpc("launcher:present", event.presentationId)
+  await invokeLauncherPresentUntilDeadline(event, deadline, signal)
 }
 
 ipcRenderer.on("launcher:shown", (_ipcEvent, rawEvent: unknown) => {

@@ -11,7 +11,10 @@ import type { LauncherSelectionContextSnapshot } from "@shared/launcher-selectio
 interface LauncherSelectionStoreState {
   clearContext: (id?: string) => Promise<void>
   context: LauncherSelectionContextSnapshot
-  refreshContext: () => Promise<LauncherSelectionContextSnapshot>
+  refreshContext: (
+    deadlineAt?: number,
+    isCurrent?: () => boolean
+  ) => Promise<LauncherSelectionContextSnapshot>
 }
 
 export type LauncherSelectionState = LauncherSelectionStoreState
@@ -56,10 +59,13 @@ function createLauncherSelectionStore() {
 
       setContext(null)
     },
-    refreshContext: async (): Promise<LauncherSelectionContextSnapshot> => {
+    refreshContext: async (
+      deadlineAt = Number.POSITIVE_INFINITY,
+      isCurrent: () => boolean = () => true
+    ): Promise<LauncherSelectionContextSnapshot> => {
       const generation = ++contextRequestGeneration
       const context = await window.api.launcher.getSelectionContext()
-      if (generation === contextRequestGeneration) {
+      if (generation === contextRequestGeneration && Date.now() < deadlineAt && isCurrent()) {
         setContext(context)
       }
       return context
@@ -75,6 +81,9 @@ function createLauncherSelectionStore() {
 
   return {
     getState: (): LauncherSelectionStoreState => snapshot,
+    invalidatePendingContextRefresh: (): void => {
+      contextRequestGeneration += 1
+    },
     subscribe: (listener: () => void): (() => void) => {
       listeners.add(listener)
       return () => {
@@ -91,16 +100,27 @@ export function LauncherSelectionProvider(props: { children: ReactNode }): React
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
-      void launcherSelectionStore.getState().refreshContext()
+      void launcherSelectionStore
+        .getState()
+        .refreshContext()
+        .catch((error: unknown) => {
+          console.error("[launcher] failed to refresh selection context", error)
+        })
     })
-    const cleanupShown = window.api.launcher.onShown(async () => {
-      await launcherSelectionStore.getState().refreshContext()
+    const cleanupShown = window.api.launcher.onShown(async (event) => {
+      await launcherSelectionStore.getState().refreshContext(event.deadlineAt, event.isCurrent)
     })
     const cleanupUpdated = window.api.launcher.onSelectionContextUpdated(() => {
-      void launcherSelectionStore.getState().refreshContext()
+      void launcherSelectionStore
+        .getState()
+        .refreshContext()
+        .catch((error: unknown) => {
+          console.error("[launcher] failed to refresh selection context", error)
+        })
     })
 
     return () => {
+      launcherSelectionStore.invalidatePendingContextRefresh()
       window.cancelAnimationFrame(frameId)
       cleanupShown()
       cleanupUpdated()

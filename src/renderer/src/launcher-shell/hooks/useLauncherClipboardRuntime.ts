@@ -1,30 +1,44 @@
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect } from "react"
 import { useLauncherClipboardStore } from "./launcher-clipboard-store"
+
+let latestClipboardRefreshRequestId = 0
 
 export function useLauncherClipboardRuntime(): void {
   const applyRefreshedContext = useLauncherClipboardStore((state) => state.applyRefreshedContext)
-  const refreshRequestIdRef = useRef(0)
 
-  const refreshContext = useCallback(async (): Promise<void> => {
-    const requestId = ++refreshRequestIdRef.current
-    const nextContext = await window.api.launcher.getClipboardContext()
-    if (requestId !== refreshRequestIdRef.current) {
-      return
-    }
+  const refreshContext = useCallback(
+    async (
+      deadlineAt = Number.POSITIVE_INFINITY,
+      isCurrent: () => boolean = () => true
+    ): Promise<void> => {
+      const requestId = ++latestClipboardRefreshRequestId
+      const nextContext = await window.api.launcher.getClipboardContext()
+      if (
+        requestId !== latestClipboardRefreshRequestId ||
+        Date.now() >= deadlineAt ||
+        !isCurrent()
+      ) {
+        return
+      }
 
-    applyRefreshedContext(nextContext)
-  }, [applyRefreshedContext])
+      applyRefreshedContext(nextContext)
+    },
+    [applyRefreshedContext]
+  )
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
-      void refreshContext()
+      void refreshContext().catch((error: unknown) => {
+        console.error("[launcher] failed to refresh clipboard context", error)
+      })
     })
 
-    const cleanupShown = window.api.launcher.onShown(() => {
-      return refreshContext()
+    const cleanupShown = window.api.launcher.onShown((event) => {
+      return refreshContext(event.deadlineAt, event.isCurrent)
     })
 
     return () => {
+      latestClipboardRefreshRequestId += 1
       window.cancelAnimationFrame(frameId)
       cleanupShown()
     }
