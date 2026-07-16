@@ -13,7 +13,11 @@ export function createOpenAICompatibleChatModel(
     apiKey,
     ...createOpenAICompatibleOutputTokenOptions(runtimeConfig.maxOutputTokens),
     model: runtimeConfig.modelName,
-    ...createOpenAICompatibleToolCallOptions(options, runtimeConfig.thinkingEffort),
+    ...createOpenAICompatibleToolCallOptions(
+      options,
+      runtimeConfig.thinkingEffort,
+      runtimeConfig.reasoningEffortTransport
+    ),
     temperature: options.temperature,
     ...(baseURL || headers
       ? {
@@ -34,7 +38,8 @@ function createOpenAICompatibleOutputTokenOptions(maxOutputTokens: number | unde
 
 export function createOpenAICompatibleToolCallOptions(
   options: ChatModelOptions,
-  thinkingEffort?: ProtocolCreateModelInput["runtimeConfig"]["thinkingEffort"]
+  thinkingEffort?: ProtocolCreateModelInput["runtimeConfig"]["thinkingEffort"],
+  transport?: ProtocolCreateModelInput["runtimeConfig"]["reasoningEffortTransport"]
 ): {
   modelKwargs?: Record<string, unknown>
 } {
@@ -43,7 +48,7 @@ export function createOpenAICompatibleToolCallOptions(
     modelKwargs.parallel_tool_calls = false
   }
 
-  const reasoningEffort = toOpenAIReasoningEffort(thinkingEffort)
+  const reasoningEffort = toOpenAIReasoningEffort(thinkingEffort, transport)
   if (reasoningEffort) {
     modelKwargs.reasoning_effort = reasoningEffort
   }
@@ -52,14 +57,20 @@ export function createOpenAICompatibleToolCallOptions(
 }
 
 function toOpenAIReasoningEffort(
-  thinkingEffort: ProtocolCreateModelInput["runtimeConfig"]["thinkingEffort"]
-): "low" | "medium" | "high" | undefined {
-  if (thinkingEffort === "low" || thinkingEffort === "medium" || thinkingEffort === "high") {
-    return thinkingEffort
+  thinkingEffort: ProtocolCreateModelInput["runtimeConfig"]["thinkingEffort"],
+  transport: ProtocolCreateModelInput["runtimeConfig"]["reasoningEffortTransport"]
+): "off" | "none" | "low" | "medium" | "high" | "xhigh" | "max" | undefined {
+  if (thinkingEffort === "off") {
+    return transport === "openai-native" ? "none" : "off"
   }
-
-  if (thinkingEffort === "max") {
-    return "high"
+  if (
+    thinkingEffort === "low" ||
+    thinkingEffort === "medium" ||
+    thinkingEffort === "high" ||
+    thinkingEffort === "xhigh" ||
+    thinkingEffort === "max"
+  ) {
+    return thinkingEffort
   }
 
   return undefined

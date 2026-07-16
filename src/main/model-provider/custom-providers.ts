@@ -6,12 +6,14 @@ import type {
   CustomProviderInput,
   ModelConfig,
   ProviderDefinition,
-  ProviderId
+  ProviderId,
+  ThinkingEffort
 } from "./types"
 import { getJingleCustomProvidersDir } from "./paths"
 import { getDeclarativeProviderConfig } from "./declarative-providers"
 import { modelSupportsReasoning } from "./model-metadata"
 import { setProviderCredential } from "./auth-store"
+import { createCustomReasoningEffortCapability } from "./reasoning-capabilities"
 
 const CUSTOM_PROVIDER_PREFIX = "custom_"
 const API_KEY_CREDENTIAL_VARIABLE = "apiKey"
@@ -40,9 +42,7 @@ export function listCustomProviderConfigs(): CustomProviderConfig[] {
     }
 
     const providerId = entry.slice(0, -".json".length)
-    const config = normalizeCustomProviderConfig(
-      JSON.parse(readFileSync(join(dir, entry), "utf8"))
-    )
+    const config = normalizeCustomProviderConfig(JSON.parse(readFileSync(join(dir, entry), "utf8")))
     if (config.name !== providerId) {
       throw new Error(
         `Custom provider file name does not match provider id: ${entry} -> ${config.name}`
@@ -96,6 +96,7 @@ export function listCustomProviderModels(): ModelConfig[] {
       name: model.name,
       provider: provider.name,
       reasoning: model.reasoning ?? modelSupportsReasoning(model.name),
+      reasoningEffortCapability: createCustomReasoningEffortCapability({ model, provider }),
       status: "active" as const
     }))
   )
@@ -123,9 +124,19 @@ export function upsertCustomProvider(input: CustomProviderInput): CustomProvider
     ...(existingConfig?.fast_model ? { fast_model: existingConfig.fast_model } : {}),
     headers: input.headers ?? {},
     models: input.models.reduce<CustomProviderConfig["models"]>((models, model) => {
-      const name = model.trim()
+      const name = (typeof model === "string" ? model : model.name).trim()
       if (name) {
-        models.push({ name })
+        const reasoningEfforts =
+          typeof model === "string"
+            ? existingConfig?.models.find((existingModel) => existingModel.name === name)
+                ?.reasoning_efforts
+            : normalizeReasoningEfforts(model.reasoningEfforts)
+        if (reasoningEfforts && input.engine !== "openai") {
+          throw new Error(
+            "Reasoning effort capability declarations require an OpenAI-compatible custom provider."
+          )
+        }
+        models.push({ name, reasoning_efforts: reasoningEfforts })
       }
       return models
     }, []),
@@ -185,6 +196,13 @@ function normalizeCustomProviderConfig(value: unknown): CustomProviderConfig {
     throw new Error(`Custom provider ${name} models must be an array.`)
   }
 
+  const models = rawModels.map(normalizeCustomProviderModel)
+  if (engine !== "openai" && models.some((model) => model.reasoning_efforts)) {
+    throw new Error(
+      `Custom provider ${name} declares reasoning_efforts but is not OpenAI-compatible.`
+    )
+  }
+
   return {
     api_key_env: getString(value, "api_key_env"),
     base_path: getNullableString(value, "base_path"),
@@ -198,7 +216,7 @@ function normalizeCustomProviderConfig(value: unknown): CustomProviderConfig {
     ...(fastModel ? { fast_model: fastModel } : {}),
     headers: normalizeStringRecord(value["headers"]),
     model_doc_link: getNullableString(value, "model_doc_link"),
-    models: rawModels.map(normalizeCustomProviderModel),
+    models,
     name,
     requires_auth: typeof value["requires_auth"] === "boolean" ? value["requires_auth"] : true,
     setup_steps: normalizeStringArray(value["setup_steps"]),
@@ -252,8 +270,29 @@ function normalizeCustomProviderModel(value: unknown): CustomProviderConfig["mod
     max_output_tokens:
       typeof value["max_output_tokens"] === "number" ? value["max_output_tokens"] : undefined,
     name: requireString(value, "name"),
-    reasoning: typeof value["reasoning"] === "boolean" ? value["reasoning"] : undefined
+    reasoning: typeof value["reasoning"] === "boolean" ? value["reasoning"] : undefined,
+    reasoning_efforts: normalizeReasoningEfforts(value["reasoning_efforts"])
   }
+}
+
+function normalizeReasoningEfforts(value: unknown): ThinkingEffort[] | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error("Custom provider reasoning_efforts must be a non-empty array.")
+  }
+  const allowed = new Set<ThinkingEffort>(["off", "low", "medium", "high", "xhigh", "max"])
+  const efforts = value.map((item) => {
+    if (typeof item !== "string" || !allowed.has(item as ThinkingEffort)) {
+      throw new Error(`Custom provider reasoning effort is not supported: ${String(item)}`)
+    }
+    return item as ThinkingEffort
+  })
+  if (new Set(efforts).size !== efforts.length) {
+    throw new Error("Custom provider reasoning_efforts must not contain duplicates.")
+  }
+  return efforts
 }
 
 function customProviderApiKeyCredential(

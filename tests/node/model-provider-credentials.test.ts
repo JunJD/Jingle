@@ -56,10 +56,7 @@ test("model provider credentials can be read back for settings edits", async () 
   assert.equal(paths.configPath, join(jingleHome, "jingle-config", "config.yaml"))
   assert.equal(paths.authPath, join(jingleHome, "jingle-config", "auth.json"))
   assert.equal(paths.customProvidersDir, join(jingleHome, "jingle-config", "custom_providers"))
-  assert.equal(
-    paths.modelRegistryPath,
-    join(jingleHome, "jingle-data", "models", "registry.json")
-  )
+  assert.equal(paths.modelRegistryPath, join(jingleHome, "jingle-data", "models", "registry.json"))
   assert.match(await readFile(paths.configPath, "utf8"), /active_provider: deepseek/)
 })
 
@@ -365,7 +362,7 @@ test("default model thinking effort is persisted in Jingle config", async () => 
     baseUrl: "https://thinking.example.test/v1",
     displayName: "thinking provider",
     engine: "openai",
-    models: ["gpt-thinking"],
+    models: [{ name: "gpt-thinking", reasoningEfforts: ["high"] }],
     requiresAuth: true,
     supportsStreaming: true
   })
@@ -377,6 +374,33 @@ test("default model thinking effort is persisted in Jingle config", async () => 
   const paths = getModelProviderPaths()
   const configText = await readFile(paths.configPath, "utf8")
   assert.match(configText, /custom_thinking_provider:\n(?: {4}.+\n)* {4}thinking_effort: high/)
+})
+
+test("legacy unsupported effort stays persisted and blocks runtime until user changes it", async () => {
+  const { upsertCustomProviderForUI } = await import("../../src/main/model-provider/service")
+  const { getModelProviderPaths } = await import("../../src/main/model-provider/paths")
+  const { resolveModelRuntimeConfig } = await import("../../src/main/model-provider/resolver")
+  const { setActiveModelProvider } = await import("../../src/main/model-provider/settings")
+
+  upsertCustomProviderForUI({
+    apiKey: "sk-legacy-effort-key",
+    baseUrl: "https://legacy.example.test/v1",
+    displayName: "legacy effort",
+    engine: "openai",
+    models: ["legacy-model"],
+    requiresAuth: true,
+    supportsStreaming: true
+  })
+  setActiveModelProvider("custom_legacy_effort", "legacy-model", { thinkingEffort: "max" })
+
+  assert.throws(
+    () => resolveModelRuntimeConfig(),
+    /Thinking effort "max" is not supported by custom_legacy_effort:legacy-model/
+  )
+  assert.match(
+    await readFile(getModelProviderPaths().configPath, "utf8"),
+    /custom_legacy_effort:\n(?: {4}.+\n)* {4}thinking_effort: max/
+  )
 })
 
 test("default model config can be read when multiple providers are stored", async () => {
@@ -420,7 +444,7 @@ test("custom provider edits keep the original provider id", async () => {
     baseUrl: "https://editable.example.test/v1",
     displayName: "editable provider",
     engine: "openai",
-    models: ["gpt-5.5"],
+    models: [{ name: "gpt-6", reasoningEfforts: ["low", "high"] }],
     requiresAuth: true,
     supportsStreaming: true
   })
@@ -454,6 +478,7 @@ test("custom provider edits keep the original provider id", async () => {
     customProviderConfig?.models.map((model) => model.name),
     ["gpt-6"]
   )
+  assert.deepEqual(customProviderConfig?.models[0]?.reasoning_efforts, ["low", "high"])
   assert.match(await readFile(customProviderPath, "utf8"), /"display_name": "test provider pro"/)
 
   await setDefaultModelForUI("llm", "custom_editable_provider:gpt-6")
@@ -484,9 +509,16 @@ test("unlisted custom provider models require an explicit user choice", async ()
     /Model is not available for provider custom_unlisted_provider: gpt-7/
   )
 
+  await assert.rejects(
+    setDefaultModelForUI("llm", "custom_unlisted_provider:gpt-7", {
+      allowUnlisted: true,
+      thinkingEffort: "max"
+    }),
+    /Thinking effort "max" is not supported/
+  )
   await setDefaultModelForUI("llm", "custom_unlisted_provider:gpt-7", {
     allowUnlisted: true,
-    thinkingEffort: "max"
+    thinkingEffort: null
   })
 
   const runtimeConfig = resolveModelRuntimeConfig({ modelId: "custom_unlisted_provider:gpt-7" })
@@ -494,7 +526,7 @@ test("unlisted custom provider models require an explicit user choice", async ()
   const paths = getModelProviderPaths()
   assert.match(
     await readFile(paths.configPath, "utf8"),
-    /custom_unlisted_provider:\n(?: {4}.+\n)* {4}thinking_effort: max/
+    /custom_unlisted_provider:\n(?: {4}.+\n)* {4}thinking_effort: null/
   )
 })
 
@@ -545,7 +577,7 @@ test("selected custom default models are included in the settings model list", a
 
   await setDefaultModelForUI("llm", modelId, {
     allowUnlisted: true,
-    thinkingEffort: "max"
+    thinkingEffort: null
   })
 
   const selectedModel = listModelsForUI("llm").find((model) => model.id === modelId)

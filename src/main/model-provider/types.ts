@@ -7,6 +7,7 @@ import type {
   DefaultModelOptions,
   DefaultModels,
   ModelConfig,
+  ModelReasoningEffortCapability,
   ModelProviderState,
   ModelProviderPaths,
   ModelType,
@@ -40,6 +41,7 @@ export interface ResolvedModelRuntimeConfig {
   modelName: string
   modelType: ModelType
   providerId: ProviderId
+  reasoningEffortTransport?: import("./reasoning-capabilities").ReasoningEffortTransport | null
   thinkingEffort?: ThinkingEffort | null
 }
 
@@ -50,6 +52,7 @@ export type {
   CustomProviderEngine,
   CustomProviderInput,
   ModelConfig,
+  ModelReasoningEffortCapability,
   ModelProviderState,
   ModelProviderPaths,
   ModelType,

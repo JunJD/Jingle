@@ -8,6 +8,11 @@ import {
 import { resolveModelContextLimit, resolveModelMaxOutputTokens } from "./model-limits"
 import { getModelProviderDefaultModel, getModelProviderDefaultModelOptions } from "./settings"
 import type { ResolvedModelRuntimeConfig, ThinkingEffort } from "./types"
+import { getCustomProviderConfig } from "./custom-providers"
+import {
+  assertReasoningEffortSupported,
+  resolveModelReasoningEffortCapability
+} from "./reasoning-capabilities"
 
 export interface ResolveModelRuntimeConfigOptions {
   modelPreference?: "fast"
@@ -33,18 +38,35 @@ export function resolveModelRuntimeConfig(
     throw new Error(`Model provider credentials are not configured: ${providerId}`)
   }
 
+  const modelName = configuredModel?.model ?? parsedModelId.modelName
+  const thinkingEffort =
+    options.thinkingEffort === undefined
+      ? (getModelProviderDefaultModelOptions().llm.thinkingEffort ?? null)
+      : options.thinkingEffort
+  const reasoningCapability = resolveModelReasoningEffortCapability({
+    customProvider: getCustomProviderConfig(providerId),
+    model: configuredModel ?? {
+      model: modelName,
+      provider: providerId,
+      reasoning: false
+    }
+  })
+  assertReasoningEffortSupported({
+    capability: reasoningCapability,
+    effort: thinkingEffort,
+    modelId: resolvedModelId
+  })
+
   return {
     contextLimit: resolveModelContextLimit(configuredModel),
     credentials,
     maxOutputTokens: resolveModelMaxOutputTokens(configuredModel),
     modelId: resolvedModelId,
-    modelName: configuredModel?.model ?? parsedModelId.modelName,
+    modelName,
     modelType,
     providerId,
-    thinkingEffort:
-      options.thinkingEffort === undefined
-        ? (getModelProviderDefaultModelOptions().llm.thinkingEffort ?? null)
-        : options.thinkingEffort
+    reasoningEffortTransport: reasoningCapability.transport,
+    thinkingEffort
   }
 }
 

@@ -1,6 +1,7 @@
 import type { CustomProviderConfig, ModelConfig, ProviderDefinition, ProviderId } from "./types"
 import { DECLARATIVE_PROVIDER_CONFIGS } from "./declarative-provider-data"
 import { modelSupportsReasoning } from "./model-metadata"
+import { createCustomReasoningEffortCapability } from "./reasoning-capabilities"
 
 const API_KEY_CREDENTIAL_VARIABLE = "apiKey"
 const EXCLUDED_DECLARATIVE_PROVIDER_IDS = new Set(["custom_deepseek", "custom_tensorix"])
@@ -50,6 +51,7 @@ export function listDeclarativeProviderModels(): ModelConfig[] {
       name: model.name,
       provider: provider.name,
       reasoning: model.reasoning ?? modelSupportsReasoning(model.name),
+      reasoningEffortCapability: createCustomReasoningEffortCapability({ model, provider }),
       status: "active" as const
     }))
   )

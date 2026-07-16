@@ -14,6 +14,7 @@ import {
   validateRemoteProviderCredentials
 } from "../../src/main/model-provider/adapters"
 import { getModelConfig } from "../../src/main/model-provider/catalog"
+import { createOpenAICompatibleToolCallOptions } from "../../src/main/model-provider/protocols/openai-compatible"
 import { getModelProviderStateForUI } from "../../src/main/model-provider/service"
 import type { ProviderId, ResolvedModelRuntimeConfig } from "../../src/main/model-provider/types"
 
@@ -115,6 +116,32 @@ test("openai-compatible chat models pass thinking effort as reasoning effort", (
   assert.equal(params.reasoning_effort, "medium")
   assert.equal(params.max_completion_tokens, 128000)
   assert.equal(params.max_tokens, undefined)
+})
+
+test("OpenAI native effort preserves xhigh and maps explicit off to none", () => {
+  const xhighModel = createProviderChatModelFromAdapter(
+    createRuntimeConfig("openai", "gpt-5.2", {
+      reasoningEffortTransport: "openai-native",
+      thinkingEffort: "xhigh"
+    })
+  ) as ChatOpenAI
+  const offModel = createProviderChatModelFromAdapter(
+    createRuntimeConfig("openai", "gpt-5.1", {
+      reasoningEffortTransport: "openai-native",
+      thinkingEffort: "off"
+    })
+  ) as ChatOpenAI
+
+  assert.equal(
+    (xhighModel.invocationParams({}) as Record<string, unknown>).reasoning_effort,
+    "xhigh"
+  )
+  assert.equal((offModel.invocationParams({}) as Record<string, unknown>).reasoning_effort, "none")
+})
+
+test("custom OpenAI-compatible adapter preserves explicitly declared off", () => {
+  const params = createOpenAICompatibleToolCallOptions({}, "off", "openai-compatible")
+  assert.equal(params.modelKwargs?.reasoning_effort, "off")
 })
 
 test("openai-compatible chat models omit max tokens when the model has no configured output limit", () => {
@@ -322,7 +349,7 @@ test("stored custom Goose providers preserve dynamic models and env vars", async
 
 test("deepseek chat models use the Anthropic-compatible endpoint for thinking tool calls", () => {
   const model = createProviderChatModelFromAdapter(
-    createRuntimeConfig("deepseek", "deepseek-v4-pro"),
+    createRuntimeConfig("deepseek", "deepseek-v4-pro", { thinkingEffort: "max" }),
     { parallelToolCalls: false, temperature: 0 }
   )
 
@@ -333,7 +360,8 @@ test("deepseek chat models use the Anthropic-compatible endpoint for thinking to
   assert.equal(params.disable_parallel_tool_use, true)
   assert.equal(params.model, "deepseek-v4-pro")
   assert.equal(params.max_tokens, 384000)
-  assert.deepEqual(params.thinking, { budget_tokens: 1024, type: "enabled" })
+  assert.deepEqual(params.thinking, { type: "enabled" })
+  assert.deepEqual(params.output_config, { effort: "max" })
   assert.equal(params.temperature, undefined)
   assert.equal(model.profile.maxInputTokens, 1000000)
   assert.equal(model.profile.maxOutputTokens, 384000)
@@ -353,6 +381,18 @@ test("deepseek fast summaries can disable thinking explicitly", () => {
   const params = model.invocationParams({})
   assert.equal(params.model, "deepseek-v4-flash")
   assert.deepEqual(params.thinking, { type: "disabled" })
+  assert.equal(params.temperature, 0)
+})
+
+test("deepseek legacy null effort does not enable thinking", () => {
+  const model = createProviderChatModelFromAdapter(
+    createRuntimeConfig("deepseek", "deepseek-v4-pro", { thinkingEffort: null }),
+    { temperature: 0 }
+  ) as ChatAnthropic
+
+  const params = model.invocationParams({})
+  assert.deepEqual(params.thinking, { type: "disabled" })
+  assert.equal(params.output_config, undefined)
   assert.equal(params.temperature, 0)
 })
 
@@ -385,7 +425,7 @@ test("OpenAI-compatible chat models expose runtime profile limits to middleware"
 
 test("deepseek thinking models replay assistant tool calls with an Anthropic thinking block", async () => {
   const model = createProviderChatModelFromAdapter(
-    createRuntimeConfig("deepseek", "deepseek-v4-pro"),
+    createRuntimeConfig("deepseek", "deepseek-v4-pro", { thinkingEffort: "high" }),
     { parallelToolCalls: false }
   )
   const originalGenerate = ChatAnthropic.prototype._generate

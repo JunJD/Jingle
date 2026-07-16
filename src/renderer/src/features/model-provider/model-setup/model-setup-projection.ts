@@ -1,4 +1,4 @@
-import type { ProviderId } from "@shared/app-types"
+import type { ProviderId, ThinkingEffort } from "@shared/app-types"
 import { resolveLocalizedText } from "@shared/i18n"
 import type { ModelSetupModel, ModelSetupProvider, ModelSetupSnapshot } from "@shared/model-setup"
 
@@ -9,6 +9,22 @@ export interface ModelSetupProjection {
   currentProvider: ModelSetupProvider
   freeProviders: ModelSetupProvider[]
   visibleProviders: ModelSetupProvider[]
+}
+
+export function projectReasoningEffortSelection(input: {
+  allowedValues: ThinkingEffort[]
+  selectedValue: ThinkingEffort | null
+}): {
+  allowedValues: ThinkingEffort[]
+  invalidSelectedValue: ThinkingEffort | null
+} {
+  return {
+    allowedValues: [...input.allowedValues],
+    invalidSelectedValue:
+      input.selectedValue !== null && !input.allowedValues.includes(input.selectedValue)
+        ? input.selectedValue
+        : null
+  }
 }
 
 export function projectModelSetupSnapshot(input: {

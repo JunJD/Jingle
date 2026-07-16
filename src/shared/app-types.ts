@@ -101,7 +101,13 @@ export interface DefaultModels {
   llm: string
 }
 
-export type ThinkingEffort = "off" | "low" | "medium" | "high" | "max"
+export type ThinkingEffort = "off" | "low" | "medium" | "high" | "xhigh" | "max"
+
+export interface ModelReasoningEffortCapability {
+  allowedValues: ThinkingEffort[]
+  source: "builtin-registry" | "custom-declaration" | "legacy-provider"
+  version: string
+}
 
 export interface ModelSelectionOptions {
   thinkingEffort?: ThinkingEffort | null
@@ -142,6 +148,7 @@ export interface ModelConfig {
   name: string
   provider: ProviderId
   reasoning?: boolean
+  reasoningEffortCapability?: ModelReasoningEffortCapability
   status: ModelStatus
 }
 
@@ -164,6 +171,12 @@ export interface CustomProviderModel {
   max_output_tokens?: number
   name: string
   reasoning?: boolean
+  reasoning_efforts?: ThinkingEffort[]
+}
+
+export interface CustomProviderModelInput {
+  name: string
+  reasoningEfforts?: ThinkingEffort[]
 }
 
 export interface CustomProviderConfig {
@@ -201,7 +214,7 @@ export interface CustomProviderInput {
   displayName: string
   engine: CustomProviderEngine
   headers?: Record<string, string>
-  models: string[]
+  models: Array<string | CustomProviderModelInput>
   providerId?: ProviderId
   requiresAuth: boolean
   supportsStreaming: boolean

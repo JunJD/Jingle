@@ -57,8 +57,9 @@ function toSetupModel(model: ModelConfig): ModelSetupModel {
   return {
     ...modelWithoutReasoning,
     reasoningCapability: {
-      kind: "resolved",
-      supported: reasoning ?? false
+      allowedValues: reasoning ? ["off", "low", "medium", "high"] : [],
+      source: "legacy-provider",
+      version: "test"
     }
   }
 }

@@ -16,6 +16,10 @@ import {
 } from "./catalog"
 import { getCustomProviderConfig, upsertCustomProvider } from "./custom-providers"
 import { modelSupportsReasoning } from "./model-metadata"
+import {
+  assertReasoningEffortSupported,
+  resolveModelReasoningEffortCapability
+} from "./reasoning-capabilities"
 import { listCatalogModelsByProvider } from "./model-list"
 import { getModelProviderPaths } from "./paths"
 import {
@@ -124,14 +128,11 @@ export function getModelSetupSnapshotForUI(): ModelSetupSnapshot {
   const providerState = getModelProviderStateForUI()
   const defaultModelId = providerState.defaultModels.llm
   const availableModels = listAvailableModelsForUI("llm")
-  const models = availableModels.map((model) => toModelSetupModel(model, "resolved"))
+  const models = availableModels.map(toModelSetupModel)
   let defaultModel = models.find((model) => model.id === defaultModelId)
   if (!defaultModel) {
     const defaultModelConfig = resolveDefaultModelConfig(defaultModelId, "llm")
-    defaultModel = toModelSetupModel(
-      defaultModelConfig,
-      getModelConfig(defaultModelId) ? "resolved" : "inferred"
-    )
+    defaultModel = toModelSetupModel(defaultModelConfig)
     models.push(defaultModel)
   }
 
@@ -150,7 +151,7 @@ async function refreshSetupProviderModelsForUI(
 ): Promise<ModelSetupProviderModelsResult> {
   const response = await listModelsByProviderForUI(provider, "llm")
   const resolvedProvider = requireModelSetupProvider(response.provider)
-  const resolvedModels = response.models.map((model) => toModelSetupModel(model, "resolved"))
+  const resolvedModels = response.models.map(toModelSetupModel)
   const snapshot = getModelSetupSnapshotForUI()
   for (const model of resolvedModels) {
     if (model.provider !== resolvedProvider.id) {
@@ -183,10 +184,10 @@ async function activateProviderForSetup(provider: string): Promise<void> {
   if (!firstModel) {
     throw new Error(`Provider has no available model: ${provider}`)
   }
-  const firstModelReasoning = requireModelReasoning(firstModel)
+  const firstModelCapability = resolveCapabilityForModel(firstModel).capability
 
   await setDefaultModelForUI("llm", firstModel.id, {
-    thinkingEffort: firstModelReasoning ? "high" : null
+    thinkingEffort: firstModelCapability?.allowedValues.includes("high") ? "high" : null
   })
 }
 
@@ -199,13 +200,11 @@ async function selectModelForSetup(selection: ModelSetupModelSelection): Promise
     if (!listedModel) {
       throw new Error(`Listed model is missing from the setup snapshot: ${modelId}`)
     }
-    if (
-      !requireModelReasoning(listedModel) &&
-      thinkingEffort !== null &&
-      thinkingEffort !== "off"
-    ) {
-      throw new Error(`Listed model does not support thinking effort: ${modelId}`)
-    }
+    assertReasoningEffortSupported({
+      capability: resolveCapabilityForModel(listedModel),
+      effort: thinkingEffort,
+      modelId
+    })
   } else {
     const metadata = resolveUnlistedModelForSetup(selection.providerId, selection.modelName)
     modelId = toProviderModelId(metadata.providerId, metadata.modelName)
@@ -231,34 +230,42 @@ function resolveUnlistedModelForSetup(
     throw new Error("Unlisted model name is required.")
   }
 
+  const model: ModelConfig = {
+    fetchFrom: "customizable-model",
+    id: toProviderModelId(providerDefinition.id, modelName),
+    model: modelName,
+    modelType: "llm",
+    name: modelName,
+    provider: providerDefinition.id,
+    reasoning: false,
+    status: "active"
+  }
+  const capability = resolveCapabilityForModel(model).capability
   return {
     modelName,
     providerId: providerDefinition.id,
-    reasoningInference: {
-      source: "model-name-pattern",
-      suggestsSupport: modelSupportsReasoning(modelName)
+    reasoningCapability: capability ?? {
+      allowedValues: [],
+      source: "unresolved",
+      version: "2026-07-17"
     }
   }
 }
 
-function toModelSetupModel(
-  model: ModelConfig,
-  capabilityKind: "inferred" | "resolved"
-): ModelSetupModel {
-  const reasoning = requireModelReasoning(model)
+function toModelSetupModel(model: ModelConfig): ModelSetupModel {
+  requireModelReasoning(model)
   const modelWithoutReasoning = { ...model }
   delete modelWithoutReasoning.reasoning
+  delete modelWithoutReasoning.reasoningEffortCapability
+  const capability = resolveCapabilityForModel(model).capability
 
   return {
     ...modelWithoutReasoning,
-    reasoningCapability:
-      capabilityKind === "resolved"
-        ? { kind: "resolved", supported: reasoning }
-        : {
-            kind: "inferred",
-            source: "model-name-pattern",
-            suggestsSupport: reasoning
-          }
+    reasoningCapability: capability ?? {
+      allowedValues: [],
+      source: "unresolved",
+      version: "2026-07-17"
+    }
   }
 }
 
@@ -412,29 +419,28 @@ export async function setDefaultModelForUI(
     (model) => model.id === modelId && model.modelType === supportedModelType
   )
   if (targetModel) {
-    if (!targetModel.reasoning && options.thinkingEffort && options.thinkingEffort !== "off") {
-      throw new Error(`Model does not support thinking effort: ${modelId}`)
-    }
+    assertReasoningEffortSupported({
+      capability: resolveCapabilityForModel(targetModel),
+      effort: options.thinkingEffort,
+      modelId
+    })
     setModelProviderDefaultModel(supportedModelType, modelId, {
       ...options,
-      thinkingEffort: targetModel.reasoning
-        ? options.thinkingEffort
-        : options.thinkingEffort === "off"
-          ? "off"
-          : null
+      thinkingEffort: options.thinkingEffort
     })
     return
   }
 
   if (canUseUnlisted) {
+    const unlistedModel = resolveDefaultModelConfig(modelId, supportedModelType)
+    assertReasoningEffortSupported({
+      capability: resolveCapabilityForModel(unlistedModel),
+      effort: options.thinkingEffort,
+      modelId
+    })
     setModelProviderDefaultModel(supportedModelType, modelId, {
       ...options,
-      thinkingEffort:
-        options.thinkingEffort === undefined
-          ? modelSupportsReasoning(parsedModelId.modelName)
-            ? "high"
-            : null
-          : options.thinkingEffort
+      thinkingEffort: options.thinkingEffort ?? null
     })
     return
   }
@@ -590,6 +596,13 @@ function requireModelReasoning(model: ModelConfig): boolean {
   }
 
   return model.reasoning
+}
+
+function resolveCapabilityForModel(model: ModelConfig) {
+  return resolveModelReasoningEffortCapability({
+    customProvider: getCustomProviderConfig(model.provider),
+    model
+  })
 }
 
 function requireSupportedDefaultModelType(modelType: string): SupportedDefaultModelType {

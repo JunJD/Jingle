@@ -43,6 +43,7 @@ import type {
   ProviderId,
   ResolvedModelRuntimeConfig
 } from "./types"
+import { createCustomReasoningEffortCapability } from "./reasoning-capabilities"
 
 const DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 const DEEPSEEK_BASE_URL = "https://api.deepseek.com"
@@ -109,10 +110,7 @@ const BUILTIN_PROVIDER_ADAPTERS = {
         baseURL: DEEPSEEK_ANTHROPIC_BASE_URL,
         options,
         runtimeConfig,
-        thinkingMode:
-          isDeepSeekThinkingModel(runtimeConfig.modelName) &&
-          runtimeConfig.thinkingEffort !== null &&
-          runtimeConfig.thinkingEffort !== "off"
+        thinkingMode: isDeepSeekThinkingModel(runtimeConfig.modelName)
       }),
     fetchModels: (apiKey) =>
       fetchOpenAICompatibleModels("deepseek", `${DEEPSEEK_BASE_URL}/models`, apiKey),
@@ -304,6 +302,10 @@ function createProviderConfigAdapter(
         name: model.name,
         provider: providerConfig.name,
         reasoning: model.reasoning ?? modelSupportsReasoning(model.name),
+        reasoningEffortCapability: createCustomReasoningEffortCapability({
+          model,
+          provider: providerConfig
+        }),
         status: "active"
       }))
     }

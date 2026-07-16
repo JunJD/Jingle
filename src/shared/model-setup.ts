@@ -1,6 +1,7 @@
 import type {
   LocalizedText,
   ModelConfig,
+  ModelReasoningEffortCapability,
   ModelProviderPaths,
   ModelSelectionOptions,
   Provider,
@@ -8,17 +9,9 @@ import type {
   ThinkingEffort
 } from "./app-types"
 
-export interface ModelSetupReasoningInference {
-  source: "model-name-pattern"
-  suggestsSupport: boolean
-}
-
 export type ModelSetupReasoningCapability =
-  | {
-      kind: "resolved"
-      supported: boolean
-    }
-  | ({ kind: "inferred" } & ModelSetupReasoningInference)
+  | ModelReasoningEffortCapability
+  | { allowedValues: []; source: "unresolved"; version: string }
 
 export type ModelSetupModel = Omit<ModelConfig, "reasoning"> & {
   reasoningCapability: ModelSetupReasoningCapability
@@ -46,7 +39,7 @@ export interface ModelSetupProviderModelsResult {
 export interface ModelSetupUnlistedModelMetadata {
   modelName: string
   providerId: ProviderId
-  reasoningInference: ModelSetupReasoningInference
+  reasoningCapability: ModelSetupReasoningCapability
 }
 
 export type ModelSetupModelSelection =

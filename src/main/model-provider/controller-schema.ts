@@ -13,7 +13,18 @@ import type {
 } from "../types"
 
 const providerIdArgsSchema = z.tuple([nonEmptyTrimmedStringSchema])
-const thinkingEffortSchema = z.enum(["off", "low", "medium", "high", "max"]).nullable()
+const thinkingEffortValueSchema = z.enum(["off", "low", "medium", "high", "xhigh", "max"])
+const thinkingEffortSchema = thinkingEffortValueSchema.nullable()
+
+const customProviderModelSchema = z.union([
+  nonEmptyTrimmedStringSchema,
+  z
+    .object({
+      name: nonEmptyTrimmedStringSchema,
+      reasoningEfforts: z.array(thinkingEffortValueSchema).min(1).optional()
+    })
+    .strict()
+])
 
 const modelSelectionSchema = z.discriminatedUnion("kind", [
   z
@@ -42,7 +53,7 @@ const customProviderInputSchema = z
     displayName: z.string(),
     engine: z.enum(["openai", "anthropic", "ollama"]),
     headers: z.record(z.string(), z.string()).optional(),
-    models: z.array(z.string()),
+    models: z.array(customProviderModelSchema),
     providerId: nonEmptyTrimmedStringSchema.optional(),
     requiresAuth: z.boolean(),
     supportsStreaming: z.boolean()

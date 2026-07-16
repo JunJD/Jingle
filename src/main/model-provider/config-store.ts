@@ -286,6 +286,7 @@ function parseThinkingEffort(value: string): ThinkingEffort | null {
     parsed === "low" ||
     parsed === "medium" ||
     parsed === "high" ||
+    parsed === "xhigh" ||
     parsed === "max"
   ) {
     return parsed

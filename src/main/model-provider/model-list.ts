@@ -154,6 +154,7 @@ function toModelConfig(providerId: ProviderId, remoteModel: RemoteModel): ModelC
     name: localModel?.name ?? remoteModel.displayName ?? remoteModel.id,
     provider: providerId,
     reasoning: localModel?.reasoning ?? modelSupportsReasoning(remoteModel.id),
+    reasoningEffortCapability: localModel?.reasoningEffortCapability,
     status: "active"
   }
 }

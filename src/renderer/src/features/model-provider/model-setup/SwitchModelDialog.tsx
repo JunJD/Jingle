@@ -18,6 +18,7 @@ import {
 import type { ProviderId, ThinkingEffort } from "@shared/app-types"
 import type { ModelSetupModel, ModelSetupProvider, ModelSetupSnapshot } from "@shared/model-setup"
 import { InlineError } from "./ProviderSetupPages"
+import { projectReasoningEffortSelection } from "./model-setup-projection"
 import type { ModelSetupCommands } from "./useModelSetupController"
 
 const CONFIGURE_PROVIDER_OPTION = "__jingle_configure_provider__"
@@ -28,6 +29,7 @@ const THINKING_EFFORT_OPTIONS: Array<{ label: string; value: ThinkingEffort }> =
   { label: "Low - Minimal thinking, fastest responses", value: "low" },
   { label: "Medium - Moderate thinking", value: "medium" },
   { label: "High - Deep reasoning (default)", value: "high" },
+  { label: "Extra high - More reasoning", value: "xhigh" },
   { label: "Max - No constraints on thinking depth", value: "max" }
 ]
 
@@ -77,8 +79,8 @@ interface SwitchModelDialogState {
   saving: boolean
   selectedModelValue: string
   selectedProviderId: ProviderId
-  thinkingEffort: ThinkingEffort
-  unlistedModelReasoning: boolean | null
+  thinkingEffort: ThinkingEffort | null
+  unlistedModelEfforts: ThinkingEffort[] | null
 }
 
 type SwitchModelDialogAction =
@@ -86,11 +88,12 @@ type SwitchModelDialogAction =
   | { type: "select-model"; modelValue: string }
   | { type: "set-custom-model-name"; modelName: string }
   | { type: "set-thinking-effort"; thinkingEffort: ThinkingEffort }
+  | { type: "clear-thinking-effort" }
   | {
       type: "resolve-unlisted-success"
       modelName: string
       providerId: ProviderId
-      reasoning: boolean
+      supportedEfforts: ThinkingEffort[]
     }
   | {
       type: "resolve-unlisted-failure"
@@ -104,7 +107,7 @@ type SwitchModelDialogAction =
       errorText: string | null
       modelIds: string[]
       selectedModelValue: string
-      unlistedModelReasoning: boolean | null
+      unlistedModelEfforts: ThinkingEffort[] | null
     }
   | {
       type: "load-failure"
@@ -130,7 +133,7 @@ function switchModelDialogReducer(
         providerLoadError: null,
         selectedModelValue: "",
         selectedProviderId: action.providerId,
-        unlistedModelReasoning: null
+        unlistedModelEfforts: null
       }
     case "select-model":
       return {
@@ -138,20 +141,25 @@ function switchModelDialogReducer(
         customModelName: action.modelValue === UNLISTED_MODEL_OPTION ? state.customModelName : "",
         interactionError: null,
         selectedModelValue: action.modelValue,
-        unlistedModelReasoning:
-          action.modelValue === UNLISTED_MODEL_OPTION ? state.unlistedModelReasoning : null
+        unlistedModelEfforts:
+          action.modelValue === UNLISTED_MODEL_OPTION ? state.unlistedModelEfforts : null
       }
     case "set-custom-model-name":
       return {
         ...state,
         customModelName: action.modelName,
         interactionError: null,
-        unlistedModelReasoning: null
+        unlistedModelEfforts: null
       }
     case "set-thinking-effort":
       return {
         ...state,
         thinkingEffort: action.thinkingEffort
+      }
+    case "clear-thinking-effort":
+      return {
+        ...state,
+        thinkingEffort: null
       }
     case "resolve-unlisted-success":
       if (
@@ -163,7 +171,7 @@ function switchModelDialogReducer(
       return {
         ...state,
         interactionError: null,
-        unlistedModelReasoning: action.reasoning
+        unlistedModelEfforts: action.supportedEfforts
       }
     case "resolve-unlisted-failure":
       if (
@@ -175,7 +183,7 @@ function switchModelDialogReducer(
       return {
         ...state,
         interactionError: action.errorText,
-        unlistedModelReasoning: null
+        unlistedModelEfforts: null
       }
     case "load-success":
       return {
@@ -187,7 +195,7 @@ function switchModelDialogReducer(
         providerModelIds: action.modelIds,
         providerLoadError: action.errorText,
         selectedModelValue: action.selectedModelValue,
-        unlistedModelReasoning: action.unlistedModelReasoning
+        unlistedModelEfforts: action.unlistedModelEfforts
       }
     case "load-failure":
       return {
@@ -199,7 +207,7 @@ function switchModelDialogReducer(
         providerModelIds: [],
         providerLoadError: action.errorText,
         selectedModelValue: "",
-        unlistedModelReasoning: null
+        unlistedModelEfforts: null
       }
     case "save-start":
       return {
@@ -248,8 +256,8 @@ function SwitchModelDialogContent(props: {
     saving: false,
     selectedModelValue: "",
     selectedProviderId: initialSelectedProviderId,
-    thinkingEffort: snapshot.defaultModelOptions.thinkingEffort ?? "off",
-    unlistedModelReasoning: null
+    thinkingEffort: snapshot.defaultModelOptions.thinkingEffort ?? null,
+    unlistedModelEfforts: null
   })
   const {
     customModelName,
@@ -262,7 +270,7 @@ function SwitchModelDialogContent(props: {
     selectedModelValue,
     selectedProviderId,
     thinkingEffort,
-    unlistedModelReasoning
+    unlistedModelEfforts
   } = dialogState
   const selectedProvider =
     snapshot.providers.find((provider) => provider.id === selectedProviderId) ?? null
@@ -274,11 +282,18 @@ function SwitchModelDialogContent(props: {
     ? null
     : (providerModels.find((model) => model.id === selectedModelValue) ?? null)
   const selectedModelName = customMode ? customModelName.trim() : selectedModelConfig?.model
-  const reasoningEnabled = customMode
-    ? unlistedModelReasoning === true
-    : selectedModelConfig
-      ? getModelReasoningSuggestion(selectedModelConfig)
-      : false
+  const supportedThinkingEfforts = customMode
+    ? (unlistedModelEfforts ?? [])
+    : (selectedModelConfig?.reasoningCapability.allowedValues ?? [])
+  const reasoningEffortSelection = projectReasoningEffortSelection({
+    allowedValues: supportedThinkingEfforts,
+    selectedValue: thinkingEffort
+  })
+  const reasoningEnabled = supportedThinkingEfforts.length > 0
+  const invalidStoredEffort =
+    reasoningEffortSelection.invalidSelectedValue !== null
+      ? `当前模型不支持已保存的思考努力：${reasoningEffortSelection.invalidSelectedValue}。请重新选择。`
+      : null
   const canUseUnlisted =
     selectedProvider?.configurateMethods.includes("customizable-model") === true
   const canSave = Boolean(
@@ -287,7 +302,9 @@ function SwitchModelDialogContent(props: {
     !loadingModels &&
     !modelLoadFailed &&
     !saving &&
-    (customMode ? unlistedModelReasoning !== null : Boolean(selectedModelConfig))
+    !invalidStoredEffort &&
+    (!reasoningEnabled || thinkingEffort !== null) &&
+    (customMode ? unlistedModelEfforts !== null : Boolean(selectedModelConfig))
   )
 
   useEffect(() => {
@@ -319,10 +336,7 @@ function SwitchModelDialogContent(props: {
           canUseUnlisted: refreshedProvider.configurateMethods.includes("customizable-model"),
           currentModelId: refreshedDefaultModel.id,
           currentModelName: refreshedDefaultModel.model,
-          currentModelReasoning: getCurrentModelReasoningVisibility(
-            refreshedDefaultModel,
-            result.snapshot.defaultModelOptions.thinkingEffort
-          ),
+          currentModelEfforts: refreshedDefaultModel.reasoningCapability.allowedValues,
           currentProviderId: refreshedDefaultModel.provider,
           models: refreshedModels,
           selectedProviderId
@@ -332,7 +346,7 @@ function SwitchModelDialogContent(props: {
           errorText: getProviderModelListError(refreshedProvider),
           modelIds: result.modelIds,
           selectedModelValue: selection.selectedModelValue,
-          unlistedModelReasoning: selection.unlistedModelReasoning,
+          unlistedModelEfforts: selection.unlistedModelEfforts,
           type: "load-success"
         })
       } catch (loadError) {
@@ -369,7 +383,7 @@ function SwitchModelDialogContent(props: {
         dispatchDialog({
           modelName,
           providerId,
-          reasoning: metadata.reasoningInference.suggestsSupport,
+          supportedEfforts: metadata.reasoningCapability.allowedValues,
           type: "resolve-unlisted-success"
         })
       })
@@ -501,7 +515,7 @@ function SwitchModelDialogContent(props: {
           {reasoningEnabled ? (
             <SettingsField label="思考努力">
               <SettingsSelect
-                value={thinkingEffort}
+                value={thinkingEffort ?? ""}
                 disabled={saving}
                 onChange={(event) =>
                   dispatchDialog({
@@ -510,7 +524,12 @@ function SwitchModelDialogContent(props: {
                   })
                 }
               >
-                {THINKING_EFFORT_OPTIONS.map((option) => (
+                <option value="" disabled>
+                  请选择思考努力
+                </option>
+                {THINKING_EFFORT_OPTIONS.filter((option) =>
+                  supportedThinkingEfforts.includes(option.value)
+                ).map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
@@ -520,6 +539,17 @@ function SwitchModelDialogContent(props: {
           ) : null}
 
           {providerLoadError ? <InlineError text={providerLoadError} /> : null}
+          {invalidStoredEffort ? <InlineError text={invalidStoredEffort} /> : null}
+          {invalidStoredEffort && supportedThinkingEfforts.length === 0 ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={saving}
+              onClick={() => dispatchDialog({ type: "clear-thinking-effort" })}
+            >
+              清除不支持的思考努力配置
+            </Button>
+          ) : null}
           {interactionError ? <InlineError text={interactionError} /> : null}
 
           <div className="flex items-center justify-between gap-[var(--jingle-space-3)] pt-[var(--jingle-space-2)]">
@@ -570,14 +600,14 @@ function getSelectionAfterLoad(input: {
   canUseUnlisted: boolean
   currentModelId: string
   currentModelName: string
-  currentModelReasoning: boolean
+  currentModelEfforts: ThinkingEffort[]
   currentProviderId: ProviderId
   models: ModelSetupModel[]
   selectedProviderId: ProviderId
 }): {
   customModelName: string
   selectedModelValue: string
-  unlistedModelReasoning: boolean | null
+  unlistedModelEfforts: ThinkingEffort[] | null
 } {
   if (input.currentProviderId === input.selectedProviderId) {
     const currentModel = input.models.find((model) => model.id === input.currentModelId)
@@ -585,14 +615,14 @@ function getSelectionAfterLoad(input: {
       return {
         customModelName: "",
         selectedModelValue: currentModel.id,
-        unlistedModelReasoning: null
+        unlistedModelEfforts: null
       }
     }
     if (input.canUseUnlisted) {
       return {
         customModelName: input.currentModelName,
         selectedModelValue: UNLISTED_MODEL_OPTION,
-        unlistedModelReasoning: input.currentModelReasoning
+        unlistedModelEfforts: input.currentModelEfforts
       }
     }
   }
@@ -600,7 +630,7 @@ function getSelectionAfterLoad(input: {
   return {
     customModelName: "",
     selectedModelValue: input.models[0]?.id ?? "",
-    unlistedModelReasoning: null
+    unlistedModelEfforts: null
   }
 }
 
@@ -621,27 +651,6 @@ function requireSelectedModel(model: ModelSetupModel | null): ModelSetupModel {
   }
 
   return model
-}
-
-function getModelReasoningSuggestion(model: ModelSetupModel): boolean {
-  return model.reasoningCapability.kind === "resolved"
-    ? model.reasoningCapability.supported
-    : model.reasoningCapability.suggestsSupport
-}
-
-function getCurrentModelReasoningVisibility(
-  model: ModelSetupModel,
-  thinkingEffort: ThinkingEffort | null | undefined
-): boolean {
-  if (
-    model.reasoningCapability.kind === "inferred" &&
-    thinkingEffort !== null &&
-    thinkingEffort !== undefined
-  ) {
-    return true
-  }
-
-  return getModelReasoningSuggestion(model)
 }
 
 function requireSnapshotModel(models: ModelSetupModel[], modelId: string): ModelSetupModel {

@@ -1,4 +1,4 @@
-import { ChatAnthropic } from "@langchain/anthropic"
+import { ChatAnthropic, type ChatAnthropicInput } from "@langchain/anthropic"
 import { AIMessage, type BaseMessage } from "@langchain/core/messages"
 import type { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager"
 import type { ChatGenerationChunk, ChatResult } from "@langchain/core/outputs"
@@ -8,6 +8,7 @@ import { resolveRequiredMaxOutputTokens } from "../model-limits"
 
 type AnthropicContentBlock = Record<string, unknown> & { type: string }
 type AnthropicThinkingConfig = { budget_tokens: number; type: "enabled" }
+type DeepSeekThinkingConfig = { type: "disabled" | "enabled" }
 
 export function createAnthropicChatModel(
   input: ProtocolCreateModelInput & {
@@ -17,10 +18,19 @@ export function createAnthropicChatModel(
   }
 ): ChatAnthropic {
   const { apiKey, baseURL, headers, options, runtimeConfig, thinkingMode = false } = input
-  const ModelClass = thinkingMode ? DeepSeekAnthropicChatModel : ChatAnthropic
+  const deepSeekThinkingEnabled =
+    thinkingMode &&
+    runtimeConfig.thinkingEffort !== null &&
+    runtimeConfig.thinkingEffort !== undefined &&
+    runtimeConfig.thinkingEffort !== "off"
+  const ModelClass = deepSeekThinkingEnabled ? DeepSeekAnthropicChatModel : ChatAnthropic
   const thinking = thinkingMode
-    ? ({ budget_tokens: 1024, type: "enabled" } as const)
+    ? createDeepSeekThinking(runtimeConfig.thinkingEffort)
     : createAnthropicThinking(runtimeConfig.thinkingEffort)
+  const deepSeekEffort =
+    thinkingMode && runtimeConfig.thinkingEffort !== "off"
+      ? runtimeConfig.thinkingEffort
+      : undefined
 
   return new ModelClass({
     ...createAnthropicCredentialOptions(apiKey, headers),
@@ -28,9 +38,27 @@ export function createAnthropicChatModel(
     ...createAnthropicToolCallOptions(options),
     maxTokens: resolveAnthropicMaxTokens(runtimeConfig.maxOutputTokens),
     model: runtimeConfig.modelName,
-    ...(thinking ? { thinking } : {}),
-    ...(thinking ? {} : { temperature: options.temperature })
+    ...(thinking ? { thinking: thinking as ChatAnthropicInput["thinking"] } : {}),
+    ...(deepSeekEffort
+      ? {
+          outputConfig: {
+            effort: deepSeekEffort as NonNullable<ChatAnthropicInput["outputConfig"]>["effort"]
+          }
+        }
+      : {}),
+    ...(deepSeekThinkingEnabled || (!thinkingMode && thinking)
+      ? {}
+      : { temperature: options.temperature })
   })
+}
+
+function createDeepSeekThinking(
+  thinkingEffort: ProtocolCreateModelInput["runtimeConfig"]["thinkingEffort"]
+): DeepSeekThinkingConfig | undefined {
+  if (thinkingEffort === null || thinkingEffort === undefined) {
+    return undefined
+  }
+  return { type: thinkingEffort === "off" ? "disabled" : "enabled" }
 }
 
 function createAnthropicThinking(
