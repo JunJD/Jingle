@@ -1,7 +1,5 @@
 import type { AppCopy } from "@/lib/i18n/messages"
 import { getFileMutationReview, type FileMutationToolName } from "@shared/file-mutation-review"
-import { AnimatePresence } from "motion/react"
-import { span as MotionSpan } from "motion/react-m"
 import type { ReactNode } from "react"
 import { countLines } from "./shared"
 import { PierreFileMutationView } from "./PierreFileMutationView"
@@ -77,20 +75,9 @@ function FileMutationStatValue(props: {
   }
 
   return (
-    <span className="inline-flex min-w-[2ch] justify-start overflow-hidden">
-      <AnimatePresence initial={false} mode="popLayout">
-        <MotionSpan
-          key={`${label}:${value}`}
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -4 }}
-          transition={{ duration: 0.16, ease: "easeOut" }}
-          className={className}
-        >
-          {label}
-          {value}
-        </MotionSpan>
-      </AnimatePresence>
+    <span className={`inline-flex min-w-[2ch] justify-start overflow-hidden ${className}`}>
+      {label}
+      {value}
     </span>
   )
 }
