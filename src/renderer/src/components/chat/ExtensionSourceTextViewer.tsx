@@ -1,7 +1,7 @@
 import { ExtensionIcon } from "@/extensions/ExtensionIcon"
 import { WorkspaceFileIcon } from "@/components/workspace-file-icon"
 import { useI18n } from "@/lib/i18n"
-import { listNativeLauncherSourceMentions } from "@extension-host/index"
+import { useNativeSourceMentionsProjection } from "@extension-host/use-native-source-mentions-projection"
 import {
   type ParsedExtensionSourceReference,
   type ParsedWorkspaceFileReference
@@ -113,7 +113,7 @@ export function ExtensionSourceTextViewer(props: {
 }): React.JSX.Element {
   const { onOpenWorkspaceFile, text } = props
   const { locale } = useI18n()
-  const sourceMentions = listNativeLauncherSourceMentions(window.electron.process.platform, locale)
+  const sourceMentions = useNativeSourceMentionsProjection(locale)
   const tokens = parseExtensionSourceTextForViewerModel(text)
   const tokenKeyOccurrences = new Map<string, number>()
 

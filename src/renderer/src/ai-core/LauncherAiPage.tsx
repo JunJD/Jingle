@@ -59,7 +59,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 import { OpenTargetProvider } from "@/lib/open-target-context"
-import { listNativeLauncherSourceMentions } from "@extension-host/index"
+import { useNativeSourceMentionsProjection } from "@extension-host/use-native-source-mentions-projection"
 import { isThreadPinned } from "@shared/thread-sidebar"
 import { useWorkspaceFileMentions, type ComposerAreaHandle } from "@/composer-area"
 import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
@@ -178,10 +178,7 @@ function toErrorMessage(error: unknown): string {
 
 export function LauncherAiPage(): React.JSX.Element {
   const { copy, locale } = useI18n()
-  const sourceMentions = useMemo(
-    () => listNativeLauncherSourceMentions(window.electron.process.platform, locale),
-    [locale]
-  )
+  const sourceMentions = useNativeSourceMentionsProjection(locale)
   const attachmentDraft = useAiAttachments()
   const host = useAiCoreHost()
   const navigation = host.navigation

@@ -9,7 +9,7 @@ import {
   type LauncherShellConfig
 } from "@shared/launcher"
 import { useI18n } from "@/lib/i18n"
-import { listNativeLauncherSourceMentions } from "@extension-host/index"
+import { useNativeSourceMentionsProjection } from "@extension-host/use-native-source-mentions-projection"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import { DEFAULT_HOME_COMMAND, listLauncherCommands, resolveLauncherCommand } from "../pages"
 import {
@@ -173,10 +173,7 @@ export function useLauncherSearchPage(props: {
     () => splitLauncherUseWithCommands(useWithCommands, useWithDisabledCommandKeys),
     [useWithCommands, useWithDisabledCommandKeys]
   )
-  const sourceMentions = useMemo(
-    () => listNativeLauncherSourceMentions(window.electron.process.platform, locale),
-    [locale]
-  )
+  const sourceMentions = useNativeSourceMentionsProjection(locale)
 
   const visibleSearchResultsBySource = useMemo(() => {
     return resolveVisibleLauncherSearchResultsBySource(searchState, trimmedQuery)
