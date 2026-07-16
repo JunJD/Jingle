@@ -47,8 +47,10 @@ export type {
   RuntimeContextActivationInput,
   RuntimeContextActivator
 } from "./runtime/ContextActivationNode"
-export type { CompactPrepareNodeResult } from "./runtime/CompactPrepareNode"
-export { createCompactCheckpointConfig } from "./runtime/CompactPrepareNode"
+export type {
+  CompactPrepareNodeInput,
+  CompactPrepareNodeResult
+} from "./runtime/CompactPrepareNode"
 export type {
   RuntimeCompactPlan,
   RuntimeNodeBoundary,

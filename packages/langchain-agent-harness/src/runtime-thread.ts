@@ -146,12 +146,17 @@ export interface RuntimeThreadFactoryInput<
   TResumeRunLifecycleInput = unknown
 > {
   bindExecution: RuntimeThreadExecutionBinder<TInvokeRunLifecycleInput, TResumeRunLifecycleInput>
+  compaction?: RuntimeThreadCompactionControl
   pauseController: RuntimePauseControllerContract<TReview>
   runLifecycleController: RuntimeRunLifecycleControllerContract<
     TContextInclusion,
     TInvokeRunLifecycleInput,
     TResumeRunLifecycleInput
   >
+}
+
+export interface RuntimeThreadCompactionControl {
+  compact(input: RuntimeCompactInput & RuntimeThreadScope): Promise<RuntimeCompactResult>
 }
 
 type RuntimeThreadScopedOperationInput<TOperation> = Omit<

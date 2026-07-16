@@ -65,8 +65,7 @@ export type JingleSummarizationBackendFactory = (config: {
   state: unknown
 }) => JingleSummarizationBackend
 
-export interface JingleSummarizationMiddlewareOptions {
-  backend: JingleSummarizationBackend | JingleSummarizationBackendFactory
+interface JingleSummarizationSharedOptions {
   historyPathPrefix?: string
   model: string | BaseChatModel | BaseLanguageModel
   preservedUserMessageTokenBudget?: number
@@ -74,6 +73,23 @@ export interface JingleSummarizationMiddlewareOptions {
   trigger?: JingleSummarizationContextSize | JingleSummarizationContextSize[]
   trimTokensToSummarize?: number | null
   truncateArgsSettings?: JingleSummarizationTruncateArgsSettings
+}
+
+export type JingleSummarizationControllerOptions = JingleSummarizationSharedOptions &
+  (
+    | {
+        backend: JingleSummarizationBackend | JingleSummarizationBackendFactory
+        historyPersistence?: "backend"
+      }
+    | {
+        backend?: never
+        historyPersistence: "none"
+      }
+  )
+
+export type JingleSummarizationMiddlewareOptions = JingleSummarizationSharedOptions & {
+  backend: JingleSummarizationBackend | JingleSummarizationBackendFactory
+  historyPersistence?: "backend"
 }
 
 export type JingleSummarizationMiddleware = AgentMiddleware & {
@@ -286,7 +302,7 @@ function isContextOverflow(error: unknown): boolean {
 }
 
 export function createJingleSummarizationController(
-  options: JingleSummarizationMiddlewareOptions
+  options: JingleSummarizationControllerOptions
 ): JingleSummarizationController {
   const {
     model,
@@ -296,6 +312,7 @@ export function createJingleSummarizationController(
     trimTokensToSummarize = null,
     historyPathPrefix = "/conversation_history"
   } = options
+  const historyPersistence = options.historyPersistence ?? "backend"
 
   let trigger = options.trigger
   let truncateArgsSettings = options.truncateArgsSettings
@@ -335,6 +352,9 @@ export function createJingleSummarizationController(
   }
 
   function getBackend(state: unknown): JingleSummarizationBackend {
+    if (!backend) {
+      throw new Error("[JingleSummarization] Backend persistence is not configured.")
+    }
     return typeof backend === "function" ? backend({ state }) : backend
   }
 
@@ -740,11 +760,14 @@ ${input.summary}
     filePath: string | null
     summaryMessage: HumanMessage
   }> {
-    const filePath = await offloadToBackend(getBackend(state), messagesToSummarize, state)
-    if (filePath === null) {
-      console.warn(
-        "[JingleSummarizationMiddleware] Backend offload failed during summarization. Proceeding with summary generation."
-      )
+    let filePath: string | null = null
+    if (historyPersistence === "backend") {
+      filePath = await offloadToBackend(getBackend(state), messagesToSummarize, state)
+      if (filePath === null) {
+        console.warn(
+          "[JingleSummarizationMiddleware] Backend offload failed during summarization. Proceeding with summary generation."
+        )
+      }
     }
 
     const summary = await createSummary(messagesToSummarize, resolvedModel, previousSummaryMessage)

@@ -23,6 +23,7 @@ model Thread {
   checkpoints            Checkpoint[]
   checkpointBlobs        CheckpointBlob[]
   checkpointWrites       CheckpointWrite[]
+  compactionCommits       RuntimeCompactionCommit[]
   hitlRequests           HitlRequest[]
   messages               Message[]
   threadDigest           ThreadDigest?
@@ -394,6 +395,27 @@ model CheckpointBlob {
   @@id([threadId, checkpointNs, channel, version])
   @@index([threadId, checkpointNs], map: "idx_checkpoint_blobs_thread_ns")
   @@map("checkpoint_blobs")
+}
+
+/// Thread-scoped idempotency ledger. Checkpoint retention must not resurrect compact side effects.
+model RuntimeCompactionCommit {
+  threadId                                String  @map("thread_id")
+  operationId                             String  @map("operation_id")
+  checkpointNs                            String  @default("") @map("checkpoint_ns")
+  checkpointId                            String  @map("checkpoint_id")
+  expectedCheckpointId                    String  @map("expected_checkpoint_id")
+  compaction                              String
+  messageCountAfterCompaction             Int     @map("message_count_after_compaction")
+  messageCountBeforeCompaction            Int     @map("message_count_before_compaction")
+  modelId                                 String  @map("model_id")
+  preserveLastUserMessageCountPresent     Boolean @map("preserve_last_user_message_count_present")
+  reason                                  String?
+  requestedPreserveLastUserMessageCount   BigInt? @map("requested_preserve_last_user_message_count")
+  trigger                                 String
+  thread                                  Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+
+  @@id([threadId, operationId])
+  @@map("runtime_compaction_commits")
 }
 
 model Message {

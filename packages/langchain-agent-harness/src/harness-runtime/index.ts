@@ -10,7 +10,6 @@ import type { RuntimeGraphEngine } from "../runtime-execution"
 import { runtimeStateSchema } from "../runtime-state"
 import { RuntimeGraph } from "./graph/RuntimeGraph.js"
 import { createRuntimePermissionPolicy } from "./graph/runtime-permission-policy.js"
-import type { JingleSummarizationController } from "./summarization"
 export type {
   CompactPrepareNodeResult,
   CompactSummarizeNodeInput,
@@ -68,9 +67,6 @@ export interface CreateRuntimeGraphEngineInput {
   approvalController: RuntimeApprovalControllerContract
   callbacks: BaseCallbackHandler[]
   checkpointer: BaseCheckpointSaver<string | number>
-  compaction: {
-    readonly summarization: JingleSummarizationController
-  }
   middleware: readonly RuntimeExecutionMiddleware[]
   model: string | LanguageModelLike
   systemPrompt: string
@@ -98,9 +94,7 @@ export function resolveRuntimeMiddleware(input: {
   middleware: readonly RuntimeExecutionMiddleware[]
 }): AgentMiddleware[] {
   return input.middleware.map((entry) =>
-    isRuntimeMiddlewareHook(entry)
-      ? compileRuntimeHookToMiddleware(entry)
-      : entry
+    isRuntimeMiddlewareHook(entry) ? compileRuntimeHookToMiddleware(entry) : entry
   )
 }
 
@@ -110,15 +104,12 @@ function isRuntimeMiddlewareHook(
   return "createMiddleware" in entry
 }
 
-export function createRuntimeGraphEngine(
-  input: CreateRuntimeGraphEngineInput
-): RuntimeGraphEngine {
+export function createRuntimeGraphEngine(input: CreateRuntimeGraphEngineInput): RuntimeGraphEngine {
   const agent = new RuntimeGraph({
     model: input.model,
     name: RUNTIME_GRAPH_NAME,
     // RuntimeCheckpointSaver owns the runtime contract and overrides string versioning.
     checkpointer: input.checkpointer as unknown as BaseCheckpointSaver,
-    compaction: input.compaction,
     permissionPolicy: createRuntimePermissionPolicy({
       approvalController: input.approvalController,
       mode: "legacy-human-approval-middleware-handoff"

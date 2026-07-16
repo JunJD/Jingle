@@ -31,6 +31,7 @@ export type RuntimeTargetNodeKind =
 export type RuntimeStepRoute = "continue" | "pause" | "finish" | "error"
 
 export type RuntimeTargetNodeEngineStatus =
+  | "controller-helper"
   | "wired"
   | "runtime-kernel-with-middleware-compat"
   | "legacy-approval-handoff"

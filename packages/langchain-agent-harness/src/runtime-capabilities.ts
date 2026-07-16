@@ -4,7 +4,6 @@ import type {
   RuntimeBackendContract,
   RuntimeBackendProvider,
   RuntimeCheckpointProvider,
-  RuntimeCompactionControllerProvider,
   RuntimeGuardrailConfig as RuntimeGuardrailConfigBase,
   RuntimeGuardrailProviderContract,
   RuntimeModelContract,
@@ -35,7 +34,6 @@ import type {
   RuntimeWorkspaceFileContextRequest
 } from "./runtime-context"
 import type { JingleDesktopAutomationToolHandlers } from "./desktop-automation-tools"
-import type { JingleSummarizationController } from "./harness-runtime/summarization"
 import type { RuntimeObservationCapabilities } from "./runtime-observation"
 import type {
   RuntimeArtifactPresentationConfig,
@@ -111,7 +109,6 @@ export type RuntimeRunLifecycleController<
   TInvokeRunLifecycleInput,
   TResumeRunLifecycleInput
 >
-export type RuntimeSummarizationController = JingleSummarizationController
 export type { RuntimeTitleGeneratorContract }
 export type RuntimeTitleGenerator = RuntimeTitleGeneratorContract
 
@@ -157,10 +154,6 @@ export interface RuntimeControlCapabilities<
   >
 }
 
-export interface RuntimeCompactionCapabilities {
-  summarization: RuntimeCompactionControllerProvider
-}
-
 export interface RuntimePromptCapabilities {
   executeToolDescription: RuntimePromptTextProvider
   filesystemSystemPrompt: RuntimePromptTextProvider
@@ -172,7 +165,6 @@ export interface RuntimeExecutionCapabilities<
   TGuardrailMetadata = Record<string, unknown>
 > {
   checkpoint: RuntimeCheckpointCapability
-  compaction: RuntimeCompactionCapabilities
   context: RuntimeContextCapabilities<TContextInclusion, TGuardrailMetadata>
   control: {
     approvalController: RuntimeApprovalControllerProvider

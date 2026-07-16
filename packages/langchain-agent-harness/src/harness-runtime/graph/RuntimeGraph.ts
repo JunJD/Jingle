@@ -1,8 +1,4 @@
-import {
-  isClientTool,
-  normalizeSystemPrompt,
-  validateLLMHasNoBoundTools
-} from "./utils.js"
+import { isClientTool, normalizeSystemPrompt, validateLLMHasNoBoundTools } from "./utils.js"
 import { StateManager } from "./state.js"
 import { RunnableCallable } from "./RunnableCallable.js"
 import { createLegacyMiddlewareSegment } from "./legacy-middleware-segment.js"
@@ -14,13 +10,8 @@ import {
 import { createRuntimeStepResultRouter } from "./runtime-step-router.js"
 import { rewriteLegacyGraphOutput } from "./legacy-destination-compat.js"
 import { readRuntimeOperation } from "./runtime-operation-reader.js"
+import { createRuntimeModelExecutor, createRuntimeToolExecutor } from "./runtime-executors/index.js"
 import {
-  createRuntimeModelExecutor,
-  createRuntimeToolExecutor
-} from "./runtime-executors/index.js"
-import {
-  CompactPrepareNode,
-  CompactSummarizeNode,
   ContextActivationNode,
   ModelStepNode,
   OperationFrameNode,
@@ -28,7 +19,6 @@ import {
   StepResultNode,
   ToolStepNode,
   WorkingSetNode,
-  type RuntimeCompactPlan,
   type RuntimeNodeContext,
   type RuntimeNodeResult,
   type RuntimeOperationFrame,
@@ -37,7 +27,6 @@ import {
   type RuntimeTargetNode,
   createRuntimeOperationFrame
 } from "./nodes/index.js"
-import type { JingleSummarizationController } from "../summarization"
 import { AIMessage, ToolMessage } from "@langchain/core/messages"
 import { mergeConfigs, type RunnableConfig } from "@langchain/core/runnables"
 import { END, START, StateGraph } from "@langchain/langgraph"
@@ -46,9 +35,6 @@ import type { AgentMiddleware } from "langchain"
 
 export interface RuntimeGraphOptions {
   checkpointer?: BaseCheckpointSaver | boolean
-  compaction: {
-    readonly summarization: JingleSummarizationController
-  }
   contextSchema?: unknown
   description?: string
   includeAgentName?: "inline"
@@ -64,8 +50,6 @@ export interface RuntimeGraphOptions {
   tools?: readonly unknown[]
 }
 
-const COMPACT_PREPARE_NODE_NAME = "__runtime_compact_prepare__"
-const COMPACT_SUMMARIZE_NODE_NAME = "__runtime_compact_summarize__"
 const CONTEXT_ACTIVATION_NODE_NAME = "__runtime_context_activation__"
 const MODEL_STEP_NODE_NAME = "__runtime_model_step__"
 const OPERATION_FRAME_NODE_NAME = "__runtime_operation_frame__"
@@ -120,14 +104,6 @@ function readRuntimeStateArray<TKey extends "contextInclusions" | "messages" | "
   return value as RuntimeNodeContext["state"][TKey]
 }
 
-function readRuntimeCompactPlan(state: unknown): RuntimeCompactPlan {
-  const plan = (state as { _runtimeCompactPlan?: RuntimeCompactPlan } | undefined)
-    ?._runtimeCompactPlan
-  if (!plan) throw new Error("[RuntimeGraph] Runtime compact plan is missing.")
-
-  return plan
-}
-
 function readTargetNodeUpdate(result: RuntimeNodeResult): Record<string, unknown> {
   return result.stateUpdate ?? {}
 }
@@ -140,8 +116,6 @@ function readTargetNodePrivateState(result: RuntimeNodeResult): RuntimePrivateSt
     ...(privateState.activatedContext
       ? { _runtimeActivatedContext: privateState.activatedContext }
       : {}),
-    ...(privateState.compactPlan ? { _runtimeCompactPlan: privateState.compactPlan } : {}),
-    ...(privateState.compactUpdate ? { _runtimeCompactUpdate: privateState.compactUpdate } : {}),
     ...(privateState.frame ? { _runtimeFrame: privateState.frame } : {}),
     ...(privateState.permissionDecision
       ? { _runtimePermissionDecision: privateState.permissionDecision }
@@ -409,24 +383,6 @@ export class RuntimeGraph {
         })
       )
     }
-    allNodeWorkflows.addNode(
-      COMPACT_PREPARE_NODE_NAME,
-      new RuntimeGraphTargetNodeRunnable({
-        getInput: () => undefined,
-        node: new CompactPrepareNode(),
-        toOutput: readTargetNodePrivateState
-      })
-    )
-    allNodeWorkflows.addNode(
-      COMPACT_SUMMARIZE_NODE_NAME,
-      new RuntimeGraphTargetNodeRunnable({
-        getInput: (state: unknown) => ({
-          plan: readRuntimeCompactPlan(state)
-        }),
-        node: new CompactSummarizeNode(this.options.compaction.summarization),
-        toOutput: readTargetNodeStateAndPrivateUpdate
-      })
-    )
     /**
      * Add Edges
      */
@@ -442,11 +398,7 @@ export class RuntimeGraph {
     })
     const exitNode = internalMiddlewareNodes.exitNode
     allNodeWorkflows.addEdge(START, OPERATION_FRAME_NODE_NAME)
-    allNodeWorkflows.addConditionalEdges(
-      OPERATION_FRAME_NODE_NAME,
-      this.#createOperationFrameRouter(CONTEXT_ACTIVATION_NODE_NAME, COMPACT_PREPARE_NODE_NAME),
-      [CONTEXT_ACTIVATION_NODE_NAME, COMPACT_PREPARE_NODE_NAME]
-    )
+    allNodeWorkflows.addEdge(OPERATION_FRAME_NODE_NAME, CONTEXT_ACTIVATION_NODE_NAME)
     allNodeWorkflows.addEdge(CONTEXT_ACTIVATION_NODE_NAME, internalMiddlewareNodes.runEntryNode)
     allNodeWorkflows.addEdge(WORKING_SET_NODE_NAME, MODEL_STEP_NODE_NAME)
     /**
@@ -483,11 +435,7 @@ export class RuntimeGraph {
     if (hasToolsAvailable) {
       allNodeWorkflows.addConditionalEdges(
         PERMISSION_GATE_NODE_NAME,
-        this.#createPermissionGateRouter(
-          TOOL_STEP_NODE_NAME,
-          TOOL_STEP_RESULT_NODE_NAME,
-          exitNode
-        ),
+        this.#createPermissionGateRouter(TOOL_STEP_NODE_NAME, TOOL_STEP_RESULT_NODE_NAME, exitNode),
         [TOOL_STEP_NODE_NAME, TOOL_STEP_RESULT_NODE_NAME, exitNode]
       )
       allNodeWorkflows.addConditionalEdges(
@@ -496,8 +444,6 @@ export class RuntimeGraph {
         [internalMiddlewareNodes.loopEntryNode, exitNode]
       )
     }
-    allNodeWorkflows.addEdge(COMPACT_PREPARE_NODE_NAME, COMPACT_SUMMARIZE_NODE_NAME)
-    allNodeWorkflows.addEdge(COMPACT_SUMMARIZE_NODE_NAME, END)
     /**
      * compile the graph
      */
@@ -532,12 +478,6 @@ export class RuntimeGraph {
    */
   withConfig(config) {
     return new RuntimeGraph(this.options, mergeConfigs(this.#defaultConfig, config))
-  }
-  #createOperationFrameRouter(runNode, compactNode) {
-    return (state) => {
-      if (state._runtimeFrame?.kind === "compact") return compactNode
-      return runNode
-    }
   }
   #createPermissionGateRouter(toolsNode, skippedToolNode, exitNode) {
     return (state) => {

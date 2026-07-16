@@ -6,6 +6,7 @@ import type { JingleContextInclusionStateItem } from "./context-inclusion-state"
 import type { RuntimeThreadScope } from "./runtime-scope"
 import type {
   RuntimeThread,
+  RuntimeThreadCompactionControl,
   RuntimeThreadFactoryInput,
   RuntimeThreadOperationControl,
   RuntimeThreadRunLifecycleControl,
@@ -25,6 +26,7 @@ export interface RuntimeThreadControlsInput<
   TInvokeRunLifecycleInput = unknown,
   TResumeRunLifecycleInput = unknown
 > {
+  compaction?: RuntimeThreadCompactionControl
   createRunExecution: RuntimeExecutionFactory
   runLifecycleController: RuntimeRunLifecycleControllerContract<
     TContextInclusion,
@@ -51,7 +53,7 @@ export function createRuntimeThread<
 ): RuntimeThread<TContextInclusion, TInvokeRunLifecycleInput, TResumeRunLifecycleInput> {
   return createRuntimeThreadControl({
     lifecycle: createRuntimeThreadRunLifecycleControl(input, context),
-    operations: createRuntimeThreadOperationControl<TContextInclusion>(context),
+    operations: createRuntimeThreadOperationControl<TContextInclusion>(context, input.compaction),
     stream: createRuntimeThreadStreamDrainControlFromController({
       pauseController: input.pauseController,
       thread: context.thread
@@ -84,7 +86,7 @@ export function createRuntimeThreadFromControls<
       runLifecycleController: input.runLifecycleController,
       context
     }),
-    operations: createRuntimeThreadOperationControl<TContextInclusion>(context),
+    operations: createRuntimeThreadOperationControl<TContextInclusion>(context, input.compaction),
     stream: createRuntimeThreadStreamDrainControlFromController({
       pauseController: input.pauseController,
       thread: context.thread

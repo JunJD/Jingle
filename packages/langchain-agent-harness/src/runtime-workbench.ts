@@ -48,7 +48,7 @@ export type RuntimePublicSurfaceRole =
 
 export interface RuntimeCreationAssemblyContract {
   acceptedBy: "createRuntime"
-  inputFields: readonly ["bindExecution", "control"]
+  inputFields: readonly ["bindExecution", "compaction", "control"]
   reason: string
   stability: "target"
   targetApi: true
@@ -115,7 +115,7 @@ export interface RuntimePackageExportBoundaryContract {
 export const RUNTIME_WORKBENCH_CONTRACT = {
   creationAssembly: {
     acceptedBy: "createRuntime",
-    inputFields: ["bindExecution", "control"],
+    inputFields: ["bindExecution", "compaction", "control"],
     reason:
       "createRuntime owns one runtime instance. Durable admission binds required per-run execution capabilities, while control owns pause and run lifecycle behavior.",
     stability: "target",
@@ -166,7 +166,7 @@ export const RUNTIME_WORKBENCH_CONTRACT = {
     operation: {
       capability: "operation",
       reason:
-        "RuntimeDurableOperation is the auditable invoke/resume state-change input. Drain and terminal requests are internal run controls; compact remains deferred until Pause 4 provides checkpoint CAS.",
+        "RuntimeDurableOperation is the auditable invoke/resume/compact state-change input. Drain and terminal requests are internal run controls; compact owns a stable-checkpoint CAS outside RuntimeGraph.",
       role: "operation-contract",
       stability: "target",
       targetApi: true
@@ -188,7 +188,7 @@ export const RUNTIME_WORKBENCH_CONTRACT = {
     thread: {
       capability: "thread",
       reason:
-        "RuntimeThread is the public invoke/resume and run lifecycle control surface. Compact is currently unsupported and deferred to Pause 4.",
+        "RuntimeThread is the public invoke/resume/compact and run lifecycle control surface. Compact uses the same per-thread admission referee as active runs.",
       role: "public-control-surface",
       stability: "target",
       targetApi: true

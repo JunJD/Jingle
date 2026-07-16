@@ -53,7 +53,8 @@ export const RUNTIME_TARGET_NODE_DESCRIPTORS = {
     engineStatus: "runtime-kernel-with-middleware-compat",
     kind: "ModelStepNode",
     privateWrites: ["modelOutput"],
-    responsibility: "Own one model call and return assistant messages or tool intents as state updates.",
+    responsibility:
+      "Own one model call and return assistant messages or tool intents as state updates.",
     stateWrites: ["messages", "title"]
   },
   PermissionGateNode: {
@@ -90,8 +91,8 @@ export const RUNTIME_TARGET_NODE_DESCRIPTORS = {
   CompactPrepareNode: {
     boundary: "compact",
     cannot: ["call model", "write summary"],
-    consumes: ["RuntimeCompactOperation", "stable checkpoint state"],
-    engineStatus: "wired",
+    consumes: ["RuntimeCompactOperation", "stable checkpoint envelope"],
+    engineStatus: "controller-helper",
     kind: "CompactPrepareNode",
     privateWrites: ["compactPlan"],
     responsibility: "Read stable checkpoint state and compute the compaction window.",
@@ -100,8 +101,8 @@ export const RUNTIME_TARGET_NODE_DESCRIPTORS = {
   CompactSummarizeNode: {
     boundary: "compact",
     cannot: ["commit product facts", "project UI completion state"],
-    consumes: ["compactPlan", "RuntimeCapabilities.compaction"],
-    engineStatus: "wired",
+    consumes: ["compactPlan", "JingleCompactionController.summarization"],
+    engineStatus: "controller-helper",
     kind: "CompactSummarizeNode",
     privateWrites: ["compactUpdate"],
     responsibility: "Summarize the compaction plan and return checkpointable RuntimeState updates.",

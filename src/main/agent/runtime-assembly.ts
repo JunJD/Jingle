@@ -6,6 +6,7 @@ import {
   buildJingleFilesystemSystemPrompt,
   buildJingleSkillSources,
   buildJingleSystemPrompt,
+  createJingleCompactionController,
   createRuntimeCompactionSummarizationController,
   createJingleTitleGenerator
 } from "@jingle/langchain-agent-harness/transitional"
@@ -54,6 +55,7 @@ import {
 import { createRuntimePauseController } from "./pause-controller"
 import type { ToolApprovalItem } from "@shared/tool-approval"
 import { getCheckpointer } from "../checkpointer/runtime-checkpointer-manager"
+import { createCheckpointCompactionStore } from "../checkpointer/checkpoint-compaction-store"
 import { LocalSandbox } from "./local-sandbox"
 
 const TITLE_GENERATION_TIMEOUT_MS = 2_500
@@ -96,6 +98,16 @@ function createAgentRuntimeInput(input: CreateAgentRuntimeInput): JingleRuntimeI
 
   return {
     bindExecution,
+    compaction: createJingleCompactionController({
+      checkpointStore: createCheckpointCompactionStore({ getCheckpointer }),
+      summarization: (scope) =>
+        createRuntimeCompactionSummarizationController({
+          model: getChatModelInstance({
+            modelId: scope.modelId,
+            parallelToolCalls: false
+          })
+        })
+    }),
     control: {
       pauseController: createRuntimePauseController(),
       runLifecycleController
@@ -251,21 +263,6 @@ function createAgentExecutionCapabilities(
           })
         }
       }
-    },
-    compaction: {
-      summarization: (scope) =>
-        createRuntimeCompactionSummarizationController({
-          backend: new LocalSandbox({
-            rootDir: scope.workspacePath,
-            virtualMode: false,
-            timeout: 120_000,
-            maxOutputBytes: 100_000
-          }),
-          model: getChatModelInstance({
-            modelId,
-            parallelToolCalls: false
-          })
-        })
     },
     prompt: {
       executeToolDescription: (thread) => buildJingleExecuteToolDescription(thread.workspacePath),

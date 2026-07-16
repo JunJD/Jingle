@@ -77,15 +77,11 @@ export function createRuntimeExecutionFactory<
       steeringBuffer: operationInput.steeringBuffer,
       thread: input.thread
     })
-    const compactionSummarization = control.compaction.summarization
     operationInput.signal.throwIfAborted()
     const agent = createRuntimeGraphEngine({
       approvalController: control.approvalController,
       callbacks: [...observationExecution.callbacks, ...(operationInput.callbacks ?? [])],
       checkpointer: checkpoint.checkpointer,
-      compaction: {
-        summarization: compactionSummarization
-      },
       middleware: runtimeExecution.middleware,
       model: executionHost.model,
       systemPrompt: executionHost.systemPrompt,
@@ -155,8 +151,6 @@ async function resolveRuntimeHostForRun<
   signal.throwIfAborted()
   const approvalController = host.control.approvalController(capabilityScope, resolution)
   signal.throwIfAborted()
-  const compactionSummarization = host.control.compaction.summarization(capabilityScope, resolution)
-  signal.throwIfAborted()
   const backend = host.environment.backend(thread, resolution)
   signal.throwIfAborted()
   const model = host.execution.model(capabilityScope, resolution)
@@ -169,9 +163,6 @@ async function resolveRuntimeHostForRun<
     context: host.context,
     control: {
       approvalController,
-      compaction: {
-        summarization: compactionSummarization
-      },
       pauseController: host.control.pauseController,
       runLifecycleController: host.control.runLifecycleController
     },

@@ -1,9 +1,11 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { createAgentRunHandle } from "../../src/main/agent/runtime"
 import { createJingleCheckpointerManager } from "../../packages/langchain-agent-harness/src/checkpointer-manager"
 import type { RuntimeRunLifecycleControllerContract } from "../../packages/langchain-agent-harness/src/runtime-contract"
 import type { RuntimeExecutionCapabilities } from "../../packages/langchain-agent-harness/src/runtime-capabilities"
 import type { RuntimeToolApprovalDecision } from "../../packages/langchain-agent-harness/src/runtime-operation"
+import { RuntimeThreadBusyError } from "../../packages/langchain-agent-harness/src/runtime-execution-context"
 import { createRuntime } from "../../packages/langchain-agent-harness/src/runtime"
 import {
   createRuntimeThreadInvokeRun,
@@ -647,31 +649,12 @@ test("RuntimeThreadRun observes a committed resume decision before cancellation 
   assert.deepEqual(lifecycleEvents, ["abort", "settle"])
 })
 
-test("RuntimeThread compact does not reuse the active run execution before Pause 4", async () => {
+test("RuntimeThread compact rejects while a run owns the thread", async () => {
   const executionInputs: Array<{ modelId?: string; runId: string }> = []
   const thread = createRuntimeThreadFromControls({
     createRunExecution: async (executionInput) => {
       executionInputs.push(executionInput)
       return {
-        compact: async () => ({
-          checkpointConfig: {},
-          compaction: {
-            compactionCount: 1,
-            compactionId: "compaction-1",
-            createdAt: "2026-07-13T00:00:00.000Z",
-            cutoffIndex: 1,
-            historyRef: null,
-            preservedUserMessageCount: 1,
-            reason: null,
-            status: "completed",
-            summaryPreview: null,
-            trigger: "manual",
-            updatedAt: "2026-07-13T00:00:00.000Z",
-            warning: null
-          },
-          messageCountAfterCompaction: 1,
-          messageCountBeforeCompaction: 2
-        }),
         streamInvoke: async () => createEmptyStream(),
         streamResume: async () => createEmptyStream()
       }
@@ -712,9 +695,113 @@ test("RuntimeThread compact does not reuse the active run execution before Pause
   })
 
   await thread.startInvoke({})
-  await assert.rejects(thread.compact({ trigger: "manual" }), /independent operation/)
+  await assert.rejects(
+    thread.compact({
+      modelId: "model-selected",
+      operationId: "compact-while-run-active",
+      trigger: "manual"
+    }),
+    RuntimeThreadBusyError
+  )
 
   assert.deepEqual(executionInputs, [])
+})
+
+test("RuntimeThread compact owns run admission until the compact operation settles", async () => {
+  const compactStarted = createDeferred<void>()
+  const releaseCompact = createDeferred<void>()
+  const now = new Date().toISOString()
+  const thread = createRuntimeThreadFactory({
+    bindExecution: {
+      invoke: () => async () => {
+        throw new Error("Invoke execution was not expected.")
+      },
+      resume: () => async () => {
+        throw new Error("Resume execution was not expected.")
+      }
+    },
+    compaction: {
+      compact: async (input) => {
+        compactStarted.resolve()
+        await releaseCompact.promise
+        return {
+          checkpointConfig: {
+            configurable: {
+              checkpoint_id: "checkpoint-after-compact",
+              thread_id: input.threadId
+            }
+          },
+          compaction: {
+            compactionCount: 1,
+            compactionId: input.operationId,
+            createdAt: now,
+            cutoffIndex: 0,
+            historyRef: null,
+            preservedUserMessageCount: 0,
+            reason: null,
+            status: "completed",
+            summaryPreview: null,
+            trigger: input.trigger,
+            updatedAt: now,
+            warning: null
+          },
+          messageCountAfterCompaction: 1,
+          messageCountBeforeCompaction: 2
+        }
+      }
+    },
+    pauseController: {
+      parseReview: () => null,
+      upsertPendingHitlRequest: async () => undefined
+    },
+    runLifecycleController: createLifecycleController()
+  }).thread({ threadId: "thread-compact-admission", workspacePath: "/workspace" })
+
+  const compact = thread.compact({
+    modelId: "model-compact",
+    operationId: "compact-admission",
+    trigger: "manual"
+  })
+  await compactStarted.promise
+  await assert.rejects(thread.startInvoke({}), RuntimeThreadBusyError)
+
+  releaseCompact.resolve()
+  assert.equal((await compact).compaction.compactionId, "compact-admission")
+  const run = await thread.startInvoke({})
+  assert.equal(await run.abort(), true)
+})
+
+test("BDD RuntimeThread supports idle compact with the caller operation identity", async () => {
+  const previousBddRuntime = process.env.JINGLE_BDD_AGENT_RUNTIME
+  process.env.JINGLE_BDD_AGENT_RUNTIME = "scripted"
+  try {
+    const handle = createAgentRunHandle({
+      runtime: {
+        thread() {
+          throw new Error("Checkpoint runtime must not open in scripted BDD mode.")
+        }
+      },
+      threadId: "thread-bdd-idle-compact",
+      workspacePath: "/workspace"
+    })
+
+    const result = await handle.thread.compact({
+      modelId: "provider/bdd-model",
+      operationId: "bdd-compact-stable-operation",
+      trigger: "manual"
+    })
+
+    assert.equal(result.compaction.compactionId, "bdd-compact-stable-operation")
+    assert.equal(result.compaction.status, "failed")
+    assert.equal(result.checkpointConfig.configurable?.operation_id, "bdd-compact-stable-operation")
+    assert.equal(result.checkpointConfig.configurable?.model_id, "provider/bdd-model")
+  } finally {
+    if (previousBddRuntime === undefined) {
+      delete process.env.JINGLE_BDD_AGENT_RUNTIME
+    } else {
+      process.env.JINGLE_BDD_AGENT_RUNTIME = previousBddRuntime
+    }
+  }
 })
 
 test("RuntimeThreadRun registers its settle barrier before a factory can re-enter abort", async () => {
@@ -1087,7 +1174,7 @@ test("createRuntime gives every synchronous capability the active run signal", a
   await assert.rejects(run.execute(createInvokeExecutionInput()), failure)
   assert.deepEqual(
     capabilitySignals.map(({ name }) => name),
-    ["approval", "compaction", "backend", "model"]
+    ["approval", "backend", "model"]
   )
   assert.equal(
     capabilitySignals.every(({ signal }) => signal === bindingSignals[0]),
@@ -1096,7 +1183,7 @@ test("createRuntime gives every synchronous capability the active run signal", a
   assert.deepEqual(failedErrors, [failure])
 })
 
-type SynchronousCapabilityName = "approval" | "backend" | "compaction" | "model"
+type SynchronousCapabilityName = "approval" | "backend" | "model"
 
 function createExecutionCapabilities(input: {
   checkpoint?: (context: { signal: AbortSignal }) => never | Promise<never>
@@ -1113,9 +1200,6 @@ function createExecutionCapabilities(input: {
   return {
     checkpoint: {
       checkpointer: (_scope, context) => input.checkpoint?.(context) ?? placeholder
-    },
-    compaction: {
-      summarization: (_scope, { signal }) => resolveCapability("compaction", signal)
     },
     context: {
       contextRetrieval: () => placeholder,

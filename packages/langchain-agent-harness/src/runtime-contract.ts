@@ -16,10 +16,7 @@ import type { JingleDesktopAutomationToolHandlers } from "./desktop-automation-t
 import type { JingleWebToolHandlers } from "./web-tools"
 import type { JingleFilesystemMiddlewareOptions } from "./harness-runtime/filesystem"
 import type { JingleSkillsMiddlewareOptions } from "./harness-runtime/skills"
-import type {
-  JingleSummarizationController,
-  JingleSummarizationMiddlewareOptions
-} from "./harness-runtime/summarization"
+import type { JingleSummarizationMiddlewareOptions } from "./harness-runtime/summarization"
 import type { RuntimeObservationSinkContract } from "./runtime-observation"
 import type { JingleContextInclusionStateItem } from "./context-inclusion-state"
 import type {
@@ -70,11 +67,6 @@ export type RuntimeApprovalControllerProvider = (
   context: RuntimeResourceResolutionContext
 ) => RuntimeApprovalControllerContract
 
-export type RuntimeCompactionControllerProvider = (
-  scope: RuntimeRunCapabilityScope,
-  context: RuntimeResourceResolutionContext
-) => JingleSummarizationController
-
 export interface RuntimeGuardrailConfig<TMetadata = Record<string, unknown>> {
   applyMetadata?: (
     args: Record<string, unknown>,
@@ -90,14 +82,6 @@ export type RuntimeTitleGeneratorContract = (
 export type RuntimeGuardrailProviderContract<TMetadata = Record<string, unknown>> = (
   scope: RuntimeThreadScope
 ) => RuntimeGuardrailConfig<TMetadata>
-
-export interface RuntimeCompactionControllerContract {
-  summarization: RuntimeCompactionControllerProvider
-}
-
-export interface RuntimeResolvedCompactionControllerContract {
-  summarization: JingleSummarizationController
-}
 
 export interface RuntimeApprovalControllerContract {
   allowedDecisions: readonly HumanApprovalDecisionType[]
@@ -244,7 +228,6 @@ export interface RuntimeControlHostContract<
   TResumeRunLifecycleInput = unknown
 > {
   approvalController: RuntimeApprovalControllerProvider
-  compaction: RuntimeCompactionControllerContract
   pauseController: RuntimePauseControllerContract<TReview>
   runLifecycleController: RuntimeRunLifecycleControllerContract<
     TContextInclusion,
@@ -260,7 +243,6 @@ export interface RuntimeResolvedControlHostContract<
   TResumeRunLifecycleInput = unknown
 > {
   approvalController: RuntimeApprovalControllerContract
-  compaction: RuntimeResolvedCompactionControllerContract
   pauseController: RuntimePauseControllerContract<TReview>
   runLifecycleController: RuntimeRunLifecycleControllerContract<
     TContextInclusion,

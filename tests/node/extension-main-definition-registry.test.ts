@@ -40,6 +40,14 @@ test("trusted extension main registry isolates a never-resolving module from oth
   ])
   const loadCalls: string[] = []
   const failures: string[] = []
+  let reportBrokenSettled!: () => void
+  let reportReadySettled!: () => void
+  const brokenSettled = new Promise<void>((resolve) => {
+    reportBrokenSettled = resolve
+  })
+  const readySettled = new Promise<void>((resolve) => {
+    reportReadySettled = resolve
+  })
   const registry = new ExtensionMainDefinitionRegistry({
     entries: ["never", "ready", "broken"].map((extensionName) => ({
       extensionName,
@@ -48,9 +56,20 @@ test("trusted extension main registry isolates a never-resolving module from oth
         modulePaths[extensionName as keyof typeof modulePaths]
       )
     })),
-    loadDefinition: (mainRef) => {
+    loadDefinition: async (mainRef) => {
       loadCalls.push(mainRef.extensionName)
-      return loadExtensionMainDefinition(mainRef)
+      try {
+        const definition = await loadExtensionMainDefinition(mainRef)
+        if (mainRef.extensionName === "ready") {
+          reportReadySettled()
+        }
+        return definition
+      } catch (error) {
+        if (mainRef.extensionName === "broken") {
+          reportBrokenSettled()
+        }
+        throw error
+      }
     },
     onError: ({ extensionName, phase }) => {
       failures.push(`${phase}:${extensionName}`)
@@ -60,6 +79,7 @@ test("trusted extension main registry isolates a never-resolving module from oth
 
   try {
     registry.start()
+    await Promise.all([brokenSettled, readySettled])
     await waitForImmediate()
 
     const firstRunSnapshot = registry.readSnapshot()

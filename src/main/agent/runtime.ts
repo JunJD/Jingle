@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto"
 import { runtimeUsesCheckpointPersistence } from "../checkpointer/runtime-checkpointer-manager"
 import { createBddAgentRuntime } from "./bdd-runtime"
 import {
@@ -43,12 +42,7 @@ interface BddAgentRuntime {
   ) => Promise<AsyncIterable<BddRunStreamChunk>>
 }
 
-interface BddRunOperationInput {
-  runId: string
-}
-
 interface BddRunOperation {
-  compact(input: RuntimeCompactInput): Promise<RuntimeCompactResult>
   streamInvoke(
     input: unknown,
     options: { signal: AbortSignal }
@@ -115,39 +109,37 @@ function createBddHarnessThread(input: {
   JingleInvokeRunLifecycleInput,
   JingleResumeRunLifecycleInput
 > {
-  const createSkippedCompaction =
-    (operationInput: BddRunOperationInput): BddRunOperation["compact"] =>
-    async (compactInput) => {
-      const now = new Date().toISOString()
-      return {
-        checkpointConfig: {
-          configurable: {
-            run_id: operationInput.runId,
-            thread_id: input.threadId
-          }
-        },
-        compaction: {
-          compactionId: `bdd-skipped:${operationInput.runId}:${randomUUID()}`,
-          compactionCount: 1,
-          cutoffIndex: 0,
-          createdAt: now,
-          historyRef: null,
-          preservedUserMessageCount: 0,
-          reason: compactInput.reason ?? null,
-          status: "failed",
-          summaryPreview: null,
-          trigger: compactInput.trigger,
-          updatedAt: now,
-          warning: "Checkpoint-backed harness runtime is unavailable; compact was skipped."
-        },
-        messageCountAfterCompaction: 0,
-        messageCountBeforeCompaction: 0
-      } satisfies RuntimeCompactResult
+  const createSkippedCompaction = async (
+    compactInput: RuntimeCompactInput
+  ): Promise<RuntimeCompactResult> => {
+    const now = new Date().toISOString()
+    return {
+      checkpointConfig: {
+        configurable: {
+          model_id: compactInput.modelId,
+          operation_id: compactInput.operationId,
+          thread_id: input.threadId
+        }
+      },
+      compaction: {
+        compactionId: compactInput.operationId,
+        compactionCount: 1,
+        cutoffIndex: 0,
+        createdAt: now,
+        historyRef: null,
+        preservedUserMessageCount: 0,
+        reason: compactInput.reason ?? null,
+        status: "failed",
+        summaryPreview: null,
+        trigger: compactInput.trigger,
+        updatedAt: now,
+        warning: "Checkpoint-backed harness runtime is unavailable; compact was skipped."
+      },
+      messageCountAfterCompaction: 0,
+      messageCountBeforeCompaction: 0
     }
-  const createOperation = async (
-    operationInput: BddRunOperationInput
-  ): Promise<BddRunOperation> => ({
-    compact: createSkippedCompaction(operationInput),
+  }
+  const createOperation = async (): Promise<BddRunOperation> => ({
     streamInvoke: (streamInput, options) =>
       input.agent.stream(streamInput, { signal: options.signal }),
     streamResume: (streamInput, options) =>
@@ -159,6 +151,7 @@ function createBddHarnessThread(input: {
   const pauseController = createRuntimePauseController()
 
   return createRuntimeThreadFromControls({
+    compaction: { compact: createSkippedCompaction },
     createRunExecution: createOperation,
     pauseController,
     runLifecycleController: lifecycle,

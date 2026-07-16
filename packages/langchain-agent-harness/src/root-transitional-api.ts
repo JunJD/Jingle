@@ -163,6 +163,17 @@ export type {
   JingleCompactionResult
 } from "./compaction-controller"
 export { createJingleCompactionController } from "./compaction-controller"
+export type {
+  RuntimeCompactRequestIdentity,
+  RuntimeCheckpointCompactionOwnedValues,
+  RuntimeCheckpointCompactionReceipt,
+  RuntimeCheckpointCompactionStore
+} from "./runtime-checkpoint-compaction"
+export {
+  assertRuntimeCompactRequestIdentity,
+  CompactOperationIdentityConflict,
+  readRuntimeCompactionCommitMetadata
+} from "./runtime-checkpoint-compaction"
 export { JINGLE_CONTEXT_COMPACTION_SUMMARY_PREFIX } from "./harness-runtime/summarization"
 export { createJingleDesktopAutomationToolsMiddleware } from "./desktop-automation-tools"
 export { createJingleWebToolsMiddleware } from "./web-tools"

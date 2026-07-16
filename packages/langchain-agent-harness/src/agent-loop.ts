@@ -3,6 +3,7 @@ import {
   JINGLE_CONTEXT_COMPACTION_SUMMARY_PROMPT
 } from "./harness-runtime/summarization"
 import type { JingleSummarizationMiddlewareOptions } from "./harness-runtime/summarization"
+import type { JingleSummarizationControllerOptions } from "./harness-runtime/summarization"
 import type { RuntimeExecutionMiddleware } from "./harness-runtime"
 
 export { JINGLE_CONTEXT_COMPACTION_SUMMARY_PROMPT } from "./harness-runtime/summarization"
@@ -23,9 +24,13 @@ export function buildJingleSummarizationMiddlewareOptions(
 }
 
 export function createRuntimeCompactionSummarizationController(
-  input: Pick<JingleSummarizationMiddlewareOptions, "backend" | "model">
+  input: Pick<JingleSummarizationControllerOptions, "model">
 ) {
-  return createJingleSummarizationController(buildJingleSummarizationMiddlewareOptions(input))
+  return createJingleSummarizationController({
+    historyPersistence: "none",
+    model: input.model,
+    summaryPrompt: JINGLE_CONTEXT_COMPACTION_SUMMARY_PROMPT
+  })
 }
 
 export function createRuntimeAgentLoopEntries(

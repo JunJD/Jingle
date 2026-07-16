@@ -11,18 +11,6 @@ import type { RuntimeApprovalControllerContract } from "../../packages/langchain
 import { defineJingleHarnessHook } from "../../packages/langchain-agent-harness/src/harness-hooks"
 import { createRuntimeGraphEngine } from "../../packages/langchain-agent-harness/src/harness-runtime"
 
-const unusedCompaction = {
-  summarization: {
-    compactMessages: async () => {
-      throw new Error("run-steering tests do not execute compact operations.")
-    },
-    observeContextOverflow: () => {},
-    prepareModelCall: async () => {
-      throw new Error("run-steering tests do not prepare compaction model calls.")
-    }
-  }
-}
-
 const testApprovalController: RuntimeApprovalControllerContract = {
   allowedDecisions: ["approve", "reject"],
   policyRuntime: {
@@ -186,7 +174,6 @@ test("run steering re-enters the graph when a pending steer arrives before final
     approvalController: testApprovalController,
     callbacks: [],
     checkpointer: new MemorySaver(),
-    compaction: unusedCompaction,
     middleware: [createRunSteeringMiddleware(buffer), observerMiddleware],
     model: new FakeToolCallingModel(),
     systemPrompt: "",
@@ -250,7 +237,6 @@ test("harness runtime resolves mixed entries in order", async () => {
     approvalController: testApprovalController,
     callbacks: [],
     checkpointer: new MemorySaver(),
-    compaction: unusedCompaction,
     middleware: [hook, middleware],
     model: new FakeToolCallingModel(),
     systemPrompt: "",

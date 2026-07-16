@@ -185,7 +185,6 @@ export type {
   RuntimeSkillSources,
   RuntimeSuggestPersonalMemoryContext,
   RuntimeSuggestPersonalMemoryInput,
-  RuntimeSummarizationController,
   RuntimeTitleGeneratorContract,
   RuntimeTitleGenerator,
   RuntimeWebTools,

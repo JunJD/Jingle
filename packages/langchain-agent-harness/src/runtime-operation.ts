@@ -5,18 +5,15 @@ import type { RuntimeCompaction, RuntimeRecordingRef } from "./runtime-state"
 import { RUNTIME_CHILD_WORK_BOUNDARY, type RuntimeChildWorkCapability } from "./runtime-child-work"
 import { RUNTIME_SHELL_BOUNDARY, type RuntimeShellCapability } from "./runtime-shell"
 
-export type RuntimeDurableOperationKind = "invoke" | "resume"
-export type RuntimeDeferredOperationKind = "compact"
+export type RuntimeDurableOperationKind = "invoke" | "resume" | "compact"
+export type RuntimeDeferredOperationKind = never
 export type RuntimeInternalControlKind = "drain" | "complete" | "fail" | "abort"
 export type RuntimeOperationKind =
   | RuntimeDurableOperationKind
   | RuntimeDeferredOperationKind
   | RuntimeInternalControlKind
 
-export type RuntimeDeferredOperationCapability =
-  | "compact"
-  | RuntimeChildWorkCapability
-  | RuntimeShellCapability
+export type RuntimeDeferredOperationCapability = RuntimeChildWorkCapability | RuntimeShellCapability
 
 export interface RuntimeOperationSurfaceContract {
   durable: readonly RuntimeDurableOperationKind[]
@@ -76,9 +73,9 @@ export const RUNTIME_OPERATION_SURFACE = {
       checkpointBoundary: "stable-checkpoint",
       graphLoop: "outside-model-tool-loop",
       id: "compact",
-      operationKind: "not-introduced",
+      operationKind: "compact",
       owner: "RuntimeThreadOperationControl",
-      status: "deferred-capability"
+      status: "implemented-operation"
     },
     {
       checkpointBoundary: "external",
@@ -137,13 +134,9 @@ export const RUNTIME_OPERATION_SURFACE = {
       status: "deferred-capability"
     }
   ],
-  durable: ["invoke", "resume"],
+  durable: ["invoke", "resume", "compact"],
   internal: ["drain", "complete", "fail", "abort"],
-  deferred: [
-    "compact",
-    ...RUNTIME_CHILD_WORK_BOUNDARY.capabilities,
-    RUNTIME_SHELL_BOUNDARY.capability
-  ],
+  deferred: [...RUNTIME_CHILD_WORK_BOUNDARY.capabilities, RUNTIME_SHELL_BOUNDARY.capability],
   toolApprovalEntry: "resume"
 } as const satisfies RuntimeOperationSurfaceContract
 
@@ -219,9 +212,75 @@ export interface RuntimeFailOperation extends RuntimeRunContext {
 export type RuntimeCompactTrigger = "pre-run" | "post-run" | "manual" | (string & {})
 
 export interface RuntimeCompactInput {
+  modelId: string
+  operationId: string
   preserveLastUserMessageCount?: number
   reason?: string | null
-  trigger: RuntimeCompactTrigger
+  trigger: "manual"
+}
+
+export function parseRuntimeCompactInput(input: unknown): Readonly<RuntimeCompactInput> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("[RuntimeCompact] input must be an object.")
+  }
+  if (Object.getPrototypeOf(input) !== Object.prototype) {
+    throw new Error("[RuntimeCompact] input must be a plain object.")
+  }
+
+  const snapshot = readRuntimeCompactDataProperties(input)
+  const operationId = readNormalizedCompactIdentifier(snapshot.get("operationId"), "operationId")
+  const modelId = readNormalizedCompactIdentifier(snapshot.get("modelId"), "modelId")
+  if (snapshot.get("trigger") !== "manual") {
+    throw new Error('[RuntimeCompact] trigger must be "manual".')
+  }
+  const reason = snapshot.get("reason")
+  if (reason !== undefined && reason !== null && typeof reason !== "string") {
+    throw new Error("[RuntimeCompact] reason must be a string, null, or undefined.")
+  }
+  const preserveLastUserMessageCount = snapshot.get("preserveLastUserMessageCount")
+  if (
+    preserveLastUserMessageCount !== undefined &&
+    (!Number.isSafeInteger(preserveLastUserMessageCount) ||
+      (preserveLastUserMessageCount as number) < 0)
+  ) {
+    throw new Error(
+      "[RuntimeCompact] preserveLastUserMessageCount must be a non-negative safe integer or undefined."
+    )
+  }
+
+  const canonical: RuntimeCompactInput = {
+    modelId,
+    operationId,
+    reason: (reason ?? null) as string | null,
+    trigger: "manual"
+  }
+  if (snapshot.has("preserveLastUserMessageCount")) {
+    canonical.preserveLastUserMessageCount = preserveLastUserMessageCount as number | undefined
+  }
+  return Object.freeze(canonical)
+}
+
+function readRuntimeCompactDataProperties(input: object): ReadonlyMap<PropertyKey, unknown> {
+  const snapshot = new Map<PropertyKey, unknown>()
+  for (const key of Reflect.ownKeys(input)) {
+    const descriptor = Object.getOwnPropertyDescriptor(input, key)
+    if (!descriptor || !("value" in descriptor)) {
+      throw new Error("[RuntimeCompact] input must contain data properties only.")
+    }
+    snapshot.set(key, descriptor.value)
+  }
+  return snapshot
+}
+
+function readNormalizedCompactIdentifier(value: unknown, field: "modelId" | "operationId"): string {
+  if (typeof value !== "string") {
+    throw new Error(`[RuntimeCompact] ${field} must be a non-empty string.`)
+  }
+  const normalized = value.trim()
+  if (normalized.length === 0) {
+    throw new Error(`[RuntimeCompact] ${field} must be a non-empty string.`)
+  }
+  return normalized
 }
 
 export interface RuntimeCompactOperation extends RuntimeRunContext, RuntimeCompactInput {
@@ -238,6 +297,7 @@ export interface RuntimeCompactResult {
 export type RuntimeDurableOperation<TContextInclusion = unknown> =
   | RuntimeInvokeOperation<TContextInclusion>
   | RuntimeResumeOperation<TContextInclusion>
+  | RuntimeCompactOperation
 
 // RuntimeGraph still consumes these internal controls from config. They are execution protocol
 // messages, not durable RuntimeOperation facts or public RuntimeThread commands.
@@ -250,7 +310,6 @@ export type RuntimeOperation<
   | RuntimeCompleteOperation<TContextInclusion>
   | RuntimeAbortOperation
   | RuntimeFailOperation
-  | RuntimeCompactOperation
 
 export interface RuntimeOperationCheckpointBoundary {
   compactRunsInsideModelToolLoop: false
@@ -259,8 +318,7 @@ export interface RuntimeOperationCheckpointBoundary {
   stableCheckpointRequired: true
 }
 
-// Compact is a RuntimeThread control operation. RuntimeGraph may execute a compact branch,
-// but compact is not a generic hook and does not run inside every model/tool loop.
+// Compact is a RuntimeThread control operation outside RuntimeGraph's model/tool loop.
 export const RUNTIME_OPERATION_CHECKPOINT_BOUNDARY = {
   compactRunsInsideModelToolLoop: false,
   postRunCompactAfterRunCommit: true,

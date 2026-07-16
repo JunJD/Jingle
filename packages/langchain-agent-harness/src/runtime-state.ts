@@ -268,8 +268,6 @@ export const runtimeRecordingRefsValue = new ReducedValue(runtimeRecordingRefsSc
 
 export const runtimeStateSchema = new StateSchema({
   _runtimeActivatedContext: new UntrackedValue(),
-  _runtimeCompactPlan: new UntrackedValue(undefined, { guard: false }),
-  _runtimeCompactUpdate: new UntrackedValue(undefined, { guard: false }),
   _runtimeFrame: new UntrackedValue(undefined, { guard: false }),
   _runtimePermissionDecision: new UntrackedValue(undefined, { guard: false }),
   _runtimeStepRoute: new UntrackedValue(undefined, { guard: false }),
@@ -436,7 +434,8 @@ export const RUNTIME_STATE_FACT_CONTRACTS = {
   }
 } as const satisfies Record<RuntimeStateKey, RuntimeStateFactContract>
 
-export interface RuntimeCheckpointState<TContextInclusion = JingleContextInclusionStateItem>
-  extends RuntimeState<TContextInclusion> {
+export interface RuntimeCheckpointState<
+  TContextInclusion = JingleContextInclusionStateItem
+> extends RuntimeState<TContextInclusion> {
   messages: BaseMessage[]
 }

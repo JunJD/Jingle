@@ -1,32 +1,23 @@
 import { isBaseMessage } from "@langchain/core/messages"
-import { buildJingleCheckpointLookupConfig } from "../../../../run-config"
-import type { RuntimeCompactOperation } from "../../../../runtime-operation"
-import type {
-  RuntimeCompactPlan,
-  RuntimeNodeContext,
-  RuntimeTargetNode
-} from "./node-contract"
+import type { RunnableConfig } from "@langchain/core/runnables"
+import type { RuntimeCompactPlan, RuntimeNodeContext, RuntimeTargetNode } from "./node-contract"
 
 export interface CompactPrepareNodeResult {
   readonly privateState: { compactPlan: RuntimeCompactPlan }
 }
 
-export function createCompactCheckpointConfig(operation: RuntimeCompactOperation) {
-  return buildJingleCheckpointLookupConfig({
-    checkpointRunId: operation.runId,
-    threadId: operation.threadId
-  })
+export interface CompactPrepareNodeInput {
+  readonly checkpointConfig: RunnableConfig
 }
 
-export class CompactPrepareNode implements RuntimeTargetNode<undefined, CompactPrepareNodeResult>
-{
+export class CompactPrepareNode implements RuntimeTargetNode<
+  CompactPrepareNodeInput,
+  CompactPrepareNodeResult
+> {
   readonly boundary = "compact"
   readonly kind = "CompactPrepareNode"
 
-  invoke(
-    _input: undefined,
-    context: RuntimeNodeContext
-  ): CompactPrepareNodeResult {
+  invoke(input: CompactPrepareNodeInput, context: RuntimeNodeContext): CompactPrepareNodeResult {
     if (context.operation.kind !== "compact") {
       throw new Error("[CompactPrepareNode] Expected a compact operation.")
     }
@@ -34,16 +25,18 @@ export class CompactPrepareNode implements RuntimeTargetNode<undefined, CompactP
     const messages = context.state.messages
     for (const message of messages) {
       if (!isBaseMessage(message)) {
-        throw new Error("[CompactPrepareNode] Runtime messages channel contains a non-message value.")
+        throw new Error(
+          "[CompactPrepareNode] Runtime messages channel contains a non-message value."
+        )
       }
     }
 
-    const operation = context.operation as RuntimeCompactOperation
+    const operation = context.operation
 
     return {
       privateState: {
         compactPlan: {
-          checkpointConfig: createCompactCheckpointConfig(operation),
+          checkpointConfig: input.checkpointConfig,
           messages,
           operation,
           preserveLastUserMessageCount: operation.preserveLastUserMessageCount,

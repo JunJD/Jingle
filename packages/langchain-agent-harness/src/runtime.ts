@@ -12,6 +12,7 @@ import { createRuntimeObservationSink } from "./runtime-observation"
 import { createRuntimeThreadFactory } from "./runtime-thread-factory"
 import type {
   RuntimeThread,
+  RuntimeThreadCompactionControl,
   RuntimeThreadFactoryInput,
   RuntimeThreadInput,
   RuntimeThreadInvokeExecutionBindingInput,
@@ -55,6 +56,7 @@ export interface CreateRuntimeInput<
       input: RuntimeResumeExecutionResolutionInput<TResumeRunLifecycleInput>
     ): RuntimeExecutionCapabilities<TContextInclusion, TGuardrailMetadata>
   }
+  compaction?: RuntimeThreadCompactionControl
   control: RuntimeControlCapabilities<
     TContextInclusion,
     TReview,
@@ -99,6 +101,7 @@ export function createRuntime<
   }
   const threadFactory = createRuntimeThreadFactory({
     bindExecution,
+    compaction: input.compaction,
     pauseController: input.control.pauseController,
     runLifecycleController: input.control.runLifecycleController
   })
@@ -174,9 +177,6 @@ function createRuntimeHost<
     },
     control: {
       approvalController: contribution.control.approvalController,
-      compaction: {
-        summarization: contribution.compaction.summarization
-      },
       pauseController: controlInput.pauseController,
       runLifecycleController: controlInput.runLifecycleController
     },
