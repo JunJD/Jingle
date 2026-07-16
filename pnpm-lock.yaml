@@ -380,6 +380,8 @@ importers:
 
   packages/agent-tracing: {}
 
+  packages/computer-use-core: {}
+
   packages/devtools-network: {}
 
   packages/extension-api:
