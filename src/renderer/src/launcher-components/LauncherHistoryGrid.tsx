@@ -1,4 +1,5 @@
 import { Pin, PinOff, Trash2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -61,12 +62,13 @@ export function LauncherHistoryGrid(props: {
           >
             <ContextMenu>
               <ContextMenuTrigger asChild>
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
                   onClick={() => onExecute(index)}
                   onMouseDown={(event) => event.preventDefault()}
                   className={cn(
-                    "flex h-full w-full appearance-none flex-col items-center justify-center gap-[var(--jingle-gap-sm)] border-0 px-[var(--jingle-space-2)] pb-[var(--jingle-space-2)] pt-[var(--jingle-space-3)] text-center transition",
+                    "h-full w-full flex-col gap-[var(--jingle-gap-sm)] rounded-none border-0 bg-transparent px-[var(--jingle-space-2)] pb-[var(--jingle-space-2)] pt-[var(--jingle-space-3)] text-center hover:bg-transparent",
                     "text-foreground",
                     isSelected && "bg-[var(--launcher-item-hover)]"
                   )}
@@ -76,7 +78,7 @@ export function LauncherHistoryGrid(props: {
                   <span className="w-full truncate [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-body)] text-foreground/92">
                     {item.title}
                   </span>
-                </button>
+                </Button>
               </ContextMenuTrigger>
 
               <ContextMenuContent className="min-w-[166px]">

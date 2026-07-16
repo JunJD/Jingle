@@ -1,4 +1,5 @@
 import { CircleMinus, CirclePlus } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
@@ -33,11 +34,12 @@ function LauncherUseWithManagerSection(props: {
       </div>
 
       {commands.map((command) => (
-        <button
+        <Button
           key={getLauncherCommandAddressKey(command.address)}
           type="button"
+          variant="ghost"
           className={cn(
-            "launcher-result-row relative mx-[var(--launcher-result-row-x)] grid h-[var(--jingle-row-h-md)] w-[calc(100%-(var(--launcher-result-row-x)*2))] appearance-none grid-cols-[var(--launcher-result-icon-column)_minmax(0,1fr)_var(--launcher-result-trailing-column)] items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] border-0 px-[var(--launcher-result-row-padding-x)] text-left transition hover:bg-[var(--launcher-item-hover)]",
+            "launcher-result-row relative mx-[var(--launcher-result-row-x)] grid h-[var(--jingle-row-h-md)] w-[calc(100%-(var(--launcher-result-row-x)*2))] grid-cols-[var(--launcher-result-icon-column)_minmax(0,1fr)_var(--launcher-result-trailing-column)] items-center justify-normal gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] border-0 bg-transparent px-[var(--launcher-result-row-padding-x)] text-left hover:bg-[var(--launcher-item-hover)]",
             enabled && "text-foreground"
           )}
           onClick={() => onSetCommandEnabled(command, !enabled)}
@@ -64,7 +66,7 @@ function LauncherUseWithManagerSection(props: {
             )}
             <span>{actionLabel}</span>
           </div>
-        </button>
+        </Button>
       ))}
     </section>
   )
