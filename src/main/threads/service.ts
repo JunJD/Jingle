@@ -17,10 +17,7 @@ import {
   updateThreadMetadata,
   type ThreadRow
 } from "../db/threads"
-import {
-  getLatestHitlRequest,
-  hasPendingHitlRequest
-} from "../db/hitl"
+import { getLatestHitlRequest, hasPendingHitlRequest } from "../db/hitl"
 import { getLatestRun } from "../db/runs"
 import {
   getProjects,
@@ -33,10 +30,7 @@ import {
   listProjectedThreadMessages,
   type MessageProjectionRow
 } from "../db/message-state"
-import {
-  closeCheckpointer,
-  getCheckpointer
-} from "../checkpointer/runtime-checkpointer-manager"
+import { closeCheckpointer, getCheckpointer } from "../checkpointer/runtime-checkpointer-manager"
 import {
   type JingleCheckpointProjectionSource,
   extractThreadFactsFromCheckpoint,
@@ -56,6 +50,8 @@ import { rebuildMessageSearchIndexFromMessages } from "../db/message-search"
 import { formatDefaultThreadTitle } from "@shared/i18n"
 import {
   toDisplayAssistantMessageContent,
+  toDisplayMessageContent,
+  parsePersistedMessageContent,
   toDisplayUserMessageContent
 } from "@shared/message-content"
 import { THREAD_PINNED_METADATA_KEY } from "@shared/thread-sidebar"
@@ -145,15 +141,27 @@ function mapProjectedMessagesToThreadMessages(
   projectedMessages: MessageProjectionRow[]
 ): Message[] {
   return projectedMessages.map((row) => {
-    let content: Message["content"] = ""
+    const role =
+      row.role === "tool"
+        ? "tool"
+        : row.role === "system"
+          ? "system"
+          : row.role === "assistant"
+            ? "assistant"
+            : "user"
+    const content = parsePersistedMessageContent(row.content, {
+      role,
+      ...(row.tool_call_id ? { toolCallId: row.tool_call_id } : {}),
+      onInvalid: (reason) => {
+        console.warn("[Threads] Invalid persisted message content.", {
+          messageId: row.message_id,
+          reason,
+          threadId: row.thread_id
+        })
+      }
+    })
     let tool_calls: Message["tool_calls"] | undefined
     let metadata: Message["metadata"] | undefined
-
-    try {
-      content = JSON.parse(row.content) as Message["content"]
-    } catch {
-      content = row.content
-    }
 
     if (row.tool_calls) {
       try {
@@ -173,13 +181,16 @@ function mapProjectedMessagesToThreadMessages(
 
     return {
       id: row.message_id,
-      role: row.role as Message["role"],
+      role,
       content:
         row.role === "user"
           ? toDisplayUserMessageContent(content, metadata)
           : row.role === "assistant"
             ? toDisplayAssistantMessageContent(content)
-            : content,
+            : toDisplayMessageContent(content, {
+                role: row.role === "tool" ? "tool" : "system",
+                ...(row.tool_call_id ? { toolCallId: row.tool_call_id } : {})
+              }),
       tool_calls,
       metadata,
       ...(row.tool_call_id ? { tool_call_id: row.tool_call_id } : {}),
@@ -227,10 +238,8 @@ async function assertThreadCanFork(input: {
   threadId: string
 }): Promise<void> {
   const forkState = await computeThreadForkState({
-    checkpointHasInterrupt: extractThreadFactsFromCheckpoint(
-      input.threadId,
-      input.checkpoint
-    ).hasInterrupt,
+    checkpointHasInterrupt: extractThreadFactsFromCheckpoint(input.threadId, input.checkpoint)
+      .hasInterrupt,
     thread: input.thread,
     threadId: input.threadId
   })

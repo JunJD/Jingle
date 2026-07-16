@@ -8,6 +8,10 @@ import {
   normalizeComposerMessageRefs,
   extractMessageText,
   summarizeMessageContent,
+  toComposerMessageMetadata,
+  toDisplayAssistantMessageContent,
+  toDisplayMessageContent,
+  toDisplayUserMessageContent,
   type AgentMessageContent
 } from "@shared/message-content"
 import {
@@ -149,10 +153,7 @@ function hashText(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex")
 }
 
-function readMetadata(input: {
-  refs?: unknown
-  source?: string
-}): string | null {
+function readMetadata(input: { refs?: unknown; source?: string }): string | null {
   const refs = normalizeComposerMessageRefs(input.refs)
   const metadata: Record<string, unknown> = {}
 
@@ -232,7 +233,19 @@ async function serializeMessageStateItem(input: {
     order: input.index + 1,
     rawHash
   })
-  const content = stableStringify(message.content)
+  const displayMetadata = toComposerMessageMetadata({
+    refs: normalizeComposerMessageRefs(message.metadataHints.refs)
+  })
+  const displayContent =
+    message.role === "assistant"
+      ? toDisplayAssistantMessageContent(message.content, message.displayContext)
+      : message.role === "user"
+        ? toDisplayUserMessageContent(message.content, displayMetadata)
+        : toDisplayMessageContent(message.content, {
+            role: message.role,
+            ...(message.toolCallId ? { toolCallId: message.toolCallId } : {})
+          })
+  const content = stableStringify(displayContent)
   const metadata = readMetadata(message.metadataHints)
 
   return {

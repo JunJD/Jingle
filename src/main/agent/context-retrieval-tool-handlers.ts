@@ -17,7 +17,12 @@ import {
 } from "@shared/context-retrieval-results"
 import type { ArtifactRecord } from "@shared/artifacts"
 import type { ThreadDigestSearchMatch } from "@shared/thread-digest"
-import { extractMessageText } from "@shared/message-content"
+import {
+  extractMessageText,
+  parsePersistedMessageContent,
+  summarizeMessageContent,
+  type MessageContentRole
+} from "@shared/message-content"
 import {
   listProjectedThreadMessages,
   searchProjectedThreadMessages,
@@ -38,9 +43,7 @@ import {
 import { searchThreadDigests } from "../db/thread-digests"
 import { getArtifact, listArtifactsByToolCallId } from "../artifacts/service"
 import type { RuntimeContextRetrievalConfig } from "@jingle/langchain-agent-harness"
-import {
-  jingleSearchHistoryInputSchema
-} from "@jingle/langchain-agent-harness/transitional"
+import { jingleSearchHistoryInputSchema } from "@jingle/langchain-agent-harness/transitional"
 
 const TOOL_CONTEXT_CONTENT_LIMIT = 4_000
 const MESSAGE_CONTEXT_ENTRY_CONTENT_LIMIT = 1_200
@@ -50,23 +53,32 @@ const ARTIFACT_EVIDENCE_CONTENT_LIMIT = 2_000
 type AgentContextInclusionToolHandlers = RuntimeContextRetrievalConfig<AgentContextInclusion>
 
 function readProjectedMessageText(message: MessageProjectionRow): string {
-  let content: unknown = message.content
-  try {
-    content = JSON.parse(message.content) as unknown
-  } catch {
-    content = message.content
-  }
+  const role: MessageContentRole =
+    message.role === "assistant" || message.role === "system" || message.role === "tool"
+      ? message.role
+      : "user"
+  const content = parsePersistedMessageContent(message.content, {
+    role,
+    ...(message.tool_call_id ? { toolCallId: message.tool_call_id } : {}),
+    onInvalid: (reason) => {
+      console.warn("[ContextRetrieval] Invalid persisted message content.", {
+        messageId: message.message_id,
+        reason,
+        threadId: message.thread_id
+      })
+    }
+  })
 
-  const text =
-    typeof content === "string" || Array.isArray(content) ? extractMessageText(content) : ""
-  return text.trim() || message.content
+  return (
+    extractMessageText(content).trim() ||
+    summarizeMessageContent(content).trim() ||
+    "Message content unavailable."
+  )
 }
 
 function clipToolContextContent(content: string, limit = TOOL_CONTEXT_CONTENT_LIMIT): string {
   const trimmed = content.trim()
-  return trimmed.length > limit
-    ? `${trimmed.slice(0, limit)}\n[truncated]`
-    : trimmed
+  return trimmed.length > limit ? `${trimmed.slice(0, limit)}\n[truncated]` : trimmed
 }
 
 function parseProjectedToolCalls(
@@ -210,13 +222,11 @@ function formatRetrievedMessageToolContent(input: {
   })
 }
 
-function formatRetrievedHistoryToolContent(
-  input: {
-    digests: ThreadDigestSearchMatch[]
-    messages: Array<{ message: MessageProjectionRow; text: string }>
-    query: string
-  }
-): string {
+function formatRetrievedHistoryToolContent(input: {
+  digests: ThreadDigestSearchMatch[]
+  messages: Array<{ message: MessageProjectionRow; text: string }>
+  query: string
+}): string {
   const messageItems = input.messages.map(({ message, text }) =>
     createHistoryMessageResultItem({ message, snippet: text })
   )
@@ -429,9 +439,7 @@ function artifactMatchesTraceSource(
   artifact: ArtifactRecord,
   trace: AgentTraceSummaryRow
 ): boolean {
-  return (
-    (artifact.runId === trace.run_id && artifact.threadId === trace.thread_id)
-  )
+  return artifact.runId === trace.run_id && artifact.threadId === trace.thread_id
 }
 
 async function searchHistoryMessages(input: {
@@ -709,7 +717,8 @@ export function createAgentContextInclusionToolHandlers(options: {
             ? explicitArtifact
             : null
       const linkedArtifactRunId =
-        parsed.runId ?? (!selection.artifactOnly && selection.trace ? selection.trace.run_id : undefined)
+        parsed.runId ??
+        (!selection.artifactOnly && selection.trace ? selection.trace.run_id : undefined)
       const linkedArtifacts =
         parsed.artifactId || !parsed.toolCallId
           ? scopedExplicitArtifact
@@ -783,7 +792,9 @@ export function createAgentContextInclusionToolHandlers(options: {
       const includeInput = parsed.includeInput ?? true
       const includeOutput = parsed.includeOutput ?? true
       const inputBlob = includeInput ? await getAgentTraceBlob(selection.step.input_blob_id) : null
-      const outputBlob = includeOutput ? await getAgentTraceBlob(selection.step.output_blob_id) : null
+      const outputBlob = includeOutput
+        ? await getAgentTraceBlob(selection.step.output_blob_id)
+        : null
 
       if (includeInput && selection.step.input_blob_id && !inputBlob) {
         return {

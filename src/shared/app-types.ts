@@ -249,7 +249,7 @@ export type StreamEvent =
 export interface Message {
   id: string
   role: "user" | "assistant" | "system" | "tool"
-  content: string | ContentBlock[]
+  content: MessageContent
   tool_calls?: ToolCall[]
   tool_call_id?: string
   name?: string
@@ -257,18 +257,88 @@ export interface Message {
   created_at: Date
 }
 
-export interface ContentBlock {
-  type: "text" | "reasoning" | "image" | "image_url" | "file" | "tool_use" | "tool_result"
-  text?: string
-  reasoning?: string
-  signature?: string
-  tool_use_id?: string
-  name?: string
-  input?: unknown
-  content?: string
-  image_url?: string | { detail?: "auto" | "high" | "low"; url: string }
+export interface MessageAttachmentDataSource {
+  data: string
+  kind: "data"
+  mimeType: string
+}
+
+export interface MessageAttachmentFileIdSource {
+  fileId: string
+  kind: "file-id"
   mimeType?: string
 }
+
+export interface MessageAttachmentTextSource {
+  kind: "text"
+  mimeType?: string
+  text: string
+}
+
+export interface MessageAttachmentUrlSource {
+  kind: "url"
+  mimeType?: string
+  url: string
+}
+
+export type MessageImageSource =
+  | MessageAttachmentDataSource
+  | MessageAttachmentFileIdSource
+  | MessageAttachmentUrlSource
+
+export type MessageFileSource =
+  | MessageAttachmentDataSource
+  | MessageAttachmentFileIdSource
+  | MessageAttachmentTextSource
+  | MessageAttachmentUrlSource
+
+export interface TextContentBlock {
+  text: string
+  type: "text"
+}
+
+export interface ReasoningContentBlock {
+  reasoning: string
+  signature?: string
+  type: "reasoning"
+}
+
+export interface ImageContentBlock {
+  name?: string
+  source: MessageImageSource
+  type: "image"
+}
+
+export interface ImageUrlContentBlock {
+  detail?: "auto" | "high" | "low"
+  name?: string
+  source: MessageAttachmentUrlSource
+  type: "image_url"
+}
+
+export interface FileContentBlock {
+  name: string
+  source: MessageFileSource
+  type: "file"
+}
+
+export type UnrenderableContentBlockReason = "malformed" | "unsupported"
+
+export interface UnrenderableContentBlock {
+  reason: UnrenderableContentBlockReason
+  sourceType: string | null
+  type: "unrenderable"
+}
+
+export type ContentBlock =
+  | TextContentBlock
+  | ReasoningContentBlock
+  | ImageContentBlock
+  | ImageUrlContentBlock
+  | FileContentBlock
+  | UnrenderableContentBlock
+
+export type MessageContent = string | ContentBlock[]
 
 export interface ToolCall {
   args: Record<string, unknown>

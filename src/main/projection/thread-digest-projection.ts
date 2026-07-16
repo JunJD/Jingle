@@ -6,10 +6,9 @@ import { listProjectedThreadMessages, type MessageProjectionRow } from "../db/me
 import { upsertReadyThreadDigest, type UpsertReadyThreadDigestInput } from "../db/thread-digests"
 import {
   extractMessageText,
-  summarizeMessageContent,
-  type AgentMessageContent
+  parsePersistedMessageContent,
+  summarizeMessageContent
 } from "@shared/message-content"
-import type { ContentBlock } from "@shared/app-types"
 
 const THREAD_DIGEST_GENERATION_TIMEOUT_MS = 8_000
 const THREAD_DIGEST_MAX_OUTPUT_TOKENS = 1_024
@@ -43,22 +42,6 @@ export type GenerateThreadDigest = (input: {
 
 let generateThreadDigest: GenerateThreadDigest = generateThreadDigestWithModel
 
-function parseIndexedMessageContent(
-  content: string
-): string | ContentBlock[] | AgentMessageContent {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(content) as unknown
-  } catch {
-    throw new Error("[ThreadDigestProjector] Indexed message content is invalid JSON.")
-  }
-  if (typeof parsed === "string" || Array.isArray(parsed)) {
-    return parsed as string | ContentBlock[] | AgentMessageContent
-  }
-
-  throw new Error("[ThreadDigestProjector] Indexed message content must be text or content blocks.")
-}
-
 function normalizeText(value: string, maxChars: number): string {
   return value.replace(/\s+/g, " ").trim().slice(0, maxChars).trim()
 }
@@ -86,7 +69,16 @@ function normalizeDigest(digest: GeneratedThreadDigest): GeneratedThreadDigest {
 }
 
 function getMessageDigestText(message: MessageProjectionRow): string {
-  const parsedContent = parseIndexedMessageContent(message.content)
+  const parsedContent = parsePersistedMessageContent(message.content, {
+    role: message.role === "assistant" ? "assistant" : "user",
+    onInvalid: (reason) => {
+      console.warn("[ThreadDigestProjector] Invalid persisted message content.", {
+        messageId: message.message_id,
+        reason,
+        threadId: message.thread_id
+      })
+    }
+  })
   const text = extractMessageText(parsedContent).trim()
   const summary = summarizeMessageContent(parsedContent).trim()
   const body = text || summary

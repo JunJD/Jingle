@@ -1,9 +1,9 @@
-import type { ContentBlock } from "@shared/app-types"
 import {
   extractComposerMessageRefsMetadata,
   extractMessageText,
+  parsePersistedMessageContent,
   summarizeMessageContent,
-  type AgentMessageContent
+  type MessageContentRole
 } from "@shared/message-content"
 import { Prisma } from "@prisma/client"
 import { buildSegmentedSearchText } from "../search-text"
@@ -35,20 +35,35 @@ type IndexedProjectedMessage = {
 }
 
 function parseIndexedMessageContent(
-  content: string
-): string | ContentBlock[] | AgentMessageContent {
-  try {
-    const parsed = JSON.parse(content) as unknown
-    return typeof parsed === "string" || Array.isArray(parsed)
-      ? (parsed as string | ContentBlock[] | AgentMessageContent)
-      : content
-  } catch {
-    return content
+  message: Pick<IndexedCheckpointMessage, "content" | "role"> & {
+    message_id?: string
+    messageId?: string
+    tool_call_id?: string | null
+    toolCallId?: string | null
   }
+) {
+  const role: MessageContentRole =
+    message.role === "assistant" || message.role === "system" || message.role === "tool"
+      ? message.role
+      : "user"
+  return parsePersistedMessageContent(message.content, {
+    role,
+    ...(message.tool_call_id || message.toolCallId
+      ? { toolCallId: message.tool_call_id ?? message.toolCallId }
+      : {}),
+    onInvalid: (reason) => {
+      console.warn("[MessageSearch] Invalid persisted message content.", {
+        messageId: message.message_id ?? message.messageId,
+        reason
+      })
+    }
+  })
 }
 
-function buildIndexedMessageSearchText(message: IndexedCheckpointMessage): string {
-  const parsedContent = parseIndexedMessageContent(message.content)
+function buildIndexedMessageSearchText(
+  message: IndexedCheckpointMessage,
+  parsedContent: ReturnType<typeof parseIndexedMessageContent>
+): string {
   const refs = (() => {
     if (!message.metadata) {
       return []
@@ -87,23 +102,26 @@ function buildIndexedMessageSearchText(message: IndexedCheckpointMessage): strin
 
 function buildProjectedMessages(messages: IndexedCheckpointMessage[]): IndexedProjectedMessage[] {
   const now = Date.now()
-  return messages.map((message, index) => ({
-    content: message.content,
-    createdAt: message.created_at ?? now + index,
-    kind: message.kind ?? "message",
-    messageId: message.message_id,
-    metadata: message.metadata ?? null,
-    name: message.name ?? null,
-    role: message.role,
-    searchText: buildIndexedMessageSearchText(message),
-    toolCallId: message.tool_call_id ?? null,
-    toolCalls: message.tool_calls ?? null
-  }))
+  return messages.map((message, index) => {
+    const parsedContent = parseIndexedMessageContent(message)
+    return {
+      content: JSON.stringify(parsedContent),
+      createdAt: message.created_at ?? now + index,
+      kind: message.kind ?? "message",
+      messageId: message.message_id,
+      metadata: message.metadata ?? null,
+      name: message.name ?? null,
+      role: message.role,
+      searchText: buildIndexedMessageSearchText(message, parsedContent),
+      toolCallId: message.tool_call_id ?? null,
+      toolCalls: message.tool_calls ?? null
+    }
+  })
 }
 
 function buildProjectedRawMessage(message: IndexedProjectedMessage): string {
   return JSON.stringify({
-    content: parseIndexedMessageContent(message.content),
+    content: parseIndexedMessageContent(message),
     role: message.role,
     source: "jingle-message-search-projection"
   })

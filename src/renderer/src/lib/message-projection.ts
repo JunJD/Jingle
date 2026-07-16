@@ -32,7 +32,7 @@ import {
   type JingleAgentRunPhase,
   type JingleToolExecutionTiming
 } from "@jingle/agent-client"
-import type { ContentBlock, HITLRequest, Message as ThreadMessage, ToolCall } from "@/types"
+import type { HITLRequest, Message as ThreadMessage, ToolCall } from "@/types"
 import { readJingleSteeringAppliedMarker, readJingleSteeringStatus } from "@shared/message-steering"
 import { parseOptionalToolDecision, type ToolDecision } from "@shared/tool-decision"
 
@@ -41,6 +41,176 @@ export interface ToolResultInfo {
   execution: JingleToolExecutionTiming | null
   fileMutation: FileMutationResultMetadata | null
   toolDecision: ToolDecision | null
+}
+
+export type MessageContentViewBlock =
+  | {
+      kind: "text"
+      sourceIndex: number
+      text: string
+    }
+  | {
+      kind: "reasoning"
+      sourceIndex: number
+      text: string
+    }
+  | {
+      attachmentType: "image"
+      kind: "attachment"
+      mediaType: string | null
+      name: string | null
+      sourceIndex: number
+      url: string | null
+    }
+  | {
+      attachmentType: "file"
+      kind: "attachment"
+      mediaType: string | null
+      name: string
+      sourceIndex: number
+      url: string | null
+    }
+  | {
+      kind: "unrenderable"
+      reason: "malformed" | "unsupported"
+      sourceIndex: number
+      sourceType: string | null
+    }
+
+export interface MessageContentViewProjection {
+  blocks: MessageContentViewBlock[]
+  hasNarrativeContent: boolean
+  reasoningText: string
+  scrollKey: string
+}
+
+export interface MessageAttachmentPresentation {
+  id: string
+  label: string
+  mediaCategory: "document" | "image"
+  mediaType?: string
+  url?: string
+}
+
+const MAX_INLINE_IMAGE_BYTES = 8 * 1024 * 1024
+const INLINE_IMAGE_PATTERN = /^data:(image\/(?:gif|jpeg|png|webp));base64,([A-Za-z0-9+/]*={0,2})$/i
+
+function resolveDirectImagePreviewUrl(url: string | null): string | null {
+  if (!url) {
+    return null
+  }
+  if (url.startsWith("jingle-extension-asset://")) {
+    return url
+  }
+  const match = INLINE_IMAGE_PATTERN.exec(url)
+  if (!match) {
+    return null
+  }
+  const base64 = match[2] ?? ""
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0
+  const decodedBytes = Math.floor((base64.length * 3) / 4) - padding
+  return decodedBytes <= MAX_INLINE_IMAGE_BYTES ? url : null
+}
+
+export function projectMessageContent(
+  content: ThreadMessage["content"]
+): MessageContentViewProjection {
+  if (typeof content === "string") {
+    return {
+      blocks: content.length > 0 ? [{ kind: "text", sourceIndex: 0, text: content }] : [],
+      hasNarrativeContent: content.trim().length > 0,
+      reasoningText: "",
+      scrollKey: `${content.length}:0:0`
+    }
+  }
+
+  let hasNarrativeContent = false
+  let reasoningText = ""
+  let textLength = 0
+  const blocks = content.map<MessageContentViewBlock>((block, sourceIndex) => {
+    switch (block.type) {
+      case "text":
+        textLength += block.text.length
+        hasNarrativeContent ||= block.text.trim().length > 0
+        return { kind: "text", sourceIndex, text: block.text }
+      case "reasoning":
+        reasoningText += block.reasoning
+        return { kind: "reasoning", sourceIndex, text: block.reasoning }
+      case "image": {
+        const url = resolveDirectImagePreviewUrl(resolveImageBlockUrl(block))
+        hasNarrativeContent = true
+        return {
+          attachmentType: "image",
+          kind: "attachment",
+          mediaType: block.source.mimeType ?? null,
+          name: block.name ?? null,
+          sourceIndex,
+          url
+        }
+      }
+      case "image_url": {
+        const url = resolveDirectImagePreviewUrl(resolveImageBlockUrl(block))
+        hasNarrativeContent = true
+        return {
+          attachmentType: "image",
+          kind: "attachment",
+          mediaType: block.source.mimeType ?? null,
+          name: block.name ?? null,
+          sourceIndex,
+          url
+        }
+      }
+      case "file":
+        hasNarrativeContent = true
+        return {
+          attachmentType: "file",
+          kind: "attachment",
+          mediaType: block.source.mimeType ?? null,
+          name: block.name,
+          sourceIndex,
+          url: null
+        }
+      case "unrenderable":
+        hasNarrativeContent = true
+        return {
+          kind: "unrenderable",
+          reason: block.reason,
+          sourceIndex,
+          sourceType: block.sourceType
+        }
+    }
+  })
+
+  return {
+    blocks,
+    hasNarrativeContent,
+    reasoningText,
+    scrollKey: `${textLength}:${reasoningText.length}:${content.length}`
+  }
+}
+
+export function projectMessageAttachmentPresentation(
+  block: Extract<MessageContentViewBlock, { kind: "attachment" }>,
+  labels: { image: string }
+): MessageAttachmentPresentation {
+  if (block.attachmentType === "file") {
+    return {
+      id: `attachment:${block.sourceIndex}`,
+      label: block.name,
+      mediaCategory: "document",
+      ...(block.mediaType ? { mediaType: block.mediaType } : {}),
+      ...(block.url ? { url: block.url } : {})
+    }
+  }
+
+  const imageName = block.name ?? `${labels.image} ${block.sourceIndex + 1}`
+  return {
+    id: `attachment:${block.sourceIndex}`,
+    label: imageName,
+    mediaCategory: "image",
+    ...(block.mediaType ? { mediaType: block.mediaType } : {}),
+    ...(block.url ? { url: block.url } : {})
+  }
 }
 
 export interface MessageTurn {
@@ -545,51 +715,11 @@ function stabilizeDisplayRows(
 }
 
 function getReasoningText(content: ThreadMessage["content"]): string {
-  if (typeof content === "string" || !Array.isArray(content)) {
-    return ""
-  }
-
-  return content.reduce((text, block) => {
-    return block.type === "reasoning" ? text + getReasoningBlockText(block) : text
-  }, "")
-}
-
-function getDisplayBlockText(block: ContentBlock): string {
-  return block.text ?? block.content ?? ""
-}
-
-function getReasoningBlockText(block: ContentBlock): string {
-  return block.reasoning ?? getDisplayBlockText(block)
-}
-
-function getFileBlockDisplayText(block: ContentBlock): string {
-  return block.name ?? block.content ?? ""
+  return projectMessageContent(content).reasoningText
 }
 
 function hasNarrativeAssistantContent(content: ThreadMessage["content"]): boolean {
-  if (typeof content === "string") {
-    return content.trim().length > 0
-  }
-
-  if (!Array.isArray(content) || content.length === 0) {
-    return false
-  }
-
-  return content.some((block) => {
-    if (block.type === "reasoning") {
-      return false
-    }
-
-    if (block.type === "image" || block.type === "image_url") {
-      return Boolean(resolveImageBlockUrl(block))
-    }
-
-    if (block.type === "file") {
-      return getFileBlockDisplayText(block).trim().length > 0
-    }
-
-    return getDisplayBlockText(block).trim().length > 0
-  })
+  return projectMessageContent(content).hasNarrativeContent
 }
 
 function createToolActivityItem(

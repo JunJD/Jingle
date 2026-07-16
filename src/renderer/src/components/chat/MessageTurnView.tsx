@@ -16,11 +16,10 @@ import {
   extractMessageText,
   hasComposerMessageInputContent,
   hasMessageContent,
-  resolveImageBlockUrl,
   toComposerMessageInput,
   type ComposerMessageInput
 } from "@shared/message-content"
-import type { ContentBlock, HITLRequest, Message as ThreadMessage } from "@/types"
+import type { HITLRequest, Message as ThreadMessage } from "@/types"
 import type { EditLastUserMessageAndInvokeInput } from "@/lib/agent-control"
 import type {
   JingleActiveRunCoachStatusKind,
@@ -36,6 +35,7 @@ import {
   AgentToolGroupTrigger
 } from "@/components/agent-ui"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { InlineNotice } from "@/components/ui/inline-notice"
 import { createActionMessageView } from "./action-message-view"
 import {
   projectAgentActivityFallbackHeaderText,
@@ -48,9 +48,12 @@ import {
   buildTurnAssistantEntries,
   getTurnCopyText,
   projectActiveTurnStatus,
+  projectMessageAttachmentPresentation,
+  projectMessageContent,
   projectTurnElapsedDivider,
   type ActiveTurnStatusProjection,
   type AgentActivityItem,
+  type MessageContentViewBlock,
   type MessageTurn,
   type ToolResultInfo,
   type TurnAssistantEntry,
@@ -108,6 +111,7 @@ interface StructuredMessageContent {
   attachments: React.ReactNode
   reasoningContent: React.ReactNode
   textContent: React.ReactNode
+  unrenderableContent: React.ReactNode
 }
 
 const USER_MESSAGE_COLLAPSED_LINE_COUNT = 20
@@ -134,65 +138,34 @@ function getWorkspaceFileName(path: string): string {
   return path.split("/").pop() || path
 }
 
-function isRenderableImageUrl(url: string | null): url is string {
-  return Boolean(
-    url &&
-    (url.startsWith("data:") ||
-      url.startsWith("blob:") ||
-      url.startsWith("http://") ||
-      url.startsWith("https://") ||
-      url.startsWith("file://"))
-  )
-}
-
 function toAttachmentData(
-  block: ContentBlock,
-  index: number,
+  block: Extract<MessageContentViewBlock, { kind: "attachment" }>,
   clipboardImageLabel: string
 ): {
   data: AttachmentData
   fallbackIcon?: React.JSX.Element
-} | null {
-  if (block.type === "image" || block.type === "image_url") {
-    const url = resolveImageBlockUrl(block)
-    return {
-      data: {
-        filename: block.name || `${clipboardImageLabel} ${index + 1}`,
-        id: `attachment:${index}`,
-        mediaType: block.mimeType || "image/png",
-        type: "file",
-        ...(isRenderableImageUrl(url) ? { url } : {})
-      }
-    }
-  }
+} {
+  const presentation = projectMessageAttachmentPresentation(block, {
+    image: clipboardImageLabel
+  })
 
-  if (block.type === "file") {
+  if (block.attachmentType === "file") {
     return {
-      data: {
-        filename: block.name || "Attachment",
-        id: `attachment:${index}`,
-        mediaType: block.mimeType,
-        type: "file",
-        ...(block.content?.startsWith("http://") || block.content?.startsWith("https://")
-          ? { url: block.content }
-          : {})
-      },
+      data: presentation,
       fallbackIcon: <FileText className="size-[var(--jingle-icon-display)] text-muted-foreground" />
     }
   }
 
-  return null
+  return { data: presentation }
 }
 
 function MessageAttachments(props: {
-  blocks: Array<{ block: ContentBlock; index: number }>
+  blocks: Array<Extract<MessageContentViewBlock, { kind: "attachment" }>>
   isUser: boolean
 }): React.JSX.Element | null {
   const { copy } = useI18n()
   const { blocks, isUser } = props
-  const attachments = blocks
-    .map(({ block, index }) => toAttachmentData(block, index, copy.launcher.clipboardImage))
-    .filter((item): item is NonNullable<ReturnType<typeof toAttachmentData>> => item !== null)
+  const attachments = blocks.map((block) => toAttachmentData(block, copy.launcher.clipboardImage))
 
   if (attachments.length === 0) {
     return null
@@ -423,14 +396,6 @@ function renderTextBlock(
   )
 }
 
-function getContentBlockDisplayText(block: ContentBlock): string {
-  return block.text ?? block.content ?? ""
-}
-
-function getReasoningBlockText(block: ContentBlock): string {
-  return block.reasoning ?? getContentBlockDisplayText(block)
-}
-
 function ReasoningBlock(props: {
   coachTip?: JingleRunCoachTipProjection | null
   isStreaming?: boolean
@@ -508,6 +473,29 @@ function ThinkingMessage(props: {
   )
 }
 
+function UnrenderableContentNotice(props: {
+  blocks: Array<Extract<MessageContentViewBlock, { kind: "unrenderable" }>>
+}): React.JSX.Element | null {
+  const { copy } = useI18n()
+  const { blocks } = props
+
+  if (blocks.length === 0) {
+    return null
+  }
+
+  return (
+    <InlineNotice
+      data-message-content-errors={blocks.length}
+      data-message-content-source-types={blocks
+        .map((block) => block.sourceType ?? "unknown")
+        .join(",")}
+      tone="warning"
+    >
+      {copy.chat.messageContentUnavailable}
+    </InlineNotice>
+  )
+}
+
 function renderStructuredContent(
   content: ThreadMessage["content"],
   options: {
@@ -518,75 +506,41 @@ function renderStructuredContent(
   }
 ): StructuredMessageContent {
   const { includeReasoning = true, isStreaming, isUser, onOpenWorkspaceFile } = options
-
-  if (typeof content === "string") {
-    return {
-      attachments: null,
-      reasoningContent: null,
-      textContent: renderTextBlock(content, {
-        isStreaming,
-        isUser,
-        key: "message-content",
-        onOpenWorkspaceFile
-      })
-    }
-  }
-
-  const attachmentBlocks = content.reduce<
-    Array<{ block: (typeof content)[number]; index: number }>
-  >((blocks, block, index) => {
-    if (block.type === "image" || block.type === "image_url" || block.type === "file") {
-      blocks.push({ block, index })
-    }
-
-    return blocks
-  }, [])
-  const reasoningText =
-    isUser || !includeReasoning
-      ? ""
-      : content.reduce((text, block) => {
-          return block.type === "reasoning" ? text + getReasoningBlockText(block) : text
-        }, "")
-
-  const lastTextBlockIndex = [...content]
-    .reverse()
-    .findIndex(
-      (block) =>
-        block.type !== "reasoning" &&
-        block.type !== "image" &&
-        block.type !== "image_url" &&
-        block.type !== "file" &&
-        getContentBlockDisplayText(block).trim().length > 0
-    )
-  const resolvedLastTextBlockIndex =
-    lastTextBlockIndex === -1 ? -1 : content.length - lastTextBlockIndex - 1
-
-  const textBlocks = content.flatMap((block, index) => {
-    if (block.type === "image" || block.type === "image_url" || block.type === "file") {
-      return []
-    }
-
-    if (block.type === "reasoning") {
-      return []
-    }
-
-    const text = getContentBlockDisplayText(block)
-    return [
-      renderTextBlock(text, {
-        isStreaming: isStreaming && index === resolvedLastTextBlockIndex,
-        isUser,
-        key: `${block.type}-${index}`,
-        onOpenWorkspaceFile
-      })
-    ]
-  })
+  const projection = projectMessageContent(content)
+  const attachmentBlocks = projection.blocks.filter(
+    (block): block is Extract<MessageContentViewBlock, { kind: "attachment" }> =>
+      block.kind === "attachment"
+  )
+  const unrenderableBlocks = projection.blocks.filter(
+    (block): block is Extract<MessageContentViewBlock, { kind: "unrenderable" }> =>
+      block.kind === "unrenderable"
+  )
+  const textBlocks = projection.blocks.filter(
+    (block): block is Extract<MessageContentViewBlock, { kind: "text" }> => block.kind === "text"
+  )
+  const lastTextSourceIndex = textBlocks.findLast(
+    (block) => block.text.trim().length > 0
+  )?.sourceIndex
+  const renderedTextBlocks = textBlocks.map((block) =>
+    renderTextBlock(block.text, {
+      isStreaming: isStreaming && block.sourceIndex === lastTextSourceIndex,
+      isUser,
+      key: `text-${block.sourceIndex}`,
+      onOpenWorkspaceFile
+    })
+  )
+  const reasoningText = isUser || !includeReasoning ? "" : projection.reasoningText
 
   return {
     attachments: <MessageAttachments blocks={attachmentBlocks} isUser={isUser} />,
     reasoningContent: reasoningText.trim() ? (
       <ReasoningBlock isStreaming={isStreaming} text={reasoningText} />
     ) : null,
-    textContent: textBlocks.length > 0 ? textBlocks : null
+    textContent: renderedTextBlocks.length > 0 ? renderedTextBlocks : null,
+    unrenderableContent:
+      unrenderableBlocks.length > 0 ? (
+        <UnrenderableContentNotice blocks={unrenderableBlocks} />
+      ) : null
   }
 }
 
@@ -1162,7 +1116,12 @@ function AssistantBlock(props: {
     isUser: false
   })
 
-  if (!content.attachments && !content.reasoningContent && !content.textContent) {
+  if (
+    !content.attachments &&
+    !content.reasoningContent &&
+    !content.textContent &&
+    !content.unrenderableContent
+  ) {
     return null
   }
 
@@ -1171,6 +1130,7 @@ function AssistantBlock(props: {
       <MessageContent className="w-full gap-[var(--jingle-gap-md)]">
         {content.attachments}
         {content.reasoningContent}
+        {content.unrenderableContent}
         {content.textContent ? (
           <AssistantContentCards isStreaming={isStreaming} message={message} threadId={threadId} />
         ) : null}
@@ -1383,7 +1343,12 @@ function UserMessage(props: {
     }
   }, [canEdit, editIsSubmittable, editingInput, isSubmittingEdit, message.id, onSubmitEdit])
 
-  if (!content.attachments && !content.textContent && !hasReferences) {
+  if (
+    !content.attachments &&
+    !content.textContent &&
+    !content.unrenderableContent &&
+    !hasReferences
+  ) {
     return null
   }
 
@@ -1446,6 +1411,7 @@ function UserMessage(props: {
         />
       ) : null}
       {content.attachments}
+      {content.unrenderableContent}
       {content.textContent ? (
         <MessageContent className="gap-[var(--jingle-space-2-5)]">
           {content.textContent}

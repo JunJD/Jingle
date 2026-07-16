@@ -1,9 +1,19 @@
-import type { ContentBlock } from "./app-types"
+import type {
+  ContentBlock,
+  ImageContentBlock,
+  ImageUrlContentBlock,
+  MessageAttachmentUrlSource,
+  MessageContent,
+  MessageFileSource,
+  MessageImageSource,
+  UnrenderableContentBlock,
+  UnrenderableContentBlockReason
+} from "./app-types"
 import {
   buildJingleAgentDisplayMessageContent,
   buildJingleAgentSubmitMessageContentWithRefs,
   hasJingleAgentComposerMessageInputContent,
-  hasJingleAgentMessageContent
+  type JingleAgentMessageContentBlock
 } from "@jingle/agent-client"
 
 export type AgentMessageContent =
@@ -62,20 +72,9 @@ export interface AssistantMessageContentSource {
 }
 
 function normalizeComposerMessageRef(value: unknown): ComposerMessageRef | null {
-  if (!value || typeof value !== "object") {
+  const ref = readSafeDataRecord(value)
+  if (!ref) {
     return null
-  }
-
-  const ref = value as {
-    extensionName?: unknown
-    name?: unknown
-    path?: unknown
-    selectedText?: unknown
-    sourceId?: unknown
-    sourceMessageId?: unknown
-    sourceThreadId?: unknown
-    type?: unknown
-    url?: unknown
   }
 
   if (ref.type === "file") {
@@ -166,11 +165,12 @@ function normalizeComposerMessageRef(value: unknown): ComposerMessageRef | null 
 }
 
 export function normalizeComposerMessageRefs(value: unknown): ComposerMessageRef[] {
-  if (!Array.isArray(value)) {
+  const refs = readSafeArray(value)
+  if (!refs) {
     return []
   }
 
-  return value.flatMap((entry) => {
+  return refs.flatMap((entry) => {
     const ref = normalizeComposerMessageRef(entry)
     return ref ? [ref] : []
   })
@@ -189,11 +189,8 @@ export function toComposerMessageMetadata(
 }
 
 export function extractComposerMessageRefsMetadata(metadata: unknown): ComposerMessageRef[] {
-  if (!metadata || typeof metadata !== "object") {
-    return []
-  }
-
-  return normalizeComposerMessageRefs((metadata as { refs?: unknown }).refs)
+  const record = readSafeDataRecord(metadata)
+  return record ? normalizeComposerMessageRefs(record.refs) : []
 }
 
 function getSyntheticFileRefsText(refs: ComposerMessageRef[]): string | null {
@@ -222,7 +219,10 @@ function stripSyntheticRefsText(text: string, refs: ComposerMessageRef[]): strin
   return stripSyntheticAssistantSelectionRefsText(text, refs)
 }
 
-function stripSyntheticAssistantSelectionRefsText(text: string, refs: ComposerMessageRef[]): string {
+function stripSyntheticAssistantSelectionRefsText(
+  text: string,
+  refs: ComposerMessageRef[]
+): string {
   const syntheticAssistantSelectionRefsText = getAssistantSelectionRefsText(refs)
   if (!syntheticAssistantSelectionRefsText) {
     return text
@@ -241,288 +241,786 @@ function stripSyntheticAssistantSelectionRefsText(text: string, refs: ComposerMe
   return text
 }
 
-function isContentBlockLike(value: unknown): value is ContentBlock {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "type" in value &&
-    typeof (value as { type?: unknown }).type === "string"
-  )
+export interface DisplayAssistantMessageContentOptions extends AssistantMessageContentSource {}
+
+export type MessageContentRole = "assistant" | "system" | "tool" | "user"
+
+export interface DisplayMessageContentOptions {
+  role: MessageContentRole
+  toolCallId?: string | null
 }
 
-export interface DisplayAssistantMessageContentOptions extends AssistantMessageContentSource {
+export type PersistedMessageContentFailureReason = "invalid-json" | "noncanonical"
+
+export interface ParsePersistedMessageContentOptions extends DisplayMessageContentOptions {
+  onInvalid?: (reason: PersistedMessageContentFailureReason) => void
 }
 
-function hasDisplayTextValue(value: string | undefined): boolean {
-  return typeof value === "string" && value.length > 0
+type SafeDataRecord = Readonly<Record<string, unknown>>
+
+const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+function createUnrenderableContentBlock(
+  reason: UnrenderableContentBlockReason,
+  sourceType: string | null
+): UnrenderableContentBlock {
+  return { reason, sourceType, type: "unrenderable" }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+function stableJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(stableJsonValue)
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, stableJsonValue(entry)])
+    )
+  }
+  return value
 }
 
-function readStringProperty(value: Record<string, unknown>, key: string): string | null {
-  const property = value[key]
-  return typeof property === "string" ? property : null
+function createInvalidPersistedMessageContent(
+  options: ParsePersistedMessageContentOptions,
+  reason: PersistedMessageContentFailureReason
+): MessageContent {
+  options.onInvalid?.(reason)
+  return [createUnrenderableContentBlock("malformed", "persisted_message_content")]
 }
 
-function extractReasoningPayloadText(value: unknown): string {
+export function parsePersistedMessageContent(
+  serialized: string,
+  options: ParsePersistedMessageContentOptions
+): MessageContent {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(serialized) as unknown
+  } catch {
+    return createInvalidPersistedMessageContent(options, "invalid-json")
+  }
+
+  if (typeof parsed === "string") {
+    return parsed
+  }
+  if (!Array.isArray(parsed)) {
+    return createInvalidPersistedMessageContent(options, "noncanonical")
+  }
+
+  const canonical = toDisplayMessageContent(parsed, options)
+  if (JSON.stringify(stableJsonValue(parsed)) !== JSON.stringify(stableJsonValue(canonical))) {
+    return createInvalidPersistedMessageContent(options, "noncanonical")
+  }
+  return canonical
+}
+
+function readSafeDataRecord(value: unknown): SafeDataRecord | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null
+  }
+
+  try {
+    const prototype = Object.getPrototypeOf(value)
+    if (prototype !== Object.prototype && prototype !== null) {
+      return null
+    }
+
+    if (Object.getOwnPropertySymbols(value).length > 0) {
+      return null
+    }
+
+    const descriptors: PropertyDescriptorMap = Object.getOwnPropertyDescriptors(value)
+    const result: Record<string, unknown> = Object.create(null) as Record<string, unknown>
+    for (const [key, descriptor] of Object.entries(descriptors)) {
+      if (!("value" in descriptor) || !descriptor.enumerable) {
+        return null
+      }
+      result[key] = descriptor.value
+    }
+    return result
+  } catch {
+    return null
+  }
+}
+
+function readSafeArray(value: unknown): readonly unknown[] | null {
+  if (!Array.isArray(value)) {
+    return null
+  }
+
+  try {
+    if (
+      Object.getPrototypeOf(value) !== Array.prototype ||
+      Object.getOwnPropertySymbols(value).length
+    ) {
+      return null
+    }
+
+    const descriptors = Object.getOwnPropertyDescriptors(value as object) as PropertyDescriptorMap
+    const lengthDescriptor = descriptors.length
+    if (!(lengthDescriptor && "value" in lengthDescriptor)) {
+      return null
+    }
+
+    const lengthValue: unknown = lengthDescriptor.value
+    if (!Number.isSafeInteger(lengthValue) || typeof lengthValue !== "number" || lengthValue < 0) {
+      return null
+    }
+    const length = lengthValue
+
+    const result: unknown[] = []
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = descriptors[String(index)]
+      if (!(descriptor && "value" in descriptor && descriptor.enumerable)) {
+        return null
+      }
+      result.push(descriptor.value)
+    }
+
+    if (
+      Object.keys(descriptors).length !== length + 1 ||
+      Object.keys(descriptors).some((key) => key !== "length" && !/^(0|[1-9]\d*)$/.test(key))
+    ) {
+      return null
+    }
+    return result
+  } catch {
+    return null
+  }
+}
+
+function hasOwn(record: SafeDataRecord, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key)
+}
+
+function readOptionalString(
+  record: SafeDataRecord,
+  keys: readonly string[]
+): { ok: true; value?: string } | { ok: false } {
+  let result: string | undefined
+  for (const key of keys) {
+    if (!hasOwn(record, key)) {
+      continue
+    }
+    const value = record[key]
+    if (typeof value !== "string" || value.trim().length === 0) {
+      return { ok: false }
+    }
+    const normalized = value.trim()
+    if (result !== undefined && result !== normalized) {
+      return { ok: false }
+    }
+    result = normalized
+  }
+  return result === undefined ? { ok: true } : { ok: true, value: result }
+}
+
+function readOptionalRawString(
+  record: SafeDataRecord,
+  keys: readonly string[]
+): { ok: true; value?: string } | { ok: false } {
+  let result: string | undefined
+  for (const key of keys) {
+    if (!hasOwn(record, key)) {
+      continue
+    }
+    const value = record[key]
+    if (typeof value !== "string" || (result !== undefined && result !== value)) {
+      return { ok: false }
+    }
+    result = value
+  }
+  return result === undefined ? { ok: true } : { ok: true, value: result }
+}
+
+function encodeBase64(bytes: Uint8Array): string | null {
+  try {
+    if (Object.getPrototypeOf(bytes) !== Uint8Array.prototype) {
+      return null
+    }
+    let result = ""
+    for (let index = 0; index < bytes.length; index += 3) {
+      const first = bytes[index] ?? 0
+      const second = bytes[index + 1]
+      const third = bytes[index + 2]
+      result += BASE64_ALPHABET[first >> 2]
+      result += BASE64_ALPHABET[((first & 3) << 4) | ((second ?? 0) >> 4)]
+      result +=
+        second === undefined ? "=" : BASE64_ALPHABET[((second & 15) << 2) | ((third ?? 0) >> 6)]
+      result += third === undefined ? "=" : BASE64_ALPHABET[third & 63]
+    }
+    return result
+  } catch {
+    return null
+  }
+}
+
+function readDataValue(value: unknown): string | null {
+  try {
+    if (typeof value === "string") {
+      return value.length > 0 ? value : null
+    }
+    return value instanceof Uint8Array ? encodeBase64(value) : null
+  } catch {
+    return null
+  }
+}
+
+function normalizeUrlSource(value: unknown, mimeType?: string): MessageAttachmentUrlSource | null {
+  if (typeof value !== "string") {
+    return null
+  }
+  const url = value.trim()
+  if (!url) {
+    return null
+  }
+
+  try {
+    const parsed = new URL(url)
+    if (
+      parsed.protocol !== "https:" &&
+      parsed.protocol !== "data:" &&
+      parsed.protocol !== "jingle-extension-asset:"
+    ) {
+      return null
+    }
+  } catch {
+    return null
+  }
+
+  return { kind: "url", ...(mimeType ? { mimeType } : {}), url }
+}
+
+function normalizeAnthropicSource(
+  value: unknown,
+  inheritedMimeType: string | undefined,
+  allowText: boolean
+): MessageFileSource | MessageImageSource | null {
+  const source = readSafeDataRecord(value)
+  if (!source) {
+    return null
+  }
+  const type = readOptionalString(source, ["type", "source_type", "kind"])
+  const mimeType = readOptionalString(source, ["mimeType", "mime_type", "media_type"])
+  if (!type.ok || !type.value || !mimeType.ok) {
+    return null
+  }
+  const resolvedMimeType = mimeType.value ?? inheritedMimeType
+
+  switch (type.value) {
+    case "base64":
+    case "data": {
+      if (!resolvedMimeType || !hasOwn(source, "data")) {
+        return null
+      }
+      const data = readDataValue(source.data)
+      return data ? { data, kind: "data", mimeType: resolvedMimeType } : null
+    }
+    case "url":
+      return normalizeUrlSource(source.url, resolvedMimeType)
+    case "id":
+    case "file-id": {
+      const fileId = readOptionalString(source, ["id", "fileId", "file_id"])
+      return fileId.ok && fileId.value
+        ? {
+            fileId: fileId.value,
+            kind: "file-id",
+            ...(resolvedMimeType ? { mimeType: resolvedMimeType } : {})
+          }
+        : null
+    }
+    case "text": {
+      if (!allowText) {
+        return null
+      }
+      const text = readOptionalString(source, ["text"])
+      return text.ok && text.value
+        ? {
+            kind: "text",
+            ...(resolvedMimeType ? { mimeType: resolvedMimeType } : {}),
+            text: text.value
+          }
+        : null
+    }
+    default:
+      return null
+  }
+}
+
+function normalizeAttachmentSource(
+  block: SafeDataRecord,
+  options: { allowText: boolean; legacyContent: boolean }
+): MessageFileSource | MessageImageSource | null {
+  const mimeType = readOptionalString(block, ["mimeType", "mime_type", "media_type"])
+  if (!mimeType.ok) {
+    return null
+  }
+
+  const sourceType = readOptionalString(block, ["source_type"])
+  if (!sourceType.ok) {
+    return null
+  }
+
+  const carriers = ["source", "url", "data", "fileId", "file_id"]
+  if (options.legacyContent) {
+    carriers.push("content")
+  }
+  if (!sourceType.value) {
+    carriers.push("id", "text")
+  }
+  const presentCarriers = carriers.filter((key) => hasOwn(block, key))
+  if (sourceType.value) {
+    if (
+      hasOwn(block, "source") ||
+      hasOwn(block, "content") ||
+      hasOwn(block, "fileId") ||
+      hasOwn(block, "file_id")
+    ) {
+      return null
+    }
+    switch (sourceType.value) {
+      case "url":
+        return hasOwn(block, "url") &&
+          !hasOwn(block, "data") &&
+          !hasOwn(block, "id") &&
+          !hasOwn(block, "text")
+          ? normalizeUrlSource(block.url, mimeType.value)
+          : null
+      case "base64": {
+        if (
+          !mimeType.value ||
+          !hasOwn(block, "data") ||
+          hasOwn(block, "url") ||
+          hasOwn(block, "id") ||
+          hasOwn(block, "text")
+        ) {
+          return null
+        }
+        const data = readDataValue(block.data)
+        return data ? { data, kind: "data", mimeType: mimeType.value } : null
+      }
+      case "id": {
+        const fileId = readOptionalString(block, ["id"])
+        return fileId.ok &&
+          fileId.value &&
+          !hasOwn(block, "url") &&
+          !hasOwn(block, "data") &&
+          !hasOwn(block, "text")
+          ? {
+              fileId: fileId.value,
+              kind: "file-id",
+              ...(mimeType.value ? { mimeType: mimeType.value } : {})
+            }
+          : null
+      }
+      case "text": {
+        const text = readOptionalString(block, ["text"])
+        return options.allowText &&
+          text.ok &&
+          text.value &&
+          !hasOwn(block, "url") &&
+          !hasOwn(block, "data") &&
+          !hasOwn(block, "id")
+          ? {
+              kind: "text",
+              ...(mimeType.value ? { mimeType: mimeType.value } : {}),
+              text: text.value
+            }
+          : null
+      }
+      default:
+        return null
+    }
+  }
+
+  if (presentCarriers.length !== 1) {
+    return null
+  }
+  const carrier = presentCarriers[0]
+  switch (carrier) {
+    case "source":
+      return normalizeAnthropicSource(block.source, mimeType.value, options.allowText)
+    case "url":
+      return normalizeUrlSource(block.url, mimeType.value)
+    case "data": {
+      if (!mimeType.value) {
+        return null
+      }
+      const data = readDataValue(block.data)
+      return data ? { data, kind: "data", mimeType: mimeType.value } : null
+    }
+    case "fileId":
+    case "file_id": {
+      const fileId = readOptionalString(block, [carrier])
+      return fileId.ok && fileId.value
+        ? {
+            fileId: fileId.value,
+            kind: "file-id",
+            ...(mimeType.value ? { mimeType: mimeType.value } : {})
+          }
+        : null
+    }
+    case "id": {
+      const fileId = readOptionalString(block, ["id"])
+      return fileId.ok && fileId.value
+        ? {
+            fileId: fileId.value,
+            kind: "file-id",
+            ...(mimeType.value ? { mimeType: mimeType.value } : {})
+          }
+        : null
+    }
+    case "text": {
+      const text = readOptionalString(block, ["text"])
+      return options.allowText && text.ok && text.value
+        ? {
+            kind: "text",
+            ...(mimeType.value ? { mimeType: mimeType.value } : {}),
+            text: text.value
+          }
+        : null
+    }
+    case "content": {
+      const content = readOptionalString(block, ["content"])
+      if (!content.ok || !content.value) {
+        return null
+      }
+      const urlSource = normalizeUrlSource(content.value, mimeType.value)
+      return (
+        urlSource ??
+        (options.allowText
+          ? {
+              kind: "text",
+              ...(mimeType.value ? { mimeType: mimeType.value } : {}),
+              text: content.value
+            }
+          : null)
+      )
+    }
+    default:
+      return null
+  }
+}
+
+function normalizeTextBlock(block: SafeDataRecord): ContentBlock {
+  const text = readOptionalRawString(block, ["text", "content"])
+  return text.ok && text.value !== undefined
+    ? { text: text.value, type: "text" }
+    : createUnrenderableContentBlock("malformed", "text")
+}
+
+function normalizeReasoningBlock(
+  block: SafeDataRecord,
+  role: MessageContentRole,
+  sourceType: "reasoning" | "thinking" | "thinking_delta"
+): ContentBlock {
+  if (role !== "assistant") {
+    return createUnrenderableContentBlock("unsupported", sourceType)
+  }
+  const reasoning = readOptionalRawString(block, ["reasoning", "thinking", "text", "content"])
+  const signature = readOptionalString(block, ["signature"])
+  return reasoning.ok && reasoning.value !== undefined && signature.ok
+    ? {
+        reasoning: reasoning.value,
+        ...(signature.value ? { signature: signature.value } : {}),
+        type: "reasoning"
+      }
+    : createUnrenderableContentBlock("malformed", sourceType)
+}
+
+function normalizeImageBlock(block: SafeDataRecord): ContentBlock {
+  if (hasOwn(block, "image_url")) {
+    return createUnrenderableContentBlock("malformed", "image")
+  }
+  const name = readOptionalString(block, ["name"])
+  const source = normalizeAttachmentSource(block, { allowText: false, legacyContent: true })
+  return name.ok && source && source.kind !== "text"
+    ? { ...(name.value ? { name: name.value } : {}), source, type: "image" }
+    : createUnrenderableContentBlock("malformed", "image")
+}
+
+function normalizeImageUrlBlock(block: SafeDataRecord): ContentBlock {
+  const forbidden = ["content", "data", "fileId", "file_id", "source_type", "url"]
+  const hasImageUrl = hasOwn(block, "image_url")
+  const hasSource = hasOwn(block, "source")
+  if (forbidden.some((key) => hasOwn(block, key)) || hasImageUrl === hasSource) {
+    return createUnrenderableContentBlock("malformed", "image_url")
+  }
+  const name = readOptionalString(block, ["name"])
+  const mimeType = readOptionalString(block, ["mimeType", "mime_type", "media_type"])
+  if (!name.ok || !mimeType.ok) {
+    return createUnrenderableContentBlock("malformed", "image_url")
+  }
+
+  let detail: "auto" | "high" | "low" | undefined
+  if (hasOwn(block, "detail")) {
+    const value = block.detail
+    if (value !== "auto" && value !== "high" && value !== "low") {
+      return createUnrenderableContentBlock("malformed", "image_url")
+    }
+    detail = value
+  }
+  if (hasSource) {
+    const source = normalizeAnthropicSource(block.source, mimeType.value, false)
+    return source?.kind === "url"
+      ? {
+          ...(detail ? { detail } : {}),
+          ...(name.value ? { name: name.value } : {}),
+          source,
+          type: "image_url"
+        }
+      : createUnrenderableContentBlock("malformed", "image_url")
+  }
+
+  let urlValue = block.image_url
+  if (typeof urlValue !== "string") {
+    const imageUrl = readSafeDataRecord(urlValue)
+    if (!imageUrl || !hasOwn(imageUrl, "url")) {
+      return createUnrenderableContentBlock("malformed", "image_url")
+    }
+    urlValue = imageUrl.url
+    if (hasOwn(imageUrl, "detail")) {
+      if (detail) {
+        return createUnrenderableContentBlock("malformed", "image_url")
+      }
+      const value = imageUrl.detail
+      if (value !== "auto" && value !== "high" && value !== "low") {
+        return createUnrenderableContentBlock("malformed", "image_url")
+      }
+      detail = value
+    }
+  }
+  const source = normalizeUrlSource(urlValue, mimeType.value)
+  return source
+    ? {
+        ...(detail ? { detail } : {}),
+        ...(name.value ? { name: name.value } : {}),
+        source,
+        type: "image_url"
+      }
+    : createUnrenderableContentBlock("malformed", "image_url")
+}
+
+function normalizeFileBlock(block: SafeDataRecord): ContentBlock {
+  const name = readOptionalString(block, ["name"])
+  const source = normalizeAttachmentSource(block, { allowText: true, legacyContent: true })
+  return name.ok && name.value && source
+    ? { name: name.value, source, type: "file" }
+    : createUnrenderableContentBlock("malformed", "file")
+}
+
+function normalizeUnrenderableBlock(block: SafeDataRecord): ContentBlock {
+  const reason = block.reason
+  const sourceType = block.sourceType
+  return (reason === "malformed" || reason === "unsupported") &&
+    (sourceType === null || typeof sourceType === "string")
+    ? createUnrenderableContentBlock(reason, sourceType)
+    : createUnrenderableContentBlock("malformed", "unrenderable")
+}
+
+function normalizeToolResultBlock(
+  block: SafeDataRecord,
+  options: DisplayMessageContentOptions,
+  ancestors: WeakSet<object>
+): ContentBlock[] {
+  if (options.role !== "tool" || !hasOwn(block, "content")) {
+    return [createUnrenderableContentBlock("unsupported", "tool_result")]
+  }
+
+  const wrapperId = readOptionalString(block, ["tool_use_id", "tool_call_id"])
+  if (!wrapperId.ok || (wrapperId.value && wrapperId.value !== options.toolCallId)) {
+    return [createUnrenderableContentBlock("malformed", "tool_result")]
+  }
+
+  const nested = block.content
+  if (typeof nested === "string") {
+    return nested.length > 0 ? [{ text: nested, type: "text" }] : []
+  }
+  const nestedArray = readSafeArray(nested)
+  if (!nestedArray) {
+    return [createUnrenderableContentBlock("malformed", "tool_result")]
+  }
+  if (ancestors.has(nested as object)) {
+    return [createUnrenderableContentBlock("malformed", "tool_result")]
+  }
+  ancestors.add(nested as object)
+  const result = nestedArray.flatMap((entry) => normalizeContentBlock(entry, options, ancestors))
+  ancestors.delete(nested as object)
+  return result
+}
+
+function normalizeContentBlock(
+  value: unknown,
+  options: DisplayMessageContentOptions,
+  ancestors: WeakSet<object>
+): ContentBlock[] {
+  const block = readSafeDataRecord(value)
+  if (!block) {
+    return [createUnrenderableContentBlock("malformed", null)]
+  }
+  const type = readOptionalString(block, ["type"])
+  if (!type.ok || !type.value) {
+    return [createUnrenderableContentBlock("malformed", null)]
+  }
+
+  switch (type.value) {
+    case "text":
+      return [normalizeTextBlock(block)]
+    case "reasoning":
+    case "thinking":
+    case "thinking_delta":
+      return [normalizeReasoningBlock(block, options.role, type.value)]
+    case "image":
+      return [normalizeImageBlock(block)]
+    case "image_url":
+      return [normalizeImageUrlBlock(block)]
+    case "file":
+      return [normalizeFileBlock(block)]
+    case "tool_result":
+      return normalizeToolResultBlock(block, options, ancestors)
+    case "tool_use":
+      return []
+    case "unrenderable":
+      return [normalizeUnrenderableBlock(block)]
+    case "redacted_thinking":
+    case "signature_delta":
+      return []
+    default:
+      return [createUnrenderableContentBlock("unsupported", type.value)]
+  }
+}
+
+function extractReasoningPayloadText(value: unknown, ancestors = new WeakSet<object>()): string {
   if (typeof value === "string") {
     return value
   }
-
-  if (Array.isArray(value)) {
-    return value.map(extractReasoningPayloadText).join("")
+  const array = readSafeArray(value)
+  if (array) {
+    if (ancestors.has(value as object)) {
+      return ""
+    }
+    ancestors.add(value as object)
+    const result = array.map((entry) => extractReasoningPayloadText(entry, ancestors)).join("")
+    ancestors.delete(value as object)
+    return result
   }
-
-  if (!isRecord(value)) {
+  const record = readSafeDataRecord(value)
+  if (!record || ancestors.has(value as object)) {
     return ""
   }
-
-  const direct =
-    readStringProperty(value, "reasoning") ??
-    readStringProperty(value, "reasoning_content") ??
-    readStringProperty(value, "thinking") ??
-    readStringProperty(value, "text") ??
-    readStringProperty(value, "content")
-
-  if (direct !== null) {
-    return direct
+  ancestors.add(value as object)
+  for (const key of ["reasoning", "reasoning_content", "thinking", "text"]) {
+    if (typeof record[key] === "string") {
+      ancestors.delete(value as object)
+      return record[key]
+    }
   }
-
-  return [value.summary, value.content].map(extractReasoningPayloadText).join("")
+  const result = [record.summary, record.content]
+    .map((entry) => extractReasoningPayloadText(entry, ancestors))
+    .join("")
+  ancestors.delete(value as object)
+  return result
 }
 
 function extractAssistantReasoningText(source: AssistantMessageContentSource): string {
-  const additionalKwargs = isRecord(source.additional_kwargs) ? source.additional_kwargs : null
-  const responseMetadata = isRecord(source.response_metadata) ? source.response_metadata : null
-
-  return (
-    extractReasoningPayloadText(additionalKwargs?.reasoning_content) ||
-    extractReasoningPayloadText(additionalKwargs?.reasoning) ||
-    extractReasoningPayloadText(additionalKwargs?.thinking) ||
-    extractReasoningPayloadText(responseMetadata?.reasoning_content) ||
-    extractReasoningPayloadText(responseMetadata?.reasoning) ||
-    extractReasoningPayloadText(responseMetadata?.thinking)
-  )
-}
-
-function normalizeDisplayContentBlock(value: unknown): ContentBlock | null {
-  if (!isContentBlockLike(value)) {
-    return null
+  for (const containerValue of [source.additional_kwargs, source.response_metadata]) {
+    const container = readSafeDataRecord(containerValue)
+    if (!container) {
+      continue
+    }
+    for (const key of ["reasoning_content", "reasoning", "thinking"]) {
+      const reasoning = extractReasoningPayloadText(container[key])
+      if (reasoning) {
+        return reasoning
+      }
+    }
   }
-
-  const block = value as ContentBlock & Record<string, unknown>
-  const blockType = block.type as string
-
-  if (blockType === "tool_use") {
-    return null
-  }
-
-  if (blockType === "reasoning") {
-    const reasoning =
-      readStringProperty(block, "reasoning") ??
-      readStringProperty(block, "text") ??
-      readStringProperty(block, "content")
-    return reasoning !== null ? { reasoning, type: "reasoning" } : null
-  }
-
-  if (blockType === "thinking" || blockType === "thinking_delta") {
-    const reasoning =
-      readStringProperty(block, "thinking") ??
-      readStringProperty(block, "text") ??
-      readStringProperty(block, "content")
-    return reasoning !== null
-      ? {
-          reasoning,
-          ...(typeof block.signature === "string" ? { signature: block.signature } : {}),
-          type: "reasoning"
-        }
-      : null
-  }
-
-  if (blockType === "redacted_thinking" || blockType === "signature_delta") {
-    return null
-  }
-
-  return block
+  return ""
 }
 
 export function resolveImageBlockUrl(
-  block: Pick<ContentBlock, "content" | "image_url">
+  block: ImageContentBlock | ImageUrlContentBlock
 ): string | null {
-  if (typeof block.image_url === "string" && block.image_url.length > 0) {
-    return block.image_url
+  if (block.source.kind === "url") {
+    return block.source.url
   }
-
-  if (
-    block.image_url &&
-    typeof block.image_url === "object" &&
-    typeof block.image_url.url === "string" &&
-    block.image_url.url.length > 0
-  ) {
-    return block.image_url.url
+  if (block.source.kind === "data") {
+    return `data:${block.source.mimeType};base64,${block.source.data}`
   }
-
-  if (typeof block.content === "string" && block.content.length > 0) {
-    return block.content
-  }
-
   return null
 }
 
 export function toDisplayMessageContent(
-  content: string | unknown[] | AgentMessageContent | undefined
-): string | ContentBlock[] {
+  content: unknown,
+  options: DisplayMessageContentOptions
+): MessageContent {
   if (typeof content === "string") {
     return content
   }
-
-  if (!Array.isArray(content)) {
+  if (content === undefined || content === null) {
     return ""
   }
-
-  return content.flatMap((block) => {
-    const normalized = normalizeDisplayContentBlock(block)
-    return normalized ? [normalized] : []
-  })
+  const blocks = readSafeArray(content)
+  if (!blocks) {
+    return [createUnrenderableContentBlock("malformed", null)]
+  }
+  const ancestors = new WeakSet<object>()
+  ancestors.add(content as object)
+  return blocks.flatMap((block) => normalizeContentBlock(block, options, ancestors))
 }
 
 export function toDisplayAssistantMessageContent(
   content: string | unknown[] | AgentMessageContent | undefined,
   options: DisplayAssistantMessageContentOptions = {}
-): string | ContentBlock[] {
-  const displayContent = toDisplayMessageContent(content)
+): MessageContent {
+  const displayContent = toDisplayMessageContent(content, { role: "assistant" })
   const reasoning = extractAssistantReasoningText(options)
-
   if (typeof displayContent === "string") {
-    const text = displayContent
     if (!reasoning.trim()) {
-      return text
+      return displayContent
     }
-
-    const blocks: ContentBlock[] = [{ reasoning, type: "reasoning" }]
-    if (text.length > 0) {
-      blocks.push({ text, type: "text" })
-    }
-    return blocks
+    return [
+      { reasoning, type: "reasoning" },
+      ...(displayContent.length > 0 ? [{ text: displayContent, type: "text" } as const] : [])
+    ]
   }
-
   const withReasoning =
     reasoning.trim() &&
-    !displayContent.some((block) => block.type === "reasoning" && block.reasoning?.trim())
+    !displayContent.some((block) => block.type === "reasoning" && block.reasoning.trim())
       ? [{ reasoning, type: "reasoning" } satisfies ContentBlock, ...displayContent]
       : displayContent
-
-  return withReasoning.flatMap((block) => {
-    if (block.type === "image" || block.type === "image_url" || block.type === "file") {
-      return [block]
-    }
-
-    if (block.type === "reasoning") {
-      return block.reasoning?.trim() ? [block] : []
-    }
-
-    const nextBlock = { ...block }
-    return hasDisplayTextValue(nextBlock.text) || hasDisplayTextValue(nextBlock.content)
-      ? [nextBlock]
-      : []
-  })
-}
-
-function getDisplayBlockText(block: ContentBlock): string {
-  return block.text ?? block.content ?? ""
+  return withReasoning.filter((block) =>
+    block.type === "reasoning"
+      ? block.reasoning.trim().length > 0
+      : block.type !== "text" || block.text.length > 0
+  )
 }
 
 export function extractMessageText(
   content: string | ContentBlock[] | AgentMessageContent | undefined
 ): string {
-  if (typeof content === "string") {
-    return content
-  }
-
-  if (!Array.isArray(content)) {
-    return ""
-  }
-
-  return content
-    .map((block) => {
-      if (typeof block !== "object" || block === null || !("type" in block)) {
-        return ""
-      }
-
-      if (block.type === "reasoning") {
-        return ""
-      }
-
-      if (block.type === "text" && typeof block.text === "string") {
-        return block.text
-      }
-
-      if ("text" in block && typeof block.text === "string") {
-        return block.text
-      }
-
-      if (
-        block.type !== "file" &&
-        block.type !== "image" &&
-        block.type !== "image_url" &&
-        "content" in block &&
-        typeof block.content === "string"
-      ) {
-        return block.content
-      }
-
-      return ""
-    })
-    .join("")
+  const displayContent = toDisplayMessageContent(content, { role: "system" })
+  return typeof displayContent === "string"
+    ? displayContent
+    : displayContent.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("")
 }
 
 export function summarizeMessageContent(
   content: string | ContentBlock[] | AgentMessageContent
 ): string {
-  const text = extractMessageText(content).trim()
-  if (text) {
+  const displayContent = toDisplayMessageContent(content, { role: "system" })
+  const text = extractMessageText(displayContent).trim()
+  if (text || !Array.isArray(displayContent)) {
     return text
   }
-
-  if (!Array.isArray(content)) {
-    return ""
-  }
-
-  let imageCount = 0
-  const fileNames: string[] = []
-
-  for (const block of content) {
-    if (typeof block !== "object" || block === null || !("type" in block)) {
-      continue
-    }
-
-    if (block.type === "image" || block.type === "image_url") {
-      imageCount += 1
-      continue
-    }
-
-    if (block.type === "file") {
-      const name =
-        "name" in block && typeof block.name === "string"
-          ? block.name
-          : "content" in block && typeof block.content === "string"
-            ? block.content
-            : "Attachment"
-      fileNames.push(name)
-    }
-  }
-
+  const fileNames = displayContent.flatMap((block) => (block.type === "file" ? [block.name] : []))
   if (fileNames.length > 0) {
     return `Attached files: ${fileNames.join(", ")}`
   }
-
-  if (imageCount > 0) {
-    return imageCount === 1 ? "Attached image" : `${imageCount} attached images`
-  }
-
-  return ""
+  const imageCount = displayContent.filter(
+    (block) => block.type === "image" || block.type === "image_url"
+  ).length
+  return imageCount === 1 ? "Attached image" : imageCount > 1 ? `${imageCount} attached images` : ""
 }
 
 export function hasComposerMessageInputContent(input: ComposerMessageInput | undefined): boolean {
@@ -532,11 +1030,21 @@ export function hasComposerMessageInputContent(input: ComposerMessageInput | und
 export function hasMessageContent(
   content: string | ContentBlock[] | AgentMessageContent | undefined
 ): boolean {
-  return hasJingleAgentMessageContent(content)
+  const displayContent = toDisplayMessageContent(content, { role: "system" })
+  if (typeof displayContent === "string") {
+    return displayContent.trim().length > 0
+  }
+  return displayContent.some((block) =>
+    block.type === "text"
+      ? block.text.trim().length > 0
+      : block.type === "reasoning"
+        ? block.reasoning.trim().length > 0
+        : true
+  )
 }
 
-export function toMessageContent(input: ComposerMessageInput): string | ContentBlock[] {
-  return buildJingleAgentDisplayMessageContent(input) as string | ContentBlock[]
+export function toMessageContent(input: ComposerMessageInput): MessageContent {
+  return toDisplayMessageContent(buildJingleAgentDisplayMessageContent(input), { role: "user" })
 }
 
 export function toComposerMessageInput(
@@ -544,99 +1052,91 @@ export function toComposerMessageInput(
   metadata?: unknown
 ): ComposerMessageInput {
   const metadataRefs = extractComposerMessageRefsMetadata(metadata)
-
-  if (typeof content === "string") {
-    return {
-      refs: metadataRefs,
-      text: stripSyntheticRefsText(content, metadataRefs)
-    }
-  }
-
-  if (!Array.isArray(content)) {
-    return {
-      refs: metadataRefs,
-      text: ""
-    }
+  const displayContent = toDisplayMessageContent(content, { role: "user" })
+  if (typeof displayContent === "string") {
+    return { refs: metadataRefs, text: stripSyntheticRefsText(displayContent, metadataRefs) }
   }
 
   const textParts: string[] = []
   const refs: ComposerMessageRef[] = []
-
-  for (const block of content) {
-    if (typeof block !== "object" || block === null || !("type" in block)) {
-      continue
-    }
-
+  for (const block of displayContent) {
     switch (block.type) {
-      case "text":
-        if (typeof block.text === "string") {
-          const text = stripSyntheticRefsText(block.text, metadataRefs)
-          if (text.length > 0) {
-            textParts.push(text)
-          }
-        }
+      case "text": {
+        const text = stripSyntheticRefsText(block.text, metadataRefs)
+        if (text.length > 0) textParts.push(text)
         break
+      }
       case "image":
       case "image_url": {
         const url = resolveImageBlockUrl(block)
-        if (url) {
-          const name =
-            "name" in block && typeof block.name === "string" && block.name.length > 0
-              ? block.name
-              : undefined
-
-          refs.push({
-            ...(name ? { name } : {}),
-            type: "image",
-            url
-          })
-        }
+        if (url) refs.push({ ...(block.name ? { name: block.name } : {}), type: "image", url })
         break
       }
-      case "file": {
-        const path = typeof block.content === "string" ? block.content : ""
-        const name =
-          typeof block.name === "string" && block.name.length > 0
-            ? block.name
-            : path || "Attachment"
-
-        if (path.trim().length > 0) {
-          refs.push({
-            name,
-            path,
-            type: "file"
-          })
+      case "file":
+        if (block.source.kind === "text") {
+          refs.push({ name: block.name, path: block.source.text, type: "file" })
         }
         break
-      }
-      default: {
-        const text = getDisplayBlockText(block).trim()
-        if (text.length > 0) {
-          textParts.push(text)
-        }
-      }
+      case "reasoning":
+      case "unrenderable":
+        break
     }
   }
-
-  return {
-    refs: metadataRefs.length > 0 ? metadataRefs : refs,
-    text: textParts.join("")
-  }
+  return { refs: metadataRefs.length > 0 ? metadataRefs : refs, text: textParts.join("") }
 }
 
-export function toAgentMessageContent(content: string | ContentBlock[]): AgentMessageContent {
+function toJingleAgentContentBlocks(
+  content: MessageContent
+): JingleAgentMessageContentBlock[] | string {
+  if (typeof content === "string") {
+    return content
+  }
+  return content.flatMap<JingleAgentMessageContentBlock>((block) => {
+    switch (block.type) {
+      case "text":
+        return [{ text: block.text, type: "text" }]
+      case "image": {
+        const url = resolveImageBlockUrl(block)
+        return url
+          ? [{ content: url, ...(block.name ? { name: block.name } : {}), type: "image" }]
+          : []
+      }
+      case "image_url": {
+        const url = resolveImageBlockUrl(block)
+        return url
+          ? [
+              {
+                image_url: { ...(block.detail ? { detail: block.detail } : {}), url },
+                ...(block.name ? { name: block.name } : {}),
+                type: "image_url"
+              }
+            ]
+          : []
+      }
+      case "file":
+        return block.source.kind === "text"
+          ? [{ content: block.source.text, name: block.name, type: "file" }]
+          : []
+      case "reasoning":
+      case "unrenderable":
+        return []
+    }
+  })
+}
+
+export function toAgentMessageContent(content: MessageContent): AgentMessageContent {
   return buildJingleAgentSubmitMessageContentWithRefs({
-    content,
+    content: toJingleAgentContentBlocks(content),
     refs: []
   }) as AgentMessageContent
 }
 
 export function toAgentMessageContentWithRefs(
-  content: string | ContentBlock[],
+  content: MessageContent,
   refs: ComposerMessageRef[]
 ): AgentMessageContent {
   return buildJingleAgentSubmitMessageContentWithRefs({
-    content,
+    content: toJingleAgentContentBlocks(content),
     refs
   }) as AgentMessageContent
 }
@@ -660,9 +1160,29 @@ function getAssistantSelectionRefsText(refs: ComposerMessageRef[]): string | nul
     .join("\n")}`
 }
 
-export function toDisplayUserMessageContent(
-  content: string | ContentBlock[] | AgentMessageContent | undefined,
-  metadata?: unknown
-): string | ContentBlock[] {
-  return toMessageContent(toComposerMessageInput(content, metadata))
+export function toDisplayUserMessageContent(content: unknown, metadata?: unknown): MessageContent {
+  const canonical = toDisplayMessageContent(content, { role: "user" })
+  const metadataRefs = extractComposerMessageRefsMetadata(metadata)
+
+  if (metadataRefs.length === 0) {
+    return canonical
+  }
+
+  const unrenderable = Array.isArray(canonical)
+    ? canonical.filter((block): block is UnrenderableContentBlock => block.type === "unrenderable")
+    : []
+  const editable = toComposerMessageInput(canonical, metadata)
+  const rebuilt = toMessageContent(editable)
+  if (unrenderable.length === 0) {
+    return rebuilt
+  }
+
+  return [
+    ...(typeof rebuilt === "string"
+      ? rebuilt.length > 0
+        ? [{ text: rebuilt, type: "text" } as const]
+        : []
+      : rebuilt),
+    ...unrenderable
+  ]
 }

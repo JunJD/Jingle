@@ -21,7 +21,7 @@ import {
   type ComposerMessageRef
 } from "@shared/message-content"
 import type { JingleActiveAgentToolCall } from "@jingle/agent-client"
-import type { ContentBlock, Message as ThreadMessage } from "@/types"
+import type { Message as ThreadMessage } from "@/types"
 import { readContentCardIdSource } from "@shared/content-card"
 import type { EditLastUserMessageAndInvokeInput } from "@/lib/agent-control"
 import { cn } from "@/lib/utils"
@@ -29,6 +29,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { useI18n } from "@/lib/i18n"
 import {
   createDefaultMessagesProjection,
+  projectMessageContent,
   projectTurnPendingApproval,
   projectTurnToolExecutionsView,
   type AgentToolExecutionsView,
@@ -125,27 +126,8 @@ function animateAssistantMessageReveal(element: HTMLElement): void {
   )
 }
 
-function getReasoningBlockText(block: ContentBlock): string {
-  return block.reasoning ?? block.text ?? block.content ?? ""
-}
-
 function getStreamingContentScrollKey(content: ThreadMessage["content"]): string {
-  if (typeof content === "string") {
-    return `${content.length}:0:0`
-  }
-
-  let textLength = 0
-  let reasoningLength = 0
-  for (const block of content) {
-    if (block.type === "reasoning") {
-      reasoningLength += getReasoningBlockText(block).length
-      continue
-    }
-
-    textLength += (block.text ?? block.content ?? "").length
-  }
-
-  return `${textLength}:${reasoningLength}:${content.length}`
+  return projectMessageContent(content).scrollKey
 }
 
 function ContextCompactionRow(): ReactElement {

@@ -19,13 +19,11 @@ export interface JingleLangGraphCheckpointProjectedMessage {
 export interface ProjectJingleLangGraphCheckpointMessagesInput {
   now?: number
   threadId: string
-  toAssistantDisplayContent: (
+  toDisplayContent: (
     content: string | unknown[],
     message: JingleLangGraphCheckpointMessage
   ) => unknown
-  toMessageMetadata: (
-    message: JingleLangGraphCheckpointMessage
-  ) => Record<string, unknown> | null
+  toMessageMetadata: (message: JingleLangGraphCheckpointMessage) => Record<string, unknown> | null
   tuple: CheckpointTuple | undefined
 }
 
@@ -65,10 +63,7 @@ export function projectJingleLangGraphCheckpointMessages(
 
   return messages.map((message, index) => {
     const role = message.role
-    const content =
-      role === "assistant"
-        ? input.toAssistantDisplayContent(message.content, message)
-        : message.content
+    const content = input.toDisplayContent(message.content, message)
     const messageMetadata = input.toMessageMetadata(message)
 
     return {

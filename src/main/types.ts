@@ -11,9 +11,11 @@ import type {
 } from "@shared/agent-thread-contract"
 import type {
   CustomProviderInput,
+  Message,
   ProviderId,
   SetDefaultModelOptions,
-  ToolCall
+  ToolCall,
+  ToolResult
 } from "@shared/app-types"
 import type {
   JingleAgentFollowUpAction,
@@ -25,6 +27,7 @@ import type { AgentRunFailure } from "@shared/agent-run-failure"
 export type { HITLDecision, HITLRequest } from "@shared/hitl"
 export type {
   CreateThreadInput,
+  ContentBlock,
   CustomProviderConfig,
   CustomProviderInput,
   DefaultModelOptions,
@@ -32,12 +35,15 @@ export type {
   ModelConfig,
   ModelProviderState,
   ModelType,
+  Message,
+  MessageContent,
   Provider,
   ProviderModelsResponse,
   ProviderId,
   SetDefaultModelOptions,
   ThinkingEffort,
-  ToolCall
+  ToolCall,
+  ToolResult
 } from "@shared/app-types"
 
 // Thread types matching langgraph-api
@@ -185,33 +191,6 @@ export type StreamEvent =
   | { type: "todos"; todos: Todo[] }
   | { type: "done"; result: unknown }
   | { type: "error"; error: string }
-
-export interface Message {
-  id: string
-  role: "user" | "assistant" | "system" | "tool"
-  content: string | ContentBlock[]
-  tool_calls?: ToolCall[]
-  metadata?: Record<string, unknown>
-  created_at: Date
-}
-
-export interface ContentBlock {
-  type: "text" | "reasoning" | "image" | "image_url" | "file" | "tool_use" | "tool_result"
-  text?: string
-  reasoning?: string
-  signature?: string
-  tool_use_id?: string
-  name?: string
-  input?: unknown
-  content?: string
-  image_url?: string | { detail?: "auto" | "high" | "low"; url: string }
-  mimeType?: string
-}
-
-export interface ToolResult {
-  tool_call_id: string
-  content: string | unknown
-}
 
 export interface AgentThreadMessagesSnapshot {
   artifacts: ArtifactRecord[]

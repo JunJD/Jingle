@@ -72,14 +72,6 @@ function getRequiredRuntimeRunId(runId: string | null): string {
   throw new Error("[AgentStreamCodec] Missing run id for interrupt state.")
 }
 
-function getContentBlockText(block: ContentBlock): string {
-  return block.text ?? block.content ?? ""
-}
-
-function getContentBlockReasoning(block: ContentBlock): string {
-  return block.reasoning ?? block.text ?? block.content ?? ""
-}
-
 function toContentBlocks(content: Message["content"]): ContentBlock[] {
   if (typeof content === "string") {
     return content.length > 0 ? [{ text: content, type: "text" }] : []
@@ -96,7 +88,7 @@ function appendContentBlocks(existing: ContentBlock[], incoming: ContentBlock[])
     const last = lastIndex >= 0 ? next[lastIndex] : null
 
     if (block.type === "text") {
-      const text = getContentBlockText(block)
+      const text = block.text
       if (text.length === 0) {
         continue
       }
@@ -104,14 +96,14 @@ function appendContentBlocks(existing: ContentBlock[], incoming: ContentBlock[])
       if (last?.type === "text") {
         next[lastIndex] = {
           ...last,
-          text: `${getContentBlockText(last)}${text}`
+          text: `${last.text}${text}`
         }
         continue
       }
     }
 
     if (block.type === "reasoning") {
-      const reasoning = getContentBlockReasoning(block)
+      const reasoning = block.reasoning
       if (reasoning.length === 0) {
         continue
       }
@@ -120,7 +112,7 @@ function appendContentBlocks(existing: ContentBlock[], incoming: ContentBlock[])
         next[lastIndex] = {
           ...last,
           ...(block.signature ? { signature: block.signature } : {}),
-          reasoning: `${getContentBlockReasoning(last)}${reasoning}`
+          reasoning: `${last.reasoning}${reasoning}`
         }
         continue
       }
@@ -133,9 +125,10 @@ function appendContentBlocks(existing: ContentBlock[], incoming: ContentBlock[])
 }
 
 function extractContent(
-  content: string | unknown[] | AgentMessageContent | undefined
+  content: string | unknown[] | AgentMessageContent | undefined,
+  options: { role: Message["role"]; toolCallId?: string | null }
 ): string | ContentBlock[] {
-  return toDisplayMessageContent(content)
+  return toDisplayMessageContent(content, options)
 }
 
 function getSerializedMessageId(
@@ -188,8 +181,11 @@ function decodeValuesMessage(message: JingleLangGraphValuesMessage, index: numbe
     message.role === "assistant"
       ? toDisplayAssistantMessageContent(message.content, message.displayContext)
       : message.role === "user"
-        ? toDisplayUserMessageContent(extractContent(message.content), metadata)
-        : extractContent(message.content)
+        ? toDisplayUserMessageContent(message.content, metadata)
+        : extractContent(message.content, {
+            role: message.role,
+            ...(message.toolCallId ? { toolCallId: message.toolCallId } : {})
+          })
 
   return {
     content,
@@ -329,7 +325,10 @@ export function decodeMessagesStreamPayload(
       refs: normalizeComposerMessageRefs(decoded.tool.metadataHints.refs)
     })
     tool = {
-      content: extractContent(decoded.tool.content),
+      content: extractContent(decoded.tool.content, {
+        role: "tool",
+        toolCallId: decoded.tool.toolCallId
+      }),
       id: decoded.tool.id || crypto.randomUUID(),
       ...(messageMetadata ? { metadata: messageMetadata } : {}),
       name: decoded.tool.name,

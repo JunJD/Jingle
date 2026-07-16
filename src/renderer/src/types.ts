@@ -1,14 +1,18 @@
 import type { AppLocale } from "@shared/i18n"
 import type { HITLRequest } from "@shared/hitl"
-import type { Todo as SharedTodo, ToolCall } from "@shared/app-types"
+import type { Message, Todo as SharedTodo, ToolCall, ToolResult } from "@shared/app-types"
 export type { HITLDecision, HITLRequest } from "@shared/hitl"
 export type {
   ModelConfig,
   ModelProviderState,
   ModelType,
+  ContentBlock,
+  Message,
+  MessageContent,
   Provider,
   ProviderId,
-  ToolCall
+  ToolCall,
+  ToolResult
 } from "@shared/app-types"
 
 // Re-export types from electron for use in renderer
@@ -52,37 +56,6 @@ export type StreamEvent =
   | { type: "todos"; todos: Todo[] }
   | { type: "done"; result: unknown }
   | { type: "error"; error: string }
-
-export interface Message {
-  id: string
-  role: "user" | "assistant" | "system" | "tool"
-  content: string | ContentBlock[]
-  tool_calls?: ToolCall[]
-  metadata?: Record<string, unknown>
-  // For tool messages - links result to its tool call
-  tool_call_id?: string
-  // For tool messages - the name of the tool
-  name?: string
-  created_at: Date
-}
-
-export interface ContentBlock {
-  type: "text" | "reasoning" | "image" | "image_url" | "file" | "tool_use" | "tool_result"
-  text?: string
-  reasoning?: string
-  signature?: string
-  tool_use_id?: string
-  name?: string
-  input?: unknown
-  content?: string
-  image_url?: string | { detail?: "auto" | "high" | "low"; url: string }
-  mimeType?: string
-}
-
-export interface ToolResult {
-  tool_call_id: string
-  content: string | unknown
-}
 
 export type ThreadForkBlockReason = "busy" | "checkpoint_interrupt" | "pending_hitl"
 

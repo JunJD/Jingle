@@ -30,6 +30,7 @@ export interface JingleLangGraphCheckpointMessageMetadataHints {
 
 export interface JingleLangGraphSerializedMessageRead {
   content: string | unknown[]
+  displayContext: JingleLangGraphCheckpointMessageDisplayContext
   metadataHints: JingleLangGraphCheckpointMessageMetadataHints
   messageId: string
   name: string | null
@@ -244,9 +245,17 @@ export function readJingleLangGraphSerializedMessage(
     candidates.find((candidate): candidate is string => Boolean(candidate)) ??
     `message:${input.rawHash}:${input.order}:${role}`
   const additionalKwargs = readSerializedMessageAdditionalKwargs(input.message)
+  const kwargs = readKwargs(input.message)
+  const responseMetadata =
+    kwargs.response_metadata ??
+    (isRecord(input.message) ? input.message.response_metadata : undefined)
 
   return {
     content: readSerializedMessageContent(input.message),
+    displayContext: {
+      additional_kwargs: additionalKwargs,
+      ...(responseMetadata !== undefined ? { response_metadata: responseMetadata } : {})
+    },
     metadataHints: {
       refs: additionalKwargs.refs,
       source: readString(additionalKwargs.lc_source)

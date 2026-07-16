@@ -92,10 +92,10 @@ export function ClipboardChip(props: {
 
   if (context.kind === "image") {
     const imageAttachment = {
-      filename: copy.launcher.clipboardImage,
       id: "launcher-clipboard-image",
+      label: copy.launcher.clipboardImage,
+      mediaCategory: "image" as const,
       mediaType: "image/png",
-      type: "file" as const,
       url: context.image.previewDataUrl
     }
     return (

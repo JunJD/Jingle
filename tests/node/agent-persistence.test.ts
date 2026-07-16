@@ -1586,6 +1586,97 @@ test("thread hydrate degrades legacy error text to unknown without reclassificat
   })
 })
 
+test("thread hydration fails closed for corrupt and noncanonical persisted message content", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const threadId = "thread-invalid-persisted-message-content"
+  await createThread(threadId)
+  const prisma = getPrismaClient()
+  const now = BigInt(Date.now())
+  const canonicalContent = [
+    {
+      name: "result.png",
+      source: { data: "aW1hZ2U=", kind: "data", mimeType: "image/png" },
+      type: "image"
+    }
+  ]
+  await prisma.message.createMany({
+    data: [
+      {
+        content: JSON.stringify(canonicalContent),
+        createdAt: now,
+        kind: "message",
+        messageId: "message-canonical",
+        rawHash: "hash-canonical",
+        rawMessage: "{}",
+        role: "assistant",
+        searchText: "",
+        seq: 1,
+        threadId,
+        updatedAt: now
+      },
+      {
+        content: "secret raw corrupt payload",
+        createdAt: now + BigInt(1),
+        kind: "message",
+        messageId: "message-corrupt",
+        rawHash: "hash-corrupt",
+        rawMessage: "{}",
+        role: "user",
+        searchText: "",
+        seq: 2,
+        threadId,
+        updatedAt: now + BigInt(1)
+      },
+      {
+        content: JSON.stringify([{ content: "legacy raw payload", type: "text" }]),
+        createdAt: now + BigInt(2),
+        kind: "message",
+        messageId: "message-noncanonical",
+        rawHash: "hash-noncanonical",
+        rawMessage: "{}",
+        role: "user",
+        searchText: "",
+        seq: 3,
+        threadId,
+        updatedAt: now + BigInt(2)
+      }
+    ]
+  })
+
+  const warnings: unknown[][] = []
+  const originalWarn = console.warn
+  console.warn = (...args: unknown[]) => warnings.push(args)
+  try {
+    const service = await createThreadsServiceForTest()
+    const snapshot = await service.getPersistedAgentThreadData(threadId)
+    assert.deepEqual(
+      snapshot.messages.messages.map((message) => message.content),
+      [
+        canonicalContent,
+        [
+          {
+            reason: "malformed",
+            sourceType: "persisted_message_content",
+            type: "unrenderable"
+          }
+        ],
+        [
+          {
+            reason: "malformed",
+            sourceType: "persisted_message_content",
+            type: "unrenderable"
+          }
+        ]
+      ]
+    )
+    assert.equal(warnings.length, 2)
+    assert.equal(JSON.stringify(warnings).includes("secret raw corrupt payload"), false)
+    assert.equal(JSON.stringify(warnings).includes("legacy raw payload"), false)
+  } finally {
+    console.warn = originalWarn
+  }
+})
+
 test("resume and successful completion clear a stale durable run failure", async () => {
   const { createRun, createThread, getRun } = await loadDbModules()
   const { finalizeRunWithoutCheckpoint, resumeAgentRun } =

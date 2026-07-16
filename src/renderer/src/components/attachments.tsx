@@ -20,25 +20,6 @@ import { createContext, use, useCallback, useMemo } from "react"
 // Types
 // ============================================================================
 
-export interface FileAttachmentData {
-  filename?: string
-  id: string
-  mediaType?: string
-  type: "file"
-  url?: string
-}
-
-export interface SourceDocumentAttachmentData {
-  filename?: string
-  id: string
-  mediaType?: string
-  title?: string
-  type: "source-document"
-  url?: string
-}
-
-export type AttachmentData = FileAttachmentData | SourceDocumentAttachmentData
-
 export type AttachmentMediaCategory =
   | "image"
   | "video"
@@ -46,6 +27,14 @@ export type AttachmentMediaCategory =
   | "document"
   | "source"
   | "unknown"
+
+export interface AttachmentData {
+  id: string
+  label: string
+  mediaCategory: AttachmentMediaCategory
+  mediaType?: string
+  url?: string
+}
 
 export type AttachmentVariant = "grid" | "inline" | "list"
 
@@ -58,67 +47,19 @@ const mediaCategoryIcons: Record<AttachmentMediaCategory, typeof ImageIcon> = {
   video: VideoIcon
 }
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-const getMediaCategory = (data: AttachmentData): AttachmentMediaCategory => {
-  if (data.type === "source-document") {
-    return "source"
-  }
-
-  const mediaType = data.mediaType ?? ""
-
-  if (mediaType.startsWith("image/")) {
-    return "image"
-  }
-  if (mediaType.startsWith("video/")) {
-    return "video"
-  }
-  if (mediaType.startsWith("audio/")) {
-    return "audio"
-  }
-  if (mediaType.startsWith("application/") || mediaType.startsWith("text/")) {
-    return "document"
-  }
-
-  return "unknown"
-}
-
-const getAttachmentLabel = (data: AttachmentData): string => {
-  if (data.type === "source-document") {
-    return data.title || data.filename || "Source"
-  }
-
-  const category = getMediaCategory(data)
-  return data.filename || (category === "image" ? "Image" : "Attachment")
-}
-
 function AttachmentImage({
-  filename,
+  label,
   isGrid,
   url
 }: {
-  filename?: string
+  label: string
   isGrid: boolean
   url: string
 }): React.JSX.Element {
   return isGrid ? (
-    <img
-      alt={filename || "Image"}
-      className="size-full object-cover"
-      height={96}
-      src={url}
-      width={96}
-    />
+    <img alt={label} className="size-full object-cover" height={96} src={url} width={96} />
   ) : (
-    <img
-      alt={filename || "Image"}
-      className="size-full rounded object-cover"
-      height={20}
-      src={url}
-      width={20}
-    />
+    <img alt={label} className="size-full rounded object-cover" height={20} src={url} width={20} />
   )
 }
 
@@ -131,12 +72,10 @@ function AttachmentMetadata({
   data: AttachmentData
   showMediaType?: boolean
 }): React.JSX.Element {
-  const label = getAttachmentLabel(data)
-
   return (
     <div className={cn("space-y-[var(--jingle-space-1)] px-[var(--jingle-space-0-5)]", className)}>
       <h4 className="[font-size:var(--jingle-font-body)] font-semibold leading-none text-foreground">
-        {label}
+        {data.label}
       </h4>
       {showMediaType && data.mediaType ? (
         <p className="font-mono [font-size:var(--jingle-font-meta)] text-muted-foreground">
@@ -159,7 +98,6 @@ const AttachmentsContext = createContext<AttachmentsContextValue | null>(null)
 
 interface AttachmentContextValue {
   data: AttachmentData
-  mediaCategory: AttachmentMediaCategory
   onRemove?: () => void
   variant: AttachmentVariant
 }
@@ -224,11 +162,10 @@ export type AttachmentProps = HTMLAttributes<HTMLDivElement> & {
 
 export const Attachment = ({ data, onRemove, className, children, ...props }: AttachmentProps) => {
   const { variant } = useAttachmentsContext()
-  const mediaCategory = getMediaCategory(data)
 
   const contextValue = useMemo<AttachmentContextValue>(
-    () => ({ data, mediaCategory, onRemove, variant }),
-    [data, mediaCategory, onRemove, variant]
+    () => ({ data, onRemove, variant }),
+    [data, onRemove, variant]
   )
 
   return (
@@ -271,27 +208,20 @@ export const AttachmentPreview = ({
   className,
   ...props
 }: AttachmentPreviewProps) => {
-  const { data, mediaCategory, variant } = useAttachmentContext()
+  const { data, variant } = useAttachmentContext()
 
   const iconSize = variant === "inline" ? "size-3" : "size-4"
   let preview: ReactNode
-  if (mediaCategory === "image" && data.type === "file" && data.url) {
+  if (data.mediaCategory === "image" && data.url) {
+    preview = <AttachmentImage label={data.label} isGrid={variant === "grid"} url={data.url} />
+  } else if (data.mediaCategory === "video" && data.url) {
     preview = (
-      <AttachmentImage filename={data.filename} isGrid={variant === "grid"} url={data.url} />
-    )
-  } else if (mediaCategory === "video" && data.type === "file" && data.url) {
-    preview = (
-      <video
-        aria-label={getAttachmentLabel(data)}
-        className="size-full object-cover"
-        muted
-        src={data.url}
-      />
+      <video aria-label={data.label} className="size-full object-cover" muted src={data.url} />
     )
   } else if (fallbackIcon) {
     preview = fallbackIcon
   } else {
-    const Icon = mediaCategoryIcons[mediaCategory]
+    const Icon = mediaCategoryIcons[data.mediaCategory]
     preview = <Icon className={cn(iconSize, "text-muted-foreground")} />
   }
 
@@ -325,7 +255,6 @@ export const AttachmentInfo = ({
   ...props
 }: AttachmentInfoProps) => {
   const { data, variant } = useAttachmentContext()
-  const label = getAttachmentLabel(data)
 
   if (variant === "grid") {
     return null
@@ -333,7 +262,7 @@ export const AttachmentInfo = ({
 
   return (
     <span className={cn("min-w-0 flex-1", className)} {...props}>
-      <span className="block truncate">{label}</span>
+      <span className="block truncate">{data.label}</span>
       {showMediaType && data.mediaType && (
         <span className="block truncate [font-size:var(--jingle-font-meta)] text-muted-foreground">
           {data.mediaType}
@@ -465,18 +394,17 @@ export const AttachmentHoverPreview = ({
   showMediaType = true,
   ...props
 }: AttachmentHoverPreviewProps) => {
-  const mediaCategory = getMediaCategory(data)
-  const Icon = mediaCategoryIcons[mediaCategory]
+  const Icon = mediaCategoryIcons[data.mediaCategory]
 
   return (
     <div
       className={cn("attachment-hover-preview space-y-[var(--jingle-space-3)]", className)}
       {...props}
     >
-      {mediaCategory === "image" && data.type === "file" && data.url ? (
+      {data.mediaCategory === "image" && data.url ? (
         <div className="flex max-h-[var(--jingle-attachment-hover-preview-h)] w-[var(--jingle-attachment-hover-preview-w)] items-center justify-center overflow-hidden rounded-lg border border-border/70 bg-muted/30 p-[var(--jingle-space-2)]">
           <img
-            alt={getAttachmentLabel(data)}
+            alt={data.label}
             className={cn(
               "max-h-[var(--jingle-attachment-hover-image-max-h)] max-w-full rounded-md object-contain",
               imageClassName
@@ -499,7 +427,7 @@ export const AttachmentHoverPreview = ({
         </div>
       )}
 
-      {mediaCategory === "image" ? (
+      {data.mediaCategory === "image" ? (
         <AttachmentMetadata data={data} showMediaType={showMediaType} />
       ) : null}
     </div>

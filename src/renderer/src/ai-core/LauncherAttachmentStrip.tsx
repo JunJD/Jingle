@@ -24,18 +24,18 @@ function toAttachmentData(
 ): AttachmentData {
   if (attachment.kind === "image") {
     return {
-      filename: clipboardImageLabel,
       id: attachment.id,
+      label: clipboardImageLabel,
+      mediaCategory: "image",
       mediaType: "image/png",
-      type: "file",
       url: attachment.previewDataUrl
     }
   }
 
   return {
-    filename: attachment.name,
     id: attachment.id,
-    type: "file"
+    label: attachment.name,
+    mediaCategory: "document"
   }
 }
 
@@ -117,11 +117,11 @@ function LauncherAttachmentItem(props: {
           className={attachmentClassName}
           data={data}
           onRemove={() => onRemove(attachment.id)}
-          title={attachment.kind === "image" ? clipboardImageLabel : attachment.name}
+          title={data.label}
         >
           <AttachmentHoverCardTrigger asChild>
             <Button
-              aria-label={attachment.kind === "image" ? clipboardImageLabel : attachment.name}
+              aria-label={data.label}
               className={cn(
                 "relative min-w-0 bg-transparent p-0 text-inherit hover:bg-transparent",
                 attachment.kind === "image"
@@ -143,7 +143,7 @@ function LauncherAttachmentItem(props: {
             className={attachmentClassName}
             data={data}
             onRemove={() => onRemove(attachment.id)}
-            title={attachment.kind === "image" ? clipboardImageLabel : attachment.name}
+            title={data.label}
           >
             {itemContent}
             {removeControl}

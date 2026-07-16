@@ -21,7 +21,9 @@ import { parseOptionalToolDecision } from "@shared/tool-decision"
 import {
   normalizeComposerMessageRefs,
   toComposerMessageMetadata,
-  toDisplayAssistantMessageContent
+  toDisplayAssistantMessageContent,
+  toDisplayMessageContent,
+  toDisplayUserMessageContent
 } from "@shared/message-content"
 
 export type JingleCheckpointProjectionSource =
@@ -83,8 +85,20 @@ export function extractMessagesFromCheckpoint(
   return projectJingleLangGraphCheckpointMessages({
     threadId,
     tuple,
-    toAssistantDisplayContent: (content, message) =>
-      toDisplayAssistantMessageContent(content, message.displayContext),
+    toDisplayContent: (content, message) => {
+      if (message.role === "assistant") {
+        return toDisplayAssistantMessageContent(content, message.displayContext)
+      }
+      if (message.role === "user") {
+        return toDisplayUserMessageContent(content, getCheckpointMessageMetadata(message))
+      }
+      return toDisplayMessageContent(content, {
+        role: message.role,
+        ...(message.toolCallId || message.topLevelToolCallId
+          ? { toolCallId: message.toolCallId ?? message.topLevelToolCallId }
+          : {})
+      })
+    },
     toMessageMetadata: getCheckpointMessageMetadata
   })
 }

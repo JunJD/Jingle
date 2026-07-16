@@ -43,7 +43,7 @@ test.before(async () => {
     cwd: repoRoot,
     env: {
       ...process.env,
-      JINGLE_HOME: jingleHome,
+      JINGLE_HOME: jingleHome
     }
   })
 })
@@ -81,11 +81,12 @@ test("message search indexes image names without storing image data URLs", async
     {
       content: JSON.stringify([
         {
-          image_url: {
+          name: "Clipboard image",
+          source: {
+            kind: "url",
             url: imageUrl
           },
-          name: "Clipboard image",
-          type: "image_url"
+          type: "image"
         }
       ]),
       message_id: "message-with-image",
@@ -148,6 +149,54 @@ test("message search indexes assistant selection reference text from metadata", 
   assert.match(rows[0]!.search_text, /snapshot should not own runtime facts/)
 })
 
+test("message search rejects corrupt persisted content without indexing raw text", async () => {
+  const { createThread, getPrismaClient, syncMessageSearchIndexFromSnapshot } =
+    await loadDbModules()
+  const threadId = "thread-corrupt-content-search"
+  const warningArgs: unknown[][] = []
+  const originalWarn = console.warn
+  console.warn = (...args: unknown[]) => warningArgs.push(args)
+
+  try {
+    await createThread(threadId)
+    await syncMessageSearchIndexFromSnapshot(threadId, [
+      {
+        content: "secret raw corrupt payload",
+        message_id: "message-corrupt",
+        role: "user"
+      },
+      {
+        content: JSON.stringify([{ content: "legacy raw payload", type: "text" }]),
+        message_id: "message-noncanonical",
+        role: "user"
+      }
+    ])
+
+    const prisma = getPrismaClient()
+    const rows = await prisma.message.findMany({
+      orderBy: { messageId: "asc" },
+      select: { content: true, messageId: true, searchText: true },
+      where: { threadId }
+    })
+    const unavailable = JSON.stringify([
+      {
+        reason: "malformed",
+        sourceType: "persisted_message_content",
+        type: "unrenderable"
+      }
+    ])
+    assert.deepEqual(rows, [
+      { content: unavailable, messageId: "message-corrupt", searchText: "" },
+      { content: unavailable, messageId: "message-noncanonical", searchText: "" }
+    ])
+    assert.equal(warningArgs.length, 2)
+    assert.equal(JSON.stringify(warningArgs).includes("secret raw corrupt payload"), false)
+    assert.equal(JSON.stringify(warningArgs).includes("legacy raw payload"), false)
+  } finally {
+    console.warn = originalWarn
+  }
+})
+
 test("message projection stores content separately from FTS and rebuilds search index", async () => {
   const {
     createThread,
@@ -192,7 +241,8 @@ test("message projection stores content separately from FTS and rebuilds search 
 })
 
 test("message search projection removes stale checkpoint messages", async () => {
-  const { createThread, getPrismaClient, syncMessageSearchIndexFromSnapshot } = await loadDbModules()
+  const { createThread, getPrismaClient, syncMessageSearchIndexFromSnapshot } =
+    await loadDbModules()
   const threadId = "thread-stale-message-projection"
 
   await createThread(threadId)
@@ -295,10 +345,11 @@ test("search_history tool routes through thread digests before writing history m
     threadId: "current-thread"
   })
   const tools = middleware.tools ?? []
-  assert.deepEqual(
-    tools.map((tool) => tool.name).sort(),
-    ["get_message_context", "get_trace_evidence", "search_history"]
-  )
+  assert.deepEqual(tools.map((tool) => tool.name).sort(), [
+    "get_message_context",
+    "get_trace_evidence",
+    "search_history"
+  ])
   const searchHistoryTool = tools.find((tool) => tool.name === "search_history")
   assert.ok(searchHistoryTool)
   const invokeSearchHistoryTool = searchHistoryTool.invoke as (
@@ -326,7 +377,11 @@ test("search_history tool routes through thread digests before writing history m
 
   assert.ok(output instanceof Command)
   const update = output.update as {
-    contextInclusions?: Array<{ sourceId: string; sourceType: string; target: { threadId?: string } }>
+    contextInclusions?: Array<{
+      sourceId: string
+      sourceType: string
+      target: { threadId?: string }
+    }>
     messages?: Array<{ content: unknown; name?: string }>
   }
   assert.deepEqual(
@@ -344,7 +399,10 @@ test("search_history tool routes through thread digests before writing history m
     ["thread_digest", "history_message"]
   )
   assert.equal(result.nextActions[0]?.tool, "get_message_context")
-  assert.match(String(update.messages?.[0]?.content ?? ""), /Concrete history evidence should enter schema state/)
+  assert.match(
+    String(update.messages?.[0]?.content ?? ""),
+    /Concrete history evidence should enter schema state/
+  )
   assert.doesNotMatch(String(update.messages?.[0]?.content ?? ""), /wrong session/)
 })
 
@@ -483,7 +541,11 @@ test("search_history tool respects explicit thread scope for digest and message 
 
   assert.ok(output instanceof Command)
   const update = output.update as {
-    contextInclusions?: Array<{ sourceId: string; sourceType: string; target: { threadId?: string } }>
+    contextInclusions?: Array<{
+      sourceId: string
+      sourceType: string
+      target: { threadId?: string }
+    }>
     messages?: Array<{ content: unknown; name?: string }>
   }
   assert.deepEqual(
@@ -681,6 +743,65 @@ test("get_message_context tool returns no inclusion when the projected message i
   assert.equal(result?.kind, "message_context")
   assert.equal(result.status, "empty")
   assert.equal(result.focus.messageId, "missing-message")
+})
+
+test("get_message_context never exposes corrupt persisted message content", async () => {
+  const { createThread, getPrismaClient, syncMessageSearchIndexFromSnapshot } =
+    await loadDbModules()
+  const threadId = "message-context-corrupt"
+  await createThread(threadId)
+  await syncMessageSearchIndexFromSnapshot(threadId, [
+    {
+      content: JSON.stringify("initial safe content"),
+      message_id: "message-context-corrupt-focus",
+      role: "assistant"
+    }
+  ])
+  await getPrismaClient().message.update({
+    data: { content: "secret raw corrupt payload" },
+    where: {
+      threadId_messageId: {
+        messageId: "message-context-corrupt-focus",
+        threadId
+      }
+    }
+  })
+
+  const middleware = compileJingleContextRetrievalToolsHookForTest({
+    runId: "run-message-context-corrupt",
+    threadId: "current-thread"
+  })
+  const tool = middleware.tools?.find((candidate) => candidate.name === "get_message_context")
+  assert.ok(tool)
+  const warnings: unknown[][] = []
+  const originalWarn = console.warn
+  console.warn = (...args: unknown[]) => warnings.push(args)
+  try {
+    const output = await (
+      tool.invoke as (input: unknown, config: unknown) => Promise<unknown>
+    ).call(
+      tool,
+      { messageId: "message-context-corrupt-focus", threadId },
+      {
+        toolCall: {
+          args: {},
+          id: "tool-call-message-context-corrupt",
+          name: "get_message_context",
+          type: "tool_call"
+        },
+        toolCallId: "tool-call-message-context-corrupt",
+        state: { contextInclusions: [] }
+      }
+    )
+    assert.ok(output instanceof Command)
+    const serialized = JSON.stringify(output.update)
+    assert.match(serialized, /Message content unavailable/)
+    assert.doesNotMatch(serialized, /secret raw corrupt payload/)
+    assert.equal(warnings.length >= 1, true)
+    assert.doesNotMatch(JSON.stringify(warnings), /secret raw corrupt payload/)
+  } finally {
+    console.warn = originalWarn
+  }
 })
 
 test("get_trace_evidence tool retrieves a trace step by traceStepId", async () => {
@@ -882,7 +1003,11 @@ test("get_trace_evidence tool retrieves a trace step by toolCallId and links art
 
   assert.ok(output instanceof Command)
   const update = output.update as {
-    contextInclusions?: Array<{ sourceId: string; sourceType: string; target: { artifactId?: string } }>
+    contextInclusions?: Array<{
+      sourceId: string
+      sourceType: string
+      target: { artifactId?: string }
+    }>
     messages?: Array<{ content: unknown; name?: string }>
   }
   assert.deepEqual(
@@ -1007,7 +1132,10 @@ test("get_trace_evidence tool does not link an explicit artifact from another so
   assert.equal(result?.kind, "trace_evidence")
   assert.equal(result.artifacts.length, 0)
   assert.doesNotMatch(String(update.messages?.[0]?.content ?? ""), /Cross-run artifact/)
-  assert.doesNotMatch(String(update.messages?.[0]?.content ?? ""), /another run and must not be linked/)
+  assert.doesNotMatch(
+    String(update.messages?.[0]?.content ?? ""),
+    /another run and must not be linked/
+  )
 })
 
 test("get_trace_evidence tool returns no inclusion when trace output blob is missing", async () => {
@@ -1161,7 +1289,11 @@ test("get_trace_evidence tool retrieves artifact-only evidence without a trace s
 
   assert.ok(output instanceof Command)
   const update = output.update as {
-    contextInclusions?: Array<{ sourceId: string; sourceType: string; target: { artifactId?: string } }>
+    contextInclusions?: Array<{
+      sourceId: string
+      sourceType: string
+      target: { artifactId?: string }
+    }>
     messages?: Array<{ content: unknown; name?: string }>
   }
   assert.deepEqual(
@@ -1239,10 +1371,7 @@ test("get_trace_evidence tool does not expose an explicit artifact when the trac
   assert.equal(result?.kind, "trace_evidence")
   assert.equal(result.status, "unavailable")
   assert.equal(result.artifacts.length, 0)
-  assert.doesNotMatch(
-    String((output as { content?: unknown }).content ?? ""),
-    /must not appear/
-  )
+  assert.doesNotMatch(String((output as { content?: unknown }).content ?? ""), /must not appear/)
 })
 
 test("thread search scope limits title and message matches by metadata source", async () => {

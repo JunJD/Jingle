@@ -568,3 +568,43 @@ test("digest prompt keeps the newest messages when the character budget is exhau
   assert.match(prompt, /NEWEST_MARKER/)
   assert.doesNotMatch(prompt, /OLDEST_MARKER/)
 })
+
+test("digest prompt skips corrupt and noncanonical persisted message content", async () => {
+  const { threadDigestProjectionInternals } =
+    await import("../../src/main/projection/thread-digest-projection")
+  const createRow = (content: string, messageId: string, seq: number): MessageProjectionRow => ({
+    content,
+    created_at: seq,
+    kind: "message",
+    message_id: messageId,
+    metadata: null,
+    name: null,
+    raw_message: "",
+    role: "user",
+    run_id: null,
+    seq,
+    thread_id: "thread-digest-corrupt",
+    tool_call_id: null,
+    tool_calls: null
+  })
+  const warnings: unknown[][] = []
+  const originalWarn = console.warn
+  console.warn = (...args: unknown[]) => warnings.push(args)
+  try {
+    const prompt = threadDigestProjectionInternals.buildDigestPrompt([
+      createRow(JSON.stringify("safe digest content"), "message-safe", 1),
+      createRow("secret raw corrupt payload", "message-corrupt", 2),
+      createRow(
+        JSON.stringify([{ content: "legacy raw payload", type: "text" }]),
+        "message-noncanonical",
+        3
+      )
+    ])
+    assert.match(prompt, /safe digest content/)
+    assert.doesNotMatch(prompt, /secret raw corrupt payload|legacy raw payload/)
+    assert.equal(warnings.length, 2)
+    assert.doesNotMatch(JSON.stringify(warnings), /secret raw corrupt payload|legacy raw payload/)
+  } finally {
+    console.warn = originalWarn
+  }
+})
