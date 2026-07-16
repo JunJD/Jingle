@@ -127,9 +127,7 @@ test("parseAgentResumeParams requires request_id at the IPC boundary", () => {
     (error: unknown) => {
       assert.ok(error instanceof IpcSchemaValidationError)
       assert.equal(error.channel, "agent:resume")
-      assert.deepEqual(error.issues, [
-        "decision.request_id: Invalid input: expected string, received undefined"
-      ])
+      assert.deepEqual(error.issues, ["decision: Invalid input"])
       return true
     }
   )
@@ -274,14 +272,14 @@ test("parseAgentInvokeParams rejects unsupported permission mode", () => {
   )
 })
 
-test("parseAgentResumeParams normalizes optional blank strings while keeping request_id required", () => {
+test("parseAgentResumeParams preserves a typed non-empty correction", () => {
   const parsed = parseAgentResumeParams({
     threadId: "  thread-1  ",
     decision: {
-      type: "reject",
+      type: "corrected",
       request_id: "  request-1  ",
-      tool_call_id: "  ",
-      feedback: "  "
+      tool_call_id: "  tool-1  ",
+      correction: "  use a safer path  "
     },
     modelId: "  "
   })
@@ -289,10 +287,10 @@ test("parseAgentResumeParams normalizes optional blank strings while keeping req
   assert.deepEqual(parsed, {
     threadId: "thread-1",
     decision: {
-      type: "reject",
+      type: "corrected",
       request_id: "request-1",
-      tool_call_id: undefined,
-      feedback: undefined
+      tool_call_id: "tool-1",
+      correction: "use a safer path"
     },
     modelId: undefined
   })

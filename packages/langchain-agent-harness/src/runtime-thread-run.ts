@@ -31,9 +31,13 @@ interface RuntimeThreadRunInternals<TContextInclusion> extends RuntimeThreadRun 
   readonly executionContext: RuntimeExecutionContext<TContextInclusion>
   execute(
     activation: Omit<RuntimeExecutionActivation, "signal">,
-    operation: () => Promise<RuntimeThreadTerminalCompletionInput<TContextInclusion>>
+    operation: () => Promise<
+      | RuntimeThreadTerminalCompletionInput<TContextInclusion>
+      | { cancelAfterDecision?: () => Promise<void> | void; status: "cancelled" }
+    >
   ): Promise<RuntimeThreadRunResult<TContextInclusion>>
   requestAbort(): RuntimeThreadTerminalSubmission
+  requestCancellation(cancelAfterDecision?: () => Promise<void> | void): RuntimeThreadTerminalSubmission
   readonly signal: AbortSignal
 }
 
@@ -95,10 +99,13 @@ export function createRuntimeThreadResumeRun<TContextInclusion>(input: {
           callbacks: executionInput.callbacks,
           steeringBuffer: executionInput.steeringBuffer
         },
-        () =>
-          executeRuntimeThreadRunWork({
+        async () => {
+          const completion = await executeRuntimeThreadRunWork({
             beforePendingHitlPersistence: async () => {
               await start.beforePendingHitlPersistence()
+              if (input.decision.type === "user_declined") {
+                run.requestCancellation(start.cancelAfterDecision)
+              }
               executionInput.onDecisionCommitted?.()
             },
             createStream: () =>
@@ -116,6 +123,8 @@ export function createRuntimeThreadResumeRun<TContextInclusion>(input: {
             stream: controls.stream,
             submittedContextInclusions: executionInput.contextInclusions ?? []
           })
+          return completion
+        }
       )
   }
 }
@@ -178,6 +187,12 @@ function createRuntimeThreadRunBase<TContextInclusion>(
     executionContext.abort()
     return submission
   }
+  const requestCancellation = (
+    cancelAfterDecision?: () => Promise<void> | void
+  ): RuntimeThreadTerminalSubmission => {
+    executionContext.assertActive()
+    return terminal.submit({ cancelAfterDecision, status: "cancelled" })
+  }
 
   return {
     abort: async () => {
@@ -208,7 +223,12 @@ function createRuntimeThreadRunBase<TContextInclusion>(
       const execution = (async (): Promise<RuntimeThreadRunResult<TContextInclusion>> => {
         try {
           try {
-            terminal.submit({ ...(await operation()), status: "completed" })
+            const outcome = await operation()
+            if ("status" in outcome) {
+              terminal.submit(outcome)
+            } else {
+              terminal.submit({ ...outcome, status: "completed" })
+            }
           } catch (error) {
             terminal.submit({ error, status: "failed" })
           }
@@ -234,6 +254,7 @@ function createRuntimeThreadRunBase<TContextInclusion>(
       return terminal.owns(submission)
     },
     requestAbort,
+    requestCancellation,
     runId: start.runId,
     signal: executionContext.signal
   }

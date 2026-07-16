@@ -6,6 +6,7 @@ import {
   readJingleLangGraphCheckpointRecordingRefs,
   readJingleLangGraphCheckpointTasks,
   readJingleLangGraphCheckpointTitle,
+  readJingleLangGraphCheckpointToolDecisions,
   readJingleLangGraphCheckpointTodos,
   type JingleLangGraphCheckpointTodo
 } from "./langgraph-checkpoint-reader"
@@ -13,8 +14,10 @@ import type {
   RuntimeApproval,
   RuntimeCompaction,
   RuntimeRecordingRef,
-  RuntimeTask
+  RuntimeTask,
+  RuntimeToolDecision
 } from "./runtime-state"
+import { parseRuntimeToolDecision } from "./runtime-state"
 import {
   checkpointHasJingleHitlInterrupt,
   extractJingleHitlRequestFromCheckpoint,
@@ -41,6 +44,7 @@ export interface JingleLangGraphCheckpointThreadFacts<
   tasks: RuntimeTask[]
   title: string | null
   todos: JingleLangGraphCheckpointProjectedTodo[]
+  toolDecisions: RuntimeToolDecision[]
 }
 
 export interface ProjectJingleLangGraphCheckpointThreadFactsInput<TReview = unknown> {
@@ -110,9 +114,7 @@ function projectJingleLangGraphCheckpointRecordingRefs(
   return recordingRefs as RuntimeRecordingRef[]
 }
 
-function projectJingleLangGraphCheckpointTasks(
-  tuple: CheckpointTuple | undefined
-): RuntimeTask[] {
+function projectJingleLangGraphCheckpointTasks(tuple: CheckpointTuple | undefined): RuntimeTask[] {
   const tasks = readJingleLangGraphCheckpointTasks(tuple)
   if (tasks === undefined) {
     return []
@@ -138,6 +140,17 @@ function projectJingleLangGraphCheckpointTodos(
     content: todo.content || "",
     status: todo.status || "pending"
   }))
+}
+
+function projectJingleLangGraphCheckpointToolDecisions(
+  tuple: CheckpointTuple | undefined
+): RuntimeToolDecision[] {
+  const decisions = readJingleLangGraphCheckpointToolDecisions(tuple)
+  if (decisions === undefined) return []
+  if (!Array.isArray(decisions)) {
+    throw new Error("[LangGraphCheckpointReader] Invalid checkpoint toolDecisions channel.")
+  }
+  return decisions.map(parseRuntimeToolDecision)
 }
 
 function projectJingleLangGraphCheckpointTitle(tuple: CheckpointTuple | undefined): string | null {
@@ -170,6 +183,7 @@ export function projectJingleLangGraphCheckpointThreadFacts<
     recordingRefs: projectJingleLangGraphCheckpointRecordingRefs(input.tuple),
     tasks: projectJingleLangGraphCheckpointTasks(input.tuple),
     title: projectJingleLangGraphCheckpointTitle(input.tuple),
-    todos: projectJingleLangGraphCheckpointTodos(input.tuple)
+    todos: projectJingleLangGraphCheckpointTodos(input.tuple),
+    toolDecisions: projectJingleLangGraphCheckpointToolDecisions(input.tuple)
   }
 }

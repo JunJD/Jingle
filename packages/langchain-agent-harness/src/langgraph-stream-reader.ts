@@ -157,6 +157,7 @@ export interface JingleLangGraphValuesState {
   recordingRefs?: unknown
   tasks?: unknown
   todos?: Array<{ content?: string; id?: string; status?: string }>
+  toolDecisions?: unknown
   workspacePath?: unknown
   __interrupt__?: unknown[]
 }
@@ -279,7 +280,9 @@ function readSerializedMessageKwargs(
     ...(message.response_metadata !== undefined
       ? { response_metadata: message.response_metadata }
       : {}),
-    ...(message.tool_call_chunks !== undefined ? { tool_call_chunks: message.tool_call_chunks } : {}),
+    ...(message.tool_call_chunks !== undefined
+      ? { tool_call_chunks: message.tool_call_chunks }
+      : {}),
     ...(message.tool_call_id !== undefined ? { tool_call_id: message.tool_call_id } : {}),
     ...(message.tool_calls !== undefined ? { tool_calls: message.tool_calls } : {}),
     ...(message.status !== undefined ? { status: message.status } : {}),
@@ -341,9 +344,7 @@ function decodeValuesMessage(
     responseMetadata,
     role,
     status: kwargs.status === "error" ? "error" : null,
-    ...(typeof message.id === "string" && message.id.length > 0
-      ? { topLevelId: message.id }
-      : {}),
+    ...(typeof message.id === "string" && message.id.length > 0 ? { topLevelId: message.id } : {}),
     ...(kwargs.tool_call_id ? { toolCallId: kwargs.tool_call_id } : {}),
     toolCalls: role === "assistant" ? readJingleLangGraphAssistantToolCalls(kwargs) : []
   }
@@ -367,7 +368,9 @@ export function decodeJingleLangGraphMessagesStreamChunk(
   const lcClassName = lcId[lcId.length - 1] || ""
   const messageType = msgChunk?.type
   const isToolMessage =
-    (className.includes("ToolMessage") || lcClassName.includes("ToolMessage") || messageType === "tool") &&
+    (className.includes("ToolMessage") ||
+      lcClassName.includes("ToolMessage") ||
+      messageType === "tool") &&
     !!kwargs.tool_call_id
   const isAIMessage =
     className.includes("AI") ||

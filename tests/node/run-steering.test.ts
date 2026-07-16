@@ -12,7 +12,7 @@ import { defineJingleHarnessHook } from "../../packages/langchain-agent-harness/
 import { createRuntimeGraphEngine } from "../../packages/langchain-agent-harness/src/harness-runtime"
 
 const testApprovalController: RuntimeApprovalControllerContract = {
-  allowedDecisions: ["approve", "reject"],
+  allowedDecisions: ["approve", "user_declined", "corrected"],
   policyRuntime: {
     evaluate: () => ({
       args: {},

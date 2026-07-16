@@ -99,7 +99,7 @@ function createLiveLangChainAiMessageChunk(id: string, content: string) {
 
 function createPendingApproval(id: string, toolCallId: string): HITLRequest {
   return {
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     id,
     review: null,
     tool_call: {
@@ -783,7 +783,7 @@ test("AgentThreadRunner derives persisted HITL request ids from run and tool cal
             reviewConfigs: [
               {
                 actionName: "bash",
-                allowedDecisions: ["approve", "reject"]
+                allowedDecisions: ["approve", "user_declined", "corrected"]
               }
             ]
           }

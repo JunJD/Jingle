@@ -78,6 +78,15 @@ export function createRuntimeThreadRunLifecycleControlFromController<
         runId: abortInput.runId,
         threadId: thread.threadId
       }),
+    cancelRun: async ({ runId }) => {
+      await lifecycle.markRunCancelled({ runId, threadId: thread.threadId })
+      await lifecycle.recordRunFinished({
+        completionReason: "user_declined",
+        runId,
+        status: "cancelled",
+        threadId: thread.threadId
+      })
+    },
     beginInvokeRun: async (beginInput) => {
       const reservation = input.context.reserveRun()
       let runStart: RuntimeRunStart | null = null

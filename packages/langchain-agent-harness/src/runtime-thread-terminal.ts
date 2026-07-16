@@ -4,7 +4,7 @@ import type { RuntimeThreadRunLifecycleControl } from "./runtime-thread"
 
 export type RuntimeThreadTerminalLifecycle<TContextInclusion> = Pick<
   RuntimeThreadRunLifecycleControl<TContextInclusion>,
-  "abortRun" | "completeRun" | "failRun" | "settleRun"
+  "abortRun" | "cancelRun" | "completeRun" | "failRun" | "settleRun"
 >
 
 export interface RuntimeThreadTerminalCompletionInput<TContextInclusion> {
@@ -15,18 +15,20 @@ export interface RuntimeThreadTerminalCompletionInput<TContextInclusion> {
 
 export type RuntimeThreadTerminalIntent<TContextInclusion> =
   | { status: "aborted" }
+  | { cancelAfterDecision?: () => Promise<void> | void; status: "cancelled" }
   | { error: unknown; status: "failed" }
   | ({ status: "completed" } & RuntimeThreadTerminalCompletionInput<TContextInclusion>)
 
 export type RuntimeThreadTerminalResult<TContextInclusion> =
   | { status: "aborted" }
+  | { status: "cancelled" }
   | { error: unknown; status: "failed" }
   | {
       completion: CompleteJingleAgentRunResult<TContextInclusion>
       status: "completed"
     }
 
-export type RuntimeThreadTerminalStatus = "aborted" | "completed" | "failed"
+export type RuntimeThreadTerminalStatus = "aborted" | "cancelled" | "completed" | "failed"
 
 export type RuntimeThreadTerminalSubmission =
   | {
@@ -83,6 +85,17 @@ export function createRuntimeThreadTerminalReferee<TContextInclusion>(input: {
       submission.accepted && winner !== null && winner.token === submission.token,
     submit: (intent) => {
       if (winner) {
+        if (intent.status === "cancelled" && winner.intent.status === "aborted" && !committed) {
+          observeIgnoredTerminalSafely(input.observeIgnoredTerminal, {
+            ignoredError: null,
+            ignoredStatus: "aborted",
+            runId: start.runId,
+            winnerStatus: "cancelled"
+          })
+          const token = Symbol(intent.status)
+          winner = { intent, token }
+          return { accepted: true, status: intent.status, token }
+        }
         observeIgnoredTerminalSafely(input.observeIgnoredTerminal, {
           ignoredError: intent.status === "failed" ? intent.error : null,
           ignoredStatus: intent.status,
@@ -158,6 +171,14 @@ async function persistRuntimeThreadTerminal<TContextInclusion>(
   if (intent.status === "aborted") {
     await lifecycle.abortRun({ runId: start.runId })
     return intent
+  }
+  if (intent.status === "cancelled") {
+    if (intent.cancelAfterDecision) {
+      await intent.cancelAfterDecision()
+    } else {
+      await lifecycle.cancelRun({ runId: start.runId })
+    }
+    return { status: "cancelled" }
   }
   if (intent.status === "failed") {
     try {

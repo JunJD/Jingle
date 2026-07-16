@@ -1182,12 +1182,19 @@ export class AgentService {
         return
       }
 
-      const resolvedHitlDecision: ResolvedHitlDecision = {
-        type: decision.type,
-        request_id: resumeTarget.requestId,
-        tool_call_id: resumeTarget.toolCallId,
-        ...(decision.feedback !== undefined ? { feedback: decision.feedback } : {})
-      }
+      const resolvedHitlDecision: ResolvedHitlDecision =
+        decision.type === "corrected"
+          ? {
+              correction: decision.correction,
+              request_id: resumeTarget.requestId,
+              tool_call_id: resumeTarget.toolCallId,
+              type: "corrected"
+            }
+          : {
+              request_id: resumeTarget.requestId,
+              tool_call_id: resumeTarget.toolCallId,
+              type: decision.type
+            }
       const run = await runHandle.thread.startResume({
         aiCapabilities: runtimeAiCapabilities,
         decision: resolvedHitlDecision,
@@ -1268,6 +1275,9 @@ export class AgentService {
       if (result.status === "completed") {
         sendResumedRunStarted()
         sink.send({ type: "done" })
+      } else if (result.status === "cancelled") {
+        sendResumedRunStarted()
+        sink.send({ type: "cancelled" })
       }
     } catch (error) {
       activeRun.steeringBuffer.close()

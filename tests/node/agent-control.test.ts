@@ -279,7 +279,7 @@ function installWindowApiStub(input?: {
 
 function createPendingApproval(): HITLRequest {
   return {
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     id: "hitl:thread-a:run-a:tool-a",
     review: null,
     tool_call: {

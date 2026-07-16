@@ -52,7 +52,7 @@ interface JingleRuntimePendingApproval {
 }
 
 interface JingleRuntimeHitlDecision {
-  type: "approve" | "reject" | string
+  type: "approve" | "corrected" | "user_declined" | string
 }
 
 type Message = JingleRuntimeMessage

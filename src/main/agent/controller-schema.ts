@@ -96,14 +96,21 @@ export const agentInvokeParamsSchema = z
   })
   .strict()
 
-const hitlDecisionSchema = z
-  .object({
-    feedback: optionalNormalizedTrimmedStringSchema,
-    request_id: nonEmptyTrimmedStringSchema,
-    tool_call_id: nonEmptyTrimmedStringSchema,
-    type: z.enum(["approve", "reject"])
-  })
-  .strict()
+const hitlDecisionBaseSchema = {
+  request_id: nonEmptyTrimmedStringSchema,
+  tool_call_id: nonEmptyTrimmedStringSchema
+}
+const hitlDecisionSchema = z.union([
+  z.object({ ...hitlDecisionBaseSchema, type: z.literal("approve") }).strict(),
+  z.object({ ...hitlDecisionBaseSchema, type: z.literal("user_declined") }).strict(),
+  z
+    .object({
+      ...hitlDecisionBaseSchema,
+      correction: nonEmptyTrimmedStringSchema,
+      type: z.literal("corrected")
+    })
+    .strict()
+])
 
 export const agentResumeParamsSchema = z
   .object({

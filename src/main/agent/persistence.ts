@@ -41,7 +41,7 @@ import {
   createUserMessageCreatedEventInput
 } from "./event-recorder"
 
-type PersistedRunStatus = "pending" | "running" | "error" | "success" | "interrupted"
+type PersistedRunStatus = "pending" | "running" | "error" | "success" | "interrupted" | "cancelled"
 type ExistingRun = NonNullable<Awaited<ReturnType<typeof getRun>>>
 type AgentRunCheckpointFacts = ReturnType<typeof extractThreadFactsFromCheckpoint>
 
@@ -220,7 +220,10 @@ function mergeRunExtensionAiCapabilitiesSnapshotMetadata(
   })
 }
 
-function mergeRunFailureMetadata(run: ExistingRun, failure: AgentRunFailure): Record<string, unknown> {
+function mergeRunFailureMetadata(
+  run: ExistingRun,
+  failure: AgentRunFailure
+): Record<string, unknown> {
   return mergeRunMetadata(run, {
     [AGENT_RUN_FAILURE_METADATA_KEY]: encodeAgentRunFailure(failure)
   })
@@ -416,6 +419,11 @@ export async function markRunFailed(
   await updateThread(threadId, {
     status: "error"
   })
+}
+
+export async function markRunCancelled(threadId: string, runId: string): Promise<void> {
+  await updateRun(runId, { status: "cancelled" })
+  await updateThread(threadId, { status: "idle" })
 }
 
 export async function markRunAborted(threadId: string, runId: string): Promise<void> {

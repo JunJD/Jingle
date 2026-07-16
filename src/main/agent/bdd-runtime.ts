@@ -9,11 +9,7 @@ interface BddAgentRuntime {
   stream(input: unknown, config: { signal?: AbortSignal }): AsyncGenerator<BddStreamChunk>
 }
 
-function createSerializedMessage(params: {
-  content: string
-  id: string
-  role: "ai" | "human"
-}): {
+function createSerializedMessage(params: { content: string; id: string; role: "ai" | "human" }): {
   id: string[]
   kwargs: {
     content: string
@@ -78,17 +74,18 @@ function readPromptText(input: unknown): string {
 }
 
 function readResumeFeedback(input: unknown): string {
-  const decisions = (input as { resume?: { decisions?: Array<{ feedback?: unknown }> } }).resume
-    ?.decisions
+  const decisions = (
+    input as {
+      resume?: { decisions?: Array<{ correction?: string; type?: string }> }
+    }
+  ).resume?.decisions
 
   if (!Array.isArray(decisions)) {
     return ""
   }
 
   return decisions
-    .flatMap((decision) =>
-      typeof decision.feedback === "string" && decision.feedback ? [decision.feedback] : []
-    )
+    .flatMap((decision) => (decision.type === "corrected" ? [decision.correction] : []))
     .join("\n")
 }
 
@@ -108,7 +105,10 @@ async function waitForAbort(signal: AbortSignal | undefined): Promise<void> {
   })
 }
 
-async function waitForDelay(ms: number, signal: AbortSignal | undefined): Promise<"aborted" | "ready"> {
+async function waitForDelay(
+  ms: number,
+  signal: AbortSignal | undefined
+): Promise<"aborted" | "ready"> {
   if (signal?.aborted) {
     return "aborted"
   }
@@ -184,7 +184,7 @@ function createInterruptState(options: CreateBddAgentRuntimeOptions, invocationI
           reviewConfigs: [
             {
               actionName: "write_file",
-              allowedDecisions: ["approve", "reject"]
+              allowedDecisions: ["approve", "user_declined", "corrected"]
             }
           ]
         }
@@ -233,13 +233,7 @@ export function createBddAgentRuntime(options: CreateBddAgentRuntimeOptions): Bd
       }
 
       if (promptText.includes("bdd:stream")) {
-        const chunks = [
-          "scripted ",
-          "agent ",
-          "streamed ",
-          "chunked ",
-          "completion"
-        ] as const
+        const chunks = ["scripted ", "agent ", "streamed ", "chunked ", "completion"] as const
         const content = chunks.join("")
 
         yield* streamSerializedAssistantMessage({

@@ -211,6 +211,7 @@ function createChunkStream(): AsyncIterable<[string, unknown]> {
 function createLifecycleControl(
   input: {
     abortRun?: RuntimeThreadRunLifecycleControl<never>["abortRun"]
+    cancelRun?: RuntimeThreadRunLifecycleControl<never>["cancelRun"]
     completeRun?: RuntimeThreadRunLifecycleControl<never>["completeRun"]
     failRun?: RuntimeThreadRunLifecycleControl<never>["failRun"]
     settleRun?: RuntimeThreadRunLifecycleControl<never>["settleRun"]
@@ -218,6 +219,7 @@ function createLifecycleControl(
 ): RuntimeThreadRunLifecycleControl<never> {
   return {
     abortRun: input.abortRun ?? (async () => undefined),
+    cancelRun: input.cancelRun ?? (async () => undefined),
     beginInvokeRun: async () => ({
       modelId: "model-unused",
       recordingRefs: [],
@@ -599,6 +601,55 @@ test("RuntimeThreadRun captures the resume decision before execution", async () 
   assert.deepEqual(events, ["decision-committed", "decision-observed", "chunk"])
 })
 
+test("RuntimeThreadRun commits user_declined as cancelled after the decision checkpoint", async () => {
+  const events: string[] = []
+  const run = createRuntimeThreadResumeRun({
+    controls: {
+      lifecycle: createLifecycleControl({
+        cancelRun: async () => {
+          events.push("fallback-cancel")
+        },
+        settleRun: async () => {
+          events.push("settle")
+        }
+      }),
+      operations: createOperationControl({ stream: createChunkStream() }),
+      stream: {
+        drainRunStream: async (input) => {
+          await input.beforePendingHitlPersistence?.()
+          for await (const chunk of input.stream) await input.onChunk(chunk)
+          return { beforePendingHitlPersistenceApplied: true, interrupted: false }
+        }
+      }
+    },
+    decision: {
+      request_id: "request-declined",
+      tool_call_id: "tool-declined",
+      type: "user_declined"
+    },
+    start: {
+      beforePendingHitlPersistence: () => {
+        events.push("decision-committed")
+      },
+      cancelAfterDecision: () => {
+        events.push("cancelled")
+      },
+      modelId: "model-1",
+      recordingRefs: [],
+      runId: "run-declined"
+    }
+  })
+
+  const result = await run.execute({
+    onChunk: () => {
+      events.push("checkpoint-streamed")
+    },
+    signal: new AbortController().signal
+  })
+  assert.deepEqual(result, { status: "cancelled" })
+  assert.deepEqual(events, ["decision-committed", "checkpoint-streamed", "cancelled", "settle"])
+})
+
 test("RuntimeThreadRun observes a committed resume decision before cancellation skips the chunk", async () => {
   const controller = new AbortController()
   const events: string[] = []
@@ -680,6 +731,7 @@ test("RuntimeThread compact rejects while a run owns the thread", async () => {
         recordingRefs: []
       }),
       markRunAborted: async () => undefined,
+      markRunCancelled: async () => undefined,
       markRunFailed: async () => undefined,
       recordMemoryRecordingRefs: async () => undefined,
       recordRunFinished: async () => undefined,
@@ -1050,6 +1102,32 @@ test("RuntimeThreadTerminalReferee records ignored terminal diagnostics without 
   ])
 })
 
+test("RuntimeThreadTerminalReferee lets a committed decline supersede an uncommitted abort", async () => {
+  const events: string[] = []
+  const referee = createRuntimeThreadTerminalReferee({
+    lifecycle: createLifecycleControl({
+      abortRun: async () => {
+        events.push("abort")
+      },
+      cancelRun: async () => {
+        events.push("cancelled")
+      },
+      settleRun: async () => {
+        events.push("settle")
+      }
+    }),
+    observeIgnoredTerminal: () => undefined,
+    start: { modelId: "model-1", recordingRefs: [], runId: "run-decline-race" }
+  })
+
+  const abort = referee.submit({ status: "aborted" })
+  const decline = referee.submit({ status: "cancelled" })
+  assert.equal(referee.owns(abort), false)
+  assert.equal(referee.owns(decline), true)
+  assert.deepEqual(await referee.commit(), { status: "cancelled" })
+  assert.deepEqual(events, ["cancelled", "settle"])
+})
+
 test("RuntimeThreadTerminalReferee isolates an ignored-terminal diagnostic failure", async () => {
   const events: string[] = []
   const diagnosticError = new Error("diagnostic sink failed")
@@ -1258,6 +1336,9 @@ function createLifecycleController(
     }),
     markRunAborted: async () => {
       events?.push("abort")
+    },
+    markRunCancelled: async () => {
+      events?.push("cancelled")
     },
     markRunFailed: async ({ error }) => {
       input.onFailure?.(error)

@@ -169,7 +169,7 @@ Given(
             reviewConfigs: [
               {
                 actionName: "write_file",
-                allowedDecisions: ["approve", "reject"]
+                allowedDecisions: ["approve", "user_declined", "corrected"]
               }
             ]
           }

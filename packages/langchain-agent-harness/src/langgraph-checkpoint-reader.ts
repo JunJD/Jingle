@@ -104,6 +104,7 @@ interface JingleLangGraphCheckpointState {
       tasks?: unknown
       title?: unknown
       todos?: JingleLangGraphCheckpointTodo[]
+      toolDecisions?: unknown
     }
     id?: string
   }
@@ -238,10 +239,7 @@ export function readJingleLangGraphSerializedMessage(
     message: input.message
   })
   const toolCallId = readSerializedMessageStringField(input.message, "tool_call_id")
-  const candidates = [
-    readSerializedMessageStringField(input.message, "id"),
-    toolCallId
-  ]
+  const candidates = [readSerializedMessageStringField(input.message, "id"), toolCallId]
   const messageId =
     candidates.find((candidate): candidate is string => Boolean(candidate)) ??
     `message:${input.rawHash}:${input.order}:${role}`
@@ -325,6 +323,13 @@ export function readJingleLangGraphCheckpointApprovals(
   return state?.checkpoint?.channel_values?.approvals
 }
 
+export function readJingleLangGraphCheckpointToolDecisions(
+  tuple: CheckpointTuple | undefined
+): unknown {
+  const state = tuple as JingleLangGraphCheckpointState | undefined
+  return state?.checkpoint?.channel_values?.toolDecisions
+}
+
 export function readJingleLangGraphCheckpointCompactions(
   tuple: CheckpointTuple | undefined
 ): unknown {
@@ -356,14 +361,11 @@ export function readJingleLangGraphCheckpointConfig(
   return {
     checkpointId:
       typeof configurable?.checkpoint_id === "string" ? configurable.checkpoint_id : null,
-    checkpointNs:
-      typeof configurable?.checkpoint_ns === "string" ? configurable.checkpoint_ns : ""
+    checkpointNs: typeof configurable?.checkpoint_ns === "string" ? configurable.checkpoint_ns : ""
   }
 }
 
-function readJingleLangGraphCheckpointMessagesVersion(
-  tuple: CheckpointTuple
-): string | null {
+function readJingleLangGraphCheckpointMessagesVersion(tuple: CheckpointTuple): string | null {
   const version = tuple.checkpoint.channel_versions.messages
   if (version === undefined) {
     return null

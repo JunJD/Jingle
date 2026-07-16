@@ -270,7 +270,7 @@ test("agent runtime snapshot reducer hydrates interrupted approval snapshots", (
       error: null,
       forkState: { canFork: false, reason: "pending_hitl" },
       pendingApproval: {
-        allowed_decisions: ["approve", "reject"],
+        allowed_decisions: ["approve", "user_declined", "corrected"],
         id: "hitl:thread-1:run-1:tool-1",
         review: null,
         tool_call: {

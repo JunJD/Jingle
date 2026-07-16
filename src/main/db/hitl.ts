@@ -20,7 +20,7 @@ export interface HitlRequestRow {
 }
 
 export type HitlRequestStatus = "pending" | HitlRequestTerminalStatus
-export type HitlRequestTerminalStatus = "approved" | "rejected"
+export type HitlRequestTerminalStatus = "approved" | "user_declined" | "corrected"
 
 export interface UpsertHitlRequestInput {
   request_id: string
@@ -203,30 +203,36 @@ export async function resolveHitlRequest(
 ): Promise<HitlRequestRow | null> {
   const prisma = getPrismaClient()
   const now = BigInt(Date.now())
-  const result = await prisma.hitlRequest.updateMany({
-    where: {
-      requestId,
-      status: "pending"
-    },
-    data: {
-      status,
-      decision: serializeJsonValue(decision),
-      updatedAt: now,
-      resolvedAt: now
+  const row = await prisma.$transaction(async (tx) => {
+    const result = await tx.hitlRequest.updateMany({
+      where: { requestId, status: "pending" },
+      data: {
+        status,
+        decision: serializeJsonValue(decision),
+        updatedAt: now,
+        resolvedAt: now
+      }
+    })
+    if (result.count === 0) return null
+
+    const resolved = await tx.hitlRequest.findUniqueOrThrow({ where: { requestId } })
+    if (status === "user_declined") {
+      if (!resolved.runId) {
+        throw new Error(`[HITL] Declined request "${requestId}" has no run owner.`)
+      }
+      await tx.run.update({
+        where: { runId: resolved.runId },
+        data: { status: "cancelled", updatedAt: now }
+      })
+      await tx.thread.update({
+        where: { threadId: resolved.threadId },
+        data: { status: "idle", updatedAt: now }
+      })
     }
+    return resolved
   })
 
-  if (result.count === 0) {
-    return null
-  }
-
-  const row = await prisma.hitlRequest.findUniqueOrThrow({
-    where: {
-      requestId
-    }
-  })
-
-  return mapHitlRequestRow(row)
+  return row ? mapHitlRequestRow(row) : null
 }
 
 export async function resolvePendingHitlRequests(

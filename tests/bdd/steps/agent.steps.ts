@@ -176,7 +176,7 @@ async function startStreamAgent(
 
 async function getPendingApprovalDecision(
   world: JingleWorld,
-  type: HITLDecision["type"]
+  type: Exclude<HITLDecision["type"], "corrected">
 ): Promise<HITLDecision> {
   const runtimeState = await getRuntimeState(world)
   const request = runtimeState.pendingApproval
@@ -273,7 +273,7 @@ When("我通过 agent resume 批准最新待审批请求", async function (this:
 })
 
 When("我通过 agent resume 拒绝最新待审批请求", async function (this: JingleWorld) {
-  const decision = await getPendingApprovalDecision(this, "reject")
+  const decision = await getPendingApprovalDecision(this, "user_declined")
   await startStreamAgent(this, {
     decision,
     message: ""

@@ -20,6 +20,11 @@ import {
 } from "@shared/message-content"
 import type { ContentBlock, HITLRequest, Message, Todo, ToolCall } from "@shared/app-types"
 import { parseToolApprovalItem } from "@shared/tool-approval"
+import {
+  parseOptionalToolDecision,
+  parseToolDecision,
+  type ToolDecision
+} from "@shared/tool-decision"
 
 export type UsageMetadata = JingleLangGraphUsageMetadata
 
@@ -56,6 +61,7 @@ export interface DecodedValuesStreamPayload {
   pendingApproval: HITLRequest | null
   todos: Todo[] | null
   toolMessages: DecodedValuesToolMessageChunk[]
+  toolDecisions: ToolDecision[]
 }
 
 function getRequiredRuntimeRunId(runId: string | null): string {
@@ -170,9 +176,14 @@ function toJingleToolCalls(toolCalls: readonly JingleLangGraphToolCall[]): ToolC
 }
 
 function decodeValuesMessage(message: JingleLangGraphValuesMessage, index: number): Message {
-  const metadata = toComposerMessageMetadata({
-    refs: normalizeComposerMessageRefs(message.metadataHints.refs)
-  })
+  const metadata =
+    toComposerMessageMetadata({
+      refs: normalizeComposerMessageRefs(message.metadataHints.refs)
+    }) ?? {}
+  const toolDecision = parseOptionalToolDecision(
+    message.displayContext.additional_kwargs?.jingle_tool_decision
+  )
+  if (toolDecision) metadata.jingle_tool_decision = toolDecision
   const content =
     message.role === "assistant"
       ? toDisplayAssistantMessageContent(message.content, message.displayContext)
@@ -184,7 +195,7 @@ function decodeValuesMessage(message: JingleLangGraphValuesMessage, index: numbe
     content,
     created_at: new Date(),
     id: getSerializedMessageId(message, index, message.role),
-    ...(metadata ? { metadata } : {}),
+    ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     name: message.name,
     role: message.role,
     ...(message.toolCallId ? { tool_call_id: message.toolCallId } : {}),
@@ -363,7 +374,8 @@ export function decodeValuesStreamPayload(
       decoded.messages?.flatMap((message, index) => {
         const toolMessage = decodeValuesToolMessage(message, index)
         return toolMessage ? [toolMessage] : []
-      }) ?? []
+      }) ?? [],
+    toolDecisions: (hostProjection.toolDecisions ?? []).map(parseToolDecision)
   }
 }
 

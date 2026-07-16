@@ -16,12 +16,18 @@ import { enqueueAssistantContentProjection } from "../content-cards/projection-q
 import { JingleIpcError } from "../ipc/error"
 import type { JingleMemoryService } from "../jingle-memory/service"
 import type { createExtensionAiRuntime } from "./extension-ai-runtime"
-import { recordApprovalResolved, recordRunFinished, recordRunInterrupted } from "./event-recorder"
+import {
+  recordApprovalResolved,
+  recordDeclinedApprovalOutcome,
+  recordRunFinished,
+  recordRunInterrupted
+} from "./event-recorder"
 import {
   beginAgentRun,
   finalizeRunWithoutCheckpoint,
   markRunAborted,
   markRunFailed,
+  markRunCancelled,
   resumeAgentRun,
   syncRunFromLatestCheckpointFacts
 } from "./persistence"
@@ -108,13 +114,17 @@ export function createRuntimeRunLifecycleController(input: {
           }
         }
       )
+      const declinedDecision =
+        resume.decision.type === "user_declined" ? resume.decision : null
       return {
         beforePendingHitlPersistence: async () => {
           const resolvedRequest = await resolveHitlRequest(
             resume.decision.request_id,
             resolveHitlRequestStatus(resume.decision.type),
             {
-              feedback: resume.decision.feedback,
+              ...(resume.decision.type === "corrected"
+                ? { correction: resume.decision.correction }
+                : {}),
               request_id: resume.decision.request_id,
               tool_call_id: resume.decision.tool_call_id,
               type: resume.decision.type
@@ -127,13 +137,29 @@ export function createRuntimeRunLifecycleController(input: {
               message: `[Agent] HITL request "${resume.decision.request_id}" was resolved by another resume request.`
             })
           }
-          await recordApprovalResolved({
-            decision: resume.decision,
-            requestId: resume.decision.request_id,
-            runId,
-            threadId
-          })
+          if (resume.decision.type !== "user_declined") {
+            void recordApprovalResolved({
+              decision: resume.decision,
+              requestId: resume.decision.request_id,
+              runId,
+              threadId
+            })
+          }
         },
+        ...(declinedDecision
+          ? {
+              cancelAfterDecision: async () => {
+                await markRunCancelled(threadId, runId)
+                enqueueAssistantContentProjection({ runId, threadId })
+                void recordDeclinedApprovalOutcome({
+                  decision: declinedDecision,
+                  requestId: declinedDecision.request_id,
+                  runId,
+                  threadId
+                })
+              }
+            }
+          : {}),
         modelId: resume.modelId,
         recordingRefs: [
           createJingleAgentTraceRecordingRef({
@@ -164,6 +190,9 @@ export function createRuntimeRunLifecycleController(input: {
     markRunFailed: async ({ error, runId, threadId }) => {
       await markRunFailed(threadId, runId, toAgentRunFailure("agent:runtime", error))
       enqueueAssistantContentProjection({ runId, threadId })
+    },
+    markRunCancelled: async ({ runId, threadId }) => {
+      await markRunCancelled(threadId, runId)
     },
     recordMemoryRecordingRefs: ({ recordingRefs, runId, threadId }) =>
       recordJingleMemoryRecordingRefs({
@@ -205,12 +234,16 @@ export function createRuntimeRunLifecycleController(input: {
   }
 }
 
-function resolveHitlRequestStatus(type: HITLDecision["type"]): "approved" | "rejected" {
+function resolveHitlRequestStatus(
+  type: HITLDecision["type"]
+): "approved" | "user_declined" | "corrected" {
   switch (type) {
     case "approve":
       return "approved"
-    case "reject":
-      return "rejected"
+    case "user_declined":
+      return "user_declined"
+    case "corrected":
+      return "corrected"
   }
 
   const unsupportedType: never = type

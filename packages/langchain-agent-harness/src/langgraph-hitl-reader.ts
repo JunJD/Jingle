@@ -13,7 +13,7 @@ import {
   type JingleApprovalReviewParser
 } from "./approval-lifecycle"
 
-export type JingleHitlDecisionType = "approve" | "reject"
+export type JingleHitlDecisionType = "approve" | "user_declined" | "corrected"
 
 export type JingleHitlToolCall = JingleApprovalRequest["tool_call"]
 export type JingleHitlRequest<TReview = unknown> = JingleApprovalRequest<TReview>

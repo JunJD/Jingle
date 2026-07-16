@@ -179,12 +179,12 @@ export function createJingleAgentFollowUpDrainRegistry(): JingleAgentFollowUpDra
   }
 }
 
-export interface JingleAgentApprovalDecision {
-  feedback?: string
+type JingleAgentApprovalDecisionScope = {
   request_id?: string
   tool_call_id?: string
-  type: "approve" | "reject"
 }
+export type JingleAgentApprovalDecision = JingleAgentApprovalDecisionScope &
+  ({ type: "approve" } | { type: "user_declined" } | { correction: string; type: "corrected" })
 
 export interface JingleAgentPendingApprovalSource {
   id: string

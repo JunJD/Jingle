@@ -34,7 +34,8 @@ export type RuntimeCompactionStatus = (typeof RUNTIME_COMPACTION_STATUSES)[numbe
 export const RUNTIME_APPROVAL_STATUSES = [
   "pending",
   "approved",
-  "rejected",
+  "user_declined",
+  "corrected",
   "resolved",
   "expired"
 ] as const
@@ -86,11 +87,28 @@ export interface RuntimeCompaction {
   warning: string | null
 }
 
-export interface RuntimeApproval {
+interface RuntimeApprovalBase {
   approvalId: string
   requestId: string | null
-  status: RuntimeApprovalStatus
   toolCallId: string | null
+}
+
+export type RuntimeApproval =
+  | (RuntimeApprovalBase & {
+      correction: string
+      status: "corrected"
+    })
+  | (RuntimeApprovalBase & {
+      correction: null
+      status: Exclude<RuntimeApprovalStatus, "corrected">
+    })
+
+export interface RuntimeToolDecision {
+  decisionId: string
+  outcome: "policy_blocked"
+  reason: string
+  toolCallId: string
+  toolName: string
 }
 
 export interface RuntimeRecordingRef {
@@ -111,6 +129,7 @@ export interface RuntimeState<TContextInclusion = JingleContextInclusionStateIte
   tasks: RuntimeTask[]
   title?: string | null
   todos: RuntimeTodo[]
+  toolDecisions: RuntimeToolDecision[]
 }
 
 export interface RuntimeCapabilityContract {
@@ -136,6 +155,7 @@ export type RuntimeStateFactOwner =
   | "RuntimeObservation"
   | "RuntimeProjection"
   | "RuntimeTodo"
+  | "RuntimeToolDecision"
 
 export interface RuntimeStateFactContract {
   bodyStore: RuntimeStoreBoundaryId | "checkpoint-inline" | "none"
@@ -184,14 +204,40 @@ const runtimeCompactionSchema = z
   })
   .passthrough()
 
-const runtimeApprovalSchema = z
+const runtimeApprovalBaseSchema = z.object({
+  approvalId: z.string(),
+  requestId: z.string().nullable(),
+  toolCallId: z.string().nullable()
+})
+
+const runtimeApprovalSchema = z.discriminatedUnion("status", [
+  runtimeApprovalBaseSchema
+    .extend({
+      correction: z.string().trim().min(1),
+      status: z.literal("corrected")
+    })
+    .strict(),
+  runtimeApprovalBaseSchema
+    .extend({
+      correction: z.null(),
+      status: z.enum(RUNTIME_APPROVAL_STATUSES.filter((status) => status !== "corrected"))
+    })
+    .strict()
+])
+
+const runtimeToolDecisionSchema = z
   .object({
-    approvalId: z.string(),
-    requestId: z.string().nullable(),
-    status: z.enum(RUNTIME_APPROVAL_STATUSES),
-    toolCallId: z.string().nullable()
+    decisionId: z.string().trim().min(1),
+    outcome: z.literal("policy_blocked"),
+    reason: z.string().trim().min(1),
+    toolCallId: z.string().trim().min(1),
+    toolName: z.string().trim().min(1)
   })
   .strict()
+
+export function parseRuntimeToolDecision(value: unknown): RuntimeToolDecision {
+  return runtimeToolDecisionSchema.parse(value)
+}
 
 const runtimeRecordingRefSchema = z
   .object({
@@ -215,6 +261,8 @@ const runtimeCompactionsUpdateSchema = z.array(runtimeCompactionSchema).optional
 
 const runtimeApprovalsSchema = z.array(runtimeApprovalSchema).default(() => [])
 const runtimeApprovalsUpdateSchema = z.array(runtimeApprovalSchema).optional()
+const runtimeToolDecisionsSchema = z.array(runtimeToolDecisionSchema).default(() => [])
+const runtimeToolDecisionsUpdateSchema = z.array(runtimeToolDecisionSchema).optional()
 
 const runtimeRecordingRefsSchema = z.array(runtimeRecordingRefSchema).default(() => [])
 const runtimeRecordingRefsUpdateSchema = z.array(runtimeRecordingRefSchema).optional()
@@ -260,6 +308,12 @@ export const runtimeApprovalsValue = new ReducedValue(runtimeApprovalsSchema, {
     update ? upsertById(existing, update, (item) => item.approvalId) : existing
 })
 
+export const runtimeToolDecisionsValue = new ReducedValue(runtimeToolDecisionsSchema, {
+  inputSchema: runtimeToolDecisionsUpdateSchema,
+  reducer: (existing, update) =>
+    update ? upsertById(existing, update, (item) => item.decisionId) : existing
+})
+
 export const runtimeRecordingRefsValue = new ReducedValue(runtimeRecordingRefsSchema, {
   inputSchema: runtimeRecordingRefsUpdateSchema,
   reducer: (existing, update) =>
@@ -273,6 +327,7 @@ export const runtimeStateSchema = new StateSchema({
   _runtimeStepRoute: new UntrackedValue(undefined, { guard: false }),
   _runtimeWorkingSet: new UntrackedValue(),
   approvals: runtimeApprovalsValue,
+  toolDecisions: runtimeToolDecisionsValue,
   artifacts: jingleAgentArtifactsValue,
   compactions: runtimeCompactionsValue,
   contextInclusions: jingleAgentContextInclusionsValue,
@@ -291,6 +346,13 @@ export const RUNTIME_CAPABILITY_CONTRACTS = {
     stateRole: "canonical",
     stateKey: "approvals",
     writePolicy: "host-port"
+  },
+  toolDecisions: {
+    failureSemantics: "core",
+    projection: "checkpoint-and-stream",
+    stateRole: "canonical",
+    stateKey: "toolDecisions",
+    writePolicy: "command-update"
   },
   artifacts: {
     failureSemantics: "tool",
@@ -431,6 +493,15 @@ export const RUNTIME_STATE_FACT_CONTRACTS = {
     projectionStore: "projection",
     role: "canonical",
     stateKey: "todos"
+  },
+  toolDecisions: {
+    bodyStore: "checkpoint-inline",
+    canonicalStore: "checkpoint",
+    owner: "RuntimeToolDecision",
+    productStore: "none",
+    projectionStore: "projection",
+    role: "canonical",
+    stateKey: "toolDecisions"
   }
 } as const satisfies Record<RuntimeStateKey, RuntimeStateFactContract>
 

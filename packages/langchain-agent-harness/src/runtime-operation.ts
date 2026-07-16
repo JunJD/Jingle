@@ -158,14 +158,14 @@ export interface RuntimeSubmittedMessage {
   refs?: unknown[]
 }
 
-export interface RuntimeToolApprovalDecision {
-  feedback?: string | null
+type RuntimeToolApprovalDecisionScope = {
   request_id: string
   tool_call_id?: string | null
-  type: RuntimeToolApprovalDecisionType
 }
+export type RuntimeToolApprovalDecision = RuntimeToolApprovalDecisionScope &
+  ({ type: "approve" } | { type: "user_declined" } | { correction: string; type: "corrected" })
 
-export type RuntimeToolApprovalDecisionType = "approve" | "reject"
+export type RuntimeToolApprovalDecisionType = "approve" | "user_declined" | "corrected"
 
 export interface RuntimeInvokeOperation<TContextInclusion = unknown> extends RuntimeOperationBase {
   contextInclusions: TContextInclusion[]

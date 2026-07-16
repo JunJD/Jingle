@@ -530,8 +530,8 @@ test("launcher AI controller submits one approval decision across controller rec
 
   const approving = firstHarness.controller.handleApprovalDecision({ type: "approve" })
   const rejected = await recreatedHarness.controller.handleApprovalDecision({
-    feedback: "changed my mind",
-    type: "reject"
+    correction: "changed my mind",
+    type: "corrected"
   })
 
   assert.equal(rejected, false)
@@ -552,8 +552,7 @@ test("launcher AI controller blocks approval while an admitted command awaits pr
 
   assert.equal(
     await harness.controller.handleApprovalDecision({
-      feedback: "must not race",
-      type: "reject"
+      type: "user_declined"
     }),
     false
   )

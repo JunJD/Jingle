@@ -56,7 +56,7 @@ test.before(async () => {
     cwd: repoRoot,
     env: {
       ...process.env,
-      JINGLE_HOME: jingleHome,
+      JINGLE_HOME: jingleHome
     }
   })
 })
@@ -636,7 +636,7 @@ test("trace projector keeps approval wait and resolution as one timeline step", 
   await appendAgentEvent({
     payload: {
       decision: "approve",
-      feedback: null,
+      correction: null,
       requestId: "approval-1",
       toolCallId: "tool-call-approval"
     },
@@ -722,7 +722,7 @@ test("trace dev script default timeline hides raw runtime and checkpoint events"
   const scriptPath = join(repoRoot, "scripts/inspect-agent-trace.cjs")
   const cliEnv = {
     ...process.env,
-    JINGLE_HOME: jingleHome,
+    JINGLE_HOME: jingleHome
   }
 
   const timeline = execFileSync("node", [scriptPath, "inspect", runId], {
@@ -1288,7 +1288,7 @@ test("stream boundary recorder records values approval interrupts", async () => 
             reviewConfigs: [
               {
                 actionName: "write_file",
-                allowedDecisions: ["approve", "reject"]
+                allowedDecisions: ["approve", "user_declined", "corrected"]
               }
             ]
           }

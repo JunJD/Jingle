@@ -64,7 +64,7 @@ test("extractHitlRequestFromValuesState keeps review payload separate from tool 
           reviewConfigs: [
             {
               actionName: "write_file",
-              allowedDecisions: ["approve", "reject"]
+              allowedDecisions: ["approve", "user_declined", "corrected"]
             }
           ]
         }
@@ -82,7 +82,7 @@ test("extractHitlRequestFromValuesState keeps review payload separate from tool 
         path: "/tmp/demo.txt"
       }
     },
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     review: {
       kind: "file_mutation",
       toolName: "write_file",
@@ -123,7 +123,7 @@ test("mapHitlRowToRequest restores review payload from dedicated columns", () =>
       predictionStatus: "predicted",
       reason: "Command writes to local files through shell redirection."
     }),
-    allowed_decisions: JSON.stringify(["approve", "reject"]),
+    allowed_decisions: JSON.stringify(["approve", "user_declined", "corrected"]),
     status: "pending",
     decision: null,
     created_at: Date.now(),
@@ -140,7 +140,7 @@ test("mapHitlRowToRequest restores review payload from dedicated columns", () =>
         command: "echo hello > file.txt"
       }
     },
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     review: {
       kind: "execute_command",
       toolName: "execute",
@@ -206,7 +206,7 @@ test("extractThreadFactsFromCheckpoint prefers persisted run_id for request iden
                 reviewConfigs: [
                   {
                     actionName: "write_file",
-                    allowedDecisions: ["approve", "reject"]
+                    allowedDecisions: ["approve", "user_declined", "corrected"]
                   }
                 ]
               }
@@ -235,7 +235,7 @@ test("extractThreadFactsFromCheckpoint prefers persisted run_id for request iden
         path: "/tmp/demo.txt"
       }
     },
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     review: null
   })
 })
@@ -361,7 +361,7 @@ test("mapHitlRowToRequest rejects rows without tool_call_id", () => {
     tool_args: JSON.stringify({ command: "echo hello > file.txt" }),
     review_kind: null,
     review_payload: null,
-    allowed_decisions: JSON.stringify(["approve", "reject"]),
+    allowed_decisions: JSON.stringify(["approve", "user_declined", "corrected"]),
     status: "pending",
     decision: null,
     created_at: Date.now(),
@@ -382,7 +382,7 @@ test("mapHitlRowToRequest rejects malformed durable HITL facts", () => {
     tool_args: JSON.stringify({ command: "echo hello" }),
     review_kind: null,
     review_payload: null,
-    allowed_decisions: JSON.stringify(["approve", "reject"]),
+    allowed_decisions: JSON.stringify(["approve", "user_declined", "corrected"]),
     status: "pending",
     decision: null,
     created_at: Date.now(),

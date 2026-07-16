@@ -538,7 +538,7 @@ test("active turn status is derived from current runtime facts", () => {
   )
 
   const approval: HITLRequest = {
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     id: "approval-running",
     review: null,
     tool_call: runningToolCall
@@ -1075,7 +1075,7 @@ test("tool execution view derives from messages and runtime facts", () => {
   })
 
   const approval: HITLRequest = {
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     id: "approval-1",
     review: null,
     tool_call: runningToolCall
@@ -1390,7 +1390,7 @@ test("turn tool execution view only applies approval to the owning turn", () => 
     })
   ])
   const approval: HITLRequest = {
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     id: "approval-2",
     review: null,
     tool_call: secondToolCall
@@ -1725,7 +1725,7 @@ test("tool result and approval projection changes stay scoped to the matching tu
   const stableMessages = stabilizeJingleMessageList(messages, nextSnapshot)
   const nextProjection = projectMessages(stableMessages, firstProjection)
   const pendingApproval: HITLRequest = {
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     id: "approval-2",
     review: null,
     tool_call: secondToolCall
@@ -1750,7 +1750,7 @@ test("tool result and approval projection changes stay scoped to the matching tu
 test("active tool pending approval turn ownership is projected outside React components", () => {
   const toolCall = createToolCall("tool-call-streaming")
   const pendingApproval: HITLRequest = {
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     id: "approval-streaming",
     review: null,
     tool_call: toolCall

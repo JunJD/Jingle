@@ -9,13 +9,15 @@ import type {
   RuntimeApproval,
   RuntimeCompaction,
   RuntimeRecordingRef,
-  RuntimeTask
+  RuntimeTask,
+  RuntimeToolDecision
 } from "@jingle/langchain-agent-harness"
 import type { HitlRequestRow } from "../db"
 import type { HITLRequest, Todo } from "../types"
 import type { AgentContextInclusion } from "@shared/jingle-memory"
 import { isHitlDecisionType } from "@shared/hitl"
 import { parseToolApprovalItem } from "@shared/tool-approval"
+import { parseOptionalToolDecision } from "@shared/tool-decision"
 import {
   normalizeComposerMessageRefs,
   toComposerMessageMetadata,
@@ -32,10 +34,14 @@ function getCheckpointMessageMetadata(
   const refs = normalizeComposerMessageRefs(message.metadataHints.refs)
   const metadata = toComposerMessageMetadata({ refs }) ?? {}
   const lcSource = message.metadataHints.source
+  const toolDecision = parseOptionalToolDecision(
+    message.displayContext.additional_kwargs?.jingle_tool_decision
+  )
 
   if (lcSource === "summarization") {
     metadata.lc_source = lcSource
   }
+  if (toolDecision) metadata.jingle_tool_decision = toolDecision
 
   return Object.keys(metadata).length > 0 ? metadata : null
 }
@@ -99,6 +105,7 @@ export function extractThreadFactsFromCheckpoint(
   tasks: RuntimeTask[]
   title: string | null
   todos: Todo[]
+  toolDecisions: RuntimeToolDecision[]
 } {
   const facts = projectJingleLangGraphCheckpointThreadFacts<
     AgentContextInclusion,
@@ -122,7 +129,8 @@ export function extractThreadFactsFromCheckpoint(
     todos: facts.todos.map((todo) => ({
       ...todo,
       status: todo.status as Todo["status"]
-    }))
+    })),
+    toolDecisions: facts.toolDecisions
   }
 }
 

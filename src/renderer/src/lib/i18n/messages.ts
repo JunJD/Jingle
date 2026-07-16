@@ -316,9 +316,10 @@ export interface AppCopy {
     moreMatches: (count: number) => string
     readLines: (count: number) => string
     decline: string
+    sendCorrection: string
     reject: string
     rejectAndAdjust: string
-    rejectFeedbackPlaceholder: string
+    correctionPlaceholder: string
     taskCompleted: string
     todoProgress: (completed: number, total: number) => string
     upcomingChanges: string
@@ -714,10 +715,11 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       moreLines: (count) => `... 还有 ${count} 行`,
       moreMatches: (count) => `另外 ${count} 个匹配`,
       readLines: (count) => `读取了 ${count} 行`,
-      decline: "拒绝",
+      decline: "放弃本次运行",
+      sendCorrection: "发送修改意见",
       reject: "拒绝",
       rejectAndAdjust: "拒绝，请告知 Agent 如何调整",
-      rejectFeedbackPlaceholder: "告诉 Agent 需要怎么调整（可选）",
+      correctionPlaceholder: "告诉 Agent 需要怎么调整",
       taskCompleted: "任务已完成",
       todoProgress: (completed, total) => `${completed}/${total} 已完成`,
       upcomingChanges: "即将变更",
@@ -1123,10 +1125,11 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       moreLines: (count) => `... ${count} more lines`,
       moreMatches: (count) => `+${count} more matches`,
       readLines: (count) => `Read ${count} line${count === 1 ? "" : "s"}`,
-      decline: "Decline",
+      decline: "Decline run",
+      sendCorrection: "Send correction",
       reject: "Reject",
       rejectAndAdjust: "Reject and tell the agent what to adjust",
-      rejectFeedbackPlaceholder: "Tell the agent what to adjust (optional)",
+      correctionPlaceholder: "Tell the agent what to adjust",
       taskCompleted: "Task completed",
       todoProgress: (completed, total) => `${completed}/${total} done`,
       upcomingChanges: "Upcoming changes",

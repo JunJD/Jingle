@@ -28,13 +28,15 @@ import type { ToolApprovalItem } from "../../src/shared/tool-approval"
 import type { ExtensionToolApprovalPolicyProvider } from "../../src/main/extension-tools/permission"
 import { z } from "../../src/main/agent/tool-input-schema"
 
-function createToolApprovalHarnessMiddleware(options: {
-  extensionToolPolicyProvider?: ExtensionToolApprovalPolicyProvider
-  getAgentConfig?: () => AgentConfig
-  permissionMode?: PermissionModeName
-  permissionRuntime?: ToolPermissionRuntime
-  requestToolApproval?: HumanApprovalRequester<ToolApprovalItem>
-} = {}) {
+function createToolApprovalHarnessMiddleware(
+  options: {
+    extensionToolPolicyProvider?: ExtensionToolApprovalPolicyProvider
+    getAgentConfig?: () => AgentConfig
+    permissionMode?: PermissionModeName
+    permissionRuntime?: ToolPermissionRuntime
+    requestToolApproval?: HumanApprovalRequester<ToolApprovalItem>
+  } = {}
+) {
   return compileRuntimeHookToMiddleware(
     createJingleHumanApprovalHook<ToolApprovalItem>({
       allowedDecisions: getDefaultHitlAllowedDecisions(),
@@ -52,6 +54,14 @@ function createToolApprovalHarnessMiddleware(options: {
 }
 
 const middleware = createToolApprovalHarnessMiddleware()
+
+function readToolResult(result: unknown): ToolMessage {
+  if (ToolMessage.isInstance(result)) return result
+  const messages = (result as { update?: { messages?: unknown[] } }).update?.messages
+  const message = messages?.[0]
+  assert.ok(ToolMessage.isInstance(message))
+  return message
+}
 
 function createApprovalRequiredRuntime() {
   return {
@@ -300,16 +310,16 @@ test("non-allowlisted desktop automation tools return an error without approval"
   })) as ToolMessage
 
   assert.equal(handlerCalls, 0)
-  assert.equal(result.status, "error")
-  assert.match(typeof result.content === "string" ? result.content : "", /not allowlisted/i)
+  assert.equal(readToolResult(result).status, "error")
+  assert.match(String(readToolResult(result).content), /not allowlisted/i)
 })
 
-test("rejected approval returns an error tool result with explicit rejection context", async () => {
+test("corrected approval returns typed feedback without replaying the tool", async () => {
   const middleware = createToolApprovalHarnessMiddleware({
     permissionRuntime: createApprovalRequiredRuntime(),
     requestToolApproval: async () => ({
-      feedback: "写的多一点呗",
-      type: "reject"
+      correction: "写的多一点呗",
+      type: "corrected"
     })
   })
 
@@ -327,11 +337,30 @@ test("rejected approval returns an error tool result with explicit rejection con
   )) as ToolMessage
 
   assert.equal(handlerCalls, 0)
-  assert.equal(result.status, "error")
-  assert.match(
-    typeof result.content === "string" ? result.content : "",
-    /User rejected the write_file tool call with id tool-call-rejected\. Feedback: 写的多一点呗/
+  assert.equal(readToolResult(result).status, "error")
+  assert.match(String(readToolResult(result).content), /requested a correction.*写的多一点呗/i)
+})
+
+test("user_declined terminates the graph without executing the tool", async () => {
+  const middleware = createToolApprovalHarnessMiddleware({
+    permissionRuntime: createApprovalRequiredRuntime(),
+    requestToolApproval: async () => ({ type: "user_declined" })
+  })
+  let handlerCalls = 0
+  const result = await middleware.wrapToolCall!(
+    createToolCallRequest({ id: "tool-call-declined" }) as never,
+    async () => {
+      handlerCalls += 1
+      return new ToolMessage({
+        content: "should not run",
+        name: "write_file",
+        tool_call_id: "tool-call-declined"
+      })
+    }
   )
+
+  assert.equal(handlerCalls, 0)
+  assert.ok("goto" in (result as object))
 })
 
 test("direct extension agent tool calls are denied before reaching the handler", async () => {
@@ -361,11 +390,8 @@ test("direct extension agent tool calls are denied before reaching the handler",
   })) as ToolMessage
 
   assert.equal(handlerCalls, 0)
-  assert.equal(result.status, "error")
-  assert.match(
-    typeof result.content === "string" ? result.content : "",
-    /called through callExtension/i
-  )
+  assert.equal(readToolResult(result).status, "error")
+  assert.match(String(readToolResult(result).content), /called through callExtension/i)
 })
 
 test("direct extension agent tool permission checks are denied", async () => {
@@ -458,8 +484,8 @@ test("callExtension is denied when the extension binding is not loaded during ap
   })) as ToolMessage
 
   assert.equal(handlerCalls, 0)
-  assert.equal(result.status, "error")
-  assert.match(typeof result.content === "string" ? result.content : "", /loadExtension first/i)
+  assert.equal(readToolResult(result).status, "error")
+  assert.match(String(readToolResult(result).content), /loadExtension first/i)
 })
 
 test("explore-mode callExtension write calls return an error without reaching the handler", async () => {
@@ -493,11 +519,8 @@ test("explore-mode callExtension write calls return an error without reaching th
   })) as ToolMessage
 
   assert.equal(handlerCalls, 0)
-  assert.equal(result.status, "error")
-  assert.match(
-    typeof result.content === "string" ? result.content : "",
-    /read-only extension tools only/i
-  )
+  assert.equal(readToolResult(result).status, "error")
+  assert.match(String(readToolResult(result).content), /read-only extension tools only/i)
 })
 
 test("app-targeted desktop route calls require target metadata for allowlist checks", async () => {
@@ -532,11 +555,8 @@ test("app-targeted desktop route calls require target metadata for allowlist che
   })) as ToolMessage
 
   assert.equal(handlerCalls, 0)
-  assert.equal(result.status, "error")
-  assert.match(
-    typeof result.content === "string" ? result.content : "",
-    /requires a target application/i
-  )
+  assert.equal(readToolResult(result).status, "error")
+  assert.match(String(readToolResult(result).content), /requires a target application/i)
 })
 
 test("denied execute commands do not reach the handler", async () => {
@@ -570,11 +590,8 @@ test("denied execute commands do not reach the handler", async () => {
   })) as ToolMessage
 
   assert.equal(handlerCalls, 0)
-  assert.equal(result.status, "error")
-  assert.match(
-    typeof result.content === "string" ? result.content : "",
-    /outside the controlled shell profile/i
-  )
+  assert.equal(readToolResult(result).status, "error")
+  assert.match(String(readToolResult(result).content), /outside the controlled shell profile/i)
 })
 
 test("file mutation tools require tool_call.id before approval", async () => {
@@ -770,11 +787,8 @@ test("click_screen_point requires an allowlisted target application", async () =
   })) as ToolMessage
 
   assert.equal(handlerCalls, 0)
-  assert.equal(result.status, "error")
-  assert.match(
-    typeof result.content === "string" ? result.content : "",
-    /requires a target application/i
-  )
+  assert.equal(readToolResult(result).status, "error")
+  assert.match(String(readToolResult(result).content), /requires a target application/i)
 })
 
 test("resolveFileMutationChangeType marks missing write_file targets as create", async () => {

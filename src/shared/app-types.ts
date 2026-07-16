@@ -10,6 +10,7 @@ import type { ThreadWorkflowCreateInput } from "./thread-workflow"
 import type { JingleTodo } from "@jingle/agent-client"
 export type { LocalizedText } from "./i18n"
 export type { HITLDecision, HITLRequest } from "./hitl"
+export type { ToolDecision } from "./tool-decision"
 
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
 
@@ -31,7 +32,7 @@ export interface CreateThreadInput {
   workspacePath?: string
 }
 
-export type RunStatus = "pending" | "running" | "error" | "success" | "interrupted"
+export type RunStatus = "pending" | "running" | "error" | "success" | "interrupted" | "cancelled"
 
 export interface Run {
   run_id: string

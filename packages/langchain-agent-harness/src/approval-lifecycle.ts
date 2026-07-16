@@ -1,7 +1,7 @@
 import type { ActionRequest, ReviewConfig } from "langchain"
 import type { RuntimeApproval } from "./runtime-state"
 
-export type JingleApprovalDecisionType = "approve" | "reject"
+export type JingleApprovalDecisionType = "approve" | "user_declined" | "corrected"
 
 export interface JingleApprovalToolCall {
   args: Record<string, unknown>
@@ -16,12 +16,12 @@ export interface JingleApprovalRequest<TReview = unknown> {
   tool_call: JingleApprovalToolCall
 }
 
-export interface JingleApprovalDecision {
-  feedback?: string | null
+type JingleApprovalDecisionScope = {
   request_id: string
   tool_call_id?: string | null
-  type: JingleApprovalDecisionType
 }
+export type JingleApprovalDecision = JingleApprovalDecisionScope &
+  ({ type: "approve" } | { type: "user_declined" } | { correction: string; type: "corrected" })
 
 interface ApprovalActionRequest extends ActionRequest {
   id?: string
@@ -42,11 +42,11 @@ export interface JingleApprovalInterrupt {
 export type JingleApprovalReviewParser<TReview = unknown> = (value: unknown) => TReview | null
 
 function isApprovalDecisionType(value: unknown): value is JingleApprovalDecisionType {
-  return value === "approve" || value === "reject"
+  return value === "approve" || value === "user_declined" || value === "corrected"
 }
 
 export function getDefaultJingleApprovalAllowedDecisions(): JingleApprovalDecisionType[] {
-  return ["approve", "reject"]
+  return ["approve", "user_declined", "corrected"]
 }
 
 export function normalizeJingleApprovalAllowedDecisions(
@@ -81,25 +81,31 @@ export function buildJinglePendingApprovalFact<TReview>(
 ): RuntimeApproval {
   return {
     approvalId: request.id,
+    correction: null,
     requestId: request.id,
     status: "pending",
     toolCallId: request.tool_call.id
   }
 }
 
-export function buildJingleResolvedApprovalFact(
-  decision: JingleApprovalDecision
-): RuntimeApproval {
+export function buildJingleResolvedApprovalFact(decision: JingleApprovalDecision): RuntimeApproval {
   const requestId = decision.request_id.trim()
   if (!requestId) {
     throw new Error("[JingleApprovalLifecycle] Missing approval request_id.")
   }
 
-  return {
+  const base = {
     approvalId: requestId,
     requestId,
-    status: decision.type === "approve" ? "approved" : "rejected",
     toolCallId: decision.tool_call_id ?? null
+  }
+  if (decision.type === "corrected") {
+    return { ...base, correction: decision.correction, status: "corrected" }
+  }
+  return {
+    ...base,
+    correction: null,
+    status: decision.type === "approve" ? "approved" : "user_declined"
   }
 }
 

@@ -65,7 +65,6 @@ test("agent preload payload builders omit optional undefined route fields", () =
   assert.deepEqual(
     buildAgentResumeIpcPayload({
       decision: {
-        feedback: undefined,
         request_id: "request-1",
         tool_call_id: undefined,
         type: "approve"
@@ -75,7 +74,6 @@ test("agent preload payload builders omit optional undefined route fields", () =
     }),
     {
       decision: {
-        feedback: undefined,
         request_id: "request-1",
         tool_call_id: undefined,
         type: "approve"

@@ -48,12 +48,14 @@ export type {
   RuntimeSchema,
   RuntimeState,
   RuntimeStateFactContract,
+  RuntimeToolDecision,
   RuntimeStateFactOwner,
   RuntimeStateFactRole,
   RuntimeStateKey,
   RuntimeTask,
   RuntimeTodo
 } from "./runtime-state"
+export { parseRuntimeToolDecision } from "./runtime-state"
 export {
   RUNTIME_APPROVAL_STATUSES,
   RUNTIME_CAPABILITY_CONTRACTS,

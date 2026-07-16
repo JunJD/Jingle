@@ -87,7 +87,7 @@ test("workflow automation serializes one thread batch through the workflow servi
     events: [
       {
         approval: {
-          allowed_decisions: ["approve", "reject"],
+          allowed_decisions: ["approve", "user_declined", "corrected"],
           id: "approval-1",
           review: null,
           tool_call: {
@@ -164,7 +164,7 @@ test("workflow automation preserves event order across concurrent batches for on
     events: [
       {
         approval: {
-          allowed_decisions: ["approve", "reject"],
+          allowed_decisions: ["approve", "user_declined", "corrected"],
           id: "approval-1",
           review: null,
           tool_call: {

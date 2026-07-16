@@ -263,7 +263,7 @@ test("resume primitives target the request's run instead of the latest active ru
     tool_call_id: "tool-call-older",
     tool_name: "write_file",
     tool_args: { path: "/tmp/older.txt" },
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     status: "pending"
   })
   await upsertHitlRequest({
@@ -273,7 +273,7 @@ test("resume primitives target the request's run instead of the latest active ru
     tool_call_id: "tool-call-latest",
     tool_name: "write_file",
     tool_args: { path: "/tmp/latest.txt" },
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     status: "pending"
   })
 
@@ -322,7 +322,7 @@ test("terminal HITL requests ignore stale pending request replay", async () => {
     await createThread(threadId)
     await createRun(runId, threadId, { status: "interrupted" })
     await upsertHitlRequest({
-      allowed_decisions: ["approve", "reject"],
+      allowed_decisions: ["approve", "user_declined", "corrected"],
       request_id: requestId,
       run_id: runId,
       status: "pending",
@@ -338,7 +338,7 @@ test("terminal HITL requests ignore stale pending request replay", async () => {
     })
 
     await upsertHitlRequest({
-      allowed_decisions: ["approve", "reject"],
+      allowed_decisions: ["approve", "user_declined", "corrected"],
       request_id: requestId,
       run_id: "run-stale-replay",
       status: "pending",
@@ -371,7 +371,7 @@ test("concurrent HITL resolution accepts exactly one terminal decision", async (
   await createThread(threadId)
   await createRun(runId, threadId, { status: "interrupted" })
   await upsertHitlRequest({
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     request_id: requestId,
     run_id: runId,
     status: "pending",
@@ -387,10 +387,10 @@ test("concurrent HITL resolution accepts exactly one terminal decision", async (
       tool_call_id: "tool-call-hitl-concurrent-cas",
       type: "approve"
     }),
-    resolveHitlRequest(requestId, "rejected", {
+    resolveHitlRequest(requestId, "user_declined", {
       request_id: requestId,
       tool_call_id: "tool-call-hitl-concurrent-cas",
-      type: "reject"
+      type: "user_declined"
     })
   ])
   const winner = decisions.filter((decision) => decision !== null)
@@ -401,8 +401,37 @@ test("concurrent HITL resolution accepts exactly one terminal decision", async (
   assert.equal(stored?.status, winner[0]?.status)
   assert.equal(
     JSON.parse(stored?.decision ?? "{}").type,
-    winner[0]?.status === "approved" ? "approve" : "reject"
+    winner[0]?.status === "approved" ? "approve" : "user_declined"
   )
+})
+
+test("user_declined atomically resolves HITL and cancels its run", async () => {
+  const { createRun, createThread, getRun, getThread, upsertHitlRequest, resolveHitlRequest } =
+    await loadDbModules()
+  const threadId = "thread-hitl-declined"
+  const runId = "run-hitl-declined"
+  const requestId = "request-hitl-declined"
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve", "user_declined", "corrected"],
+    request_id: requestId,
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: "tool-hitl-declined",
+    tool_name: "write_file"
+  })
+
+  const resolved = await resolveHitlRequest(requestId, "user_declined", {
+    request_id: requestId,
+    tool_call_id: "tool-hitl-declined",
+    type: "user_declined"
+  })
+  assert.equal(resolved?.status, "user_declined")
+  assert.equal((await getRun(runId))?.status, "cancelled")
+  assert.equal((await getThread(threadId))?.status, "idle")
 })
 
 test("HITL CAS loser does not record approval.resolved", async () => {
@@ -417,7 +446,7 @@ test("HITL CAS loser does not record approval.resolved", async () => {
   await createThread(threadId)
   await createRun(runId, threadId, { status: "interrupted" })
   await upsertHitlRequest({
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     request_id: requestId,
     run_id: runId,
     status: "pending",
@@ -428,7 +457,7 @@ test("HITL CAS loser does not record approval.resolved", async () => {
   })
 
   const controller = createRuntimeRunLifecycleController({})
-  const createStart = (type: "approve" | "reject") =>
+  const createStart = (type: "approve" | "user_declined") =>
     controller.beginResumeRun({
       resume: {
         decision: { request_id: requestId, tool_call_id: toolCallId, type },
@@ -440,7 +469,7 @@ test("HITL CAS loser does not record approval.resolved", async () => {
     })
   const [firstStart, secondStart] = await Promise.all([
     createStart("approve"),
-    createStart("reject")
+    createStart("user_declined")
   ])
 
   const resolutions = await Promise.allSettled([
@@ -454,6 +483,16 @@ test("HITL CAS loser does not record approval.resolved", async () => {
   assert.equal(resolutions.filter((result) => result.status === "fulfilled").length, 1)
   assert.equal(rejected.length, 1)
   assert.equal((rejected[0]?.reason as { code?: string }).code, "CONFLICT")
+  if (resolutions[1]?.status === "fulfilled") {
+    await secondStart.cancelAfterDecision?.()
+  }
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const count = await getPrismaClient().agentEvent.count({
+      where: { runId, threadId, type: "approval.resolved" }
+    })
+    if (count === 1) break
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
   assert.equal(
     await getPrismaClient().agentEvent.count({
       where: { runId, threadId, type: "approval.resolved" }
@@ -568,7 +607,7 @@ test("agent resume keeps HITL request pending when resumed stream fails before f
     tool_call_id: "tool-call-resume-failure",
     tool_name: "write_file",
     tool_args: { path: `${repoRoot}/approval.txt` },
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     status: "pending"
   })
 
@@ -581,10 +620,10 @@ test("agent resume keeps HITL request pending when resumed stream fails before f
     ).dispatchResume(
       {
         decision: {
-          feedback: "bdd:fail-before-first-chunk",
+          correction: "bdd:fail-before-first-chunk",
           request_id: requestId,
           tool_call_id: "tool-call-resume-failure",
-          type: "approve"
+          type: "corrected"
         },
         modelId: "bdd",
         threadId
@@ -648,7 +687,7 @@ test("agent resume rejects workspace mismatch before mutating the run", async ()
     tool_call_id: "tool-call-resume-workspace-mismatch",
     tool_name: "write_file",
     tool_args: { path: `${currentWorkspacePath}/approval.txt` },
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     status: "pending"
   })
 
@@ -742,7 +781,7 @@ test("agent resume seeds frozen provided context inclusions into resumed runtime
     tool_call_id: "tool-call-resume-context-inclusions",
     tool_name: "write_file",
     tool_args: { path: `${repoRoot}/approval.txt` },
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     status: "pending"
   })
 
@@ -1480,7 +1519,7 @@ test("run failure preserves interrupted status when pending HITL remains", async
       extensionName: "apple-reminders",
       toolName: "deleteReminder"
     },
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     status: "pending"
   })
 
@@ -1523,10 +1562,7 @@ test("thread hydrate rejects an invalid new agent run failure instead of using l
   })
   const threadsService = Object.create(ThreadsService.prototype) as ThreadsService
 
-  await assert.rejects(
-    threadsService.getLatestRunSummary(threadId),
-    /invalid agent run failure/
-  )
+  await assert.rejects(threadsService.getLatestRunSummary(threadId), /invalid agent run failure/)
 })
 
 test("thread hydrate degrades legacy error text to unknown without reclassification", async () => {
@@ -1552,9 +1588,8 @@ test("thread hydrate degrades legacy error text to unknown without reclassificat
 
 test("resume and successful completion clear a stale durable run failure", async () => {
   const { createRun, createThread, getRun } = await loadDbModules()
-  const { finalizeRunWithoutCheckpoint, resumeAgentRun } = await import(
-    "../../src/main/agent/persistence"
-  )
+  const { finalizeRunWithoutCheckpoint, resumeAgentRun } =
+    await import("../../src/main/agent/persistence")
   const threadId = "thread-clears-stale-run-failure"
   const runId = "run-clears-stale-run-failure"
   await createThread(threadId)
@@ -3643,7 +3678,7 @@ test("thread fork rejects threads with pending HITL requests", async () => {
     tool_call_id: "tool-call-pending-hitl",
     tool_name: "write_file",
     tool_args: { path: `${repoRoot}/pending.txt` },
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     status: "pending"
   })
 

@@ -183,7 +183,7 @@ test("createActionMessageView requires a registered renderer or extension presen
     type: "tool_call"
   }
   const approvalRequest: HITLRequest = {
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     id: "hitl:thread:run:call_1",
     review: {
       access: "write",
@@ -713,7 +713,7 @@ test("file mutation approval preview uses pending Pierre view model facts", asyn
     type: "tool_call"
   }
   const approvalRequest: HITLRequest = {
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     id: "hitl:thread:run:call_edit",
     review: {
       changes: [{ changeType: "modify", path: "/workspace/src/app.ts" }],

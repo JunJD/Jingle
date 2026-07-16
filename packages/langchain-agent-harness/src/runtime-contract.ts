@@ -107,6 +107,7 @@ export interface RuntimeRunStart {
 
 export interface RuntimeResumeRunStart extends RuntimeRunStart {
   beforePendingHitlPersistence: () => Promise<void> | void
+  cancelAfterDecision?: () => Promise<void> | void
 }
 
 export interface RuntimeRunLifecycleControllerContract<
@@ -135,6 +136,7 @@ export interface RuntimeRunLifecycleControllerContract<
     | Promise<JingleRunCompletionFacts<TContextInclusion>>
     | JingleRunCompletionFacts<TContextInclusion>
   markRunAborted: (input: { runId: string; threadId: string }) => Promise<void> | void
+  markRunCancelled: (input: { runId: string; threadId: string }) => Promise<void> | void
   markRunFailed: (input: {
     error: unknown
     runId: string
@@ -149,7 +151,7 @@ export interface RuntimeRunLifecycleControllerContract<
     completionReason?: string
     error?: unknown
     runId: string
-    status: JingleRunCompletionStatus | "error"
+    status: JingleRunCompletionStatus | "cancelled" | "error"
     threadId: string
   }) => Promise<void> | void
   recordRunInterrupted: (event: {

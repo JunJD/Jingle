@@ -25,6 +25,7 @@ export interface AgentStreamBoundaryRecorderState {
   pendingValuesToolResults: Map<string, DecodedValuesToolMessageChunk>
   targetTurnId: string | null
   toolCallIds: Set<string>
+  toolDecisionIds: Set<string>
 }
 
 export function createAgentStreamBoundaryRecorderState(
@@ -41,7 +42,8 @@ export function createAgentStreamBoundaryRecorderState(
     completedToolResultIds: new Set<string>(),
     pendingValuesToolResults: new Map<string, DecodedValuesToolMessageChunk>(),
     targetTurnId: input.targetTurnId ?? null,
-    toolCallIds: new Set(input.initialToolCallIds)
+    toolCallIds: new Set(input.initialToolCallIds),
+    toolDecisionIds: new Set<string>()
   }
 }
 
@@ -253,7 +255,7 @@ export async function recordApprovalResolved(input: {
   await appendAgentEventSafely({
     payload: {
       decision: input.decision.type,
-      feedback: input.decision.feedback ?? null,
+      correction: input.decision.type === "corrected" ? input.decision.correction : null,
       requestId: input.requestId,
       toolCallId: input.decision.tool_call_id ?? null
     },
@@ -261,6 +263,41 @@ export async function recordApprovalResolved(input: {
     threadId: input.threadId,
     type: "approval.resolved"
   })
+}
+
+export async function recordDeclinedApprovalOutcome(input: {
+  decision: Extract<HITLDecision, { type: "user_declined" }>
+  requestId: string
+  runId: string
+  threadId: string
+}): Promise<void> {
+  const events = await appendAgentEventsSafely([
+    {
+      payload: {
+        decision: input.decision.type,
+        correction: null,
+        requestId: input.requestId,
+        toolCallId: input.decision.tool_call_id ?? null
+      },
+      runId: input.runId,
+      threadId: input.threadId,
+      type: "approval.resolved"
+    },
+    {
+      payload: {
+        completionReason: "user_declined",
+        errorMessage: null,
+        errorType: null,
+        status: "cancelled"
+      },
+      runId: input.runId,
+      threadId: input.threadId,
+      type: "run.finished"
+    }
+  ])
+  if (events.length > 0) {
+    enqueueAgentTraceProjection(input.runId)
+  }
 }
 
 export async function recordRunInterrupted(input: {
@@ -489,6 +526,25 @@ async function recordAgentStreamBoundaryEventsUnsafe(input: {
     }
 
     input.state.pendingValuesToolResults.set(toolMessage.toolCallId, toolMessage)
+  }
+
+  const newToolDecisions = decoded.toolDecisions.filter(
+    (decision) =>
+      input.state.toolCallIds.has(decision.toolCallId) &&
+      !input.state.toolDecisionIds.has(decision.decisionId)
+  )
+  const recordedToolDecisions = await appendAgentEventsSafely(
+    newToolDecisions.map((decision) => ({
+      payload: { ...decision },
+      runId: input.runId,
+      threadId: input.threadId,
+      type: "tool.decision.recorded" as const
+    }))
+  )
+  if (recordedToolDecisions.length === newToolDecisions.length) {
+    for (const decision of newToolDecisions) {
+      input.state.toolDecisionIds.add(decision.decisionId)
+    }
   }
 
   const request = decoded.pendingApproval

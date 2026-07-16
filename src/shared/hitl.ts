@@ -1,6 +1,6 @@
 import type { ToolApprovalItem } from "./tool-approval"
 
-export const DEFAULT_HITL_ALLOWED_DECISIONS = ["approve", "reject"] as const
+export const DEFAULT_HITL_ALLOWED_DECISIONS = ["approve", "user_declined", "corrected"] as const
 export const HITL_DISPLAY_SIZE_NAMES = ["small", "large"] as const
 
 export type HITLDecisionType = (typeof DEFAULT_HITL_ALLOWED_DECISIONS)[number]
@@ -20,12 +20,15 @@ export interface HITLRequest {
   review: ToolApprovalItem | null
 }
 
-export interface HITLDecision {
-  type: HITLDecisionType
-  request_id?: string
-  tool_call_id?: string
-  feedback?: string
-}
+export type HITLDecision =
+  | { type: "approve"; request_id?: string; tool_call_id?: string }
+  | { type: "user_declined"; request_id?: string; tool_call_id?: string }
+  | {
+      correction: string
+      type: "corrected"
+      request_id?: string
+      tool_call_id?: string
+    }
 
 function getRecordSize(value: Record<string, unknown>): number {
   return Object.keys(value).length
@@ -60,7 +63,7 @@ export function getHitlRequestDisplaySize(request: HITLRequest): HITLDisplaySize
 }
 
 export function isHitlDecisionType(value: unknown): value is HITLDecisionType {
-  return value === "approve" || value === "reject"
+  return value === "approve" || value === "user_declined" || value === "corrected"
 }
 
 export function normalizeHitlAllowedDecisions(value: unknown): HITLDecisionType[] {

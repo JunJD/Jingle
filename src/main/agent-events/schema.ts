@@ -19,7 +19,8 @@ export const agentEventTypeSchema = z.enum([
   "run.started",
   "tool.call.completed",
   "tool.call.failed",
-  "tool.call.started"
+  "tool.call.started",
+  "tool.decision.recorded"
 ])
 
 const eventPayloadSchemas = {
@@ -36,7 +37,7 @@ const eventPayloadSchemas = {
   "approval.resolved": z
     .object({
       decision: z.string(),
-      feedback: optionalNullableStringSchema,
+      correction: optionalNullableStringSchema,
       requestId: z.string(),
       toolCallId: optionalNullableStringSchema
     })
@@ -146,6 +147,15 @@ const eventPayloadSchemas = {
       toolCallId: z.string(),
       toolName: optionalNullableStringSchema
     })
+    .strict(),
+  "tool.decision.recorded": z
+    .object({
+      decisionId: z.string(),
+      outcome: z.literal("policy_blocked"),
+      reason: z.string(),
+      toolCallId: z.string(),
+      toolName: z.string()
+    })
     .strict()
 } as const
 
@@ -166,7 +176,10 @@ export function parseAgentEventPayload<TType extends AgentEventType>(
   return eventPayloadSchemas[type].parse(payload) as AgentEventPayloadByType[TType]
 }
 
-export function parseAgentEventPayloadFromJson(type: string, payloadJson: string): Record<string, unknown> {
+export function parseAgentEventPayloadFromJson(
+  type: string,
+  payloadJson: string
+): Record<string, unknown> {
   const parsed = JSON.parse(payloadJson) as unknown
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("[AgentEventSchema] Event payload must be a JSON object.")
@@ -176,7 +189,10 @@ export function parseAgentEventPayloadFromJson(type: string, payloadJson: string
   return parseAgentEventPayload(eventType, parsed) as Record<string, unknown>
 }
 
-export function normalizeAgentEventPayload(type: string, payload: unknown): Record<string, unknown> {
+export function normalizeAgentEventPayload(
+  type: string,
+  payload: unknown
+): Record<string, unknown> {
   const eventType = parseAgentEventType(type)
   return parseAgentEventPayload(eventType, payload ?? {}) as Record<string, unknown>
 }

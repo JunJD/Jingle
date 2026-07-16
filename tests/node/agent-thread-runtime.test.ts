@@ -38,7 +38,7 @@ function createActiveRun(): JingleActiveAgentRun {
 
 function createPendingApproval(): HITLRequest {
   return {
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     id: "hitl:thread-1:run-1:tool-1",
     review: null,
     tool_call: {
@@ -117,7 +117,7 @@ test("agent thread runtime reducer advances revision through run, message, tool,
     },
     {
       approval: {
-        allowed_decisions: ["approve", "reject"],
+        allowed_decisions: ["approve", "user_declined", "corrected"],
         id: "hitl:thread-1:run-1:tool-1",
         review: null,
         tool_call: {

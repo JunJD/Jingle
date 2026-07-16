@@ -216,6 +216,9 @@ export type RuntimeThreadResumeRunExecutionInput<TContextInclusion> = Omit<
 
 export type RuntimeThreadRunResult<TContextInclusion> =
   | {
+      status: "cancelled"
+    }
+  | {
       status: "aborted"
     }
   | {
@@ -265,6 +268,7 @@ export interface RuntimeThreadRunLifecycleControl<
   TResumeRunLifecycleInput = unknown
 > {
   abortRun(input: RuntimeThreadAbortInput): Promise<void>
+  cancelRun(input: { runId: string }): Promise<void>
   beginInvokeRun(
     input: RuntimeThreadBeginInvokeInput<TInvokeRunLifecycleInput>
   ): Promise<RuntimeRunStart>

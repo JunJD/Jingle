@@ -416,16 +416,16 @@ test("launcher AI thread loading copy distinguishes restore from opening", async
   assert.doesNotMatch(messagesSource, /loadingThread/)
 })
 
-test("launcher approval feedback clears only after an accepted resume command", async () => {
+test("launcher approval correction clears only after an accepted resume command", async () => {
   const pageSource = await readWorkspaceFile("src/renderer/src/ai-core/LauncherAiPage.tsx")
 
   assert.match(
     pageSource,
-    /handleApprovalDecision\(decision\)\.then\(\(accepted\) => \{[\s\S]*?if \([\s\S]*?!accepted[\s\S]*?setApprovalRejectFeedback\(\(currentFeedback\) =>[\s\S]*?currentFeedback === submittedFeedback/
+    /handleApprovalDecision\(decision\)\.then\(\(accepted\) => \{[\s\S]*?if \([\s\S]*?!accepted[\s\S]*?setApprovalCorrection\(\(currentCorrection\) =>[\s\S]*?currentCorrection === submittedCorrection/
   )
   assert.doesNotMatch(
     pageSource,
-    /void handleApprovalDecision\([^)]*\)[\s\S]{0,100}setApprovalRejectFeedback\(""\)/
+    /void handleApprovalDecision\([^)]*\)[\s\S]{0,100}setApprovalCorrection\(""\)/
   )
 })
 

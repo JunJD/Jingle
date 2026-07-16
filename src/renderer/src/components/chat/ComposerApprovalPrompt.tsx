@@ -28,8 +28,8 @@ export function ComposerApprovalPrompt(props: {
   className?: string
   density?: "default" | "compact"
   onDecision: (decision: HITLDecision) => void
-  rejectFeedback?: string
-  rejectFeedbackPlacement?: "inline" | "external"
+  correction?: string
+  correctionPlacement?: "inline" | "external"
   request: HITLRequest
   variant?: "default" | "composer-tray"
 }): React.JSX.Element {
@@ -38,16 +38,15 @@ export function ComposerApprovalPrompt(props: {
     className,
     density = "default",
     onDecision,
-    rejectFeedback,
-    rejectFeedbackPlacement = "inline",
+    correction,
+    correctionPlacement = "inline",
     request,
     variant = "default"
   } = props
   const { copy } = useI18n()
   const [feedback, setFeedback] = useState("")
-  const [rejecting, setRejecting] = useState(false)
   const usesExternalActions = actionsPlacement === "external"
-  const usesExternalRejectFeedback = rejectFeedbackPlacement === "external"
+  const usesExternalCorrection = correctionPlacement === "external"
   const approvalItem = request.review
   const meta = getToolApprovalPresentationMeta(copy, approvalItem, request.tool_call.name)
   const compact = getCompactToolApprovalPresentation(
@@ -63,8 +62,8 @@ export function ComposerApprovalPrompt(props: {
         ? ArrowUpRight
         : FileDiff
   const approveLabel = getApproveLabel(copy, request)
-  const trimmedFeedback = usesExternalRejectFeedback
-    ? (rejectFeedback ?? "").trim()
+  const trimmedFeedback = usesExternalCorrection
+    ? (correction ?? "").trim()
     : feedback.trim()
   const displaySize = getHitlRequestDisplaySize(request)
   const isLarge = displaySize === "large"
@@ -79,46 +78,34 @@ export function ComposerApprovalPrompt(props: {
   ) : null
   const actions = usesExternalActions ? null : (
     <div className="grid gap-[var(--jingle-space-2)]">
-      {rejecting && !usesExternalRejectFeedback ? (
+      {!usesExternalCorrection ? (
         <textarea
-          aria-label={copy.toolCall.rejectFeedbackPlaceholder}
+          aria-label={copy.toolCall.correctionPlaceholder}
           autoFocus
           className="min-h-[52px] resize-none rounded-[var(--jingle-radius-md)] border border-border/60 bg-background-secondary/45 px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)] [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)] text-foreground outline-none placeholder:text-muted-foreground/65 focus:border-foreground/25"
           onChange={(event) => setFeedback(event.target.value)}
-          placeholder={copy.toolCall.rejectFeedbackPlaceholder}
+          placeholder={copy.toolCall.correctionPlaceholder}
           value={feedback}
         />
       ) : null}
 
       <div className="flex items-center justify-end gap-[var(--jingle-gap-sm)]">
-        {rejecting && !usesExternalRejectFeedback ? (
-          <button
-            type="button"
-            className="min-h-8 rounded-full px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
-            onClick={() => {
-              setFeedback("")
-              setRejecting(false)
-            }}
-          >
-            {copy.apiKeyDialog.cancel}
-          </button>
-        ) : null}
         <button
           type="button"
           className="min-h-8 rounded-full px-[var(--jingle-space-3)] [font-size:var(--jingle-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
           onClick={() => {
-            if (!usesExternalRejectFeedback && !rejecting && isLarge) {
-              setRejecting(true)
-              return
-            }
-
-            onDecision({
-              type: "reject",
-              ...(trimmedFeedback ? { feedback: trimmedFeedback } : {})
-            })
+            onDecision({ type: "user_declined" })
           }}
         >
-          {copy.toolCall.reject}
+          {copy.toolCall.decline}
+        </button>
+        <button
+          type="button"
+          disabled={!trimmedFeedback}
+          className="min-h-8 rounded-full px-[var(--jingle-space-3)] [font-size:var(--jingle-font-body)] font-medium text-foreground transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={() => onDecision({ correction: trimmedFeedback, type: "corrected" })}
+        >
+          {copy.toolCall.sendCorrection}
         </button>
         <button
           type="button"

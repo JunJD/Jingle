@@ -34,11 +34,13 @@ import {
 } from "@jingle/agent-client"
 import type { ContentBlock, HITLRequest, Message as ThreadMessage, ToolCall } from "@/types"
 import { readJingleSteeringAppliedMarker, readJingleSteeringStatus } from "@shared/message-steering"
+import { parseOptionalToolDecision, type ToolDecision } from "@shared/tool-decision"
 
 export interface ToolResultInfo {
   content: ThreadMessage["content"]
   execution: JingleToolExecutionTiming | null
   fileMutation: FileMutationResultMetadata | null
+  toolDecision: ToolDecision | null
 }
 
 export interface MessageTurn {
@@ -168,10 +170,14 @@ export function buildToolResults(messages: ThreadMessage[]): Map<string, ToolRes
       continue
     }
 
+    const toolDecision = parseOptionalToolDecision(message.metadata?.jingle_tool_decision)
     results.set(message.tool_call_id, {
-      content: message.content,
+      content: toolDecision
+        ? `Jingle policy blocked this action: ${toolDecision.reason}`
+        : message.content,
       execution: readJingleToolExecutionTiming(message),
-      fileMutation: readFileMutationResultMetadata(message)
+      fileMutation: readFileMutationResultMetadata(message),
+      toolDecision
     })
   }
 
@@ -219,12 +225,16 @@ function stabilizeToolResultInfo(
   const fileMutation = isSameFileMutationResultMetadata(previous.fileMutation, next.fileMutation)
     ? previous.fileMutation
     : next.fileMutation
+  const toolDecision = Object.is(previous.toolDecision, next.toolDecision)
+    ? previous.toolDecision
+    : next.toolDecision
 
   return Object.is(content, previous.content) &&
     Object.is(execution, previous.execution) &&
-    Object.is(fileMutation, previous.fileMutation)
+    Object.is(fileMutation, previous.fileMutation) &&
+    Object.is(toolDecision, previous.toolDecision)
     ? previous
-    : { content, execution, fileMutation }
+    : { content, execution, fileMutation, toolDecision }
 }
 
 function isSameFileMutationResultMetadata(

@@ -25,6 +25,7 @@ export interface JingleValuesHostProjection {
   recordingRefs?: unknown[]
   tasks?: unknown[]
   todos?: Array<{ content?: string; id?: string; status?: string }>
+  toolDecisions?: unknown[]
   workspacePath?: string
 }
 
@@ -157,6 +158,13 @@ export function projectJingleValuesStateForHost(data: unknown): JingleValuesHost
 
   if (Array.isArray(state.approvals)) {
     projectedState.approvals = state.approvals
+  }
+
+  if (state.toolDecisions !== undefined && !Array.isArray(state.toolDecisions)) {
+    throw new Error("[JingleLangGraph] Invalid values toolDecisions state.")
+  }
+  if (Array.isArray(state.toolDecisions)) {
+    projectedState.toolDecisions = state.toolDecisions
   }
 
   if (state.recordingRefs !== undefined && !Array.isArray(state.recordingRefs)) {

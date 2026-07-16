@@ -1,16 +1,16 @@
 import { ToolMessage } from "@langchain/core/messages"
-import { interrupt, isGraphInterrupt, StateSchema } from "@langchain/langgraph"
+import { Command, END, interrupt, isGraphInterrupt, StateSchema } from "@langchain/langgraph"
 import { createMiddleware } from "langchain"
 import type { ActionRequest, ReviewConfig } from "langchain"
 import type { RuntimeMiddlewareHook } from "./harness-runtime"
 import { defineJingleHarnessHook } from "./harness-hooks"
-import { runtimeApprovalsValue } from "./runtime-state"
+import { runtimeApprovalsValue, runtimeToolDecisionsValue } from "./runtime-state"
 
 export type HumanApprovalDisposition = "allow" | "deny" | "require_approval"
-export type HumanApprovalDecisionType = "approve" | "reject"
+export type HumanApprovalDecisionType = "approve" | "user_declined" | "corrected"
 
 export interface HumanApprovalDecision {
-  feedback?: string
+  correction?: string
   type: HumanApprovalDecisionType
 }
 
@@ -60,7 +60,8 @@ interface HumanApprovalInterruptValue<TReview = unknown> {
 }
 
 const humanApprovalStateSchema = new StateSchema({
-  approvals: runtimeApprovalsValue
+  approvals: runtimeApprovalsValue,
+  toolDecisions: runtimeToolDecisionsValue
 })
 
 export interface CreateHumanApprovalMiddlewareOptions<TReview = unknown> {
@@ -94,42 +95,66 @@ function normalizeHumanApprovalDecision(
     )
   }
 
-  return {
-    feedback: decision.feedback,
-    type: decision.type
+  if (decision.type === "corrected") {
+    const correction = typeof decision.correction === "string" ? decision.correction.trim() : ""
+    if (!correction) {
+      throw new Error("[HumanApprovalMiddleware] corrected requires non-empty correction feedback.")
+    }
+    return { correction, type: "corrected" }
   }
+  return { type: decision.type }
 }
 
-function buildRejectedToolMessage(input: {
-  feedback?: string
+function buildCorrectionToolMessage(input: {
+  correction: string
   toolCallId: string
   toolName: string
 }): ToolMessage {
-  const { feedback, toolCallId, toolName } = input
-  const normalizedFeedback = typeof feedback === "string" ? feedback.trim() : ""
+  const { correction, toolCallId, toolName } = input
 
   return new ToolMessage({
-    content: normalizedFeedback
-      ? `User rejected the ${toolName} tool call with id ${toolCallId}. Feedback: ${normalizedFeedback}`
-      : `User rejected the ${toolName} tool call with id ${toolCallId}.`,
+    content: `The user requested a correction before this action can proceed: ${correction}`,
     name: toolName,
     tool_call_id: toolCallId,
     status: "error"
   })
 }
 
-function buildErroredToolMessage(input: {
-  content: string
+function buildPolicyBlockedCommand(input: {
+  reason: string
   toolCallId: string
   toolName: string
-}): ToolMessage {
-  const { content, toolCallId, toolName } = input
-
-  return new ToolMessage({
-    content,
-    name: toolName,
-    tool_call_id: toolCallId,
-    status: "error"
+}): Command {
+  const reason = input.reason.trim() || "Blocked by Jingle policy."
+  return new Command({
+    update: {
+      messages: [
+        new ToolMessage({
+          additional_kwargs: {
+            jingle_tool_decision: {
+              decisionId: `policy:${input.toolCallId}`,
+              outcome: "policy_blocked",
+              reason,
+              toolCallId: input.toolCallId,
+              toolName: input.toolName
+            }
+          },
+          content: `Jingle policy blocked this action: ${reason}`,
+          name: input.toolName,
+          tool_call_id: input.toolCallId,
+          status: "error"
+        })
+      ],
+      toolDecisions: [
+        {
+          decisionId: `policy:${input.toolCallId}`,
+          outcome: "policy_blocked",
+          reason,
+          toolCallId: input.toolCallId,
+          toolName: input.toolName
+        }
+      ]
+    }
   })
 }
 
@@ -167,7 +192,7 @@ function createDefaultApprovalRequester<TReview>(
       reviewConfigs: [
         {
           actionName: input.toolName,
-          allowedDecisions: [...allowedDecisions]
+          allowedDecisions: [...allowedDecisions] as ReviewConfig["allowedDecisions"]
         }
       ]
     } satisfies HumanApprovalInterruptValue<TReview>)) as HumanApprovalResumeValue
@@ -242,8 +267,8 @@ function createHumanApprovalRuntimeMiddleware<TReview = unknown>(
       const toolCallId = request.toolCall.id
 
       if (decision.disposition === "deny") {
-        return buildErroredToolMessage({
-          content: decision.reason ?? `Jingle denied ${toolName}.`,
+        return buildPolicyBlockedCommand({
+          reason: decision.reason ?? `Jingle denied ${toolName}.`,
           toolCallId,
           toolName
         })
@@ -263,9 +288,15 @@ function createHumanApprovalRuntimeMiddleware<TReview = unknown>(
           toolCallId,
           toolName: request.toolCall.name
         })
-        if (approvalDecision.type === "reject") {
-          return buildRejectedToolMessage({
-            feedback: approvalDecision.feedback,
+        if (approvalDecision.type === "user_declined") {
+          return new Command({ goto: END, update: { messages: [] } })
+        }
+        if (approvalDecision.type === "corrected") {
+          if (!approvalDecision.correction) {
+            throw new Error("[HumanApprovalMiddleware] Missing normalized correction.")
+          }
+          return buildCorrectionToolMessage({
+            correction: approvalDecision.correction,
             toolCallId,
             toolName: request.toolCall.name
           })

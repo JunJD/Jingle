@@ -6,7 +6,7 @@ import {
   type JingleApprovalDecisionType
 } from "./approval-lifecycle"
 
-export interface JingleResumeDecision extends JingleApprovalDecision {}
+export type JingleResumeDecision = JingleApprovalDecision
 
 export interface BuildJingleResumeCommandInput<TContextInclusion = unknown> {
   contextInclusions?: TContextInclusion[]
@@ -16,7 +16,7 @@ export interface BuildJingleResumeCommandInput<TContextInclusion = unknown> {
 
 interface JingleResumeValue {
   decisions: Array<{
-    feedback?: string
+    correction?: string
     type: JingleApprovalDecisionType
   }>
 }
@@ -26,7 +26,7 @@ function buildJingleResumeValue(decision: JingleResumeDecision): JingleResumeVal
     decisions: [
       {
         type: decision.type,
-        ...(decision.feedback ? { feedback: decision.feedback } : {})
+        ...(decision.type === "corrected" ? { correction: decision.correction } : {})
       }
     ]
   }

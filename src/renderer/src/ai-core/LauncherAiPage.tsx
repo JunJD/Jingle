@@ -218,11 +218,11 @@ export function LauncherAiPage(): React.JSX.Element {
     },
     [markComposerChanged]
   )
-  const [approvalRejectFeedback, setApprovalRejectFeedback] = useState("")
-  const approvalFeedbackRevisionRef = useRef(0)
-  const setApprovalFeedback = useCallback((value: string): void => {
-    approvalFeedbackRevisionRef.current += 1
-    setApprovalRejectFeedback(value)
+  const [approvalCorrection, setApprovalCorrection] = useState("")
+  const approvalCorrectionRevisionRef = useRef(0)
+  const setApprovalCorrectionText = useCallback((value: string): void => {
+    approvalCorrectionRevisionRef.current += 1
+    setApprovalCorrection(value)
   }, [])
   const [pendingCommands, setPendingCommands] = useState<ReadonlyMap<string, AgentCommandActivity>>(
     () => new Map()
@@ -815,8 +815,8 @@ export function LauncherAiPage(): React.JSX.Element {
     (decision: Parameters<typeof handleApprovalDecision>[0]): void => {
       const submittedApprovalId = pendingApproval?.id ?? null
       const submittedThreadId = threadId
-      const submittedFeedback = approvalRejectFeedback
-      const submittedFeedbackRevision = approvalFeedbackRevisionRef.current
+      const submittedCorrection = approvalCorrection
+      const submittedCorrectionRevision = approvalCorrectionRevisionRef.current
       void handleApprovalDecision(decision).then((accepted) => {
         if (accepted && submittedApprovalId !== null && submittedThreadId !== null) {
           const submittedApprovalKey = getApprovalSubmissionKey(
@@ -835,43 +835,45 @@ export function LauncherAiPage(): React.JSX.Element {
         const currentApprovalId = getLatestPendingApprovalId()
         if (
           (currentApprovalId !== null && currentApprovalId !== submittedApprovalId) ||
-          approvalFeedbackRevisionRef.current !== submittedFeedbackRevision
+          approvalCorrectionRevisionRef.current !== submittedCorrectionRevision
         ) {
           return
         }
         if (!accepted && currentApprovalId !== null) {
           return
         }
-        setApprovalRejectFeedback((currentFeedback) =>
-          currentFeedback === submittedFeedback ? "" : currentFeedback
+        setApprovalCorrection((currentCorrection) =>
+          currentCorrection === submittedCorrection ? "" : currentCorrection
         )
       })
     },
     [
-      approvalRejectFeedback,
+      approvalCorrection,
       getLatestPendingApprovalId,
       handleApprovalDecision,
       pendingApproval?.id,
       threadId
     ]
   )
-  const submitApprovalRejectFeedback = useCallback((): void => {
+  const submitApprovalCorrection = useCallback((): void => {
     if (!pendingApproval) {
       return
     }
 
-    const feedback = approvalRejectFeedback.trim()
-    submitApprovalDecision({
-      type: "reject",
-      ...(feedback ? { feedback } : {})
-    })
-  }, [approvalRejectFeedback, pendingApproval, submitApprovalDecision])
+    const correction = approvalCorrection.trim()
+    if (!correction) return
+    submitApprovalDecision({ correction, type: "corrected" })
+  }, [approvalCorrection, pendingApproval, submitApprovalDecision])
   const submitApprovalAccept = useCallback((): void => {
     if (!pendingApproval) {
       return
     }
 
     submitApprovalDecision({ type: "approve" })
+  }, [pendingApproval, submitApprovalDecision])
+  const submitApprovalDecline = useCallback((): void => {
+    if (!pendingApproval) return
+    submitApprovalDecision({ type: "user_declined" })
   }, [pendingApproval, submitApprovalDecision])
   const handleComposerKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLElement>): void => {
@@ -1628,8 +1630,8 @@ export function LauncherAiPage(): React.JSX.Element {
                         onDecision={(decision) => {
                           submitApprovalDecision(decision)
                         }}
-                        rejectFeedback={approvalRejectFeedback}
-                        rejectFeedbackPlacement="external"
+                        correction={approvalCorrection}
+                        correctionPlacement="external"
                         request={pendingApproval}
                         variant="composer-tray"
                       />
@@ -1655,9 +1657,9 @@ export function LauncherAiPage(): React.JSX.Element {
                     minHeight="var(--launcher-ai-composer-input-min-h)"
                     onSubmit={isApprovalPending ? undefined : submitCurrentInput}
                     onValueChange={
-                      isApprovalPending ? setApprovalFeedback : handleComposerValueChange
+                      isApprovalPending ? setApprovalCorrectionText : handleComposerValueChange
                     }
-                    value={isApprovalPending ? approvalRejectFeedback : query}
+                    value={isApprovalPending ? approvalCorrection : query}
                   >
                     <input
                       ref={fileInputRef}
@@ -1724,7 +1726,7 @@ export function LauncherAiPage(): React.JSX.Element {
                         onSubmit={isApprovalPending ? undefined : submitCurrentInput}
                         placeholder={
                           isApprovalPending
-                            ? copy.toolCall.rejectFeedbackPlaceholder
+                            ? copy.toolCall.correctionPlaceholder
                             : copy.launcher.aiInputPlaceholder
                         }
                         sourceMentions={isApprovalPending ? [] : sourceMentions}
@@ -1772,9 +1774,19 @@ export function LauncherAiPage(): React.JSX.Element {
                                 type="button"
                                 className="min-h-8 rounded-full px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 disabled={hasPendingCommand}
-                                onClick={submitApprovalRejectFeedback}
+                                onClick={submitApprovalDecline}
                               >
                                 {copy.toolCall.decline}
+                              </button>
+                              <button
+                                type="button"
+                                className="min-h-8 rounded-full px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-body)] font-medium text-foreground transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-40"
+                                disabled={
+                                  hasPendingCommand || approvalCorrection.trim().length === 0
+                                }
+                                onClick={submitApprovalCorrection}
+                              >
+                                {copy.toolCall.sendCorrection}
                               </button>
                               <button
                                 type="button"

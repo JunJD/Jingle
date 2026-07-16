@@ -15,7 +15,7 @@ function createMessage(input: { id: string; role: Message["role"]; content?: str
 
 function createPendingApproval(): HITLRequest {
   return {
-    allowed_decisions: ["approve", "reject"],
+    allowed_decisions: ["approve", "user_declined", "corrected"],
     id: "hitl:thread-1:run-1:tool-1",
     review: null,
     tool_call: {

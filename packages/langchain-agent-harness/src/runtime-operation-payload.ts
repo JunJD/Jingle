@@ -1,8 +1,4 @@
-import {
-  HumanMessage,
-  RemoveMessage,
-  type BaseMessage
-} from "@langchain/core/messages"
+import { HumanMessage, RemoveMessage, type BaseMessage } from "@langchain/core/messages"
 import { Command } from "@langchain/langgraph"
 import type { RuntimeApproval } from "./runtime-state"
 import {
@@ -10,10 +6,7 @@ import {
   type RuntimeToolApprovalDecisionType,
   type RuntimeInvokeInitialState
 } from "./runtime-operation"
-import type {
-  RuntimeThreadInvokeInput,
-  RuntimeThreadResumeInput
-} from "./runtime-thread"
+import type { RuntimeThreadInvokeInput, RuntimeThreadResumeInput } from "./runtime-thread"
 
 export function buildRuntimeInvokeInitialState<TContextInclusion>(
   input: RuntimeThreadInvokeInput<TContextInclusion>
@@ -69,17 +62,24 @@ function buildRuntimeResolvedApprovalFact(decision: RuntimeToolApprovalDecision)
     throw new Error("[RuntimeOperationPayload] Missing approval request_id.")
   }
 
-  return {
+  const base = {
     approvalId: requestId,
     requestId,
-    status: decision.type === "approve" ? "approved" : "rejected",
     toolCallId: decision.tool_call_id ?? null
+  }
+  if (decision.type === "corrected") {
+    return { ...base, correction: decision.correction, status: "corrected" }
+  }
+  return {
+    ...base,
+    correction: null,
+    status: decision.type === "approve" ? "approved" : "user_declined"
   }
 }
 
 function buildRuntimeResumeValue(decision: RuntimeToolApprovalDecision): {
   decisions: Array<{
-    feedback?: string
+    correction?: string
     type: RuntimeToolApprovalDecisionType
   }>
 } {
@@ -87,7 +87,7 @@ function buildRuntimeResumeValue(decision: RuntimeToolApprovalDecision): {
     decisions: [
       {
         type: decision.type,
-        ...(decision.feedback ? { feedback: decision.feedback } : {})
+        ...(decision.type === "corrected" ? { correction: decision.correction } : {})
       }
     ]
   }
