@@ -209,7 +209,12 @@ export function ProjectWorkflowDefinitionManager(
                 )
               })}
             </div>
-            <Button disabled={isSaving || !statusLabel.trim()} size="sm" type="submit">
+            <Button
+              disabled={isSaving || !statusLabel.trim()}
+              pressEffect="scale"
+              size="sm"
+              type="submit"
+            >
               {copy.threadWorkflow.addStatus}
             </Button>
           </form>
@@ -293,7 +298,12 @@ export function ProjectWorkflowDefinitionManager(
                 </option>
               ))}
             </Select>
-            <Button disabled={isSaving || !labelName.trim()} size="sm" type="submit">
+            <Button
+              disabled={isSaving || !labelName.trim()}
+              pressEffect="scale"
+              size="sm"
+              type="submit"
+            >
               {copy.threadWorkflow.addLabelDefinition}
             </Button>
           </form>
