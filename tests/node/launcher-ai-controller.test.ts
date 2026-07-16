@@ -4,7 +4,9 @@ import {
   createLauncherAiController,
   createLauncherComposerRevisionLedger,
   createLauncherCommandSubmissionGate,
-  isLauncherCommandTargetCurrent
+  isLauncherCommandTargetCurrent,
+  projectLauncherAiForkCapability,
+  projectLauncherAiTargetConfiguration
 } from "../../src/renderer/src/ai-core/launcher-ai-controller"
 import type { AgentControl } from "../../src/renderer/src/lib/use-agent"
 import type { AiCoreThreadCreateInput } from "../../src/renderer/src/ai-core/AiCoreHost"
@@ -57,12 +59,60 @@ test("launcher command acceptance stays bound to its submitted navigation target
   )
 })
 
+test("launcher target configuration fails closed while a durable thread is hydrating", () => {
+  const target = { kind: "thread", threadId: "thread-1" } as const
+
+  assert.deepEqual(
+    projectLauncherAiTargetConfiguration({
+      isHydratingThread: true,
+      target,
+      threadConfiguration: {
+        modelId: "durable-model",
+        permissionMode: "auto",
+        threadId: "thread-1",
+        workspacePath: "/workspace"
+      }
+    }),
+    { kind: "unavailable", reason: "thread-hydrating" }
+  )
+  assert.deepEqual(
+    projectLauncherAiTargetConfiguration({
+      isHydratingThread: false,
+      target,
+      threadConfiguration: null
+    }),
+    { kind: "unavailable", reason: "thread-state-unavailable" }
+  )
+})
+
+test("launcher fork capability does not default to allowed before durable state loads", () => {
+  assert.deepEqual(projectLauncherAiForkCapability({ forkState: null, isHydratingThread: false }), {
+    kind: "unavailable",
+    reason: "not-loaded"
+  })
+  assert.deepEqual(
+    projectLauncherAiForkCapability({
+      forkState: { canFork: true },
+      isHydratingThread: true
+    }),
+    { kind: "unavailable", reason: "thread-hydrating" }
+  )
+  assert.deepEqual(
+    projectLauncherAiForkCapability({
+      forkState: { canFork: false, reason: "pending_hitl" },
+      isHydratingThread: false
+    }),
+    { kind: "unavailable", reason: "pending_hitl" }
+  )
+})
+
 test("launcher composer revision ledger rejects ABA-equivalent drafts", () => {
   const ledger = createLauncherComposerRevisionLedger()
   const submitted = { refs: [], text: "same text" }
   ledger.register(submitted)
   ledger.markChanged()
   ledger.markChanged()
+
   assert.equal(ledger.takeIfCurrent(submitted), false)
 
   const current = { refs: [], text: "same text" }
@@ -82,6 +132,7 @@ function createControllerHarness(input?: {
   resumeGate?: Promise<void>
   resumeResult?: boolean
   threadId?: string | null
+  targetUnavailable?: boolean
 }): {
   acceptedInputs: Array<{ input: ComposerMessageInput; threadId: string }>
   controller: ReturnType<typeof createLauncherAiController>
@@ -172,18 +223,25 @@ function createControllerHarness(input?: {
           workspacePath: "/workspace"
         }
       },
-      currentModelId: "current-model",
-      currentPermissionMode: "ask-to-edit" satisfies PermissionModeName,
-      defaultDraftPermissionMode: "ask-to-edit",
-      draftTarget: input?.threadId
-        ? null
-        : {
-            kind: "draft",
-            modelId: "draft-model",
-            permissionMode: "explore",
-            workspaceKind: input?.draftWorkspaceKind ?? "projectless",
-            workspacePath: input?.draftWorkspacePath ?? null
-          },
+      targetConfiguration: input?.targetUnavailable
+        ? { kind: "unavailable", reason: "thread-state-unavailable" }
+        : input?.threadId
+          ? {
+              kind: "configured",
+              modelId: "current-model",
+              permissionMode: "ask-to-edit",
+              source: "thread",
+              threadId: input.threadId,
+              workspacePath: "/workspace"
+            }
+          : {
+              kind: "configured",
+              modelId: "draft-model",
+              permissionMode: "explore",
+              source: "draft",
+              workspaceKind: input?.draftWorkspaceKind ?? "projectless",
+              workspacePath: input?.draftWorkspacePath ?? null
+            },
       goToNextThread: async () => null,
       goToPreviousThread: async () => null,
       hasPendingCommand: input?.hasPendingCommand ?? false,
@@ -261,6 +319,27 @@ test("launcher AI controller creates a draft thread before invoking agent comman
   assert.deepEqual(harness.invoked, [{ input: messageInput, threadId: "created-thread" }])
   assert.deepEqual(harness.acceptedInputs, [{ input: messageInput, threadId: "created-thread" }])
   assert.deepEqual(harness.localComposerTexts, [""])
+})
+
+test("launcher AI controller does not submit or mutate settings without target configuration", async () => {
+  const harness = createControllerHarness({
+    targetUnavailable: true,
+    threadId: "existing-thread"
+  })
+  const messageInput: ComposerMessageInput = { refs: [], text: "must not run" }
+
+  harness.controller.runPrimaryAction(messageInput)
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(harness.invoked, [])
+  assert.deepEqual(harness.navigationErrors, [
+    null,
+    "Launcher target configuration is unavailable."
+  ])
+  assert.equal(await harness.controller.selectModel("fallback-model"), false)
+  assert.equal(await harness.controller.selectPermissionMode("auto"), false)
+  assert.deepEqual(harness.selectedModels, [])
+  assert.deepEqual(harness.selectedPermissionModes, [])
 })
 
 test("launcher AI controller starts a workspace draft without creating an empty thread", async () => {

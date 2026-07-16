@@ -16,11 +16,12 @@ import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 interface UseLauncherAiActionsOptions {
   branchThread: (messageId?: string) => Promise<void>
   canBranchThread: boolean
+  canConfigureTarget: boolean
   canGoToNextChat: boolean
   canGoToPreviousChat: boolean
   canStartNewQuestion: boolean
   copy: AppCopy["launcher"]
-  currentPermissionMode: PermissionModeName
+  currentPermissionMode: PermissionModeName | null
   goToNextChat: () => Promise<void>
   goToPreviousChat: () => Promise<void>
   inputRef: RefObject<LauncherInputElement | ComposerAreaHandle | null>
@@ -133,12 +134,13 @@ function getPermissionModeIcon(mode: PermissionModeName): React.ReactNode {
 export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
   actionController: LauncherActionController
   addAttachmentShortcut: string | null
-  permissionModeLabel: string
+  permissionModeLabel: string | null
   submitShortcut: string | null
 } {
   const {
     branchThread,
     canBranchThread,
+    canConfigureTarget,
     canGoToNextChat,
     canGoToPreviousChat,
     canStartNewQuestion,
@@ -227,10 +229,14 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
   )
   const handleChangeModelShortcut = useCallback(
     (event: KeyboardEvent): void => {
+      if (!canConfigureTarget) {
+        return
+      }
+
       event.preventDefault()
       void openModelPicker()
     },
-    [openModelPicker]
+    [canConfigureTarget, openModelPicker]
   )
   const handleBranchChatShortcut = useCallback(
     (event: KeyboardEvent): void => {
@@ -319,40 +325,48 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
             } satisfies LauncherActionDescriptor
           ]
         : []),
-      {
-        children: LAUNCHER_PERMISSION_MODE_ORDER.map(
-          (permissionMode) =>
-            ({
-              accessory:
-                permissionMode === currentPermissionMode
-                  ? createElement(Check, { className: "size-[var(--jingle-icon-sm)]" })
-                  : undefined,
-              checked: permissionMode === currentPermissionMode,
-              icon: getPermissionModeIcon(permissionMode),
-              id: `launcher-ai-permission-mode-${permissionMode}`,
-              onAction: async () => {
-                await selectPermissionMode(permissionMode)
-              },
-              title: getPermissionModeLabelFromLabels(permissionModeLabels, permissionMode)
-            }) satisfies LauncherActionDescriptor
-        ),
-        icon: getPermissionModeIcon(currentPermissionMode),
-        id: "launcher-ai-permission-mode",
-        onAction: () => {},
-        title: copy.permissionModeSection
-      },
+      ...(currentPermissionMode
+        ? [
+            {
+              children: LAUNCHER_PERMISSION_MODE_ORDER.map(
+                (permissionMode) =>
+                  ({
+                    accessory:
+                      permissionMode === currentPermissionMode
+                        ? createElement(Check, { className: "size-[var(--jingle-icon-sm)]" })
+                        : undefined,
+                    checked: permissionMode === currentPermissionMode,
+                    icon: getPermissionModeIcon(permissionMode),
+                    id: `launcher-ai-permission-mode-${permissionMode}`,
+                    onAction: async () => {
+                      await selectPermissionMode(permissionMode)
+                    },
+                    title: getPermissionModeLabelFromLabels(permissionModeLabels, permissionMode)
+                  }) satisfies LauncherActionDescriptor
+              ),
+              icon: getPermissionModeIcon(currentPermissionMode),
+              id: "launcher-ai-permission-mode",
+              onAction: () => {},
+              title: copy.permissionModeSection
+            } satisfies LauncherActionDescriptor
+          ]
+        : []),
       {
         id: "launcher-ai-open-main-history",
         onAction: openMainChat,
         shortcut: openMainHistoryShortcut,
         title: copy.openMainChat
       },
-      {
-        id: "launcher-ai-change-model",
-        onAction: openModelPicker,
-        shortcut: changeModelShortcut,
-        title: copy.changeModel
-      },
+      ...(canConfigureTarget
+        ? [
+            {
+              id: "launcher-ai-change-model",
+              onAction: openModelPicker,
+              shortcut: changeModelShortcut,
+              title: copy.changeModel
+            } satisfies LauncherActionDescriptor
+          ]
+        : []),
       ...(canBranchThread
         ? [
             {
@@ -368,6 +382,7 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
     branchChatShortcut,
     branchThread,
     canBranchThread,
+    canConfigureTarget,
     canGoToNextChat,
     canGoToPreviousChat,
     canStartNewQuestion,
@@ -414,10 +429,10 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
   return {
     actionController,
     addAttachmentShortcut,
-    permissionModeLabel: getPermissionModeLabelFromLabels(
-      permissionModeLabels,
-      currentPermissionMode
-    ),
+    permissionModeLabel:
+      currentPermissionMode === null
+        ? null
+        : getPermissionModeLabelFromLabels(permissionModeLabels, currentPermissionMode),
     submitShortcut
   }
 }

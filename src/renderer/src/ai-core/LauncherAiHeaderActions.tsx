@@ -38,6 +38,7 @@ interface LauncherAiHeaderActionsProps {
     environmentNoThread: string
     environmentNoWorkspace: string
     environmentPermission: string
+    environmentUnknownModel: (modelId: string) => string
     environmentProgress: string
     environmentProgressMore: (count: number) => string
     environmentThread: string
@@ -102,6 +103,7 @@ export function LauncherAiHeaderActions(props: LauncherAiHeaderActionsProps): Re
           environmentNoThread: labels.environmentNoThread,
           environmentNoWorkspace: labels.environmentNoWorkspace,
           environmentPermission: labels.environmentPermission,
+          environmentUnknownModel: labels.environmentUnknownModel,
           environmentProgress: labels.environmentProgress,
           environmentProgressMore: labels.environmentProgressMore,
           environmentThread: labels.environmentThread,

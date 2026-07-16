@@ -40,14 +40,16 @@ import {
   createLauncherAiController,
   createLauncherComposerRevisionLedger,
   createLauncherCommandSubmissionGate,
-  isLauncherCommandTargetCurrent
+  isLauncherCommandTargetCurrent,
+  projectLauncherAiForkCapability,
+  projectLauncherAiTargetConfiguration
 } from "./launcher-ai-controller"
 import { useAiAttachments } from "./useAiAttachments"
 import { useAssistantSelectionRefs } from "@/components/chat/useAssistantSelectionRefs"
 import { useLauncherAiActions } from "./useLauncherAiActions"
 import { useLauncherAiThreadNavigation } from "./useLauncherAiThreadNavigation"
-import { launcherAiCommands } from "./launcher-ai-commands"
 import { useLauncherAiModelDisplayProjection } from "./use-launcher-ai-model-display-controller"
+import { launcherAiCommands } from "./launcher-ai-commands"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
 import { useAgent } from "@/lib/use-agent"
@@ -85,7 +87,6 @@ import type { Message, Todo } from "@/types"
 import type { LauncherSearchResult } from "@shared/launcher-search"
 
 const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
-const DEFAULT_AGENT_CAN_FORK = true
 const EMPTY_MESSAGES: readonly Message[] = []
 const EMPTY_TODOS: readonly Todo[] = []
 
@@ -261,6 +262,7 @@ export function LauncherAiPage(): React.JSX.Element {
       if (currentActivities.get(activity.threadId)?.commandId !== activity.commandId) {
         return currentActivities
       }
+
       const nextActivities = new Map(currentActivities)
       nextActivities.delete(activity.threadId)
       return nextActivities
@@ -279,14 +281,12 @@ export function LauncherAiPage(): React.JSX.Element {
   } = useAssistantSelectionRefs(threadId)
   const threadContext = useThreadContext()
   const threadControl = useThreadControl(threadId)
-  const draftTarget = threadNavigation.target?.kind === "draft" ? threadNavigation.target : null
   const {
     branchThread: createBranchThread,
     branchThreadUntilMessage,
     canGoToNextThread,
     canGoToPreviousThread,
     createThread,
-    defaultDraftPermissionMode,
     goToNextThread,
     goToPreviousThread,
     isHydratingThread,
@@ -357,19 +357,45 @@ export function LauncherAiPage(): React.JSX.Element {
     threadId,
     (state) => state?.agent.messagesPage ?? EMPTY_MESSAGES
   )
+  const durableModelId = useThreadSelector(threadId, (state) => state?.agent.currentModel ?? null)
+  const durablePermissionMode = useThreadSelector(
+    threadId,
+    (state) => state?.agent.permissionMode ?? null
+  )
+  const durableWorkspacePath = useThreadSelector(
+    threadId,
+    (state) => state?.agent.workspacePath ?? null
+  )
+  const targetConfiguration = useMemo(
+    () =>
+      projectLauncherAiTargetConfiguration({
+        isHydratingThread,
+        target: threadNavigation.target,
+        threadConfiguration:
+          threadId && durableModelId && durablePermissionMode
+            ? {
+                modelId: durableModelId,
+                permissionMode: durablePermissionMode,
+                threadId,
+                workspacePath: durableWorkspacePath
+              }
+            : null
+      }),
+    [
+      durableModelId,
+      durablePermissionMode,
+      durableWorkspacePath,
+      isHydratingThread,
+      threadId,
+      threadNavigation.target
+    ]
+  )
   const currentModelId =
-    useThreadSelector(threadId, (state) => state?.agent.currentModel ?? null) ??
-    draftTarget?.modelId ??
-    null
-  const currentModelDisplay = useLauncherAiModelDisplayProjection(currentModelId)
+    targetConfiguration.kind === "configured" ? targetConfiguration.modelId : null
   const currentPermissionMode =
-    useThreadSelector(threadId, (state) => state?.agent.permissionMode ?? null) ??
-    draftTarget?.permissionMode ??
-    defaultDraftPermissionMode
+    targetConfiguration.kind === "configured" ? targetConfiguration.permissionMode : null
   const workspacePath =
-    useThreadSelector(threadId, (state) => state?.agent.workspacePath ?? null) ??
-    draftTarget?.workspacePath ??
-    null
+    targetConfiguration.kind === "configured" ? targetConfiguration.workspacePath : null
   const todos = useThreadSelector(threadId, (state) => state?.agent.todos ?? EMPTY_TODOS)
   const query = localComposerText
   const composerHistory = useMemo(() => projectComposerHistory(durableMessages), [durableMessages])
@@ -423,8 +449,6 @@ export function LauncherAiPage(): React.JSX.Element {
       setComposerText
     ]
   )
-  const getLatestCurrentMessageInput = useLatestCallback(getCurrentMessageInput)
-  const getLatestTarget = useLatestCallback(() => threadNavigation.target)
   useAiCoreLifecycle({
     onLauncherShown: () => {
       if (host.threads.mode !== "launcher" || !threadId) {
@@ -449,6 +473,8 @@ export function LauncherAiPage(): React.JSX.Element {
       text
     })
   }, [attachmentMessageRefs, composerMetadataRefs, query, selectionContext])
+  const getLatestCurrentMessageInput = useLatestCallback(getCurrentMessageInput)
+  const getLatestTarget = useLatestCallback(() => threadNavigation.target)
   const initialMessageInput = useMemo(
     () => ({
       refs: [...attachmentMessageRefs],
@@ -530,15 +556,19 @@ export function LauncherAiPage(): React.JSX.Element {
 
     return isThreadPinned(state.threads.find((thread) => thread.thread_id === threadId)?.metadata)
   })
+  const currentModelDisplay = useLauncherAiModelDisplayProjection(currentModelId)
   const currentPermissionLabel =
-    currentPermissionMode === "auto"
-      ? copy.launcher.permissionModeAuto
-      : currentPermissionMode === "explore"
-        ? copy.launcher.permissionModeExplore
-        : copy.launcher.permissionModeAskToEdit
-  const canForkThread = useThreadSelector(
-    threadId,
-    (state) => state?.agent.forkState.canFork ?? DEFAULT_AGENT_CAN_FORK
+    currentPermissionMode === null
+      ? null
+      : currentPermissionMode === "auto"
+        ? copy.launcher.permissionModeAuto
+        : currentPermissionMode === "explore"
+          ? copy.launcher.permissionModeExplore
+          : copy.launcher.permissionModeAskToEdit
+  const forkState = useThreadSelector(threadId, (state) => state?.agent.forkState ?? null)
+  const forkCapability = useMemo(
+    () => projectLauncherAiForkCapability({ forkState, isHydratingThread }),
+    [forkState, isHydratingThread]
   )
   const attachmentCount = attachments.length
   const hasAttachmentDraft = attachmentCount > 0
@@ -566,10 +596,6 @@ export function LauncherAiPage(): React.JSX.Element {
         commandSubmissionGate,
         createBranchThread,
         createThread,
-        currentModelId,
-        currentPermissionMode,
-        defaultDraftPermissionMode,
-        draftTarget,
         goToNextThread,
         goToPreviousThread,
         hasPendingCommand,
@@ -581,6 +607,7 @@ export function LauncherAiPage(): React.JSX.Element {
         setNavigationError,
         setLocalComposerText: setComposerText,
         startFreshDraftTarget,
+        targetConfiguration,
         threadId,
         title: copy.launcher.aiThreadTitle,
         updateThread,
@@ -607,20 +634,17 @@ export function LauncherAiPage(): React.JSX.Element {
       copy.launcher.aiThreadTitle,
       createBranchThread,
       createThread,
-      currentModelId,
-      currentPermissionMode,
-      defaultDraftPermissionMode,
-      draftTarget,
       goToNextThread,
       goToPreviousThread,
       handleCommandAdmitted,
       handleCommandSettled,
-      handleAcceptedComposerInput,
       hasPendingCommand,
       hasPendingApproval,
+      handleAcceptedComposerInput,
       isBusy,
-      setComposerText,
       startFreshDraftTarget,
+      setComposerText,
+      targetConfiguration,
       threadId,
       threadContext,
       updateFreshDraft,
@@ -753,11 +777,16 @@ export function LauncherAiPage(): React.JSX.Element {
       await stopAgentThread(pendingCommandForCurrentThread.threadId)
       return
     }
+
     await stop()
   }, [pendingCommandForCurrentThread, stop])
   const handleOpenModelPicker = useCallback(async (): Promise<void> => {
+    if (targetConfiguration.kind === "unavailable") {
+      return
+    }
+
     setShowModelPicker(true)
-  }, [])
+  }, [targetConfiguration.kind])
   const submitCurrentInput = useCallback((): void => {
     const input = getCurrentMessageInput()
     composerRevision.register(input)
@@ -952,7 +981,9 @@ export function LauncherAiPage(): React.JSX.Element {
     assistantSelectionRefs.length > 0 ||
     hasLauncherSelectionContext ||
     hasThreadMessages
-  const canBranchThread = Boolean(threadId && hasThreadMessages && canForkThread)
+  const canBranchThread = Boolean(
+    threadId && hasThreadMessages && forkCapability.kind === "available"
+  )
   const canUseHeaderThreadActions = !isApprovalPending
   const canOpenSidebar = canUseHeaderThreadActions
   const canNavigateAcrossThreads = canUseHeaderThreadActions
@@ -1320,6 +1351,7 @@ export function LauncherAiPage(): React.JSX.Element {
     canGoToPreviousChat: canNavigateAcrossThreads && canGoToPreviousChat,
     canStartNewQuestion: canNavigateAcrossThreads && canStartNewQuestion,
     copy: copy.launcher,
+    canConfigureTarget: targetConfiguration.kind === "configured",
     currentPermissionMode,
     goToNextChat: handleGoToNextChat,
     goToPreviousChat: handleGoToPreviousChat,
@@ -1427,12 +1459,14 @@ export function LauncherAiPage(): React.JSX.Element {
               title={sidebarTitle}
               titleAccessory={
                 <div className="flex h-5 w-full min-w-0 items-center gap-[var(--jingle-space-1)] overflow-hidden">
-                  <LauncherAiHeaderModelPicker
-                    currentModelId={currentModelId}
-                    fallbackLabel={copy.launcher.aiThreadTitle}
-                    onSelectModel={selectModel}
-                  />
-                  {threadId ? (
+                  {targetConfiguration.kind === "configured" ? (
+                    <LauncherAiHeaderModelPicker
+                      currentModelId={currentModelId}
+                      fallbackLabel={copy.launcher.aiThreadTitle}
+                      onSelectModel={selectModel}
+                    />
+                  ) : null}
+                  {targetConfiguration.kind === "configured" && threadId ? (
                     <span aria-hidden="true" className="h-2.5 w-px shrink-0 bg-border/64" />
                   ) : null}
                   {threadId ? (
@@ -1498,6 +1532,7 @@ export function LauncherAiPage(): React.JSX.Element {
                 environmentNoThread: copy.launcher.environmentNoThread,
                 environmentNoWorkspace: copy.launcher.environmentNoWorkspace,
                 environmentPermission: copy.launcher.environmentPermission,
+                environmentUnknownModel: copy.launcher.environmentUnknownModel,
                 environmentProgress: copy.launcher.environmentProgress,
                 environmentProgressMore: copy.launcher.environmentProgressMore,
                 environmentThread: copy.launcher.environmentThread,
@@ -1602,6 +1637,7 @@ export function LauncherAiPage(): React.JSX.Element {
                     isHydrating={isHydratingThread}
                     isLoading={isBusy}
                     loadingReason={threadLoadingReason}
+                    forkCapability={forkCapability}
                     onAddAssistantSelectionRef={handleAddSelectionRef}
                     onBranch={conversationBranchHandler}
                     onEditLastUserMessage={editLastUserMessage}
@@ -1870,7 +1906,7 @@ export function LauncherAiPage(): React.JSX.Element {
           />
         ) : null}
 
-        {showModelPicker ? (
+        {showModelPicker && targetConfiguration.kind === "configured" ? (
           <LauncherAiModelPicker
             currentModelId={currentModelId}
             onClose={() => setShowModelPicker(false)}

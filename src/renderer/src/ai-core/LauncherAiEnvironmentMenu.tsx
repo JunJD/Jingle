@@ -10,7 +10,7 @@ import type { LauncherAiModelDisplayProjection } from "./use-launcher-ai-model-d
 
 export interface LauncherAiEnvironmentInfo {
   model: LauncherAiModelDisplayProjection
-  permissionLabel: string
+  permissionLabel: string | null
   threadId: string | null
   todos: readonly Todo[]
   workspacePath: string | null
@@ -34,6 +34,7 @@ interface LauncherAiEnvironmentMenuProps {
     environmentNoThread: string
     environmentNoWorkspace: string
     environmentPermission: string
+    environmentUnknownModel: (modelId: string) => string
     environmentProgress: string
     environmentProgressMore: (count: number) => string
     environmentThread: string
@@ -181,7 +182,7 @@ export function LauncherAiEnvironmentMenu(
   if (environment.model.kind === "configured") {
     modelLabel = environment.model.label
   } else if (environment.model.kind === "unavailable") {
-    modelLabel = environment.model.modelId
+    modelLabel = labels.environmentUnknownModel(environment.model.modelId)
   }
 
   if (environment.threadId !== null) {
@@ -224,10 +225,12 @@ export function LauncherAiEnvironmentMenu(
             value={workspaceValue}
           />
           <EnvironmentRow label={labels.environmentModel} value={modelLabel} />
-          <EnvironmentRow
-            label={labels.environmentPermission}
-            value={environment.permissionLabel}
-          />
+          {environment.permissionLabel !== null ? (
+            <EnvironmentRow
+              label={labels.environmentPermission}
+              value={environment.permissionLabel}
+            />
+          ) : null}
           <EnvironmentRow label={labels.environmentThread} value={threadLabel} />
           {environment.threadId ? (
             <ThreadDigestSection

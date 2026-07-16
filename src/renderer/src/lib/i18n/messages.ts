@@ -164,6 +164,7 @@ export interface AppCopy {
     environmentNoThread: string
     environmentNoWorkspace: string
     environmentPermission: string
+    environmentUnknownModel: (modelId: string) => string
     environmentProgress: string
     environmentProgressMore: (count: number) => string
     environmentThread: string
@@ -542,6 +543,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       environmentNoThread: "暂无会话",
       environmentNoWorkspace: "暂无 workspace",
       environmentPermission: "权限",
+      environmentUnknownModel: (modelId) => `模型不可用（${modelId}）`,
       environmentProgress: "进度",
       environmentProgressMore: (count) => `再显示 ${count} 个`,
       environmentThread: "会话",
@@ -947,6 +949,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       environmentNoThread: "No session",
       environmentNoWorkspace: "No workspace",
       environmentPermission: "Permission",
+      environmentUnknownModel: (modelId) => `Model unavailable (${modelId})`,
       environmentProgress: "Progress",
       environmentProgressMore: (count) => `Show ${count} more`,
       environmentThread: "Session",

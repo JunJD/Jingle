@@ -11,6 +11,7 @@ import { useThreadSelector } from "@/lib/thread-context"
 import { cn } from "@/lib/utils"
 import type { EditLastUserMessageAndInvokeInput } from "@/lib/agent-control"
 import type { LauncherAiThreadLoadingReason } from "./useLauncherAiThreadNavigation"
+import type { LauncherAiForkCapabilityProjection } from "./launcher-ai-controller"
 import {
   useLauncherAiArtifactController,
   useLauncherArtifactImagePreview
@@ -309,6 +310,7 @@ export function LauncherAiThreadLoadingState(props: {
 export function LauncherAiConversation(props: {
   clearError: () => void
   error: string | null
+  forkCapability: LauncherAiForkCapabilityProjection
   isHydrating: boolean
   isLoading: boolean
   loadingReason: LauncherAiThreadLoadingReason | null
@@ -321,6 +323,7 @@ export function LauncherAiConversation(props: {
   const {
     clearError,
     error,
+    forkCapability,
     isHydrating,
     isLoading,
     loadingReason,
@@ -335,6 +338,7 @@ export function LauncherAiConversation(props: {
     <LauncherAiConversationViewport
       clearError={clearError}
       error={error}
+      forkCapability={forkCapability}
       isHydrating={isHydrating}
       isLoading={isLoading}
       loadingReason={loadingReason}
@@ -350,6 +354,7 @@ export function LauncherAiConversation(props: {
 const LauncherAiConversationViewport = memo(function LauncherAiConversationViewport(props: {
   clearError: () => void
   error: string | null
+  forkCapability: LauncherAiForkCapabilityProjection
   isHydrating: boolean
   isLoading: boolean
   loadingReason: LauncherAiThreadLoadingReason | null
@@ -363,6 +368,7 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
   const {
     clearError,
     error,
+    forkCapability,
     isHydrating,
     isLoading,
     loadingReason,
@@ -381,7 +387,6 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
     threadId,
     (state) => state?.view.messageProjection.displayRows.length ?? 0
   )
-  const canFork = useThreadSelector(threadId, (state) => state?.agent.forkState.canFork ?? true)
   const chatVirtualItemCount = hasVisibleTurns || isLoading || error ? displayRowCount : 0
   const {
     forceScrollToLatest,
@@ -428,7 +433,7 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
         isAtBottom={isAtBottom}
         isLoading={isLoading}
         isScrolling={isScrolling}
-        onBranch={canFork ? onBranch : undefined}
+        onBranch={forkCapability.kind === "available" ? onBranch : undefined}
         onAddAssistantSelectionRef={onAddAssistantSelectionRef}
         onEditLastUserMessage={onEditLastUserMessage}
         onRetry={onRetry}

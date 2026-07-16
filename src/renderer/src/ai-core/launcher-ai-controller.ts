@@ -8,11 +8,45 @@ import type {
   EditLastUserMessageAndInvokeInput,
   UpdateAgentThreadRecord
 } from "@/lib/agent-control"
-import type { HITLDecision } from "@/types"
+import type { HITLDecision, ThreadForkBlockReason, ThreadForkState } from "@/types"
 import type { AiCoreThreadCreateInput, AiCoreThreadHandle } from "./AiCoreHost"
 import type { LauncherAiActiveTarget } from "./useLauncherAiThreadNavigation"
 
-type LauncherAiDraftTarget = Extract<LauncherAiActiveTarget, { kind: "draft" }>
+interface LauncherAiThreadConfiguration {
+  modelId: string
+  permissionMode: PermissionModeName
+  threadId: string
+  workspacePath: string | null
+}
+
+export type LauncherAiTargetConfigurationProjection =
+  | {
+      kind: "configured"
+      modelId: string | null
+      permissionMode: PermissionModeName
+      source: "draft"
+      workspaceKind: ThreadWorkspaceKind
+      workspacePath: string | null
+    }
+  | {
+      kind: "configured"
+      modelId: string
+      permissionMode: PermissionModeName
+      source: "thread"
+      threadId: string
+      workspacePath: string | null
+    }
+  | {
+      kind: "unavailable"
+      reason: "target-unavailable" | "thread-hydrating" | "thread-state-unavailable"
+    }
+
+export type LauncherAiForkCapabilityProjection =
+  | { kind: "available" }
+  | {
+      kind: "unavailable"
+      reason: ThreadForkBlockReason | "blocked" | "not-loaded" | "thread-hydrating"
+    }
 
 export function isLauncherCommandTargetCurrent(input: {
   acceptedThreadId: string
@@ -31,6 +65,66 @@ export function isLauncherCommandTargetCurrent(input: {
     input.currentTarget?.kind === "thread" &&
     input.currentTarget.threadId === input.acceptedThreadId
   )
+}
+
+export function projectLauncherAiTargetConfiguration(input: {
+  isHydratingThread: boolean
+  target: LauncherAiActiveTarget | null
+  threadConfiguration: LauncherAiThreadConfiguration | null
+}): LauncherAiTargetConfigurationProjection {
+  if (input.target === null) {
+    return { kind: "unavailable", reason: "target-unavailable" }
+  }
+
+  if (input.target.kind === "draft") {
+    return {
+      kind: "configured",
+      modelId: input.target.modelId,
+      permissionMode: input.target.permissionMode,
+      source: "draft",
+      workspaceKind: input.target.workspaceKind,
+      workspacePath: input.target.workspacePath
+    }
+  }
+
+  if (input.isHydratingThread) {
+    return { kind: "unavailable", reason: "thread-hydrating" }
+  }
+
+  if (
+    input.threadConfiguration === null ||
+    input.threadConfiguration.threadId !== input.target.threadId
+  ) {
+    return { kind: "unavailable", reason: "thread-state-unavailable" }
+  }
+
+  return {
+    kind: "configured",
+    modelId: input.threadConfiguration.modelId,
+    permissionMode: input.threadConfiguration.permissionMode,
+    source: "thread",
+    threadId: input.threadConfiguration.threadId,
+    workspacePath: input.threadConfiguration.workspacePath
+  }
+}
+
+export function projectLauncherAiForkCapability(input: {
+  forkState: ThreadForkState | null
+  isHydratingThread: boolean
+}): LauncherAiForkCapabilityProjection {
+  if (input.isHydratingThread) {
+    return { kind: "unavailable", reason: "thread-hydrating" }
+  }
+
+  if (input.forkState === null) {
+    return { kind: "unavailable", reason: "not-loaded" }
+  }
+
+  if (!input.forkState.canFork) {
+    return { kind: "unavailable", reason: input.forkState.reason ?? "blocked" }
+  }
+
+  return { kind: "available" }
 }
 
 interface LauncherCommandSubmissionLease {
@@ -97,10 +191,6 @@ export interface LauncherAiControllerInput {
   commandSubmissionGate: LauncherCommandSubmissionGate
   createBranchThread: (threadId: string) => Promise<AiCoreThreadHandle>
   createThread: (input: AiCoreThreadCreateInput) => Promise<AiCoreThreadHandle>
-  currentModelId: string | null
-  currentPermissionMode: PermissionModeName
-  defaultDraftPermissionMode: PermissionModeName
-  draftTarget: LauncherAiDraftTarget | null
   goToNextThread: () => Promise<string | null>
   goToPreviousThread: () => Promise<string | null>
   hasPendingCommand: boolean
@@ -138,6 +228,7 @@ export interface LauncherAiControllerInput {
     workspaceKind?: ThreadWorkspaceKind
     workspacePath?: string | null
   }) => Promise<void>
+  targetConfiguration: LauncherAiTargetConfigurationProjection
 }
 
 export interface LauncherAiController {
@@ -161,33 +252,41 @@ function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-function resolveDraftWorkspacePath(draftTarget: LauncherAiDraftTarget | null): string | undefined {
-  if (!draftTarget || draftTarget.workspacePath === null) {
+function resolveDraftWorkspacePath(workspacePath: string | null): string | undefined {
+  if (workspacePath === null) {
     return undefined
   }
 
-  if (draftTarget.workspacePath.trim().length === 0) {
+  if (workspacePath.trim().length === 0) {
     throw new Error("Workspace path cannot be empty.")
   }
 
-  return draftTarget.workspacePath
+  return workspacePath
 }
 
 export function createLauncherAiController(input: LauncherAiControllerInput): LauncherAiController {
   const ensureThreadForInvoke = async (): Promise<string> => {
+    if (input.targetConfiguration.kind === "unavailable") {
+      throw new Error("Launcher target configuration is unavailable.")
+    }
+
     if (input.threadId) {
       return input.threadId
     }
 
+    if (input.targetConfiguration.source !== "draft") {
+      throw new Error("Launcher target configuration is unavailable.")
+    }
+
     const createInput: AiCoreThreadCreateInput = {
-      modelId: input.draftTarget?.modelId ?? undefined,
-      permissionMode: input.draftTarget?.permissionMode ?? input.defaultDraftPermissionMode,
+      modelId: input.targetConfiguration.modelId ?? undefined,
+      permissionMode: input.targetConfiguration.permissionMode,
       source: AI_THREAD_SOURCE,
       title: input.title,
       visibility: AI_THREAD_VISIBILITY,
-      workspaceKind: input.draftTarget?.workspaceKind ?? "projectless"
+      workspaceKind: input.targetConfiguration.workspaceKind
     }
-    const workspacePath = resolveDraftWorkspacePath(input.draftTarget)
+    const workspacePath = resolveDraftWorkspacePath(input.targetConfiguration.workspacePath)
     if (workspacePath !== undefined) {
       createInput.workspacePath = workspacePath
     }
@@ -247,6 +346,7 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
         input.isBusy ||
         input.hasPendingCommand ||
         input.hasPendingApproval ||
+        input.targetConfiguration.kind === "unavailable" ||
         !input.threadId ||
         !hasComposerMessageInputContent(editInput.messageInput)
       ) {
@@ -334,6 +434,10 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
         })
     },
     async selectModel(modelId) {
+      if (input.targetConfiguration.kind === "unavailable") {
+        return false
+      }
+
       if (input.threadId) {
         try {
           input.setNavigationError(null)
@@ -353,6 +457,10 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
       return true
     },
     async selectPermissionMode(permissionMode) {
+      if (input.targetConfiguration.kind === "unavailable") {
+        return false
+      }
+
       if (input.threadId) {
         try {
           input.setNavigationError(null)
@@ -376,11 +484,15 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
       input.setLocalComposerText(value)
     },
     async startFreshDraft(draftInput) {
+      if (input.targetConfiguration.kind === "unavailable") {
+        return false
+      }
+
       try {
         input.setNavigationError(null)
         await input.startFreshDraftTarget({
-          modelId: input.currentModelId,
-          permissionMode: input.currentPermissionMode,
+          modelId: input.targetConfiguration.modelId,
+          permissionMode: input.targetConfiguration.permissionMode,
           workspaceKind: draftInput?.workspaceKind,
           workspacePath: draftInput?.workspacePath
         })
