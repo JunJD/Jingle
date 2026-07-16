@@ -1115,7 +1115,7 @@ export async function getAccessToken(service: WithAccessTokenService): Promise<s
 function ConnectExtensionEmptyView(): ReactElement {
   return createElement(
     List,
-    null,
+    { navigationTitle: "Connection Required" },
     createElement(List.EmptyView, {
       actions: createElement(
         ActionPanel,
