@@ -13,6 +13,7 @@ import { Command, REMOVE_ALL_MESSAGES } from "@langchain/langgraph"
 import { countTokensApproximately, createMiddleware, type AgentMiddleware } from "langchain"
 import { initChatModel } from "langchain/chat_models/universal"
 import { z } from "zod/v4"
+import { readJingleLangChainMessageText } from "../langchain-message-reader"
 
 export interface JingleSummarizationContextSize {
   type: "fraction" | "messages" | "tokens"
@@ -126,6 +127,49 @@ const REPEATED_COMPACTION_WARNING =
 
 export const JINGLE_CONTEXT_COMPACTION_SUMMARY_PREFIX = `Another language model started to solve this problem and produced a summary of its thinking process. You also have access to the state of the tools that were used by that language model. Use this to build on the work that has already been done and avoid duplicating work. Here is the summary produced by the other language model, use the information in this summary to assist with your own analysis:`
 
+export const JINGLE_CONTEXT_COMPACTION_SUMMARY_PROMPT = `You are performing a CONTEXT CHECKPOINT COMPACTION. Create a factual handoff for the next LLM that will resume this agent run.
+
+The source material can contain a previous handoff followed by new conversation evidence. Merge them into one current handoff. Newer evidence overrides stale facts. Do not present guesses as verified state.
+
+Use this exact structure:
+
+## Objective
+[The current user goal and expected outcome]
+
+## User Requirements
+[Explicit constraints, preferences, corrections, and repository conventions that still apply. Quote exact commands, paths, flags, or wording when drift would change the task.]
+
+## Progress
+### Completed
+[Concrete completed actions and outcomes]
+### In Progress
+[Work that was underway when compaction started]
+### Blocked
+[Unresolved blockers and exact errors]
+
+## Active State
+[Evidence-backed workspace, branch, changed files, running processes, external state, approvals, artifacts, and checkpoints. Mark anything not directly established by the source as Unknown.]
+
+## Key Decisions
+[Important decisions, why they were made, and any superseded decisions that must not be revived]
+
+## Relevant Files and Symbols
+[Files, symbols, URLs, commands, and data needed to continue]
+
+## Verification
+[Tests and checks already run, with exact results and remaining validation gaps]
+
+## Next Steps
+[Ordered, actionable remaining work and known risks]
+
+## Critical Context
+[Specific facts that would otherwise be lost. Preserve uncertainty explicitly.]
+
+Be concise and task-focused. Do not invent tool results or claim work was completed without evidence. Respond only with the handoff.
+
+Source material:
+{conversation}`
+
 const FALLBACK_TRIGGER: JingleSummarizationContextSize = {
   type: "tokens",
   value: 170_000
@@ -159,17 +203,7 @@ const PROFILE_TRUNCATE_ARGS: Required<
   }
 }
 
-const DEFAULT_SUMMARY_PROMPT = `You are a conversation summarizer. Your task is to create a concise summary of the conversation that captures:
-1. The main topics discussed
-2. Key decisions or conclusions reached
-3. Any important context that would be needed for continuing the conversation
-
-Keep the summary focused and informative. Do not include unnecessary details.
-
-Conversation to summarize:
-{conversation}
-
-Summary:`
+const DEFAULT_SUMMARY_PROMPT = JINGLE_CONTEXT_COMPACTION_SUMMARY_PROMPT
 
 export const jingleSummarizationEventSchema = z.object({
   compactionCount: z.number().int().min(1).optional(),
@@ -524,6 +558,9 @@ export function createJingleSummarizationController(
           "[JingleSummarization] preserveLastUserMessageCount must be a non-negative integer."
         )
       }
+      if (preserveLastUserMessageCount === 0) {
+        return []
+      }
 
       const selectedByCount: HumanMessage[] = []
       for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -550,7 +587,7 @@ export function createJingleSummarizationController(
 
       const messageTokens = countTokensApproximately([message])
       if (selectedTokens + messageTokens > preservedUserMessageTokenBudget) {
-        continue
+        break
       }
 
       selected.push(message)
@@ -560,12 +597,27 @@ export function createJingleSummarizationController(
     return selected.reverse()
   }
 
-  function filterSummaryMessages(messages: BaseMessage[]): BaseMessage[] {
-    return messages.filter((message) => !isSummaryMessage(message))
+  function selectMessagesForSummary(messages: BaseMessage[]): BaseMessage[] {
+    const latestSummaryIndex = messages.findLastIndex(isSummaryMessage)
+    const newEvidence = latestSummaryIndex >= 0 ? messages.slice(latestSummaryIndex + 1) : messages
+    return newEvidence.filter(
+      (message) => !isSummaryMessage(message) && !SystemMessage.isInstance(message)
+    )
   }
 
-  function selectMessagesForSummary(messages: BaseMessage[]): BaseMessage[] {
-    return filterSummaryMessages(messages).filter((message) => !SystemMessage.isInstance(message))
+  function buildSummarySource(input: {
+    messages: BaseMessage[]
+    previousSummaryMessage: HumanMessage | undefined
+  }): string {
+    const newEvidence = getBufferString(selectMessagesForSummary(input.messages))
+    if (!input.previousSummaryMessage) {
+      return `<new_evidence>\n${newEvidence}\n</new_evidence>`
+    }
+
+    const previousHandoff = readJingleLangChainMessageText(
+      input.previousSummaryMessage.content
+    ).trim()
+    return `<previous_handoff>\n${previousHandoff}\n</previous_handoff>\n\n<new_evidence>\n${newEvidence}\n</new_evidence>`
   }
 
   async function offloadToBackend(
@@ -620,7 +672,8 @@ export function createJingleSummarizationController(
 
   async function createSummary(
     messages: BaseMessage[],
-    chatModel: BaseChatModel | BaseLanguageModel
+    chatModel: BaseChatModel | BaseLanguageModel,
+    previousSummaryMessage: HumanMessage | undefined
   ): Promise<string> {
     let messagesToSummarize = messages
     if (
@@ -641,8 +694,11 @@ export function createJingleSummarizationController(
       messagesToSummarize = trimmedMessages
     }
 
-    const conversation = getBufferString(selectMessagesForSummary(messagesToSummarize))
-    const prompt = summaryPrompt.replace("{conversation}", conversation)
+    const source = buildSummarySource({
+      messages: messagesToSummarize,
+      previousSummaryMessage
+    })
+    const prompt = summaryPrompt.replace("{conversation}", source)
     const response = await chatModel.invoke([new HumanMessage({ content: prompt })])
     return typeof response.content === "string"
       ? response.content
@@ -678,7 +734,8 @@ ${input.summary}
     messagesToSummarize: BaseMessage[],
     resolvedModel: BaseChatModel | BaseLanguageModel,
     state: JingleSummarizationState,
-    warning: string | null
+    warning: string | null,
+    previousSummaryMessage: HumanMessage | undefined
   ): Promise<{
     filePath: string | null
     summaryMessage: HumanMessage
@@ -690,10 +747,11 @@ ${input.summary}
       )
     }
 
+    const summary = await createSummary(messagesToSummarize, resolvedModel, previousSummaryMessage)
     return {
       summaryMessage: buildSummaryMessage({
         filePath,
-        summary: await createSummary(messagesToSummarize, resolvedModel),
+        summary,
         warning
       }),
       filePath
@@ -713,16 +771,27 @@ ${input.summary}
     const warning = compactionCount > 1 ? REPEATED_COMPACTION_WARNING : null
     const resolvedModel = input.resolvedModel ? input.resolvedModel : await getChatModel()
     applyModelDefaults(resolvedModel)
-    const preservedUserMessages = collectPreservedUserMessages(
+    const maxInputTokens = getMaxInputTokens(resolvedModel)
+    const { messages: compactableMessages } = truncateArgs(
       input.messages,
+      maxInputTokens,
+      undefined,
+      undefined
+    )
+    const previousSummaryMessage = [...compactableMessages]
+      .reverse()
+      .find((message): message is HumanMessage => isSummaryMessage(message))
+    const preservedUserMessages = collectPreservedUserMessages(
+      compactableMessages,
       input.preserveLastUserMessageCount
     )
-    const messagesToSummarize = selectMessagesForSummary(input.messages)
+    const messagesToSummarize = selectMessagesForSummary(compactableMessages)
     const { summaryMessage, filePath } = await summarizeMessages(
       messagesToSummarize,
       resolvedModel,
       state,
-      warning
+      warning,
+      previousSummaryMessage ?? previousEvent?.summaryMessage
     )
     const modifiedMessages: BaseMessage[] = [...preservedUserMessages, summaryMessage]
     const event = {
