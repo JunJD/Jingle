@@ -11,6 +11,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog"
 import { ProviderLogo } from "@/components/model-provider-logo"
+import { useI18n } from "@/lib/i18n"
 import {
   SettingsField,
   SettingsPasswordInput,
@@ -52,6 +53,7 @@ export function ProviderEditorDialogs(props: {
     onConfigured,
     providers
   } = props
+  const { copy } = useI18n()
 
   if (editor.kind === "closed") {
     return null
@@ -61,6 +63,7 @@ export function ProviderEditorDialogs(props: {
   if (editor.kind === "custom") {
     return (
       <CustomProviderDialog
+        closeLabel={copy.common.close}
         commands={commands}
         initialProvider={editor.config}
         modelProviderPaths={modelProviderPaths}
@@ -80,6 +83,7 @@ export function ProviderEditorDialogs(props: {
     return (
       <ProviderCredentialsDialog
         activeProviderId={activeProviderId}
+        closeLabel={copy.common.close}
         commands={commands}
         provider={provider}
         onClose={onClose}
@@ -93,6 +97,7 @@ export function ProviderEditorDialogs(props: {
 
   return (
     <ProviderActivationDialog
+      closeLabel={copy.common.close}
       commands={commands}
       provider={provider}
       onClose={onClose}
@@ -106,12 +111,13 @@ export function ProviderEditorDialogs(props: {
 
 function ProviderCredentialsDialog(props: {
   activeProviderId: ProviderId | null
+  closeLabel: string
   commands: ModelSetupCommands
   onClose: () => void
   onConfigured: (providerId: ProviderId) => void
   provider: ModelSetupProvider
 }): React.JSX.Element {
-  const { activeProviderId, commands, onClose, onConfigured, provider } = props
+  const { activeProviderId, closeLabel, commands, onClose, onConfigured, provider } = props
   const credentialSchemas = provider.providerCredentialSchema.credentialFormSchemas
   const configured = provider.customConfiguration.status === "active"
   const [credentials, setCredentials] = useState<Record<string, string>>({})
@@ -190,7 +196,10 @@ function ProviderCredentialsDialog(props: {
 
   return (
     <Dialog open onOpenChange={(open) => !open && !saving && onClose()}>
-      <DialogContent className="w-[var(--jingle-dialog-mobile-w)] rounded-[var(--jingle-radius-dialog)] sm:max-w-[520px] sm:rounded-[var(--jingle-radius-dialog)]">
+      <DialogContent
+        className="w-[var(--jingle-dialog-mobile-w)] rounded-[var(--jingle-radius-dialog)] sm:max-w-[520px] sm:rounded-[var(--jingle-radius-dialog)]"
+        closeLabel={closeLabel}
+      >
         <DialogHeader className="text-left">
           <DialogTitle className="flex items-center gap-[var(--jingle-space-2)]">
             <ProviderLogo providerId={provider.id} className="h-5 w-5" />
@@ -285,12 +294,13 @@ function ProviderCredentialsDialog(props: {
 }
 
 function ProviderActivationDialog(props: {
+  closeLabel: string
   commands: ModelSetupCommands
   onClose: () => void
   onConfigured: (providerId: ProviderId) => void
   provider: ModelSetupProvider
 }): React.JSX.Element {
-  const { commands, onClose, onConfigured, provider } = props
+  const { closeLabel, commands, onClose, onConfigured, provider } = props
   const [saving, setSaving] = useState(false)
   const [errorText, setErrorText] = useState<string | null>(null)
   const unavailableMessage = provider.customConfiguration.message
@@ -318,7 +328,10 @@ function ProviderActivationDialog(props: {
 
   return (
     <Dialog open onOpenChange={(open) => !open && !saving && onClose()}>
-      <DialogContent className="w-[var(--jingle-dialog-mobile-w)] rounded-[var(--jingle-radius-dialog)] sm:max-w-[460px] sm:rounded-[var(--jingle-radius-dialog)]">
+      <DialogContent
+        className="w-[var(--jingle-dialog-mobile-w)] rounded-[var(--jingle-radius-dialog)] sm:max-w-[460px] sm:rounded-[var(--jingle-radius-dialog)]"
+        closeLabel={closeLabel}
+      >
         <DialogHeader className="text-left">
           <DialogTitle className="flex items-center gap-[var(--jingle-space-2)]">
             <ProviderLogo providerId={provider.id} className="h-5 w-5" />
@@ -350,6 +363,7 @@ function ProviderActivationDialog(props: {
 }
 
 function CustomProviderDialog(props: {
+  closeLabel: string
   commands: ModelSetupCommands
   initialProvider: CustomProviderConfig
   modelProviderPaths: ModelProviderPaths
@@ -357,12 +371,16 @@ function CustomProviderDialog(props: {
   onSaved: (providerId: ProviderId, snapshotReady: boolean) => void
   provider: ModelSetupProvider
 }): React.JSX.Element {
-  const { commands, initialProvider, modelProviderPaths, onClose, onSaved, provider } = props
+  const { closeLabel, commands, initialProvider, modelProviderPaths, onClose, onSaved, provider } =
+    props
   const savingRef = useRef(false)
 
   return (
     <Dialog open onOpenChange={(open) => !open && !savingRef.current && onClose()}>
-      <DialogContent className="w-[var(--jingle-dialog-mobile-w)] max-h-[90vh] overflow-y-auto rounded-[var(--jingle-radius-dialog)] sm:max-w-[600px] sm:rounded-[var(--jingle-radius-dialog)]">
+      <DialogContent
+        className="w-[var(--jingle-dialog-mobile-w)] max-h-[90vh] overflow-y-auto rounded-[var(--jingle-radius-dialog)] sm:max-w-[600px] sm:rounded-[var(--jingle-radius-dialog)]"
+        closeLabel={closeLabel}
+      >
         <DialogHeader className="text-left">
           <DialogTitle className="flex items-center gap-[var(--jingle-space-2)]">
             <ProviderLogo providerId={provider.id} className="h-5 w-5" />

@@ -1,6 +1,7 @@
 import { useEffect, useReducer } from "react"
 import { Loader2, SlidersHorizontal } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useI18n } from "@/lib/i18n"
 import {
   Dialog,
   DialogContent,
@@ -228,6 +229,7 @@ function SwitchModelDialogContent(props: {
   providerOptions: ModelSetupProvider[]
   snapshot: ModelSetupSnapshot
 }): React.JSX.Element {
+  const { copy } = useI18n()
   const {
     commands,
     initialSelectedProviderId,
@@ -426,7 +428,10 @@ function SwitchModelDialogContent(props: {
         onOpenChange(nextOpen)
       }}
     >
-      <DialogContent className="w-[var(--jingle-dialog-mobile-w)] rounded-[var(--jingle-radius-dialog)] sm:max-w-[500px] sm:rounded-[var(--jingle-radius-dialog)]">
+      <DialogContent
+        className="w-[var(--jingle-dialog-mobile-w)] rounded-[var(--jingle-radius-dialog)] sm:max-w-[500px] sm:rounded-[var(--jingle-radius-dialog)]"
+        closeLabel={copy.common.close}
+      >
         <DialogHeader className="text-left">
           <DialogTitle className="flex items-center gap-[var(--jingle-space-2)]">
             <SlidersHorizontal className="h-4 w-4" />

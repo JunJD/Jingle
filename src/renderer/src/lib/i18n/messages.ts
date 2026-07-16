@@ -102,6 +102,7 @@ export interface AppCopy {
   common: {
     arguments: string
     approval: string
+    close: string
     completed: string
     copied: string
     error: string
@@ -433,6 +434,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
     common: {
       arguments: "参数",
       approval: "待审批",
+      close: "关闭",
       completed: "已完成",
       copied: "已复制",
       error: "错误",
@@ -785,6 +787,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
     common: {
       arguments: "Arguments",
       approval: "Approval",
+      close: "Close",
       completed: "Completed",
       copied: "Copied",
       error: "Error",

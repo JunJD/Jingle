@@ -383,7 +383,10 @@ export function ArchivedThreadsTab(props: { locale: AppLocale }): React.JSX.Elem
           }
         }}
       >
-        <DialogContent className="w-[var(--jingle-dialog-mobile-w)] rounded-[var(--jingle-radius-dialog)] sm:max-w-[var(--jingle-dialog-w-sm)] sm:rounded-[var(--jingle-radius-dialog)]">
+        <DialogContent
+          className="w-[var(--jingle-dialog-mobile-w)] rounded-[var(--jingle-radius-dialog)] sm:max-w-[var(--jingle-dialog-w-sm)] sm:rounded-[var(--jingle-radius-dialog)]"
+          closeLabel={copy.common.cancel}
+        >
           <DialogHeader className="text-left">
             <DialogTitle>{deleteDialogTitle}</DialogTitle>
             <DialogDescription>{deleteDialogDescription}</DialogDescription>

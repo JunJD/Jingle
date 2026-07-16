@@ -12,7 +12,10 @@ export function LauncherAiModelPicker(props: {
 
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
-      <DialogContent className="max-w-[var(--launcher-model-dialog-w)] gap-0 overflow-hidden border-border bg-background p-0">
+      <DialogContent
+        className="max-w-[var(--launcher-model-dialog-w)] gap-0 overflow-hidden border-border bg-background p-0"
+        closeLabel={copy.common.close}
+      >
         <DialogHeader className="border-b border-border px-[var(--jingle-space-4)] py-[var(--jingle-space-3)]">
           <DialogTitle className="[font-size:var(--jingle-font-control)] font-medium">
             {copy.launcher.changeModel}

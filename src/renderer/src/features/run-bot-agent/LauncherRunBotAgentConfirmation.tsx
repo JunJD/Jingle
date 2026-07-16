@@ -35,7 +35,10 @@ export function LauncherRunBotAgentConfirmation(
         }
       }}
     >
-      <DialogContent className="w-[var(--jingle-dialog-mobile-w)] gap-[var(--jingle-space-3)] p-[var(--jingle-space-4)] sm:max-w-[440px]">
+      <DialogContent
+        className="w-[var(--jingle-dialog-mobile-w)] gap-[var(--jingle-space-3)] p-[var(--jingle-space-4)] sm:max-w-[440px]"
+        closeLabel={copy.common.close}
+      >
         <DialogHeader className="space-y-[var(--jingle-space-1)] pr-[var(--jingle-space-5)]">
           <DialogTitle>{copy.runBotAgent.title}</DialogTitle>
           <DialogDescription className="truncate" title={projection?.title}>
