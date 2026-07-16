@@ -36,18 +36,31 @@ export type ThreadRunClaim =
   | {
       status: "running"
     }
+  | {
+      status: "shutting_down"
+    }
 
 export class ThreadLifecycleGate {
   private readonly deletions = new Map<string, Promise<void>>()
   private readonly runs = new Map<string, ActiveThreadRun>()
   private readonly transitions = new Map<string, Promise<void>>()
+  private shutdownPromise: Promise<void> | null = null
+  private shuttingDown = false
 
   async claimRun(threadId: string): Promise<ThreadRunClaim> {
+    if (this.shuttingDown) {
+      return { status: "shutting_down" }
+    }
+
     if (this.deletions.has(threadId)) {
       return { status: "deleting" }
     }
 
     return this.runTransition(threadId, async () => {
+      if (this.shuttingDown) {
+        return { status: "shutting_down" }
+      }
+
       if (this.deletions.has(threadId)) {
         return { status: "deleting" }
       }
@@ -81,7 +94,17 @@ export class ThreadLifecycleGate {
     })
   }
 
+  shutdown(): Promise<void> {
+    this.shuttingDown = true
+    this.shutdownPromise ??= this.stopAllRuns()
+    return this.shutdownPromise
+  }
+
   async withDeletion(threadId: string, operation: () => Promise<void>): Promise<void> {
+    if (this.shuttingDown) {
+      throw new Error("The application is shutting down.")
+    }
+
     const existingDeletion = this.deletions.get(threadId)
     if (existingDeletion) {
       await existingDeletion
@@ -131,5 +154,15 @@ export class ThreadLifecycleGate {
 
     run.controller.abort()
     await run.completion
+  }
+
+  private async stopAllRuns(): Promise<void> {
+    await Promise.all(this.transitions.values())
+
+    const runs = [...this.runs.values()]
+    for (const run of runs) {
+      run.controller.abort()
+    }
+    await Promise.all(runs.map((run) => run.completion))
   }
 }

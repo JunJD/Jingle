@@ -516,6 +516,7 @@ export class AgentService {
 
   private rejectThreadRun(input: {
     channel: AgentRunChannel
+    code: "CONFLICT" | "UNAVAILABLE"
     message: string
     sink: AgentStreamSink
   }): AgentRunRejection {
@@ -523,7 +524,7 @@ export class AgentService {
       input.channel,
       new JingleIpcError({
         channel: input.channel,
-        code: "CONFLICT",
+        code: input.code,
         message: input.message
       })
     )
@@ -541,7 +542,20 @@ export class AgentService {
   ): AgentRunRejection {
     return this.rejectThreadRun({
       channel,
+      code: "CONFLICT",
       message: "This thread is being deleted.",
+      sink
+    })
+  }
+
+  private sendApplicationShuttingDownError(
+    channel: AgentRunChannel,
+    sink: AgentStreamSink
+  ): AgentRunRejection {
+    return this.rejectThreadRun({
+      channel,
+      code: "UNAVAILABLE",
+      message: "The application is shutting down.",
       sink
     })
   }
@@ -552,6 +566,7 @@ export class AgentService {
   ): AgentRunRejection {
     return this.rejectThreadRun({
       channel,
+      code: "CONFLICT",
       message: "Agent run is already in progress; follow-ups must be queued or steered.",
       sink
     })
@@ -566,6 +581,13 @@ export class AgentService {
     | { lease: null; outcome: Extract<AgentCommandOutcome, { type: "rejected" }> }
   > {
     const claim = await this.threadLifecycleGate.claimRun(threadId)
+    if (claim.status === "shutting_down") {
+      return {
+        lease: null,
+        outcome: this.sendApplicationShuttingDownError(channel, sink)
+      }
+    }
+
     if (claim.status === "deleting") {
       return {
         lease: null,
@@ -662,6 +684,10 @@ export class AgentService {
     return this.dispatchRun("agent:resume", (reportOutcome) => {
       return this.resume(params, sink, { ...options, onCommandOutcome: reportOutcome })
     })
+  }
+
+  async shutdown(): Promise<void> {
+    await this.threadLifecycleGate.shutdown()
   }
 
   async editLastUserMessageAndInvoke(

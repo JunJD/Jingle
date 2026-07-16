@@ -4,6 +4,7 @@ import { container, type DependencyContainer } from "tsyringe"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import { AgentThreadRunner } from "./agent/agent-thread-runner"
 import { registerAgentIpcHandlers, registerAgentModule } from "./agent/module"
+import { AgentService } from "./agent/service"
 import {
   registerAiSessionWindowsIpcHandlers,
   registerAiSessionWindowsModule
@@ -217,6 +218,7 @@ export class MainCompositionRoot {
       await stopThreadWorkflowRuntimeAutomation()
     }
     stopNativeSelectionCapture()
+    await this.dependencyContainer.resolve(AgentService).shutdown()
     resolveExtensionRuntimeMenuBarService(this.dependencyContainer).dispose()
     resolveExtensionRuntimeManager(this.dependencyContainer).dispose()
     resolveNativeMenuBarService(this.dependencyContainer).dispose()
