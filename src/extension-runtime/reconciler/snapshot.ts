@@ -1330,9 +1330,7 @@ function readDatePickerValueProp(props: RuntimeHostProps): string {
   const value = props.value
   const type = readDatePickerTypeProp(props)
   if (value instanceof Date) {
-    return type === "datetime"
-      ? toDateTimeLocalInputValue(value)
-      : (value.toISOString().split("T")[0] ?? "")
+    return type === "datetime" ? toDateTimeLocalInputValue(value) : value.toISOString().slice(0, 10)
   }
 
   return typeof value === "string" ? value : ""
