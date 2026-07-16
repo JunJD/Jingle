@@ -12,6 +12,7 @@ import {
   getTurnPendingApproval,
   projectActiveTurnStatus,
   projectMessages,
+  projectToolActivityStatus,
   projectTurnPendingApproval,
   projectTurnElapsedDivider,
   projectTurnToolExecutionsView,
@@ -21,6 +22,33 @@ import {
 } from "../../src/renderer/src/lib/message-projection"
 import { stabilizeJingleMessageList } from "@jingle/agent-react"
 import type { HITLRequest, Message, ToolCall } from "../../src/renderer/src/types"
+
+test("hydrated result-only tool activity remains complete without a live execution projection", () => {
+  assert.equal(
+    projectToolActivityStatus({
+      approvalRequired: false,
+      execution: undefined,
+      hasDurableResult: true
+    }),
+    "complete"
+  )
+  assert.equal(
+    projectToolActivityStatus({
+      approvalRequired: false,
+      execution: undefined,
+      hasDurableResult: false
+    }),
+    "unavailable"
+  )
+  assert.equal(
+    projectToolActivityStatus({
+      approvalRequired: true,
+      execution: undefined,
+      hasDurableResult: true
+    }),
+    "approval"
+  )
+})
 
 function createToolCall(
   id: string,
@@ -918,7 +946,7 @@ test("streaming todo list tools stay out of temporary activity projection", () =
   const entries = buildTurnAssistantEntries(turn, {
     activeToolCalls: [
       {
-        argsText: "{\"todos\":[]}",
+        argsText: '{"todos":[]}',
         id: "active-todos",
         index: 0,
         messageId: "assistant-active",
@@ -928,7 +956,7 @@ test("streaming todo list tools stay out of temporary activity projection", () =
         status: "running"
       },
       {
-        argsText: "{\"path\":\"src/index.ts\"}",
+        argsText: '{"path":"src/index.ts"}',
         id: "active-read",
         index: 1,
         messageId: "assistant-active",
@@ -1637,7 +1665,10 @@ test("pending steering user messages do not steal in-flight tool results from th
 
   assert.equal(projection.turns.length, 2)
   assert.equal(projection.turns[0]?.key, "user-1")
-  assert.equal(projection.turns[0]?.assistants.map((message) => message.id).join(","), "assistant-1")
+  assert.equal(
+    projection.turns[0]?.assistants.map((message) => message.id).join(","),
+    "assistant-1"
+  )
   assert.equal(projection.turns[0]?.toolResults.get(toolCall.id)?.content, "tool result")
   assert.equal(projection.turns[1]?.key, "steer-1")
   assert.equal(projection.turns[1]?.assistants.length, 0)

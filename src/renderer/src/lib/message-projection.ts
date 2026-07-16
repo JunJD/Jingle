@@ -279,6 +279,22 @@ export type AgentToolExecutionsView = JingleAgentToolExecutionsView<
   JingleActiveAgentToolCall
 >
 
+export function projectToolActivityStatus(input: {
+  approvalRequired: boolean
+  execution: AgentToolExecutionView | undefined
+  hasDurableResult: boolean
+}): AgentToolExecutionViewStatus {
+  if (input.approvalRequired) {
+    return "approval"
+  }
+
+  if (input.execution) {
+    return input.execution.status
+  }
+
+  return input.hasDurableResult ? "complete" : "unavailable"
+}
+
 export type ActiveTurnStatusProjectionKind = JingleActiveRunCoachStatusKind
 
 export type ActiveTurnStatusProjection = JingleActiveTurnStatusProjection

@@ -19,14 +19,18 @@ export interface AgentActivityHeaderSummary {
   title: string
 }
 
-export interface AgentActivityFallbackHeaderInput {
+export interface AgentActivityHeaderInput {
+  activeThinking: boolean
+  canUseSummary: boolean
   hasApprovalActions: boolean
   hasLoadingActions: boolean
   itemsLength: number
 }
 
-export interface AgentActivityFallbackHeaderText {
+export interface AgentActivityHeaderProjection {
+  active: boolean
   detail: string | null
+  icon: AgentActivitySummaryIcon | null
   title: string
 }
 
@@ -165,26 +169,50 @@ export function projectAgentActivityHeaderSummary(
   }
 }
 
-export function projectAgentActivityFallbackHeaderText(
+export function projectAgentActivityHeader(
   copy: AppCopy,
-  input: AgentActivityFallbackHeaderInput
-): AgentActivityFallbackHeaderText {
+  tools: readonly AgentActivitySummaryTool[],
+  input: AgentActivityHeaderInput
+): AgentActivityHeaderProjection {
   if (input.hasApprovalActions) {
     return {
+      active: false,
       detail: null,
+      icon: null,
       title: copy.chat.agentStatusWaitingApproval
+    }
+  }
+
+  if (input.activeThinking) {
+    return {
+      active: true,
+      detail: null,
+      icon: null,
+      title: copy.chat.agentStatusThinking
+    }
+  }
+
+  const summary = input.canUseSummary ? projectAgentActivityHeaderSummary(copy, tools) : null
+  if (summary) {
+    return {
+      active: input.hasLoadingActions,
+      ...summary
     }
   }
 
   if (input.hasLoadingActions) {
     return {
+      active: true,
       detail: null,
+      icon: null,
       title: copy.chat.toolActivityRunningGeneric
     }
   }
 
   return {
+    active: false,
     detail: null,
+    icon: null,
     title: copy.chat.executedSteps(input.itemsLength)
   }
 }

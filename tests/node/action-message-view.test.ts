@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 import {
-  projectAgentActivityFallbackHeaderText,
+  projectAgentActivityHeader,
   projectAgentActivityHeaderSummary
 } from "../../src/renderer/src/components/chat/agent-activity-summary"
 import { searchWeb } from "../../src/main/services/web-tools/search"
@@ -1635,39 +1635,51 @@ test("projectAgentActivityHeaderSummary keeps pending exploration local and excl
   )
 })
 
-test("projectAgentActivityFallbackHeaderText keeps grouped loading headers stable", () => {
+test("projectAgentActivityHeader keeps grouped loading headers stable", () => {
   assert.deepEqual(
-    projectAgentActivityFallbackHeaderText(copy, {
+    projectAgentActivityHeader(copy, [], {
+      activeThinking: false,
+      canUseSummary: false,
       hasApprovalActions: false,
       hasLoadingActions: true,
       itemsLength: 3
     }),
     {
+      active: true,
       detail: null,
+      icon: null,
       title: "Using tools"
     }
   )
 
   assert.deepEqual(
-    projectAgentActivityFallbackHeaderText(copy, {
+    projectAgentActivityHeader(copy, [], {
+      activeThinking: false,
+      canUseSummary: false,
       hasApprovalActions: true,
       hasLoadingActions: true,
       itemsLength: 3
     }),
     {
+      active: false,
       detail: null,
+      icon: null,
       title: "Waiting for your confirmation"
     }
   )
 
   assert.deepEqual(
-    projectAgentActivityFallbackHeaderText(copy, {
+    projectAgentActivityHeader(copy, [], {
+      activeThinking: false,
+      canUseSummary: false,
       hasApprovalActions: false,
       hasLoadingActions: false,
       itemsLength: 3
     }),
     {
+      active: false,
       detail: null,
+      icon: null,
       title: "3 steps completed"
     }
   )
