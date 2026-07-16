@@ -2040,18 +2040,18 @@ body[data-platform="darwin"][data-window="pinned-ai-session"] .launcher-chrome-h
 .launcher-page-transition-panel {
   height: 100%;
   width: 100%;
-  animation-duration: 240ms;
+  animation-duration: var(--jingle-motion-duration-enter);
   animation-fill-mode: both;
-  animation-timing-function: cubic-bezier(0.22, 0.9, 0.32, 1);
+  animation-timing-function: var(--jingle-motion-ease-out);
   transform-origin: 50% 18%;
-  will-change: opacity, transform, filter;
+  will-change: opacity, transform;
 }
 
-.launcher-page-transition-panel[data-direction="forward"] {
+.launcher-page-transition-panel[data-motion="animate"][data-direction="forward"] {
   animation-name: launcher-page-enter-forward;
 }
 
-.launcher-page-transition-panel[data-direction="backward"] {
+.launcher-page-transition-panel[data-motion="animate"][data-direction="backward"] {
   animation-name: launcher-page-enter-backward;
 }
 
@@ -2596,28 +2596,24 @@ body[data-platform="darwin"][data-window="pinned-ai-session"] .launcher-chrome-h
 @keyframes launcher-page-enter-forward {
   from {
     opacity: 0;
-    transform: translate3d(0, 14px, 0) scale(0.988);
-    filter: blur(6px);
+    transform: translate3d(0, 6px, 0);
   }
 
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-    filter: blur(0);
+    transform: translate3d(0, 0, 0);
   }
 }
 
 @keyframes launcher-page-enter-backward {
   from {
     opacity: 0;
-    transform: translate3d(0, -10px, 0) scale(0.992);
-    filter: blur(4px);
+    transform: translate3d(0, -4px, 0);
   }
 
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-    filter: blur(0);
+    transform: translate3d(0, 0, 0);
   }
 }
 
