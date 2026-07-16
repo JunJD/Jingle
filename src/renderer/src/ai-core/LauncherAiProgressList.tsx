@@ -1,6 +1,7 @@
 import { CheckCircle2, Circle, Clock3, XCircle } from "lucide-react"
 import { useState } from "react"
 import type { Todo } from "@/types"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 const PROGRESS_VISIBLE_LIMIT = 6
@@ -57,13 +58,14 @@ export function LauncherAiProgressList(props: {
         })}
       </div>
       {hiddenCount > 0 ? (
-        <button
+        <Button
           className="launcher-ai-progress__more"
           type="button"
+          variant="ghost"
           onClick={() => setIsExpanded(true)}
         >
           {moreLabel(hiddenCount)}
-        </button>
+        </Button>
       ) : null}
     </div>
   )

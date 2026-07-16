@@ -1,6 +1,7 @@
 import { Loader2, MessageSquare, Search } from "lucide-react"
 import { useEffect, useMemo, useRef } from "react"
 import type { LauncherSearchResult } from "@shared/launcher-search"
+import { Button } from "@/components/ui/button"
 
 interface LauncherAiThreadSearchOverlayProps {
   activeIndex: number
@@ -139,7 +140,7 @@ export function LauncherAiThreadSearchOverlay(
                 const isCurrent = resultThreadId === currentThreadId
 
                 return (
-                  <button
+                  <Button
                     key={`${result.source}:${result.id}`}
                     className="launcher-ai-thread-search__result"
                     data-active={isActive ? "" : undefined}
@@ -152,6 +153,7 @@ export function LauncherAiThreadSearchOverlay(
                         onSelectThread(resultThreadId)
                       }
                     }}
+                    variant="ghost"
                   >
                     <span className="launcher-ai-thread-search__result-icon">
                       <MessageSquare aria-hidden="true" />
@@ -164,7 +166,7 @@ export function LauncherAiThreadSearchOverlay(
                         {result.subtitle}
                       </span>
                     </span>
-                  </button>
+                  </Button>
                 )
               })}
             </div>
