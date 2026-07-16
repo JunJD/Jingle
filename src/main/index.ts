@@ -23,13 +23,15 @@ import {
   installIpcMainNetworkInstrumentation
 } from "@jingle/devtools-network/main"
 import {
+  findJingleProtocolUrl,
+  isJingleOAuthCallbackUrl,
+  JINGLE_PROTOCOL,
   REGISTER_DEV_PROTOCOL_CLIENT_ENV,
   resolveJingleProtocolRegistrationMode
 } from "./protocol-client-registration"
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 import { createIpcNetworkWindow, showIpcNetworkWindow } from "./windows/ipc-network-window"
 
-const JINGLE_PROTOCOL = "jingle"
 const APP_DISPLAY_NAME = "Jingle"
 const APP_USER_MODEL_ID = "com.jingle.desktop"
 const DEV_APP_USER_MODEL_ID = "com.jingle.desktop.dev"
@@ -178,15 +180,7 @@ function openIpcNetworkWindow(): void {
 }
 
 function handleOpenUrl(rawUrl: string): void {
-  const parsedUrl = new URL(rawUrl)
-  if (parsedUrl.protocol !== `${JINGLE_PROTOCOL}:`) {
-    return
-  }
-
-  const isOAuthCallback =
-    (parsedUrl.hostname === "oauth" && parsedUrl.pathname === "/callback") ||
-    parsedUrl.pathname === "/oauth/callback"
-  if (!isOAuthCallback) {
+  if (!isJingleOAuthCallbackUrl(rawUrl)) {
     return
   }
 
@@ -198,10 +192,6 @@ function handleOpenUrl(rawUrl: string): void {
   void mainCompositionRoot.handleOAuthCallback(rawUrl).catch((error) => {
     console.error("[Main] Failed to handle OAuth callback:", error)
   })
-}
-
-function findJingleProtocolUrl(entries: readonly string[]): string | null {
-  return entries.find((entry) => entry.startsWith(`${JINGLE_PROTOCOL}://`)) ?? null
 }
 
 function registerJingleProtocolClient(): void {
