@@ -231,7 +231,6 @@ export function LauncherAiPage(): React.JSX.Element {
   const [composerHistoryCursor, setComposerHistoryCursor] = useState<ComposerHistoryCursor>(() =>
     createComposerHistoryCursor(null)
   )
-  const [isComposerInputOverflowing, setIsComposerInputOverflowing] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     if (host.chrome?.initialSidebarOpen === true) {
       return true
@@ -547,14 +546,12 @@ export function LauncherAiPage(): React.JSX.Element {
     clipboardCandidateAttachments.length > 0 || clipboardCandidateContext.kind === "text"
   const hasAssistantSelectionRefs = assistantSelectionRefs.length > 0
   const hasLauncherSelectionContext = Boolean(selectionContext)
-  const isComposerExpanded =
+  const hasComposerReferences =
     !pendingApproval &&
-    (query.includes("\n") ||
-      hasAttachmentDraft ||
+    (hasAttachmentDraft ||
       hasClipboardCandidateDraft ||
       hasAssistantSelectionRefs ||
       hasLauncherSelectionContext)
-  const shouldStackComposerControls = !pendingApproval && isComposerInputOverflowing
   const shellConfig = getAiShellConfig(surface.shellConfig)
   const isApprovalPending = Boolean(pendingApproval)
   const showFollowUpQueue = Boolean(
@@ -1686,25 +1683,81 @@ export function LauncherAiPage(): React.JSX.Element {
                       }}
                     />
 
-                    <div
-                      className={cn(
-                        "grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-x-[var(--jingle-gap-sm)] gap-y-[var(--jingle-space-1)]",
-                        shouldStackComposerControls
-                          ? "items-center"
-                          : isComposerExpanded
-                            ? "items-end"
-                            : "items-center"
-                      )}
-                    >
-                      {!isApprovalPending ? (
+                    <div className="flex min-w-0 flex-col gap-[var(--jingle-space-1)]">
+                      {hasComposerReferences ? (
                         <div
-                          className={cn(
-                            "flex shrink-0 items-center",
-                            shouldStackComposerControls
-                              ? "col-start-1 row-start-2"
-                              : "col-start-1 row-start-1"
-                          )}
+                          className="scrollbar-hide flex min-w-0 items-center gap-[var(--jingle-space-1)] overflow-x-auto overflow-y-hidden [&>*]:shrink-0"
+                          data-launcher-composer-reference-rail=""
                         >
+                          <ClipboardChip
+                            context={
+                              clipboardCandidateContext.kind === "text"
+                                ? clipboardCandidateContext
+                                : { kind: "none" }
+                            }
+                            onAccept={acceptClipboardText}
+                            onClear={dismissClipboardCandidate}
+                          />
+                          <SelectionContextChip
+                            context={selectionContext}
+                            onClear={dismissSelectionContext}
+                          />
+                          <LauncherAttachmentStrip
+                            attachments={clipboardCandidateAttachments}
+                            intent="candidate"
+                            onAccept={handleAcceptClipboardAttachments}
+                            onRemove={dismissClipboardCandidate}
+                            removeLabel={copy.launcher.clearClipboardContext}
+                          />
+                          <LauncherAttachmentStrip
+                            attachments={attachments}
+                            onRemove={handleRemoveAttachment}
+                          />
+                          <AssistantSelectionReferencePill
+                            className="px-[var(--jingle-space-1)]"
+                            refs={assistantSelectionRefs}
+                            removable
+                            onClear={handleClearSelectionRefs}
+                            onRemove={handleRemoveSelectionRef}
+                          />
+                        </div>
+                      ) : null}
+
+                      <PromptInputTextarea
+                        composerRef={inputRef as React.RefObject<ComposerAreaHandle | null>}
+                        mode="composer"
+                        onMentionQueryChange={setMentionQuery}
+                        onKeyDown={handleComposerKeyDown}
+                        onSubmit={isApprovalPending ? undefined : submitCurrentInput}
+                        placeholder={
+                          isApprovalPending
+                            ? copy.toolCall.rejectFeedbackPlaceholder
+                            : copy.launcher.aiInputPlaceholder
+                        }
+                        sourceMentions={isApprovalPending ? [] : sourceMentions}
+                        workspaceFileMentions={
+                          isApprovalPending ? [] : workspaceFileMentionState.files
+                        }
+                        workspaceFileSearchEnabled={
+                          isApprovalPending ? false : workspaceFileMentionState.searchEnabled
+                        }
+                        workspaceFileSearchIncomplete={
+                          isApprovalPending ? false : workspaceFileMentionState.isIncomplete
+                        }
+                        workspaceFileSearchInProgress={
+                          isApprovalPending ? false : workspaceFileMentionState.isSearching
+                        }
+                        className="w-full py-[7px] [font-size:var(--jingle-font-control)] font-normal"
+                      />
+
+                      <div
+                        className={cn(
+                          "flex min-h-[var(--jingle-prompt-input-action-size)] min-w-0 items-center gap-[var(--jingle-gap-sm)]",
+                          isApprovalPending ? "justify-end" : "justify-between"
+                        )}
+                        data-launcher-composer-action-rail=""
+                      >
+                        {!isApprovalPending ? (
                           <PromptInputAction
                             onClick={openAttachmentPicker}
                             onMouseDown={(event) => event.preventDefault()}
@@ -1717,167 +1770,85 @@ export function LauncherAiPage(): React.JSX.Element {
                             }
                             tooltip={copy.launcher.aiAddAttachment}
                           />
-                        </div>
-                      ) : null}
+                        ) : null}
 
-                      <div
-                        className={cn(
-                          "flex min-w-0 flex-1 flex-col gap-[var(--jingle-space-1)]",
-                          shouldStackComposerControls
-                            ? "col-span-3 col-start-1 row-start-1"
-                            : isApprovalPending
-                              ? "col-span-2 col-start-1 row-start-1"
-                              : "col-start-2 row-start-1"
-                        )}
-                      >
-                        <PromptInputTextarea
-                          composerRef={inputRef as React.RefObject<ComposerAreaHandle | null>}
-                          mode="composer"
-                          onMentionQueryChange={setMentionQuery}
-                          onVisualLineOverflowChange={setIsComposerInputOverflowing}
-                          onKeyDown={handleComposerKeyDown}
-                          onSubmit={isApprovalPending ? undefined : submitCurrentInput}
-                          placeholder={
-                            isApprovalPending
-                              ? copy.toolCall.rejectFeedbackPlaceholder
-                              : copy.launcher.aiInputPlaceholder
-                          }
-                          sourceMentions={isApprovalPending ? [] : sourceMentions}
-                          workspaceFileMentions={
-                            isApprovalPending ? [] : workspaceFileMentionState.files
-                          }
-                          workspaceFileSearchEnabled={
-                            isApprovalPending ? false : workspaceFileMentionState.searchEnabled
-                          }
-                          workspaceFileSearchIncomplete={
-                            isApprovalPending ? false : workspaceFileMentionState.isIncomplete
-                          }
-                          workspaceFileSearchInProgress={
-                            isApprovalPending ? false : workspaceFileMentionState.isSearching
-                          }
-                          className="w-full py-[7px] [font-size:var(--jingle-font-control)] font-normal"
-                        />
+                        <div className="ml-auto flex shrink-0 items-center gap-[var(--jingle-gap-sm)]">
+                          {isApprovalPending ? (
+                            <>
+                              <button
+                                type="button"
+                                className="min-h-8 rounded-full px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                disabled={hasPendingCommand}
+                                onClick={submitApprovalRejectFeedback}
+                              >
+                                {copy.toolCall.decline}
+                              </button>
+                              <button
+                                type="button"
+                                className="min-h-8 rounded-full bg-foreground px-[var(--jingle-space-3)] [font-size:var(--jingle-font-body)] font-semibold text-background shadow-[0_6px_16px_rgba(32,38,45,0.14)] transition-transform hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
+                                disabled={hasPendingCommand}
+                                onClick={submitApprovalAccept}
+                              >
+                                {copy.toolCall.accept}
+                              </button>
+                              {hasPendingCurrentCommand ? (
+                                <PromptInputAction
+                                  onClick={() => {
+                                    void handleStop()
+                                  }}
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  icon={<Square className="size-[var(--jingle-icon-compact)]" />}
+                                  label={copy.launcher.aiStopLabel}
+                                  title={copy.launcher.aiStopLabel}
+                                  tooltip={copy.launcher.aiStopLabel}
+                                />
+                              ) : null}
+                            </>
+                          ) : null}
 
-                        {!isApprovalPending ? (
-                          <>
-                            <ClipboardChip
-                              context={
-                                clipboardCandidateContext.kind === "text"
-                                  ? clipboardCandidateContext
-                                  : { kind: "none" }
+                          {actionController.canOpenActions && !isApprovalPending ? (
+                            <PromptInputAction
+                              onClick={() => actionController.openActions()}
+                              onMouseDown={(event) => event.preventDefault()}
+                              icon={<Command className="size-[var(--jingle-icon-sm)]" />}
+                              label={copy.launcher.actionsLabel}
+                              title={
+                                actionController.actionPanelShortcut
+                                  ? `${copy.launcher.actionsLabel} (${actionController.actionPanelShortcut})`
+                                  : copy.launcher.actionsLabel
                               }
-                              onAccept={acceptClipboardText}
-                              onClear={dismissClipboardCandidate}
+                              tooltip={
+                                actionController.actionPanelShortcut
+                                  ? `${copy.launcher.actionsLabel} (${actionController.actionPanelShortcut})`
+                                  : copy.launcher.actionsLabel
+                              }
                             />
-                            <SelectionContextChip
-                              context={selectionContext}
-                              onClear={dismissSelectionContext}
-                            />
-                            <LauncherAttachmentStrip
-                              attachments={clipboardCandidateAttachments}
-                              intent="candidate"
-                              onAccept={handleAcceptClipboardAttachments}
-                              onRemove={dismissClipboardCandidate}
-                              removeLabel={copy.launcher.clearClipboardContext}
-                            />
-                            <LauncherAttachmentStrip
-                              attachments={attachments}
-                              onRemove={handleRemoveAttachment}
-                            />
-                            <AssistantSelectionReferencePill
-                              className="px-[var(--jingle-space-1)]"
-                              refs={assistantSelectionRefs}
-                              removable
-                              onClear={handleClearSelectionRefs}
-                              onRemove={handleRemoveSelectionRef}
-                            />
-                          </>
-                        ) : null}
-                      </div>
+                          ) : null}
 
-                      <div
-                        className={cn(
-                          "flex shrink-0 items-center gap-[var(--jingle-gap-sm)]",
-                          shouldStackComposerControls
-                            ? "col-start-3 row-start-2 justify-self-end"
-                            : "col-start-3 row-start-1"
-                        )}
-                      >
-                        {isApprovalPending ? (
-                          <>
-                            <button
-                              type="button"
-                              className="min-h-8 rounded-full px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                              disabled={hasPendingCommand}
-                              onClick={submitApprovalRejectFeedback}
-                            >
-                              {copy.toolCall.decline}
-                            </button>
-                            <button
-                              type="button"
-                              className="min-h-8 rounded-full bg-foreground px-[var(--jingle-space-3)] [font-size:var(--jingle-font-body)] font-semibold text-background shadow-[0_6px_16px_rgba(32,38,45,0.14)] transition-transform hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
-                              disabled={hasPendingCommand}
-                              onClick={submitApprovalAccept}
-                            >
-                              {copy.toolCall.accept}
-                            </button>
-                            {hasPendingCurrentCommand ? (
-                              <PromptInputAction
-                                onClick={() => {
-                                  void handleStop()
-                                }}
-                                onMouseDown={(event) => event.preventDefault()}
-                                icon={<Square className="size-[var(--jingle-icon-compact)]" />}
-                                label={copy.launcher.aiStopLabel}
-                                title={copy.launcher.aiStopLabel}
-                                tooltip={copy.launcher.aiStopLabel}
-                              />
-                            ) : null}
-                          </>
-                        ) : null}
-
-                        {actionController.canOpenActions && !isApprovalPending ? (
-                          <PromptInputAction
-                            onClick={() => actionController.openActions()}
-                            onMouseDown={(event) => event.preventDefault()}
-                            icon={<Command className="size-[var(--jingle-icon-sm)]" />}
-                            label={copy.launcher.actionsLabel}
-                            title={
-                              actionController.actionPanelShortcut
-                                ? `${copy.launcher.actionsLabel} (${actionController.actionPanelShortcut})`
-                                : copy.launcher.actionsLabel
-                            }
-                            tooltip={
-                              actionController.actionPanelShortcut
-                                ? `${copy.launcher.actionsLabel} (${actionController.actionPanelShortcut})`
-                                : copy.launcher.actionsLabel
-                            }
-                          />
-                        ) : null}
-
-                        {showStopAction && !isApprovalPending ? (
-                          <PromptInputAction
-                            onClick={() => {
-                              void handleStop()
-                            }}
-                            onMouseDown={(event) => event.preventDefault()}
-                            icon={<Square className="size-[var(--jingle-icon-compact)]" />}
-                            label={copy.launcher.aiStopLabel}
-                            title={copy.launcher.aiStopLabel}
-                            tooltip={copy.launcher.aiStopLabel}
-                          />
-                        ) : !isApprovalPending ? (
-                          <PromptInputAction
-                            onClick={submitCurrentInput}
-                            onMouseDown={(event) => event.preventDefault()}
-                            disabled={primaryActionDisabled}
-                            icon={<ArrowUp className="size-[var(--jingle-icon-sm)]" />}
-                            label={copy.launcher.aiPrimaryLabel}
-                            title={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
-                            tooltip={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
-                            className="text-foreground enabled:bg-background-secondary/72 enabled:hover:bg-background-secondary disabled:bg-transparent"
-                          />
-                        ) : null}
+                          {showStopAction && !isApprovalPending ? (
+                            <PromptInputAction
+                              onClick={() => {
+                                void handleStop()
+                              }}
+                              onMouseDown={(event) => event.preventDefault()}
+                              icon={<Square className="size-[var(--jingle-icon-compact)]" />}
+                              label={copy.launcher.aiStopLabel}
+                              title={copy.launcher.aiStopLabel}
+                              tooltip={copy.launcher.aiStopLabel}
+                            />
+                          ) : !isApprovalPending ? (
+                            <PromptInputAction
+                              onClick={submitCurrentInput}
+                              onMouseDown={(event) => event.preventDefault()}
+                              disabled={primaryActionDisabled}
+                              icon={<ArrowUp className="size-[var(--jingle-icon-sm)]" />}
+                              label={copy.launcher.aiPrimaryLabel}
+                              title={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
+                              tooltip={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
+                              className="text-foreground enabled:bg-background-secondary/72 enabled:hover:bg-background-secondary disabled:bg-transparent"
+                            />
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                   </PromptInput>

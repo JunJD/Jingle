@@ -688,7 +688,7 @@ body[data-window="pinned-ai-session"],
   --launcher-ai-composer-x: var(--jingle-space-3);
   --launcher-ai-composer-y: var(--jingle-space-2);
   --launcher-ai-composer-submit-size: 28px;
-  --launcher-ai-composer-input-min-h: 34px;
+  --launcher-ai-composer-input-min-h: 54px;
   --launcher-ai-composer-input-max-h: 114px;
   --launcher-ai-empty-max-width: 48rem;
   --launcher-ai-empty-copy-max-width: 42rem;
