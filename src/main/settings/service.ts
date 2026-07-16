@@ -10,6 +10,9 @@ import {
   setAppThemeSettings,
   setLauncherSettings
 } from "../preferences"
+import { isSettingsWindowWebContents } from "../windows/settings-window"
+import { updateThemeTitleBarOverlay } from "../windows/title-bar-overlay"
+import { getWindowIdentity, isDurableWindowIdentity } from "../windows/window-identity"
 
 export class SettingsService {
   getAgentConfig(): AgentConfig {
@@ -42,9 +45,26 @@ export class SettingsService {
 
   private emitAppThemeSettingsChanged(settings: AppThemeSettings): void {
     for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed()) {
-        window.webContents.send("settings:appThemeSettingsChanged", settings)
+      if (window.isDestroyed()) {
+        continue
       }
+
+      const hasThemeAwareNativeChrome =
+        isSettingsWindowWebContents(window.webContents) ||
+        isDurableWindowIdentity(getWindowIdentity(window.webContents))
+
+      if (hasThemeAwareNativeChrome) {
+        try {
+          window.setBackgroundColor(settings.config.theme.surface)
+          if (process.platform !== "darwin") {
+            updateThemeTitleBarOverlay(window, settings)
+          }
+        } catch (error) {
+          console.warn("[Settings] Failed to update the native window theme.", error)
+        }
+      }
+
+      window.webContents.send("settings:appThemeSettingsChanged", settings)
     }
   }
 

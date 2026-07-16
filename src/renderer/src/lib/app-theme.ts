@@ -1,6 +1,7 @@
 import {
   DEFAULT_CODE_FONT_FAMILY,
   DEFAULT_UI_FONT_FAMILY,
+  resolveAppThemeWindowChrome,
   type AppThemeSettings,
   type JingleThemeV1
 } from "@shared/app-theme"
@@ -26,6 +27,7 @@ export function applyJingleTheme(config: JingleThemeV1): void {
   const borderMix = Math.round(6 + contrast * 0.12)
   const emphasisBorderMix = Math.round(12 + contrast * 0.16)
   const targets = [root, body]
+  const windowChrome = resolveAppThemeWindowChrome(config)
 
   root.classList.toggle("dark", variant === "dark")
   body.classList.toggle("dark", variant === "dark")
@@ -80,12 +82,16 @@ export function applyJingleTheme(config: JingleThemeV1): void {
   setThemeVariable(targets, "--sidebar-accent-foreground", theme.ink)
   setThemeVariable(targets, "--sidebar-border", mix(theme.ink, borderMix, "transparent"))
   setThemeVariable(targets, "--sidebar-ring", theme.accent)
-  setThemeVariable(targets, "--window-chrome", mix(theme.ink, raisedMix, theme.surface))
+  setThemeVariable(targets, "--window-chrome", windowChrome.background)
   setThemeVariable(targets, "--window-divider", mix(theme.ink, borderMix, "transparent"))
   setThemeVariable(targets, "--window-chrome-foreground", theme.ink)
   setThemeVariable(targets, "--window-chrome-muted", mix(theme.ink, 52, theme.surface))
   setThemeVariable(targets, "--jingle-font-ui-family", theme.fonts.ui ?? DEFAULT_UI_FONT_FAMILY)
-  setThemeVariable(targets, "--jingle-font-code-family", theme.fonts.code ?? DEFAULT_CODE_FONT_FAMILY)
+  setThemeVariable(
+    targets,
+    "--jingle-font-code-family",
+    theme.fonts.code ?? DEFAULT_CODE_FONT_FAMILY
+  )
 }
 
 export function applyAppThemeSettings(settings: AppThemeSettings): void {

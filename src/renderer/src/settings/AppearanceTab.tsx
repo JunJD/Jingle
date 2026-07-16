@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react"
 import { Check, Code2, Copy, Eye, Paintbrush, Palette, SlidersHorizontal, Type } from "lucide-react"
 import {
   APP_THEME_PRESETS,
+  APP_UI_FONT_OPTIONS,
+  DEFAULT_UI_FONT_FAMILY,
   createAppThemeSettingsFromPreset,
   parseJingleThemeV1Token,
   serializeJingleThemeV1,
@@ -49,17 +51,10 @@ function getPreviewFontFamily(theme: JingleThemeV1["theme"]): string {
   return theme.fonts.ui ?? "inherit"
 }
 
-function getFontInputValue(value: string | null | undefined): string {
-  return value ?? ""
-}
+const customUiFontOptionId = "custom"
 
-function normalizeFontInputValue(value: string): string | null {
-  const trimmedValue = value.trim()
-  if (!trimmedValue) {
-    return null
-  }
-
-  return trimmedValue
+function getSelectedUiFontOptionId(value: string | null): string {
+  return APP_UI_FONT_OPTIONS.find((option) => option.family === value)?.id ?? customUiFontOptionId
 }
 
 function ColorControl(props: {
@@ -124,7 +119,9 @@ function ThemePreview(props: { config: JingleThemeV1 }): React.JSX.Element {
           gridTemplateColumns: "var(--jingle-theme-preview-line-column) minmax(0, 1fr)"
         }}
       >
-        <div className="px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] text-right opacity-60">1</div>
+        <div className="px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] text-right opacity-60">
+          1
+        </div>
         <div className="px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] font-mono">
           const themePreview = &#123;
         </div>
@@ -137,7 +134,9 @@ function ThemePreview(props: { config: JingleThemeV1 }): React.JSX.Element {
           gridTemplateColumns: "var(--jingle-theme-preview-line-column) minmax(0, 1fr)"
         }}
       >
-        <div className="px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] text-right opacity-60">2</div>
+        <div className="px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] text-right opacity-60">
+          2
+        </div>
         <div className="px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] font-mono">
           - surface: &quot;sidebar&quot;,
         </div>
@@ -150,7 +149,9 @@ function ThemePreview(props: { config: JingleThemeV1 }): React.JSX.Element {
           gridTemplateColumns: "var(--jingle-theme-preview-line-column) minmax(0, 1fr)"
         }}
       >
-        <div className="px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] text-right opacity-60">3</div>
+        <div className="px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] text-right opacity-60">
+          3
+        </div>
         <div className="px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] font-mono">
           + accent: &quot;{theme.accent}&quot;,
         </div>
@@ -323,6 +324,7 @@ function AppearanceFontsRow(props: {
   updateConfig: ThemeConfigUpdater
 }): React.JSX.Element {
   const { copy, theme, updateConfig } = props
+  const selectedOptionId = getSelectedUiFontOptionId(theme.fonts.ui)
 
   return (
     <SettingsRow
@@ -330,49 +332,60 @@ function AppearanceFontsRow(props: {
       title={copy.appearance.fontsTitle}
       description={copy.appearance.fontsDescription}
     >
-      <div className="grid gap-[var(--jingle-gap-md)]">
-        <label className="grid gap-[var(--jingle-space-1)]">
-          <span className="[font-size:var(--jingle-font-body)] font-medium text-muted-foreground">
-            {copy.appearance.uiFont}
-          </span>
-          <input
-            className={inputClassName}
-            value={getFontInputValue(theme.fonts.ui)}
-            onChange={(event) => {
-              const ui = normalizeFontInputValue(event.target.value)
-              updateConfig((current) => ({
-                ...current,
-                theme: {
-                  ...current.theme,
-                  fonts: { ...current.theme.fonts, ui }
-                }
-              }))
-            }}
-            placeholder="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-            spellCheck={false}
-          />
-        </label>
-        <label className="grid gap-[var(--jingle-space-1)]">
-          <span className="[font-size:var(--jingle-font-body)] font-medium text-muted-foreground">
-            {copy.appearance.codeFont}
-          </span>
-          <input
-            className={`${inputClassName} font-mono`}
-            value={getFontInputValue(theme.fonts.code)}
-            onChange={(event) => {
-              const code = normalizeFontInputValue(event.target.value)
-              updateConfig((current) => ({
-                ...current,
-                theme: {
-                  ...current.theme,
-                  fonts: { ...current.theme.fonts, code }
-                }
-              }))
-            }}
-            placeholder='ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace'
-            spellCheck={false}
-          />
-        </label>
+      <div
+        aria-label={copy.appearance.uiFont}
+        className="grid overflow-hidden rounded-[var(--jingle-radius-md)] border border-border bg-background-elevated sm:grid-cols-3"
+        role="radiogroup"
+      >
+        {APP_UI_FONT_OPTIONS.map((option, index) => {
+          const selected = option.id === selectedOptionId
+          return (
+            <label
+              key={option.id}
+              className={`relative grid min-h-[72px] content-center gap-[var(--jingle-space-1)] px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] text-left transition hover:bg-background-secondary focus-within:z-10 focus-within:ring-1 focus-within:ring-ring ${
+                index > 0 ? "border-t border-border sm:border-l sm:border-t-0" : ""
+              } ${selected ? "bg-background-secondary" : ""}`}
+              style={{ fontFamily: option.family ?? DEFAULT_UI_FONT_FAMILY }}
+            >
+              <input
+                aria-label={option.name}
+                checked={selected}
+                className="sr-only"
+                name="settings-appearance-ui-font"
+                type="radio"
+                value={option.id}
+                onChange={() => {
+                  updateConfig((current) => ({
+                    ...current,
+                    theme: {
+                      ...current.theme,
+                      fonts: { ...current.theme.fonts, ui: option.family }
+                    }
+                  }))
+                }}
+              />
+              <span className="flex min-w-0 items-center justify-between gap-[var(--jingle-space-2)]">
+                <span className="truncate [font-size:var(--jingle-font-body)] font-semibold text-foreground">
+                  {option.name}
+                </span>
+                {selected ? (
+                  <Check className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)] shrink-0 text-[var(--ring)]" />
+                ) : null}
+              </span>
+              <span className="truncate [font-size:var(--jingle-font-meta)] text-muted-foreground">
+                {option.monospace ? copy.appearance.monospaceFont : copy.appearance.uiFont}
+              </span>
+              <span className="truncate [font-size:var(--jingle-font-label)] text-foreground">
+                Aa 金果 123
+              </span>
+            </label>
+          )
+        })}
+        {selectedOptionId === customUiFontOptionId ? (
+          <div className="border-t border-border px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] [font-size:var(--jingle-font-meta)] text-muted-foreground sm:col-span-3">
+            {copy.appearance.customThemeFont}
+          </div>
+        ) : null}
       </div>
     </SettingsRow>
   )
@@ -388,7 +401,9 @@ function AppearanceBehaviorRow(props: {
 
   return (
     <SettingsRow
-      icon={<SlidersHorizontal className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
+      icon={
+        <SlidersHorizontal className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />
+      }
       title={copy.appearance.behaviorTitle}
       description={copy.appearance.behaviorDescription}
     >

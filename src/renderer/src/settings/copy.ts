@@ -62,6 +62,7 @@ interface SettingsCopy {
     contrast: string
     copied: string
     copyTheme: string
+    customThemeFont: string
     customTheme: string
     darkVariant: string
     description: string
@@ -76,6 +77,7 @@ interface SettingsCopy {
     imported: string
     inkColor: string
     lightVariant: string
+    monospaceFont: string
     skillColor: string
     surfaceColor: string
     themeDescription: string
@@ -290,12 +292,13 @@ const zhCN: SettingsCopy = {
     contrast: "对比度",
     copied: "已复制主题",
     copyTheme: "复制主题",
+    customThemeFont: "当前主题使用自定义字体。选择上方任一字体即可替换。",
     customTheme: "自定义",
     darkVariant: "深色",
     description: "配置金果 theme v1 格式，实时应用到窗口、Launcher 和设置页。",
     diffAddedColor: "Diff 新增",
     diffRemovedColor: "Diff 删除",
-    fontsDescription: "留空时使用金果默认 UI 字体和代码字体。",
+    fontsDescription: "两款精选界面字体与一款等宽字体，切换后立即应用。",
     fontsTitle: "字体",
     importDescription: "粘贴 jingle-theme-v1 token 后导入当前主题。",
     importFailed: "主题格式不正确",
@@ -304,6 +307,7 @@ const zhCN: SettingsCopy = {
     imported: "已导入主题",
     inkColor: "前景色",
     lightVariant: "浅色",
+    monospaceFont: "等宽字体",
     skillColor: "Skill 语义色",
     surfaceColor: "背景",
     themeDescription: "选择一个基础主题，再按需微调颜色、字体和对比度。",
@@ -320,7 +324,8 @@ const zhCN: SettingsCopy = {
     confirmDelete: "确认删除",
     confirmDeleteDescription: (title) => `这会永久删除「${title}」。此操作无法撤销。`,
     confirmDeleteTitle: "删除这个归档对话？",
-    confirmDeleteVisibleDescription: (count) => `这会永久删除当前列表中的 ${count} 个归档对话。此操作无法撤销。`,
+    confirmDeleteVisibleDescription: (count) =>
+      `这会永久删除当前列表中的 ${count} 个归档对话。此操作无法撤销。`,
     confirmDeleteVisibleTitle: "删除当前列表？",
     deleted: "已删除归档对话",
     deletedAll: (count) => `已删除 ${count} 个归档对话`,
@@ -520,12 +525,13 @@ const enUS: SettingsCopy = {
     contrast: "Contrast",
     copied: "Theme copied",
     copyTheme: "Copy Theme",
+    customThemeFont: "This theme uses a custom font. Choose any font above to replace it.",
     customTheme: "Custom",
     darkVariant: "Dark",
     description: "Configure Jingle theme v1 and apply it to windows, Launcher, and Settings.",
     diffAddedColor: "Diff Added",
     diffRemovedColor: "Diff Removed",
-    fontsDescription: "Leave blank to use the Jingle default UI and code fonts.",
+    fontsDescription: "Choose from two curated interface fonts and one monospace font.",
     fontsTitle: "Fonts",
     importDescription: "Paste a jingle-theme-v1 token to import it as the current theme.",
     importFailed: "Theme token is invalid",
@@ -534,6 +540,7 @@ const enUS: SettingsCopy = {
     imported: "Theme imported",
     inkColor: "Ink",
     lightVariant: "Light",
+    monospaceFont: "Monospace",
     skillColor: "Skill Semantic",
     surfaceColor: "Surface",
     themeDescription: "Start from a preset, then adjust colors, fonts, and contrast.",

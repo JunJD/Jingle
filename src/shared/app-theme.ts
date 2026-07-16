@@ -38,11 +38,42 @@ export interface AppThemePreset {
   name: string
 }
 
-export const DEFAULT_UI_FONT_FAMILY =
-  '"Jingle Sans CN", "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Segoe UI", sans-serif'
+export interface AppThemeWindowChrome {
+  background: string
+  foreground: string
+}
+
+export const APP_THEME_RENDERER_QUERY_KEY = "appTheme"
+
+export const INTER_UI_FONT_FAMILY =
+  '"Inter Variable", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Segoe UI", sans-serif'
+
+export const IBM_PLEX_UI_FONT_FAMILY =
+  '"IBM Plex Sans Variable", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Segoe UI", sans-serif'
+
+export const JETBRAINS_MONO_UI_FONT_FAMILY =
+  '"JetBrains Mono Variable", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", ui-monospace, monospace'
+
+export const APP_UI_FONT_OPTIONS = [
+  { family: null, id: "inter", monospace: false, name: "Inter" },
+  {
+    family: IBM_PLEX_UI_FONT_FAMILY,
+    id: "ibm-plex-sans",
+    monospace: false,
+    name: "IBM Plex Sans"
+  },
+  {
+    family: JETBRAINS_MONO_UI_FONT_FAMILY,
+    id: "jetbrains-mono",
+    monospace: true,
+    name: "JetBrains Mono"
+  }
+] as const
+
+export const DEFAULT_UI_FONT_FAMILY = INTER_UI_FONT_FAMILY
 
 export const DEFAULT_CODE_FONT_FAMILY =
-  '"JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, monospace'
+  '"JetBrains Mono Variable", "SF Mono", ui-monospace, monospace'
 
 const PROOF_THEME: JingleThemeV1 = {
   codeThemeId: "proof",
@@ -60,7 +91,7 @@ const PROOF_THEME: JingleThemeV1 = {
       diffRemoved: "#ba2623",
       skill: "#5f6ac2"
     },
-    surface: "#f5f3ed"
+    surface: "#f3f4f2"
   },
   variant: "light"
 }
@@ -297,6 +328,38 @@ export const DEFAULT_APP_THEME_SETTINGS: AppThemeSettings = {
 }
 
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/
+
+function parseHexColor(value: string): [number, number, number] {
+  if (!HEX_COLOR_PATTERN.test(value)) {
+    throw new Error(`Invalid Jingle theme color: ${value}`)
+  }
+
+  return [
+    Number.parseInt(value.slice(1, 3), 16),
+    Number.parseInt(value.slice(3, 5), 16),
+    Number.parseInt(value.slice(5, 7), 16)
+  ]
+}
+
+function mixHexColors(foreground: string, foregroundAmount: number, background: string): string {
+  const foregroundChannels = parseHexColor(foreground)
+  const backgroundChannels = parseHexColor(background)
+  const ratio = foregroundAmount / 100
+  const channels = foregroundChannels.map((channel, index) =>
+    Math.round(channel * ratio + backgroundChannels[index] * (1 - ratio))
+  )
+
+  return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`
+}
+
+export function resolveAppThemeWindowChrome(config: JingleThemeV1): AppThemeWindowChrome {
+  const raisedMix = Math.round(2 + config.theme.contrast * 0.08)
+
+  return {
+    background: mixHexColors(config.theme.ink, raisedMix, config.theme.surface),
+    foreground: config.theme.ink
+  }
+}
 
 function normalizeHexColor(value: unknown, fallback: string): string {
   return typeof value === "string" && HEX_COLOR_PATTERN.test(value) ? value : fallback

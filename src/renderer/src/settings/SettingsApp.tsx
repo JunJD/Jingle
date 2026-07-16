@@ -100,7 +100,7 @@ export default function SettingsApp(): React.JSX.Element {
 
   return (
     <div className="settings-app flex h-screen flex-col overflow-hidden bg-background text-foreground">
-      <div className="app-drag-region flex h-[var(--jingle-settings-toolbar-h)] shrink-0 items-center border-b border-border bg-[var(--window-chrome)] px-[var(--jingle-settings-window-pad)]">
+      <div className="settings-window-titlebar app-drag-region flex h-[var(--jingle-settings-toolbar-h)] shrink-0 items-center border-b border-border bg-[var(--window-chrome)] px-[var(--jingle-settings-window-pad)]">
         <div
           className="flex min-w-0 flex-1 items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-settings-tab-font)] font-semibold tracking-[0.05em] text-[var(--window-chrome-foreground)]"
           style={{ paddingLeft: "calc(var(--window-controls-offset-inline) + 6px)" }}
@@ -109,7 +109,7 @@ export default function SettingsApp(): React.JSX.Element {
           <span>{copy.title}</span>
         </div>
 
-        <div className="app-no-drag inline-flex items-stretch overflow-hidden rounded-[var(--jingle-settings-nav-radius)] border border-border bg-background-elevated shadow-sm">
+        <div className="app-no-drag inline-flex items-stretch overflow-hidden rounded-[var(--jingle-settings-nav-radius)] border border-border bg-background-elevated">
           {SETTINGS_PAGE_ORDER.map((tab, index) => {
             const definition = SETTINGS_PAGE_REGISTRY[tab]
             const Icon = definition.icon
@@ -118,6 +118,7 @@ export default function SettingsApp(): React.JSX.Element {
               <button
                 key={tab}
                 type="button"
+                aria-current={navigation.tab === tab ? "page" : undefined}
                 onClick={() => navigateToTab(tab)}
                 data-settings-tab={tab}
                 className={getSettingsTabClassName(navigation.tab === tab, index > 0)}
@@ -129,9 +130,7 @@ export default function SettingsApp(): React.JSX.Element {
           })}
         </div>
 
-        <div className="flex min-w-0 flex-1 justify-end [font-size:var(--jingle-settings-tab-font)] text-[var(--window-chrome-muted)]">
-          {locale === "zh-CN" ? "金果" : "Jingle"}
-        </div>
+        <div aria-hidden="true" className="min-w-0 flex-1" />
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-[var(--jingle-settings-window-pad)]">

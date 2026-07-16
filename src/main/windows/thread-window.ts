@@ -2,8 +2,10 @@ import { BrowserWindow, screen, type Rectangle } from "electron"
 import { join } from "path"
 import { THREAD_WINDOW_KIND } from "@shared/durable-window"
 import { attachWindowDiagnostics } from "../diagnostics/electron-events"
+import { getAppThemeSettings } from "../preferences"
 import { installExternalWindowOpenHandler } from "./external-window-open"
 import { startRendererWindowLoad } from "./load-renderer-window"
+import { createThemeTitleBarOverlay } from "./title-bar-overlay"
 import { installWindowPresentation, requestWindowPresentation } from "./window-presentation"
 import { registerWindowIdentity } from "./window-identity"
 
@@ -41,18 +43,19 @@ function visibleBounds(bounds?: Rectangle): Rectangle {
 
 export function createThreadWindow(input: CreateThreadWindowInput): BrowserWindow {
   const isMac = process.platform === "darwin"
+  const appThemeSettings = getAppThemeSettings()
   const window = new BrowserWindow({
     ...visibleBounds(input.bounds),
     minWidth: 760,
     minHeight: 520,
     show: false,
     autoHideMenuBar: !isMac,
-    backgroundColor: "#F3F4F1",
+    backgroundColor: appThemeSettings.config.theme.surface,
     title: "Jingle",
     titleBarStyle: "hidden",
-    ...(isMac ? { trafficLightPosition: { x: 16, y: 16 } } : {
-      titleBarOverlay: { color: "#F7F6F2", height: 52, symbolColor: "#5F6873" }
-    }),
+    ...(isMac
+      ? { trafficLightPosition: { x: 16, y: 16 } }
+      : { titleBarOverlay: createThemeTitleBarOverlay(appThemeSettings) }),
     webPreferences: { preload: join(__dirname, "../preload/index.js"), sandbox: false }
   })
   registerWindowIdentity(window.webContents, {

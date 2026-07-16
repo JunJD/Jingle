@@ -38,6 +38,11 @@ import { beginRendererWindowShutdown } from "./windows/load-renderer-window"
 const APP_DISPLAY_NAME = "Jingle"
 const APP_USER_MODEL_ID = "com.jingle.desktop"
 const DEV_APP_USER_MODEL_ID = "com.jingle.desktop.dev"
+const DEFAULT_LINUX_OZONE_PLATFORM = "x11"
+
+if (process.platform === "linux" && !app.commandLine.hasSwitch("ozone-platform")) {
+  app.commandLine.appendSwitch("ozone-platform", DEFAULT_LINUX_OZONE_PLATFORM)
+}
 
 app.setName(APP_DISPLAY_NAME)
 app.setAboutPanelOptions({
@@ -315,7 +320,10 @@ if (hasSingleInstanceLock) {
       appVersion: app.getVersion(),
       electronVersion: process.versions.electron,
       isPackaged: app.isPackaged,
-      platform: process.platform
+      platform: process.platform,
+      ...(process.platform === "linux"
+        ? { ozonePlatform: app.commandLine.getSwitchValue("ozone-platform") || "auto" }
+        : {})
     })
 
     // Set app user model id for windows

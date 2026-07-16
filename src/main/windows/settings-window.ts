@@ -8,6 +8,8 @@ import {
   SETTINGS_NAVIGATION_CHANGED_CHANNEL,
   type SettingsWindowNavigationPayload
 } from "@shared/settings-window"
+import { getAppThemeSettings } from "../preferences"
+import { createThemeTitleBarOverlay } from "./title-bar-overlay"
 import { installWindowPresentation, requestWindowPresentation } from "./window-presentation"
 import { registerWindowIdentity } from "./window-identity"
 
@@ -21,6 +23,7 @@ export function isSettingsWindowWebContents(webContents: WebContents): boolean {
 
 export function createSettingsWindow(): BrowserWindow {
   const isMac = process.platform === "darwin"
+  const appThemeSettings = getAppThemeSettings()
 
   const settingsWindow = new BrowserWindow({
     width: SETTINGS_WINDOW_WIDTH,
@@ -29,20 +32,14 @@ export function createSettingsWindow(): BrowserWindow {
     minHeight: 680,
     show: false,
     autoHideMenuBar: !isMac,
-    backgroundColor: "#F3F4F1",
+    backgroundColor: appThemeSettings.config.theme.surface,
     title: "Settings",
     titleBarStyle: "hidden",
     ...(isMac
       ? {
           trafficLightPosition: { x: 16, y: 16 }
         }
-      : {
-          titleBarOverlay: {
-            color: "#F7F6F2",
-            symbolColor: "#5F6873",
-            height: 52
-          }
-        }),
+      : { titleBarOverlay: createThemeTitleBarOverlay(appThemeSettings) }),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false

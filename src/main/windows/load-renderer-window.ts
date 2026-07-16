@@ -1,7 +1,9 @@
 import type { BrowserWindow, RenderProcessGoneDetails } from "electron"
 import { join } from "path"
+import { IPC_NETWORK_WINDOW_KIND, type IpcNetworkWindowKind } from "@jingle/devtools-network"
+import { APP_THEME_RENDERER_QUERY_KEY, serializeJingleThemeV1 } from "@shared/app-theme"
 import type { DurableWindowKind } from "@shared/durable-window"
-import type { IpcNetworkWindowKind } from "@jingle/devtools-network"
+import { getAppThemeSettings } from "../preferences"
 
 export type AppWindowKind =
   | "main"
@@ -48,19 +50,27 @@ async function loadRendererWindow(
     await browserWindow.loadFile(join(__dirname, "../../resources/splash.html"))
   }
 
+  const rendererQuery = {
+    window: windowKind,
+    ...(query ?? {}),
+    ...(windowKind === IPC_NETWORK_WINDOW_KIND
+      ? {}
+      : {
+          [APP_THEME_RENDERER_QUERY_KEY]: serializeJingleThemeV1(getAppThemeSettings().config)
+        })
+  }
+
   if (process.env["ELECTRON_RENDERER_URL"]) {
     const rendererUrl = new URL(process.env["ELECTRON_RENDERER_URL"])
     rendererUrl.searchParams.set("window", windowKind)
-    for (const [key, value] of Object.entries(query ?? {})) {
+    for (const [key, value] of Object.entries(rendererQuery)) {
+      if (key === "window") {
+        continue
+      }
       rendererUrl.searchParams.set(key, value)
     }
     await browserWindow.loadURL(rendererUrl.toString())
     return
-  }
-
-  const rendererQuery = {
-    window: windowKind,
-    ...(query ?? {})
   }
 
   await browserWindow.loadFile(join(__dirname, "../renderer/index.html"), {

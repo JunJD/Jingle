@@ -54,7 +54,7 @@ export const settingsPageDescriptionClassName =
   "mt-[var(--jingle-space-1)] max-w-[var(--jingle-model-provider-copy-max-width)] [font-size:var(--jingle-settings-description-size)] leading-[var(--jingle-line-body)] text-muted-foreground"
 
 export const settingsCardClassName =
-  "overflow-hidden rounded-[var(--jingle-settings-card-radius)] border border-border/80 bg-background-secondary/55 shadow-[var(--jingle-settings-card-shadow)]"
+  "overflow-hidden rounded-[var(--jingle-settings-card-radius)] border border-border/80 bg-background-elevated"
 
 export const settingsInsetCardClassName =
   "rounded-[var(--jingle-settings-card-radius)] border border-border/70 bg-background px-[var(--jingle-settings-card-x)] py-[var(--jingle-settings-card-y)]"
