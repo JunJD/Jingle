@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useState } from "react"
 import { Brain, Check, Link2, X } from "lucide-react"
-import type {
-  JingleMemoryEvidenceRef,
-  JingleMemorySuggestionRecord
-} from "@shared/jingle-memory"
+import type { JingleMemoryEvidenceRef, JingleMemorySuggestionRecord } from "@shared/jingle-memory"
 import { readJingleMemoryEvidenceRefsFromReviewPayload } from "@shared/jingle-memory"
+import { Button } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n"
+import { useMemoryReviewController } from "./use-memory-review-controller"
 
 interface MemoryReviewPanelProps {
   threadId: string
@@ -34,48 +32,10 @@ function sourceLabel(sourceType: JingleMemoryEvidenceRef["sourceType"]): string 
   }
 }
 
-async function readPendingMemorySuggestions(
-  threadId: string
-): Promise<JingleMemorySuggestionRecord[]> {
-  return window.api.memory.listSuggestions({
-    status: "pending",
-    threadId
-  })
-}
-
 export function MemoryReviewPanel(props: MemoryReviewPanelProps): React.JSX.Element | null {
   const { threadId } = props
   const { copy } = useI18n()
-  const [suggestions, setSuggestions] = useState<JingleMemorySuggestionRecord[]>([])
-
-  const loadSuggestions = useCallback(async (): Promise<void> => {
-    const nextSuggestions = await readPendingMemorySuggestions(threadId)
-    setSuggestions(nextSuggestions)
-  }, [threadId])
-
-  useEffect(() => {
-    let isCurrent = true
-
-    void readPendingMemorySuggestions(threadId).then((nextSuggestions) => {
-      if (isCurrent) {
-        setSuggestions(nextSuggestions)
-      }
-    })
-
-    return () => {
-      isCurrent = false
-    }
-  }, [threadId])
-
-  const acceptSuggestion = async (suggestionId: string): Promise<void> => {
-    await window.api.memory.acceptSuggestion(suggestionId)
-    await loadSuggestions()
-  }
-
-  const rejectSuggestion = async (suggestionId: string): Promise<void> => {
-    await window.api.memory.rejectSuggestion(suggestionId)
-    await loadSuggestions()
-  }
+  const { acceptSuggestion, rejectSuggestion, suggestions } = useMemoryReviewController(threadId)
 
   if (suggestions.length === 0) {
     return null
@@ -125,8 +85,10 @@ export function MemoryReviewPanel(props: MemoryReviewPanelProps): React.JSX.Elem
                 </div>
               ) : null}
               <div className="mt-[var(--jingle-space-2)] flex items-center gap-[var(--jingle-gap-sm)]">
-                <button
+                <Button
                   type="button"
+                  size="sm"
+                  variant="outline"
                   className="inline-flex min-h-[var(--jingle-control-h-sm)] items-center gap-[var(--jingle-space-1)] rounded-[var(--jingle-radius-sm)] border border-border bg-background px-[var(--jingle-space-2)] [font-size:var(--jingle-font-meta)] text-foreground transition hover:bg-background-secondary"
                   onClick={() => {
                     void acceptSuggestion(suggestion.suggestionId)
@@ -134,9 +96,11 @@ export function MemoryReviewPanel(props: MemoryReviewPanelProps): React.JSX.Elem
                 >
                   <Check className="size-[var(--jingle-icon-xs)]" />
                   {copy.chat.pendingMemoryAccept}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  size="sm"
+                  variant="outline"
                   className="inline-flex min-h-[var(--jingle-control-h-sm)] items-center gap-[var(--jingle-space-1)] rounded-[var(--jingle-radius-sm)] border border-border bg-background px-[var(--jingle-space-2)] [font-size:var(--jingle-font-meta)] text-muted-foreground transition hover:bg-background-secondary hover:text-foreground"
                   onClick={() => {
                     void rejectSuggestion(suggestion.suggestionId)
@@ -144,7 +108,7 @@ export function MemoryReviewPanel(props: MemoryReviewPanelProps): React.JSX.Elem
                 >
                   <X className="size-[var(--jingle-icon-xs)]" />
                   {copy.chat.pendingMemoryReject}
-                </button>
+                </Button>
               </div>
             </div>
           )
