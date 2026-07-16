@@ -1,6 +1,5 @@
 import { createJingleCheckpointerManager } from "@jingle/langchain-agent-harness/transitional"
 import { flushAgentTraceProjection } from "../db/agent-events"
-import { flushThreadDigestProjection } from "../projection/thread-digest-queue"
 import { flushMessageSearchProjection, RuntimeCheckpointSaver } from "./runtime-checkpointer"
 
 const checkpointerManager = createJingleCheckpointerManager({
@@ -9,11 +8,7 @@ const checkpointerManager = createJingleCheckpointerManager({
     await checkpointer.initialize()
     return checkpointer
   },
-  flushOnCloseAll: [
-    flushAgentTraceProjection,
-    flushMessageSearchProjection,
-    flushThreadDigestProjection
-  ]
+  flushOnCloseAll: [flushAgentTraceProjection, flushMessageSearchProjection]
 })
 
 export async function getCheckpointer(threadId: string): Promise<RuntimeCheckpointSaver> {

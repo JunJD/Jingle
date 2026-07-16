@@ -16,6 +16,7 @@ import { openTargetsApi } from "./openTargets"
 import { settingsApi } from "./settings"
 import { shortcutsApi } from "./shortcuts"
 import { threadSidebarApi } from "./threadSidebar"
+import { threadDigestApi } from "./threadDigest"
 import { threadWorkflowApi } from "./threadWorkflow"
 import { threadWorkspaceApi } from "./threadWorkspace"
 import { threadsApi } from "./threads"
@@ -35,6 +36,7 @@ export const api = {
   settings: settingsApi,
   shortcuts: shortcutsApi,
   threadSidebar: threadSidebarApi,
+  threadDigest: threadDigestApi,
   threadWorkflow: threadWorkflowApi,
   threadWorkspace: threadWorkspaceApi,
   launcher: launcherApi,

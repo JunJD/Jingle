@@ -5,7 +5,6 @@ import { Prisma } from "@prisma/client"
 import { getDbPath } from "../storage"
 import { closePrismaClient, getPrismaClient } from "./client"
 import { flushAgentTraceProjection } from "./agent-events"
-import { flushThreadDigestProjection } from "../projection/thread-digest-queue"
 
 const REQUIRED_TABLES = [
   "_prisma_migrations",
@@ -398,6 +397,6 @@ export async function initializeDatabase(): Promise<void> {
 
 export async function closeDatabase(): Promise<void> {
   initialized = false
-  await Promise.all([flushAgentTraceProjection(), flushThreadDigestProjection()])
+  await flushAgentTraceProjection()
   await closePrismaClient()
 }

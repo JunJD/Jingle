@@ -76,6 +76,8 @@ import {
   registerThreadSidebarIpcHandlers,
   registerThreadSidebarModule
 } from "./thread-sidebar/module"
+import { registerThreadDigestIpcHandlers, registerThreadDigestModule } from "./thread-digest/module"
+import { ThreadDigestService } from "./thread-digest/service"
 import {
   registerThreadWorkspaceIpcHandlers,
   registerThreadWorkspaceModule
@@ -146,6 +148,7 @@ export class MainCompositionRoot {
     registerJingleMemoryIpcHandlers(this.dependencyContainer, ipcMain)
     registerOpenTargetsIpcHandlers(this.dependencyContainer, ipcMain)
     registerSettingsIpcHandlers(this.dependencyContainer, ipcMain)
+    registerThreadDigestIpcHandlers(this.dependencyContainer, ipcMain)
     registerThreadSidebarIpcHandlers(this.dependencyContainer, ipcMain)
     registerThreadWorkflowIpcHandlers(this.dependencyContainer, ipcMain)
     registerThreadWorkspaceIpcHandlers(this.dependencyContainer, ipcMain)
@@ -218,7 +221,10 @@ export class MainCompositionRoot {
       await stopThreadWorkflowRuntimeAutomation()
     }
     stopNativeSelectionCapture()
-    await this.dependencyContainer.resolve(AgentService).shutdown()
+    await Promise.all([
+      this.dependencyContainer.resolve(AgentService).shutdown(),
+      this.dependencyContainer.resolve(ThreadDigestService).shutdown()
+    ])
     resolveExtensionRuntimeMenuBarService(this.dependencyContainer).dispose()
     resolveExtensionRuntimeManager(this.dependencyContainer).dispose()
     resolveNativeMenuBarService(this.dependencyContainer).dispose()
@@ -306,6 +312,7 @@ export function createMainCompositionRoot(
   })
   registerExtensionRuntimeModule(childContainer)
   registerShortcutsModule(childContainer)
+  registerThreadDigestModule(childContainer)
   registerThreadWorkspaceModule(childContainer)
   registerThreadWorkflowModule(childContainer)
   registerThreadSidebarModule(childContainer)

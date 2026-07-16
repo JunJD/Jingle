@@ -3,11 +3,7 @@ import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages
 import { z } from "zod/v4"
 import { getChatModelInstance } from "../llm/get-chat-model"
 import { listProjectedThreadMessages, type MessageProjectionRow } from "../db/message-state"
-import {
-  markThreadDigestProjectionError,
-  markThreadDigestProjectionPending,
-  upsertReadyThreadDigest
-} from "../db/thread-digests"
+import { upsertReadyThreadDigest, type UpsertReadyThreadDigestInput } from "../db/thread-digests"
 import {
   extractMessageText,
   summarizeMessageContent,
@@ -42,43 +38,20 @@ export interface GeneratedThreadDigest {
 export type GenerateThreadDigest = (input: {
   messages: MessageProjectionRow[]
   prompt: string
+  signal?: AbortSignal
 }) => Promise<GeneratedThreadDigest>
 
 let generateThreadDigest: GenerateThreadDigest = generateThreadDigestWithModel
-let threadDigestModelUnavailableReason: string | null = null
-
-function getErrorField(error: unknown, field: string): unknown {
-  return error && typeof error === "object" && field in error
-    ? (error as Record<string, unknown>)[field]
-    : undefined
-}
-
-function getErrorText(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return String(error)
-}
-
-function isThreadDigestModelAccessError(error: unknown): boolean {
-  const code = getErrorField(error, "code")
-  const type = getErrorField(error, "type")
-  const status = getErrorField(error, "status")
-  const message = getErrorText(error)
-  return (
-    code === "Arrearage" ||
-    type === "Arrearage" ||
-    status === 401 ||
-    status === 403 ||
-    /access denied|account is in good standing|overdue-payment|arrearage/i.test(message)
-  )
-}
 
 function parseIndexedMessageContent(
   content: string
 ): string | ContentBlock[] | AgentMessageContent {
-  const parsed = JSON.parse(content) as unknown
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(content) as unknown
+  } catch {
+    throw new Error("[ThreadDigestProjector] Indexed message content is invalid JSON.")
+  }
   if (typeof parsed === "string" || Array.isArray(parsed)) {
     return parsed as string | ContentBlock[] | AgentMessageContent
   }
@@ -134,8 +107,8 @@ function buildDigestPrompt(messages: MessageProjectionRow[]): string {
   let remainingChars = MAX_DIGEST_SOURCE_CHARS
   const lines: string[] = []
 
-  for (const message of messages) {
-    const line = getMessageDigestText(message)
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const line = getMessageDigestText(messages[index])
     if (!line) {
       continue
     }
@@ -145,7 +118,7 @@ function buildDigestPrompt(messages: MessageProjectionRow[]): string {
       break
     }
 
-    lines.push(nextLine)
+    lines.unshift(nextLine)
     remainingChars -= nextLine.length + 1
     if (remainingChars <= 0) {
       break
@@ -199,12 +172,22 @@ function extractModelResponseText(content: AIMessage["content"]): string {
 
 function parseModelDigestContent(content: AIMessage["content"]): GeneratedThreadDigest {
   const raw = extractModelResponseText(content).trim()
-  const parsed = JSON.parse(raw) as unknown
-  return normalizeDigest(threadDigestModelOutputSchema.parse(parsed))
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw) as unknown
+  } catch {
+    throw new Error("[ThreadDigestProjector] Model response is not valid JSON.")
+  }
+  const validated = threadDigestModelOutputSchema.safeParse(parsed)
+  if (!validated.success) {
+    throw new Error("[ThreadDigestProjector] Model response does not match the digest schema.")
+  }
+  return normalizeDigest(validated.data)
 }
 
 async function generateThreadDigestWithModel(input: {
   prompt: string
+  signal?: AbortSignal
 }): Promise<GeneratedThreadDigest> {
   const model = getChatModelInstance({
     maxOutputTokens: THREAD_DIGEST_MAX_OUTPUT_TOKENS,
@@ -221,63 +204,52 @@ async function generateThreadDigestWithModel(input: {
         ),
         new HumanMessage(input.prompt)
       ],
-      { timeout: THREAD_DIGEST_GENERATION_TIMEOUT_MS }
+      { signal: input.signal, timeout: THREAD_DIGEST_GENERATION_TIMEOUT_MS }
     )
 
   return parseModelDigestContent(response.content)
 }
 
-export async function projectThreadDigest(threadId: string): Promise<void> {
-  if (threadDigestModelUnavailableReason) {
-    await markThreadDigestProjectionError(threadId, threadDigestModelUnavailableReason)
-    return
-  }
-
-  await markThreadDigestProjectionPending(threadId)
-
+export async function prepareThreadDigestProjection(
+  threadId: string,
+  signal?: AbortSignal
+): Promise<UpsertReadyThreadDigestInput> {
   const allMessages = await listProjectedThreadMessages(threadId)
   const sourceMessages = selectDigestSourceMessages(allMessages)
   if (sourceMessages.length === 0) {
-    return
+    throw new Error("This thread has no user or assistant messages to summarize.")
   }
 
+  signal?.throwIfAborted()
   const prompt = buildDigestPrompt(sourceMessages)
-  let digest: GeneratedThreadDigest
-  try {
-    digest = normalizeDigest(await generateThreadDigest({ messages: sourceMessages, prompt }))
-  } catch (error) {
-    if (isThreadDigestModelAccessError(error)) {
-      threadDigestModelUnavailableReason = getErrorText(error)
-    }
-    throw error
-  }
-  await upsertReadyThreadDigest({
+  const digest = normalizeDigest(
+    await generateThreadDigest({ messages: sourceMessages, prompt, signal })
+  )
+  signal?.throwIfAborted()
+  return {
     ...digest,
     messageCount: allMessages.length,
     projectedThroughSeq: Math.max(...allMessages.map((message) => message.seq)),
     sourceHash: getDigestSourceHash(sourceMessages),
     threadId
-  })
+  }
 }
 
-export async function markThreadDigestProjectionFailed(
-  threadId: string,
-  error: unknown
-): Promise<void> {
-  await markThreadDigestProjectionError(
-    threadId,
-    error instanceof Error ? error.message : String(error)
-  )
+export function commitThreadDigestProjection(input: UpsertReadyThreadDigestInput): Promise<void> {
+  return upsertReadyThreadDigest(input)
+}
+
+export async function projectThreadDigest(threadId: string, signal?: AbortSignal): Promise<void> {
+  const projection = await prepareThreadDigestProjection(threadId, signal)
+  signal?.throwIfAborted()
+  await commitThreadDigestProjection(projection)
 }
 
 export function setThreadDigestGeneratorForTests(generator: GenerateThreadDigest): () => void {
   const previous = generateThreadDigest
-  const previousUnavailableReason = threadDigestModelUnavailableReason
   generateThreadDigest = generator
-  threadDigestModelUnavailableReason = null
   return () => {
     generateThreadDigest = previous
-    threadDigestModelUnavailableReason = previousUnavailableReason
   }
 }
 

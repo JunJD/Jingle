@@ -13,7 +13,6 @@ import {
   type AppendAgentEventInput
 } from "../db/agent-events"
 import { JingleIpcError } from "../ipc/error"
-import { enqueueThreadDigestProjection } from "../projection/thread-digest-queue"
 import { getDevtoolsNetworkRecorder } from "@jingle/devtools-network/main"
 import type { HITLDecision } from "../types"
 
@@ -300,7 +299,6 @@ export async function recordRunFinished(input: {
   })
   if (event) {
     enqueueAgentTraceProjection(input.runId)
-    enqueueThreadDigestProjection(input.threadId)
   }
 }
 

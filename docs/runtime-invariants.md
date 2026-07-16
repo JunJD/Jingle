@@ -140,6 +140,25 @@ What matters:
 - a checkpoint sync failure should not erase the fact that a run failed or was interrupted
 - thread status and run status must still converge to a durable state
 
+## Thread Digests Are Derived Projections
+
+Thread digests and their search indexes are rebuildable views over persisted thread messages. They are not run, checkpoint, approval, or terminal-status facts.
+
+Current anchors:
+
+- [thread-digest-projection.ts](../src/main/projection/thread-digest-projection.ts)
+- [service.ts](../src/main/thread-digest/service.ts)
+- [thread-digests.ts](../src/main/db/thread-digests.ts)
+
+Required behavior:
+
+- digest generation starts only from an explicit user request
+- run completion and checkpoint shutdown never wait for digest generation
+- generation failure preserves the last ready digest and remains visible to the requesting surface
+- a digest row and both of its FTS rows commit atomically
+- application shutdown cancels model generation but waits for an already-admitted digest commit
+- thread deletion rejects new digest generation, cancels preparation, waits for admitted commits, and removes both digest FTS rows in the thread deletion transaction
+
 ## Verification Checklist
 
 When changing runtime or persistence behavior, verify at least these:

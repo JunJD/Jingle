@@ -50,6 +50,7 @@ import { ModelProviderService } from "../model-provider/service"
 import { SettingsService } from "../settings/service"
 import { ThreadWorkspaceService } from "../thread-workspace/service"
 import { ThreadWorkflowService } from "../thread-workflow/service"
+import { ThreadDigestService } from "../thread-digest/service"
 import { WorkspaceService } from "../workspace/service"
 import { rebuildMessageSearchIndexFromMessages } from "../db/message-search"
 import { formatDefaultThreadTitle } from "@shared/i18n"
@@ -271,6 +272,7 @@ export class ThreadsService {
     private readonly settingsService: SettingsService,
     private readonly workspaceService: WorkspaceService,
     private readonly threadWorkspaceService: ThreadWorkspaceService,
+    private readonly threadDigestService: ThreadDigestService,
     private readonly threadLifecycleGate = new ThreadLifecycleGate(),
     private readonly threadWorkflowService = new ThreadWorkflowService()
   ) {}
@@ -643,13 +645,16 @@ export class ThreadsService {
   async delete(threadId: string): Promise<void> {
     console.log("[Threads] Deleting thread:", threadId)
 
-    await this.threadLifecycleGate.withDeletion(threadId, async () => {
-      await closeCheckpointer(threadId)
-      console.log("[Threads] Closed checkpointer")
+    await this.threadDigestService.withThreadDeletion(threadId, (waitForDigest) =>
+      this.threadLifecycleGate.withDeletion(threadId, async () => {
+        await waitForDigest()
+        await closeCheckpointer(threadId)
+        console.log("[Threads] Closed checkpointer")
 
-      await dbDeleteThread(threadId)
-      console.log("[Threads] Deleted from metadata store")
-    })
+        await dbDeleteThread(threadId)
+        console.log("[Threads] Deleted from metadata store")
+      })
+    )
 
     try {
       await this.artifactsService.deleteManagedFilesForThread(threadId)

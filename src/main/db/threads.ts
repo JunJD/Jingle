@@ -852,6 +852,8 @@ export async function deleteThread(threadId: string): Promise<void> {
     await Promise.all([
       tx.$executeRaw`DELETE FROM "messages_fts" WHERE thread_id = ${threadId}`,
       tx.$executeRaw`DELETE FROM "messages_fts_trigram" WHERE thread_id = ${threadId}`,
+      tx.$executeRaw`DELETE FROM "thread_digests_fts" WHERE thread_id = ${threadId}`,
+      tx.$executeRaw`DELETE FROM "thread_digests_fts_trigram" WHERE thread_id = ${threadId}`,
       tx.message.deleteMany({
         where: { threadId }
       }),

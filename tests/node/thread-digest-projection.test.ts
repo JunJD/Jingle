@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
+import type { MessageProjectionRow } from "../../src/main/db/message-state"
 
 const repoRoot = process.cwd()
 const originalJingleHome = process.env.JINGLE_HOME
@@ -17,20 +18,60 @@ async function loadDbModules() {
 }
 
 async function resetDatabase(): Promise<void> {
-  const {
-    closeDatabase,
-    flushAgentTraceProjection,
-    getPrismaClient,
-    initializeDatabase
-  } = await loadDbModules()
-  const { flushThreadDigestProjection } = await import(
-    "../../src/main/projection/thread-digest-queue"
-  )
+  const { closeDatabase, flushAgentTraceProjection, getPrismaClient, initializeDatabase } =
+    await loadDbModules()
   await flushAgentTraceProjection()
-  await flushThreadDigestProjection()
   await closeDatabase()
   await initializeDatabase()
   await getPrismaClient().thread.deleteMany()
+}
+
+async function seedThread(threadId: string, text: string): Promise<void> {
+  const { createThread, syncMessageSearchIndexFromSnapshot } = await loadDbModules()
+  await createThread(threadId, { title: `Title for ${threadId}` })
+  await syncMessageSearchIndexFromSnapshot(threadId, [
+    {
+      content: JSON.stringify(text),
+      message_id: `message-${threadId}`,
+      role: "user"
+    }
+  ])
+}
+
+async function createThreadsServiceForDigestTest(
+  threadDigestService: unknown,
+  threadLifecycleGate?: unknown
+) {
+  const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
+  const { ThreadsService } = await import("../../src/main/threads/service")
+  return new ThreadsService(
+    { deleteManagedFilesForThread: async () => undefined } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[0],
+    {} as ConstructorParameters<typeof ThreadsService>[1],
+    {} as ConstructorParameters<typeof ThreadsService>[2],
+    {} as ConstructorParameters<typeof ThreadsService>[3],
+    {} as ConstructorParameters<typeof ThreadsService>[4],
+    threadDigestService as ConstructorParameters<typeof ThreadsService>[5],
+    (threadLifecycleGate ?? new ThreadLifecycleGate()) as ConstructorParameters<
+      typeof ThreadsService
+    >[6]
+  )
+}
+
+async function assertDigestSearchRowsDeleted(threadId: string): Promise<void> {
+  const { getPrismaClient } = await loadDbModules()
+  const prisma = getPrismaClient()
+  const [unicodeRows, trigramRows] = await Promise.all([
+    prisma.$queryRaw<Array<{ thread_id: string }>>`
+      SELECT thread_id FROM "thread_digests_fts" WHERE thread_id = ${threadId}
+    `,
+    prisma.$queryRaw<Array<{ thread_id: string }>>`
+      SELECT thread_id FROM "thread_digests_fts_trigram" WHERE thread_id = ${threadId}
+    `
+  ])
+  assert.deepEqual(unicodeRows, [])
+  assert.deepEqual(trigramRows, [])
 }
 
 test.before(async () => {
@@ -41,7 +82,7 @@ test.before(async () => {
     cwd: repoRoot,
     env: {
       ...process.env,
-      JINGLE_HOME: jingleHome,
+      JINGLE_HOME: jingleHome
     }
   })
 })
@@ -52,11 +93,7 @@ test.beforeEach(async () => {
 
 test.after(async () => {
   const { closeDatabase, flushAgentTraceProjection } = await loadDbModules()
-  const { flushThreadDigestProjection } = await import(
-    "../../src/main/projection/thread-digest-queue"
-  )
   await flushAgentTraceProjection()
-  await flushThreadDigestProjection()
   await closeDatabase()
 
   if (originalJingleHome === undefined) {
@@ -70,39 +107,20 @@ test.after(async () => {
   }
 })
 
-test("thread digest projection writes a ready rebuildable digest and searchable FTS rows", async () => {
-  const {
-    createThread,
-    getThreadDigest,
-    searchThreadDigests,
-    syncMessageSearchIndexFromSnapshot
-  } = await loadDbModules()
-  const { projectThreadDigest, setThreadDigestGeneratorForTests } = await import(
-    "../../src/main/projection/thread-digest-projection"
-  )
+test("manual thread digest generation writes a ready searchable digest", async () => {
+  const { getThreadDigest, searchThreadDigests } = await loadDbModules()
+  const { projectThreadDigest, setThreadDigestGeneratorForTests } =
+    await import("../../src/main/projection/thread-digest-projection")
   const threadId = "thread-digest-ready"
-
-  await createThread(threadId, { title: "Digest Ready Thread" })
-  await syncMessageSearchIndexFromSnapshot(threadId, [
-    {
-      content: JSON.stringify("We decided that ThreadDigest routes session search."),
-      message_id: "message-user-digest",
-      role: "user"
-    },
-    {
-      content: JSON.stringify("Use messages FTS for concrete evidence after digest routing."),
-      message_id: "message-assistant-digest",
-      role: "assistant"
-    }
-  ])
+  await seedThread(threadId, "ThreadDigest routes session search.")
 
   const restoreGenerator = setThreadDigestGeneratorForTests(async ({ prompt }) => {
     assert.match(prompt, /ThreadDigest routes session search/)
     return {
-      decisions: ["Use messages FTS for concrete evidence."],
-      openQuestions: ["How should external IM bindings attach?"],
-      summary: "ThreadDigest routes session-level history search before message evidence lookup.",
-      topics: ["ThreadDigest", "history retrieval"]
+      decisions: ["Use message search for evidence."],
+      openQuestions: [],
+      summary: "ThreadDigest routes history search before message evidence lookup.",
+      topics: ["history retrieval"]
     }
   })
   try {
@@ -115,300 +133,438 @@ test("thread digest projection writes a ready rebuildable digest and searchable 
   assert.equal(digest?.status, "ready")
   assert.equal(
     digest?.summary,
-    "ThreadDigest routes session-level history search before message evidence lookup."
+    "ThreadDigest routes history search before message evidence lookup."
   )
-  assert.deepEqual(digest?.topics, ["ThreadDigest", "history retrieval"])
-  assert.equal(digest?.messageCount, 2)
-  assert.equal(digest?.projectedThroughSeq, 2)
-  assert.ok(digest?.sourceHash)
-
-  const matches = await searchThreadDigests({
-    limit: 5,
-    query: "session history"
-  })
-  assert.equal(matches[0]?.threadId, threadId)
-  assert.equal(matches[0]?.threadTitle, "Digest Ready Thread")
+  assert.equal(
+    (await searchThreadDigests({ limit: 5, query: "history search" }))[0]?.threadId,
+    threadId
+  )
 })
 
-test("run finished schedules a coalesced thread digest projection", async () => {
-  const { createRun, createThread, getThreadDigest, syncMessageSearchIndexFromSnapshot } =
-    await loadDbModules()
+test("run completion does not generate a thread digest automatically", async () => {
+  const { createRun, getThreadDigest } = await loadDbModules()
   const { recordRunFinished } = await import("../../src/main/agent/event-recorder")
-  const { flushThreadDigestProjection, setThreadDigestGeneratorForTests } = await import(
-    "../../src/main/projection/thread-digest-queue"
-  )
-  const threadId = "thread-digest-run-finished"
-
-  await createThread(threadId)
-  await createRun("run-digest-one", threadId)
-  await createRun("run-digest-two", threadId)
-  await syncMessageSearchIndexFromSnapshot(threadId, [
-    {
-      content: JSON.stringify("Terminal runs should enqueue one coalesced digest job."),
-      message_id: "message-digest-coalesced",
-      role: "user"
-    }
-  ])
+  const { setThreadDigestGeneratorForTests } =
+    await import("../../src/main/projection/thread-digest-projection")
+  const threadId = "thread-digest-manual-only"
+  await seedThread(threadId, "Digest generation must remain user initiated.")
+  await createRun("run-digest-manual-only", threadId)
 
   let calls = 0
   const restoreGenerator = setThreadDigestGeneratorForTests(async () => {
     calls += 1
-    return {
-      decisions: [],
-      openQuestions: [],
-      summary: "Run finished enqueues a coalesced thread digest projection.",
-      topics: ["projection queue"]
-    }
+    return { decisions: [], openQuestions: [], summary: "Unexpected", topics: [] }
   })
   try {
     await recordRunFinished({
       completionReason: "done",
-      runId: "run-digest-one",
+      runId: "run-digest-manual-only",
       status: "success",
       threadId
     })
-    await recordRunFinished({
-      completionReason: "done",
-      runId: "run-digest-two",
-      status: "success",
-      threadId
-    })
-    await flushThreadDigestProjection()
   } finally {
     restoreGenerator()
   }
 
-  assert.equal(calls, 1)
-  assert.equal((await getThreadDigest(threadId))?.status, "ready")
+  assert.equal(calls, 0)
+  assert.equal(await getThreadDigest(threadId), null)
 })
 
-test("thread digest projection failure writes diagnostics without a fake searchable digest", async () => {
-  const {
-    createThread,
-    getThreadDigest,
-    searchThreadDigests,
-    syncMessageSearchIndexFromSnapshot
-  } = await loadDbModules()
-  const {
-    enqueueThreadDigestProjection,
-    flushThreadDigestProjection,
-    setThreadDigestGeneratorForTests
-  } = await import(
-    "../../src/main/projection/thread-digest-queue"
-  )
-  const threadId = "thread-digest-failure"
-
-  await createThread(threadId)
-  await syncMessageSearchIndexFromSnapshot(threadId, [
-    {
-      content: JSON.stringify("Failure diagnostics should stay visible."),
-      message_id: "message-digest-failure",
-      role: "user"
-    }
-  ])
-
-  const restoreGenerator = setThreadDigestGeneratorForTests(async () => {
-    throw new Error("digest model unavailable")
-  })
-  try {
-    enqueueThreadDigestProjection(threadId)
-    await flushThreadDigestProjection()
-  } finally {
-    restoreGenerator()
-  }
-
-  const digest = await getThreadDigest(threadId)
-  assert.equal(digest?.status, "failed")
-  assert.equal(digest?.summary, null)
-  assert.match(digest?.projectionError ?? "", /digest model unavailable/)
-  assert.deepEqual(await searchThreadDigests({ limit: 5, query: "diagnostics" }), [])
-})
-
-test("thread digest projection stops retrying provider access failures", async () => {
-  const { createThread, getThreadDigest, syncMessageSearchIndexFromSnapshot } = await loadDbModules()
-  const {
-    enqueueThreadDigestProjection,
-    flushThreadDigestProjection,
-    setThreadDigestGeneratorForTests
-  } = await import(
-    "../../src/main/projection/thread-digest-queue"
-  )
-  const threadId = "thread-digest-access-failure"
-
-  await createThread(threadId)
-  await syncMessageSearchIndexFromSnapshot(threadId, [
-    {
-      content: JSON.stringify("Provider access failures should not be retried forever."),
-      message_id: "message-digest-access-failure",
-      role: "user"
-    }
-  ])
-
-  let calls = 0
-  const accessError = new Error("Access denied, please make sure your account is in good standing.")
-  Object.assign(accessError, { code: "Arrearage", status: 400, type: "Arrearage" })
-  const restoreGenerator = setThreadDigestGeneratorForTests(async () => {
-    calls += 1
-    throw accessError
-  })
-  try {
-    enqueueThreadDigestProjection(threadId)
-    await flushThreadDigestProjection()
-    enqueueThreadDigestProjection(threadId)
-    await flushThreadDigestProjection()
-  } finally {
-    restoreGenerator()
-  }
-
-  const digest = await getThreadDigest(threadId)
-  assert.equal(calls, 1)
-  assert.equal(digest?.status, "failed")
-  assert.match(digest?.projectionError ?? "", /Access denied/)
-})
-
-test("thread digest projection failure clears stale ready digest content", async () => {
-  const {
-    createThread,
-    getThreadDigest,
-    searchThreadDigests,
-    syncMessageSearchIndexFromSnapshot,
-    upsertReadyThreadDigest
-  } = await loadDbModules()
-  const {
-    enqueueThreadDigestProjection,
-    flushThreadDigestProjection,
-    setThreadDigestGeneratorForTests
-  } = await import(
-    "../../src/main/projection/thread-digest-queue"
-  )
-  const threadId = "thread-digest-failure-clears-stale"
-
-  await createThread(threadId)
-  await syncMessageSearchIndexFromSnapshot(threadId, [
-    {
-      content: JSON.stringify("Failure should remove old digest content."),
-      message_id: "message-digest-clear-stale",
-      role: "user"
-    }
-  ])
+test("failed regeneration preserves the last successful digest", async () => {
+  const { getThreadDigest, searchThreadDigests, upsertReadyThreadDigest } = await loadDbModules()
+  const { setThreadDigestGeneratorForTests } =
+    await import("../../src/main/projection/thread-digest-projection")
+  const { ThreadDigestService } = await import("../../src/main/thread-digest/service")
+  const threadId = "thread-digest-preserve-ready"
+  await seedThread(threadId, "A failed retry must preserve the old summary.")
   await upsertReadyThreadDigest({
-    decisions: ["Old decision"],
+    decisions: ["Keep the old digest."],
     messageCount: 1,
-    openQuestions: ["Old question"],
+    openQuestions: [],
     projectedThroughSeq: 1,
     sourceHash: "old-hash",
-    summary: "Old searchable digest content.",
+    summary: "Existing searchable summary.",
     threadId,
-    topics: ["Old topic"]
+    topics: ["preservation"]
   })
 
   const restoreGenerator = setThreadDigestGeneratorForTests(async () => {
     throw new Error("digest model unavailable")
   })
   try {
-    enqueueThreadDigestProjection(threadId)
-    await flushThreadDigestProjection()
+    await assert.rejects(new ThreadDigestService().generate(threadId), /digest model unavailable/)
   } finally {
     restoreGenerator()
   }
 
   const digest = await getThreadDigest(threadId)
-  assert.equal(digest?.status, "failed")
-  assert.equal(digest?.summary, null)
-  assert.deepEqual(digest?.topics, [])
-  assert.deepEqual(digest?.decisions, [])
-  assert.deepEqual(digest?.openQuestions, [])
-  assert.equal(digest?.messageCount, 0)
-  assert.equal(digest?.projectedThroughSeq, 0)
-  assert.equal(digest?.sourceHash, null)
-  assert.deepEqual(await searchThreadDigests({ limit: 5, query: "searchable" }), [])
-})
-
-test("thread digest projection without source messages stays pending without fake search rows", async () => {
-  const { createThread, getThreadDigest, searchThreadDigests } = await loadDbModules()
-  const { projectThreadDigest } = await import(
-    "../../src/main/projection/thread-digest-projection"
-  )
-  const threadId = "thread-digest-empty"
-
-  await createThread(threadId)
-  await projectThreadDigest(threadId)
-
-  const digest = await getThreadDigest(threadId)
-  assert.equal(digest?.status, "pending")
-  assert.equal(digest?.summary, null)
-  assert.equal(digest?.projectionError, null)
-  assert.deepEqual(await searchThreadDigests({ limit: 5, query: "empty" }), [])
-})
-
-test("closeRuntimeCheckpointers flushes queued thread digest projection", async () => {
-  const { createThread, getThreadDigest, syncMessageSearchIndexFromSnapshot } = await loadDbModules()
-  const { enqueueThreadDigestProjection, setThreadDigestGeneratorForTests } = await import(
-    "../../src/main/projection/thread-digest-queue"
-  )
-  const { closeRuntimeCheckpointers } = await import(
-    "../../src/main/checkpointer/runtime-checkpointer-manager"
-  )
-  const threadId = "thread-digest-close-runtime"
-
-  await createThread(threadId)
-  await syncMessageSearchIndexFromSnapshot(threadId, [
-    {
-      content: JSON.stringify("closeRuntimeCheckpointers should flush queued digest work."),
-      message_id: "message-close-runtime",
-      role: "user"
-    }
-  ])
-
-  const restoreGenerator = setThreadDigestGeneratorForTests(async () => ({
-    decisions: [],
-    openQuestions: [],
-    summary: "closeRuntimeCheckpointers flushes queued digest work.",
-    topics: ["closeRuntimeCheckpointers"]
-  }))
-  try {
-    enqueueThreadDigestProjection(threadId)
-    await closeRuntimeCheckpointers()
-  } finally {
-    restoreGenerator()
-  }
-
-  assert.equal((await getThreadDigest(threadId))?.status, "ready")
-})
-
-test("closeDatabase flushes queued thread digest projection", async () => {
-  const { closeDatabase, createThread, getPrismaClient, initializeDatabase } = await loadDbModules()
-  const { syncMessageSearchIndexFromSnapshot } = await import("../../src/main/db/message-search")
-  const { enqueueThreadDigestProjection, setThreadDigestGeneratorForTests } = await import(
-    "../../src/main/projection/thread-digest-queue"
-  )
-  const threadId = "thread-digest-close-database"
-
-  await createThread(threadId)
-  await syncMessageSearchIndexFromSnapshot(threadId, [
-    {
-      content: JSON.stringify("closeDatabase should flush queued digest work."),
-      message_id: "message-close-database",
-      role: "user"
-    }
-  ])
-
-  const restoreGenerator = setThreadDigestGeneratorForTests(async () => ({
-    decisions: [],
-    openQuestions: [],
-    summary: "closeDatabase flushes queued digest work.",
-    topics: ["closeDatabase"]
-  }))
-  try {
-    enqueueThreadDigestProjection(threadId)
-    await closeDatabase()
-  } finally {
-    restoreGenerator()
-  }
-
-  await initializeDatabase()
-  const digest = await getPrismaClient().threadDigest.findUnique({
-    where: { threadId }
-  })
   assert.equal(digest?.status, "ready")
+  assert.equal(digest?.summary, "Existing searchable summary.")
+  assert.equal(
+    (await searchThreadDigests({ limit: 5, query: "searchable" }))[0]?.threadId,
+    threadId
+  )
+})
+
+test("digest and search index updates roll back together", async () => {
+  const { getPrismaClient, getThreadDigest, searchThreadDigests, upsertReadyThreadDigest } =
+    await loadDbModules()
+  const threadId = "thread-digest-atomic"
+  await seedThread(threadId, "Digest persistence must remain atomic.")
+  await upsertReadyThreadDigest({
+    decisions: [],
+    messageCount: 1,
+    openQuestions: [],
+    projectedThroughSeq: 1,
+    sourceHash: "old-hash",
+    summary: "Existing atomic summary.",
+    threadId,
+    topics: ["atomic"]
+  })
+
+  const prisma = getPrismaClient()
+  await prisma.$executeRawUnsafe('DROP TABLE "thread_digests_fts_trigram"')
+  try {
+    await assert.rejects(
+      upsertReadyThreadDigest({
+        decisions: [],
+        messageCount: 2,
+        openQuestions: [],
+        projectedThroughSeq: 2,
+        sourceHash: "new-hash",
+        summary: "Replacement summary.",
+        threadId,
+        topics: ["replacement"]
+      })
+    )
+    assert.equal((await getThreadDigest(threadId))?.summary, "Existing atomic summary.")
+  } finally {
+    await prisma.$executeRawUnsafe(
+      'CREATE VIRTUAL TABLE "thread_digests_fts_trigram" USING fts5("thread_id" UNINDEXED, "search_text", tokenize = \'trigram\')'
+    )
+  }
+
+  assert.equal(
+    (await searchThreadDigests({ limit: 5, query: "atomic summary" }))[0]?.threadId,
+    threadId
+  )
+})
+
+test("manual generation can retry provider failures", async () => {
+  const { setThreadDigestGeneratorForTests } =
+    await import("../../src/main/projection/thread-digest-projection")
+  const { ThreadDigestService } = await import("../../src/main/thread-digest/service")
+  const threadId = "thread-digest-retry"
+  await seedThread(threadId, "Manual retry should call the provider again.")
+
+  let calls = 0
+  const restoreGenerator = setThreadDigestGeneratorForTests(async () => {
+    calls += 1
+    throw new Error("provider access denied")
+  })
+  const service = new ThreadDigestService()
+  try {
+    await assert.rejects(service.generate(threadId), /access denied/)
+    await assert.rejects(service.generate(threadId), /access denied/)
+  } finally {
+    restoreGenerator()
+  }
+
+  assert.equal(calls, 2)
+})
+
+test("manual generation rejects threads without messages", async () => {
+  const { createThread, getThreadDigest } = await loadDbModules()
+  const { ThreadDigestService } = await import("../../src/main/thread-digest/service")
+  const threadId = "thread-digest-empty"
+  await createThread(threadId)
+
+  await assert.rejects(
+    new ThreadDigestService().generate(threadId),
+    /no user or assistant messages/
+  )
+  assert.equal(await getThreadDigest(threadId), null)
+})
+
+test("concurrent requests for one thread share one generation", async () => {
+  const { setThreadDigestGeneratorForTests } =
+    await import("../../src/main/projection/thread-digest-projection")
+  const { ThreadDigestService } = await import("../../src/main/thread-digest/service")
+  const threadId = "thread-digest-coalesced"
+  await seedThread(threadId, "Concurrent requests should share one model call.")
+
+  let calls = 0
+  let release: () => void = () => {
+    throw new Error("Digest generation gate was not initialized.")
+  }
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const restoreGenerator = setThreadDigestGeneratorForTests(async () => {
+    calls += 1
+    await gate
+    return { decisions: [], openQuestions: [], summary: "One shared result.", topics: [] }
+  })
+  const service = new ThreadDigestService()
+  const changed: string[] = []
+  const unsubscribe = service.onChanged((digest) => {
+    changed.push(digest.summary ?? "")
+  })
+  try {
+    const first = service.generate(threadId)
+    const second = service.generate(threadId)
+    release()
+    const [firstDigest, secondDigest] = await Promise.all([first, second])
+    assert.equal(firstDigest.summary, "One shared result.")
+    assert.equal(secondDigest.summary, "One shared result.")
+  } finally {
+    unsubscribe()
+    restoreGenerator()
+  }
+
+  assert.equal(calls, 1)
+  assert.deepEqual(changed, ["One shared result."])
+})
+
+test("shutdown cancels active generation without writing a partial digest", async () => {
+  const { getThreadDigest } = await loadDbModules()
+  const { setThreadDigestGeneratorForTests } =
+    await import("../../src/main/projection/thread-digest-projection")
+  const { ThreadDigestService } = await import("../../src/main/thread-digest/service")
+  const threadId = "thread-digest-cancel"
+  await seedThread(threadId, "Application shutdown should cancel this summary.")
+
+  const restoreGenerator = setThreadDigestGeneratorForTests(
+    ({ signal }) =>
+      new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(signal.reason), { once: true })
+      })
+  )
+  const service = new ThreadDigestService()
+  try {
+    const generation = service.generate(threadId)
+    const rejected = assert.rejects(generation, { name: "AbortError" })
+    await service.shutdown()
+    await rejected
+    assert.throws(
+      () => service.withThreadDeletion(threadId, async () => undefined),
+      /application is shutting down/
+    )
+  } finally {
+    restoreGenerator()
+  }
+
+  assert.equal(await getThreadDigest(threadId), null)
+})
+
+test("shutdown waits for an admitted digest commit without publishing a change", async () => {
+  const { getThreadDigest } = await loadDbModules()
+  const {
+    commitThreadDigestProjection,
+    prepareThreadDigestProjection,
+    setThreadDigestGeneratorForTests
+  } = await import("../../src/main/projection/thread-digest-projection")
+  const { ThreadDigestService } = await import("../../src/main/thread-digest/service")
+  const threadId = "thread-digest-shutdown-commit"
+  await seedThread(threadId, "An admitted digest commit must finish during shutdown.")
+
+  let releaseCommit: () => void = () => {
+    throw new Error("Digest commit gate was not initialized.")
+  }
+  let markCommitStarted: () => void = () => {
+    throw new Error("Digest commit start gate was not initialized.")
+  }
+  const commitGate = new Promise<void>((resolve) => {
+    releaseCommit = resolve
+  })
+  const commitStarted = new Promise<void>((resolve) => {
+    markCommitStarted = resolve
+  })
+  const restoreGenerator = setThreadDigestGeneratorForTests(async () => ({
+    decisions: [],
+    openQuestions: [],
+    summary: "Committed during shutdown.",
+    topics: []
+  }))
+  const service = new ThreadDigestService(undefined, {
+    commit: async (input) => {
+      markCommitStarted()
+      await commitGate
+      await commitThreadDigestProjection(input)
+    },
+    prepare: prepareThreadDigestProjection
+  })
+  let changedCount = 0
+  const unsubscribe = service.onChanged(() => {
+    changedCount += 1
+  })
+
+  try {
+    const generation = service.generate(threadId)
+    await commitStarted
+    const shutdown = service.shutdown()
+    let shutdownSettled = false
+    void shutdown.then(() => {
+      shutdownSettled = true
+    })
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    assert.equal(shutdownSettled, false)
+
+    releaseCommit()
+    assert.equal((await generation).summary, "Committed during shutdown.")
+    await shutdown
+  } finally {
+    unsubscribe()
+    restoreGenerator()
+  }
+
+  assert.equal(changedCount, 0)
+  assert.equal((await getThreadDigest(threadId))?.summary, "Committed during shutdown.")
+})
+
+test("thread deletion aborts digest preparation, rejects new admission, and clears digest search rows", async () => {
+  const { getThread, getThreadDigest, upsertReadyThreadDigest } = await loadDbModules()
+  const { ThreadDigestService } = await import("../../src/main/thread-digest/service")
+  const threadId = "thread-digest-delete-prepare"
+  await seedThread(threadId, "Deletion must cancel digest preparation.")
+  await upsertReadyThreadDigest({
+    decisions: [],
+    messageCount: 1,
+    openQuestions: [],
+    projectedThroughSeq: 1,
+    sourceHash: "existing-hash",
+    summary: "Existing digest to delete.",
+    threadId,
+    topics: []
+  })
+
+  let markPrepareStarted: () => void = () => {
+    throw new Error("Digest prepare start gate was not initialized.")
+  }
+  const prepareStarted = new Promise<void>((resolve) => {
+    markPrepareStarted = resolve
+  })
+  const digestService = new ThreadDigestService(undefined, {
+    commit: async () => {
+      assert.fail("Canceled digest preparation must not commit.")
+    },
+    prepare: (_requestedThreadId, signal) =>
+      new Promise((_resolve, reject) => {
+        markPrepareStarted()
+        const rejectAbort = (): void => reject(signal.reason)
+        signal.addEventListener("abort", rejectAbort, { once: true })
+        if (signal.aborted) {
+          rejectAbort()
+        }
+      })
+  })
+  const threadsService = await createThreadsServiceForDigestTest(digestService)
+  const generation = digestService.generate(threadId)
+  const generationRejected = assert.rejects(generation, { name: "AbortError" })
+  await prepareStarted
+
+  const deletion = threadsService.delete(threadId)
+  assert.throws(() => digestService.generate(threadId), /being deleted/)
+  await Promise.all([deletion, generationRejected])
+
+  assert.equal(await getThread(threadId), null)
+  assert.equal(await getThreadDigest(threadId), null)
+  assert.throws(() => digestService.generate(threadId), /no longer exists/)
+  await assertDigestSearchRowsDeleted(threadId)
+})
+
+test("thread deletion waits for an admitted digest commit before removing the thread", async () => {
+  const { getThread, getThreadDigest } = await loadDbModules()
+  const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
+  const { commitThreadDigestProjection } =
+    await import("../../src/main/projection/thread-digest-projection")
+  const { ThreadDigestService } = await import("../../src/main/thread-digest/service")
+  const threadId = "thread-digest-delete-commit"
+  await seedThread(threadId, "Deletion must wait for an admitted digest commit.")
+
+  let markCommitStarted: () => void = () => {
+    throw new Error("Digest commit start gate was not initialized.")
+  }
+  let releaseCommit: () => void = () => {
+    throw new Error("Digest commit gate was not initialized.")
+  }
+  const commitStarted = new Promise<void>((resolve) => {
+    markCommitStarted = resolve
+  })
+  const commitGate = new Promise<void>((resolve) => {
+    releaseCommit = resolve
+  })
+  const digestService = new ThreadDigestService(undefined, {
+    commit: async (input) => {
+      markCommitStarted()
+      await commitGate
+      await commitThreadDigestProjection(input)
+    },
+    prepare: async () => ({
+      decisions: [],
+      messageCount: 1,
+      openQuestions: [],
+      projectedThroughSeq: 1,
+      sourceHash: "committing-hash",
+      summary: "Digest committed before deletion.",
+      threadId,
+      topics: []
+    })
+  })
+  let changedCount = 0
+  const unsubscribe = digestService.onChanged(() => {
+    changedCount += 1
+  })
+  const threadLifecycleGate = new ThreadLifecycleGate()
+  const threadsService = await createThreadsServiceForDigestTest(digestService, threadLifecycleGate)
+  const generation = digestService.generate(threadId)
+  await commitStarted
+
+  let deletionSettled = false
+  const deletion = threadsService.delete(threadId).then(() => {
+    deletionSettled = true
+  })
+  assert.throws(() => digestService.generate(threadId), /being deleted/)
+  assert.equal((await threadLifecycleGate.claimRun(threadId)).status, "deleting")
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(deletionSettled, false)
+
+  releaseCommit()
+  assert.equal((await generation).summary, "Digest committed before deletion.")
+  await deletion
+
+  assert.equal(await getThread(threadId), null)
+  assert.equal(await getThreadDigest(threadId), null)
+  assert.equal(changedCount, 0)
+  await assertDigestSearchRowsDeleted(threadId)
+  unsubscribe()
+})
+
+test("digest prompt keeps the newest messages when the character budget is exhausted", async () => {
+  const { threadDigestProjectionInternals } =
+    await import("../../src/main/projection/thread-digest-projection")
+  const messages = Array.from({ length: 30 }, (_, index): MessageProjectionRow => {
+    const seq = index + 1
+    const marker = seq === 1 ? "OLDEST_MARKER" : seq === 30 ? "NEWEST_MARKER" : `message-${seq}`
+    return {
+      content: JSON.stringify(`${marker} ${"x".repeat(1_100)}`),
+      created_at: seq,
+      kind: "message",
+      message_id: `message-${seq}`,
+      metadata: null,
+      name: null,
+      raw_message: "",
+      role: seq % 2 === 0 ? "assistant" : "user",
+      run_id: null,
+      seq,
+      thread_id: "thread-digest-budget",
+      tool_call_id: null,
+      tool_calls: null
+    }
+  })
+
+  const prompt = threadDigestProjectionInternals.buildDigestPrompt(messages)
+
+  assert.match(prompt, /NEWEST_MARKER/)
+  assert.doesNotMatch(prompt, /OLDEST_MARKER/)
 })

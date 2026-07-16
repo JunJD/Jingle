@@ -73,13 +73,7 @@ export type {
   MessageSearchMatchRow,
   PreparedMessageStateItem
 } from "./message-state"
-export {
-  getThreadDigest,
-  markThreadDigestProjectionError,
-  markThreadDigestProjectionPending,
-  searchThreadDigests,
-  upsertReadyThreadDigest
-} from "./thread-digests"
+export { getThreadDigest, searchThreadDigests, upsertReadyThreadDigest } from "./thread-digests"
 export type { UpsertReadyThreadDigestInput } from "./thread-digests"
 export {
   AgentEventRecorder,

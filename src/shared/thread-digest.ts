@@ -1,21 +1,28 @@
+import { z } from "zod/v4"
+
 export const THREAD_DIGEST_STATUSES = ["pending", "ready", "failed"] as const
 
-export type ThreadDigestStatus = (typeof THREAD_DIGEST_STATUSES)[number]
+export const threadDigestStatusSchema = z.enum(THREAD_DIGEST_STATUSES)
+export type ThreadDigestStatus = z.infer<typeof threadDigestStatusSchema>
 
-export interface ThreadDigestRecord {
-  decisions: string[]
-  generatedAt: number | null
-  messageCount: number
-  openQuestions: string[]
-  projectedThroughSeq: number
-  projectionError: string | null
-  sourceHash: string | null
-  status: ThreadDigestStatus
-  summary: string | null
-  threadId: string
-  topics: string[]
-  updatedAt: number
-}
+export const threadDigestRecordSchema = z
+  .object({
+    decisions: z.array(z.string()),
+    generatedAt: z.int().nonnegative().nullable(),
+    messageCount: z.int().nonnegative(),
+    openQuestions: z.array(z.string()),
+    projectedThroughSeq: z.int().nonnegative(),
+    projectionError: z.string().nullable(),
+    sourceHash: z.string().nullable(),
+    status: threadDigestStatusSchema,
+    summary: z.string().nullable(),
+    threadId: z.string().min(1),
+    topics: z.array(z.string()),
+    updatedAt: z.int().nonnegative()
+  })
+  .strict()
+
+export type ThreadDigestRecord = z.infer<typeof threadDigestRecordSchema>
 
 export interface ThreadDigestSearchMatch extends ThreadDigestRecord {
   rank: number
@@ -23,3 +30,19 @@ export interface ThreadDigestSearchMatch extends ThreadDigestRecord {
   threadTitle: string | null
   threadUpdatedAt: number
 }
+
+export const threadDigestRequestSchema = z
+  .object({
+    threadId: z.string().trim().min(1)
+  })
+  .strict()
+
+export type ThreadDigestRequest = z.infer<typeof threadDigestRequestSchema>
+
+export const threadDigestChangedEventSchema = z
+  .object({
+    digest: threadDigestRecordSchema
+  })
+  .strict()
+
+export type ThreadDigestChangedEvent = z.infer<typeof threadDigestChangedEventSchema>

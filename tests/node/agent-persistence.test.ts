@@ -140,12 +140,15 @@ function createAppleRemindersSourceRef() {
   }
 }
 
-async function createThreadsServiceForTest(input: { threadLifecycleGate?: unknown } = {}) {
+async function createThreadsServiceForTest(
+  input: { threadDigestService?: unknown; threadLifecycleGate?: unknown } = {}
+) {
   const { ArtifactsService } = await import("../../src/main/artifacts/service")
   const { ThreadsService } = await import("../../src/main/threads/service")
   const { ThreadWorkspaceRepository } = await import("../../src/main/thread-workspace/repository")
   const { ThreadWorkspaceService } = await import("../../src/main/thread-workspace/service")
   const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
+  const { ThreadDigestService } = await import("../../src/main/thread-digest/service")
 
   return new ThreadsService(
     new ArtifactsService(),
@@ -161,9 +164,12 @@ async function createThreadsServiceForTest(input: { threadLifecycleGate?: unknow
     new ThreadWorkspaceService(new ThreadWorkspaceRepository()) as unknown as ConstructorParameters<
       typeof ThreadsService
     >[4],
+    (input.threadDigestService ?? new ThreadDigestService()) as ConstructorParameters<
+      typeof ThreadsService
+    >[5],
     (input.threadLifecycleGate ?? new ThreadLifecycleGate()) as ConstructorParameters<
       typeof ThreadsService
-    >[5]
+    >[6]
   )
 }
 

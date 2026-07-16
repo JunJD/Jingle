@@ -114,27 +114,25 @@ function buildThreadDigestSearchText(input: {
   return Array.from(new Set([exactText, segmentedText].filter(Boolean))).join("\n")
 }
 
-async function replaceThreadDigestSearchIndex(input: {
-  searchText: string
-  threadId: string
-}): Promise<void> {
-  const prisma = getPrismaClient()
-  await Promise.all([
-    prisma.$executeRaw`DELETE FROM "thread_digests_fts" WHERE thread_id = ${input.threadId}`,
-    prisma.$executeRaw`DELETE FROM "thread_digests_fts_trigram" WHERE thread_id = ${input.threadId}`
-  ])
+async function replaceThreadDigestSearchIndex(
+  prisma: Prisma.TransactionClient,
+  input: {
+    searchText: string
+    threadId: string
+  }
+): Promise<void> {
+  await prisma.$executeRaw`DELETE FROM "thread_digests_fts" WHERE thread_id = ${input.threadId}`
+  await prisma.$executeRaw`DELETE FROM "thread_digests_fts_trigram" WHERE thread_id = ${input.threadId}`
 
   if (input.searchText.length > 0) {
-    await Promise.all([
-      prisma.$executeRaw(
-        Prisma.sql`INSERT INTO "thread_digests_fts" ("thread_id", "search_text")
-          VALUES (${input.threadId}, ${input.searchText})`
-      ),
-      prisma.$executeRaw(
-        Prisma.sql`INSERT INTO "thread_digests_fts_trigram" ("thread_id", "search_text")
-          VALUES (${input.threadId}, ${input.searchText})`
-      )
-    ])
+    await prisma.$executeRaw(
+      Prisma.sql`INSERT INTO "thread_digests_fts" ("thread_id", "search_text")
+        VALUES (${input.threadId}, ${input.searchText})`
+    )
+    await prisma.$executeRaw(
+      Prisma.sql`INSERT INTO "thread_digests_fts_trigram" ("thread_id", "search_text")
+        VALUES (${input.threadId}, ${input.searchText})`
+    )
   }
 }
 
@@ -151,121 +149,42 @@ export async function upsertReadyThreadDigest(input: UpsertReadyThreadDigestInpu
   const now = BigInt(Date.now())
   const searchText = buildThreadDigestSearchText(input)
 
-  await prisma.threadDigest.upsert({
-    create: {
-      decisions: serializeStringArray(input.decisions),
-      generatedAt: now,
-      messageCount: input.messageCount,
-      openQuestions: serializeStringArray(input.openQuestions),
-      projectedThroughSeq: input.projectedThroughSeq,
-      projectionError: null,
-      sourceHash: input.sourceHash,
-      status: "ready",
-      summary: input.summary,
-      threadId: input.threadId,
-      topics: serializeStringArray(input.topics),
-      createdAt: now,
-      updatedAt: now
-    },
-    update: {
-      decisions: serializeStringArray(input.decisions),
-      generatedAt: now,
-      messageCount: input.messageCount,
-      openQuestions: serializeStringArray(input.openQuestions),
-      projectedThroughSeq: input.projectedThroughSeq,
-      projectionError: null,
-      sourceHash: input.sourceHash,
-      status: "ready",
-      summary: input.summary,
-      topics: serializeStringArray(input.topics),
-      updatedAt: now
-    },
-    where: { threadId: input.threadId }
-  })
-  await replaceThreadDigestSearchIndex({
-    searchText,
-    threadId: input.threadId
-  })
-}
-
-export async function markThreadDigestProjectionPending(threadId: string): Promise<void> {
-  const now = BigInt(Date.now())
-  await getPrismaClient().threadDigest.upsert({
-    create: {
-      decisions: null,
-      generatedAt: null,
-      messageCount: 0,
-      openQuestions: null,
-      projectedThroughSeq: 0,
-      projectionError: null,
-      sourceHash: null,
-      status: "pending",
-      summary: null,
-      threadId,
-      topics: null,
-      createdAt: now,
-      updatedAt: now
-    },
-    update: {
-      decisions: null,
-      generatedAt: null,
-      messageCount: 0,
-      openQuestions: null,
-      projectedThroughSeq: 0,
-      projectionError: null,
-      sourceHash: null,
-      status: "pending",
-      summary: null,
-      topics: null,
-      updatedAt: now
-    },
-    where: { threadId }
-  })
-  await replaceThreadDigestSearchIndex({
-    searchText: "",
-    threadId
-  })
-}
-
-export async function markThreadDigestProjectionError(
-  threadId: string,
-  message: string
-): Promise<void> {
-  const now = BigInt(Date.now())
-  await getPrismaClient().threadDigest.upsert({
-    create: {
-      decisions: null,
-      generatedAt: null,
-      messageCount: 0,
-      openQuestions: null,
-      projectedThroughSeq: 0,
-      projectionError: message,
-      sourceHash: null,
-      status: "failed",
-      summary: null,
-      threadId,
-      topics: null,
-      createdAt: now,
-      updatedAt: now
-    },
-    update: {
-      decisions: null,
-      generatedAt: null,
-      messageCount: 0,
-      openQuestions: null,
-      projectedThroughSeq: 0,
-      projectionError: message,
-      sourceHash: null,
-      status: "failed",
-      summary: null,
-      topics: null,
-      updatedAt: now
-    },
-    where: { threadId }
-  })
-  await replaceThreadDigestSearchIndex({
-    searchText: "",
-    threadId
+  await prisma.$transaction(async (transaction) => {
+    await transaction.threadDigest.upsert({
+      create: {
+        decisions: serializeStringArray(input.decisions),
+        generatedAt: now,
+        messageCount: input.messageCount,
+        openQuestions: serializeStringArray(input.openQuestions),
+        projectedThroughSeq: input.projectedThroughSeq,
+        projectionError: null,
+        sourceHash: input.sourceHash,
+        status: "ready",
+        summary: input.summary,
+        threadId: input.threadId,
+        topics: serializeStringArray(input.topics),
+        createdAt: now,
+        updatedAt: now
+      },
+      update: {
+        decisions: serializeStringArray(input.decisions),
+        generatedAt: now,
+        messageCount: input.messageCount,
+        openQuestions: serializeStringArray(input.openQuestions),
+        projectedThroughSeq: input.projectedThroughSeq,
+        projectionError: null,
+        sourceHash: input.sourceHash,
+        status: "ready",
+        summary: input.summary,
+        topics: serializeStringArray(input.topics),
+        updatedAt: now
+      },
+      where: { threadId: input.threadId }
+    })
+    await replaceThreadDigestSearchIndex(transaction, {
+      searchText,
+      threadId: input.threadId
+    })
   })
 }
 
