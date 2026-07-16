@@ -1,7 +1,6 @@
 "use client"
 
-import { Button } from "../ui/button"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip"
+import { IconButton } from "../ui/icon-button"
 import { cn } from "@/lib/utils"
 import { chatRendererCommands } from "./chat-renderer-commands"
 import { cjk } from "@streamdown/cjk"
@@ -51,9 +50,8 @@ export const MessageActions = ({ className, children, ...props }: MessageActions
   </div>
 )
 
-export type MessageActionProps = ComponentProps<typeof Button> & {
-  tooltip?: string
-  label?: string
+export type MessageActionProps = Omit<ComponentProps<typeof IconButton>, "label"> & {
+  label: string
 }
 
 export const MessageAction = ({
@@ -61,44 +59,26 @@ export const MessageAction = ({
   children,
   label,
   variant = "ghost",
-  size,
+  size = "icon-sm",
   className,
   ...props
 }: MessageActionProps) => {
-  const button = (
-    <Button
-      aria-label={label || tooltip}
+  return (
+    <IconButton
       className={cn(
         "size-[22px] rounded-[var(--jingle-radius-sm)] text-muted-foreground hover:text-foreground [&_svg]:size-[var(--jingle-icon-sm)]",
         className
       )}
+      label={label}
       size={size}
+      tooltip={tooltip ?? label}
       type="button"
       variant={variant}
       {...props}
     >
       {children}
-    </Button>
+    </IconButton>
   )
-
-  if (tooltip) {
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>{button}</TooltipTrigger>
-          <TooltipContent
-            side="top"
-            sideOffset={6}
-            className="z-50 rounded-[var(--jingle-radius-sm)] bg-foreground px-[var(--jingle-space-2)] py-[var(--jingle-space-1)] [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-tight)] text-background shadow-md"
-          >
-            <p>{tooltip}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    )
-  }
-
-  return button
 }
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>

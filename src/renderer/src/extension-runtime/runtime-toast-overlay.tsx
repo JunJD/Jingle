@@ -66,19 +66,24 @@ export function RuntimeToastOverlay(props: {
 
   const tone =
     toast.toast.style === "failure"
-      ? "border-red-500/25 bg-red-500/8 text-red-700"
-      : "border-border bg-background-elevated/95 text-foreground"
+      ? "border-destructive/35 bg-background-elevated text-foreground"
+      : "border-border bg-background-elevated text-foreground"
   const Icon = toast.toast.style === "failure" ? AlertCircle : CheckCircle2
 
   return (
     <div className="pointer-events-none absolute right-[var(--jingle-space-4)] top-[var(--jingle-space-4)] z-30 flex w-[min(360px,calc(100%-var(--jingle-space-8)))] justify-end">
       <div
         className={cn(
-          "pointer-events-auto flex min-w-0 gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-panel)] border px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] shadow-lg backdrop-blur",
+          "pointer-events-auto flex min-w-0 gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-panel)] border px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] shadow-md",
           tone
         )}
       >
-        <Icon className="mt-[2px] size-[var(--jingle-icon-sm)] shrink-0" />
+        <Icon
+          className={cn(
+            "mt-[2px] size-[var(--jingle-icon-sm)] shrink-0",
+            toast.toast.style === "failure" ? "text-destructive" : "text-muted-foreground"
+          )}
+        />
         <div className="min-w-0 flex-1">
           <div className="truncate [font-size:var(--jingle-font-body)] font-medium">
             {toast.toast.title}

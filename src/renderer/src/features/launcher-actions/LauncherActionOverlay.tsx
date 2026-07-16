@@ -1,5 +1,6 @@
 import { Fragment, useMemo, useState } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { cn } from "@/lib/utils"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
@@ -51,10 +52,7 @@ export function LauncherActionOverlay(props: {
     }
 
     const childActions = action.children
-    setSubmenuStack((current) => [
-      ...current,
-      { actions: childActions, title: action.title }
-    ])
+    setSubmenuStack((current) => [...current, { actions: childActions, title: action.title }])
     setSelectedIndex(0)
   }
   const popSubmenu = (): void => {
@@ -97,27 +95,33 @@ export function LauncherActionOverlay(props: {
 
   return (
     <div className="absolute inset-0 z-50" data-surface={surfaceId}>
-      <button
+      <Button
         aria-label="Close launcher action panel"
-        className="absolute inset-0 bg-black/28"
+        className="absolute inset-0 h-full w-full rounded-none bg-black/28 p-0 hover:bg-black/28"
         onClick={onClose}
         type="button"
+        variant="ghost"
       />
       <div
-        className="absolute bottom-[var(--launcher-action-panel-bottom)] right-[var(--launcher-action-panel-right)] w-[var(--launcher-action-panel-width)] overflow-hidden rounded-[var(--jingle-radius-dialog)] border border-border/80 bg-background shadow-2xl"
+        data-press-surface="instant"
+        className="absolute bottom-[var(--launcher-action-panel-bottom)] right-[var(--launcher-action-panel-right)] w-[var(--launcher-action-panel-width)] overflow-hidden rounded-[var(--jingle-radius-dialog)] border border-border/80 bg-background shadow-md"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="max-h-[var(--launcher-action-panel-max-h)] overflow-y-auto p-[var(--jingle-space-2)]">
           {activeMenu ? (
             <div className="-mx-[var(--jingle-space-2)] mb-[var(--jingle-space-2)] border-b border-border/70 px-[var(--jingle-space-2)] pb-[var(--jingle-space-2)]">
-              <button
+              <Button
                 type="button"
                 onClick={popSubmenu}
-                className="flex h-[var(--jingle-control-h-lg)] w-full items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] px-[var(--jingle-space-3)] text-left [font-size:var(--jingle-font-body)] text-muted-foreground transition-colors duration-100 hover:bg-background-secondary"
+                className="flex h-[var(--jingle-control-h-lg)] w-full items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] px-[var(--jingle-space-3)] text-left [font-size:var(--jingle-font-body)] text-muted-foreground hover:bg-background-secondary"
+                variant="ghost"
               >
-                <ChevronLeft className="size-[var(--jingle-icon-action)] shrink-0" strokeWidth={2.2} />
+                <ChevronLeft
+                  className="size-[var(--jingle-icon-action)] shrink-0"
+                  strokeWidth={2.2}
+                />
                 <span className="truncate">{activeMenu.title}</span>
-              </button>
+              </Button>
             </div>
           ) : null}
           {groupedActions.map((group, groupIndex) => (
@@ -133,7 +137,7 @@ export function LauncherActionOverlay(props: {
                 const isChecked = action.checked === true
 
                 return (
-                  <button
+                  <Button
                     key={action.id}
                     type="button"
                     onClick={() => {
@@ -149,7 +153,7 @@ export function LauncherActionOverlay(props: {
                     }}
                     disabled={action.disabled}
                     className={cn(
-                      "flex h-[var(--jingle-control-h-lg)] w-full items-center justify-between gap-[var(--jingle-gap-md)] rounded-[var(--jingle-radius-md)] px-[var(--jingle-space-3)] text-left [font-size:var(--jingle-font-body)] transition-colors duration-100 focus-visible:outline-none",
+                      "flex h-[var(--jingle-control-h-lg)] w-full items-center justify-between gap-[var(--jingle-gap-md)] rounded-[var(--jingle-radius-md)] px-[var(--jingle-space-3)] text-left [font-size:var(--jingle-font-body)] focus-visible:outline-none",
                       isChecked
                         ? "bg-background-secondary font-medium text-foreground"
                         : "hover:bg-background-secondary/70",
@@ -157,6 +161,7 @@ export function LauncherActionOverlay(props: {
                       action.style === "destructive" ? "text-red-500" : "text-foreground",
                       action.disabled ? "cursor-default opacity-45" : null
                     )}
+                    variant="ghost"
                   >
                     <div className="flex min-w-0 items-center gap-[var(--jingle-gap-md)]">
                       {action.icon ? (
@@ -173,14 +178,17 @@ export function LauncherActionOverlay(props: {
                       </span>
                     ) : action.children && action.children.length > 0 ? (
                       <span className="flex size-[var(--jingle-icon-md)] shrink-0 items-center justify-center text-muted-foreground">
-                        <ChevronRight className="size-[var(--jingle-icon-action)]" strokeWidth={2.2} />
+                        <ChevronRight
+                          className="size-[var(--jingle-icon-action)]"
+                          strokeWidth={2.2}
+                        />
                       </span>
                     ) : action.accessory ? (
                       <span className="flex size-[var(--jingle-icon-md)] shrink-0 items-center justify-center text-primary [&>svg]:size-[var(--jingle-icon-action)]">
                         {action.accessory}
                       </span>
                     ) : null}
-                  </button>
+                  </Button>
                 )
               })}
             </Fragment>

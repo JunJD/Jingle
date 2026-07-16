@@ -1,4 +1,6 @@
 import { CornerDownRight, Pencil, Trash2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { IconButton } from "@/components/ui/icon-button"
 import type {
   JingleAgentFollowUpQueueItem,
   JingleAgentFollowUpQueueSummary
@@ -49,8 +51,9 @@ export function ComposerFollowUpQueue({
               </span>
             </div>
             <div className="flex shrink-0 items-center gap-[var(--jingle-space-1)]">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
                 className="inline-flex h-[var(--jingle-control-h-sm)] items-center gap-[var(--jingle-space-1)] rounded-full px-[var(--jingle-space-2)] [font-size:var(--jingle-font-meta)] font-medium text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
                   void onSteerQueuedFollowUp(item)
@@ -58,29 +61,31 @@ export function ComposerFollowUpQueue({
               >
                 <CornerDownRight className="size-[var(--jingle-icon-xs)]" />
                 <span>{copy.chat.queuedFollowUpSteer}</span>
-              </button>
-              <button
+              </Button>
+              <IconButton
                 type="button"
-                aria-label={copy.chat.queuedFollowUpDelete}
-                title={copy.chat.queuedFollowUpDelete}
+                label={copy.chat.queuedFollowUpDelete}
                 className="inline-flex size-[var(--jingle-control-h-sm)] items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
                   void onDeleteQueuedFollowUp(item)
                 }}
+                size="icon-sm"
+                variant="ghost"
               >
                 <Trash2 className="size-[var(--jingle-icon-xs)]" />
-              </button>
-              <button
+              </IconButton>
+              <IconButton
                 type="button"
-                aria-label={copy.chat.queuedFollowUpEdit}
-                title={copy.chat.queuedFollowUpEdit}
+                label={copy.chat.queuedFollowUpEdit}
                 className="inline-flex size-[var(--jingle-control-h-sm)] items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
                   void onEditQueuedFollowUp(item)
                 }}
+                size="icon-sm"
+                variant="ghost"
               >
                 <Pencil className="size-[var(--jingle-icon-xs)]" />
-              </button>
+              </IconButton>
             </div>
           </div>
         ))}

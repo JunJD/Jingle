@@ -38,7 +38,13 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger
 } from "@/components/ui/context-menu"
-import * as DropdownMenu from "@/components/ui/dropdown-menu"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import { formatRelativeTime } from "@/lib/utils"
 import type { AppLocale } from "@shared/i18n"
 
@@ -392,8 +398,8 @@ function ProjectSectionActions(props: {
 
   return (
     <>
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
           <button
             type="button"
             aria-label={labels.projectOptions}
@@ -402,62 +408,60 @@ function ProjectSectionActions(props: {
           >
             <MoreHorizontal aria-hidden="true" />
           </button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content align="end" className="launcher-thread-menu" sideOffset={6}>
-            <DropdownMenu.Item className="launcher-thread-menu__item" disabled>
-              {labels.archiveAllChats}
-            </DropdownMenu.Item>
-            <DropdownMenu.Separator />
-            <DropdownMenu.Item
-              className="launcher-thread-menu__item"
-              onSelect={() => {
-                void onSetOrganizeMode("project")
-              }}
-            >
-              {labels.organizeByProject}
-              {organizeMode === "project" ? " ✓" : ""}
-            </DropdownMenu.Item>
-            <DropdownMenu.Item
-              className="launcher-thread-menu__item"
-              onSelect={() => {
-                void onSetOrganizeMode("chronological")
-              }}
-            >
-              {labels.organizeByTime}
-              {organizeMode === "chronological" ? " ✓" : ""}
-            </DropdownMenu.Item>
-            <DropdownMenu.Separator />
-            <DropdownMenu.Item
-              className="launcher-thread-menu__item"
-              onSelect={() => {
-                void onSetSortBy("updated")
-              }}
-            >
-              {labels.sortByUpdated}
-              {sortBy === "updated" ? " ✓" : ""}
-            </DropdownMenu.Item>
-            <DropdownMenu.Item
-              className="launcher-thread-menu__item"
-              onSelect={() => {
-                void onSetSortBy("created")
-              }}
-            >
-              {labels.sortByCreated}
-              {sortBy === "created" ? " ✓" : ""}
-            </DropdownMenu.Item>
-            <DropdownMenu.Item
-              className="launcher-thread-menu__item"
-              onSelect={() => {
-                void onSetSortBy("manual")
-              }}
-            >
-              {labels.sortByManual}
-              {sortBy === "manual" ? " ✓" : ""}
-            </DropdownMenu.Item>
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="launcher-thread-menu" sideOffset={6}>
+          <DropdownMenuItem className="launcher-thread-menu__item" disabled>
+            {labels.archiveAllChats}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="launcher-thread-menu__item"
+            onSelect={() => {
+              void onSetOrganizeMode("project")
+            }}
+          >
+            {labels.organizeByProject}
+            {organizeMode === "project" ? " ✓" : ""}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="launcher-thread-menu__item"
+            onSelect={() => {
+              void onSetOrganizeMode("chronological")
+            }}
+          >
+            {labels.organizeByTime}
+            {organizeMode === "chronological" ? " ✓" : ""}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="launcher-thread-menu__item"
+            onSelect={() => {
+              void onSetSortBy("updated")
+            }}
+          >
+            {labels.sortByUpdated}
+            {sortBy === "updated" ? " ✓" : ""}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="launcher-thread-menu__item"
+            onSelect={() => {
+              void onSetSortBy("created")
+            }}
+          >
+            {labels.sortByCreated}
+            {sortBy === "created" ? " ✓" : ""}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="launcher-thread-menu__item"
+            onSelect={() => {
+              void onSetSortBy("manual")
+            }}
+          >
+            {labels.sortByManual}
+            {sortBy === "manual" ? " ✓" : ""}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <button
         type="button"
         aria-label={labels.addProject}
@@ -633,8 +637,8 @@ function ProjectFolderMenu(props: {
   const workspacePath = group.workspacePath
 
   return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
         <button
           type="button"
           aria-label={labels.projectOptions}
@@ -646,62 +650,60 @@ function ProjectFolderMenu(props: {
         >
           <MoreHorizontal aria-hidden="true" />
         </button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content align="end" className="launcher-thread-menu" sideOffset={6}>
-          <DropdownMenu.Item className="launcher-thread-menu__item" disabled>
-            <Pin aria-hidden="true" className="launcher-thread-menu__icon" />
-            <span>{labels.pinProject}</span>
-          </DropdownMenu.Item>
-          <DropdownMenu.Item
-            className="launcher-thread-menu__item"
-            onSelect={() => {
-              void actions.onRevealInFinder(workspacePath)
-            }}
-          >
-            <FolderOpen aria-hidden="true" className="launcher-thread-menu__icon" />
-            <span>{labels.revealInFinder}</span>
-          </DropdownMenu.Item>
-          <DropdownMenu.Item className="launcher-thread-menu__item" disabled>
-            <GitBranchPlus aria-hidden="true" className="launcher-thread-menu__icon" />
-            <span>{labels.createPermanentWorktree}</span>
-          </DropdownMenu.Item>
-          <DropdownMenu.Separator />
-          <DropdownMenu.Item className="launcher-thread-menu__item" disabled>
-            <SquarePen aria-hidden="true" className="launcher-thread-menu__icon" />
-            <span>{labels.renameProject}</span>
-          </DropdownMenu.Item>
-          <DropdownMenu.Item className="launcher-thread-menu__item" disabled>
-            <Archive aria-hidden="true" className="launcher-thread-menu__icon" />
-            <span>{labels.archiveChats}</span>
-          </DropdownMenu.Item>
-          <DropdownMenu.Item className="launcher-thread-menu__item" disabled>
-            <X aria-hidden="true" className="launcher-thread-menu__icon" />
-            <span>{labels.removeProject}</span>
-          </DropdownMenu.Item>
-          <DropdownMenu.Separator />
-          <DropdownMenu.Item
-            className="launcher-thread-menu__item"
-            onSelect={() => {
-              void actions.onCopyWorkingDirectory(workspacePath)
-            }}
-          >
-            <Folder aria-hidden="true" className="launcher-thread-menu__icon" />
-            <span>{labels.copyWorkingDirectory}</span>
-          </DropdownMenu.Item>
-          <DropdownMenu.Item
-            className="launcher-thread-menu__item"
-            disabled={!canCreateChat}
-            onSelect={() => {
-              void actions.onCreateChat(workspacePath)
-            }}
-          >
-            <SquarePen aria-hidden="true" className="launcher-thread-menu__icon" />
-            <span>{labels.newChat}</span>
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="launcher-thread-menu" sideOffset={6}>
+        <DropdownMenuItem className="launcher-thread-menu__item" disabled>
+          <Pin aria-hidden="true" className="launcher-thread-menu__icon" />
+          <span>{labels.pinProject}</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="launcher-thread-menu__item"
+          onSelect={() => {
+            void actions.onRevealInFinder(workspacePath)
+          }}
+        >
+          <FolderOpen aria-hidden="true" className="launcher-thread-menu__icon" />
+          <span>{labels.revealInFinder}</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem className="launcher-thread-menu__item" disabled>
+          <GitBranchPlus aria-hidden="true" className="launcher-thread-menu__icon" />
+          <span>{labels.createPermanentWorktree}</span>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="launcher-thread-menu__item" disabled>
+          <SquarePen aria-hidden="true" className="launcher-thread-menu__icon" />
+          <span>{labels.renameProject}</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem className="launcher-thread-menu__item" disabled>
+          <Archive aria-hidden="true" className="launcher-thread-menu__icon" />
+          <span>{labels.archiveChats}</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem className="launcher-thread-menu__item" disabled>
+          <X aria-hidden="true" className="launcher-thread-menu__icon" />
+          <span>{labels.removeProject}</span>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="launcher-thread-menu__item"
+          onSelect={() => {
+            void actions.onCopyWorkingDirectory(workspacePath)
+          }}
+        >
+          <Folder aria-hidden="true" className="launcher-thread-menu__icon" />
+          <span>{labels.copyWorkingDirectory}</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="launcher-thread-menu__item"
+          disabled={!canCreateChat}
+          onSelect={() => {
+            void actions.onCreateChat(workspacePath)
+          }}
+        >
+          <SquarePen aria-hidden="true" className="launcher-thread-menu__icon" />
+          <span>{labels.newChat}</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

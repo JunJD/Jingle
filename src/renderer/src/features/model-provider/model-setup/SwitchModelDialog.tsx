@@ -1,5 +1,5 @@
 import { useEffect, useReducer } from "react"
-import { Loader2, SlidersHorizontal } from "lucide-react"
+import { SlidersHorizontal } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n"
 import {
@@ -570,8 +570,14 @@ function SwitchModelDialogContent(props: {
               >
                 取消
               </Button>
-              <Button type="button" disabled={!canSave} onClick={handleSave}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "选择模型"}
+              <Button
+                type="button"
+                disabled={!canSave}
+                loading={saving}
+                loadingLabel="正在选择模型"
+                onClick={handleSave}
+              >
+                选择模型
               </Button>
             </div>
           </div>

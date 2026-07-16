@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ArrowLeft } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Select } from "@/components/ui/select"
 import { useLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
 import type { AppLocale } from "@shared/i18n"
 import type { LauncherShellConfig } from "@shared/launcher"
@@ -72,15 +74,7 @@ export function LauncherCommandArgumentsPage(props: {
   route: LauncherCommandRoute
   shellConfig: LauncherShellConfig
 }): React.JSX.Element {
-  const {
-    argumentsProjection,
-    commandTitle,
-    locale,
-    onBack,
-    onSubmit,
-    route,
-    shellConfig
-  } = props
+  const { argumentsProjection, commandTitle, locale, onBack, onSubmit, route, shellConfig } = props
   const firstInputRef = useRef<ArgumentInputElement | null>(null)
   const launcherInputRef = useRef<LauncherInputElement | null>(null)
   const [values, setValues] = useState<Record<string, string>>(() =>
@@ -121,31 +115,40 @@ export function LauncherCommandArgumentsPage(props: {
       },
       seedQuery: route.seedQuery
     })
-  }, [argumentsProjection, onSubmit, route.initialAction, route.launchProps, route.seedQuery, values])
+  }, [
+    argumentsProjection,
+    onSubmit,
+    route.initialAction,
+    route.launchProps,
+    route.seedQuery,
+    values
+  ])
   return (
     <LauncherChrome
       footer={
         <>
           <div className="flex min-w-0 items-center gap-[var(--jingle-gap-sm)]">
-            <button
+            <Button
               className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] border-0 px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-control)] font-medium text-foreground"
               onClick={onBack}
               onMouseDown={(event) => event.preventDefault()}
               type="button"
+              variant="ghost"
             >
               <ArrowLeft className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)]" />
               <span>{copy.back}</span>
               <span className="launcher-shortcut [font-size:var(--jingle-font-meta)] text-muted-foreground">
                 {backShortcut}
               </span>
-            </button>
+            </Button>
           </div>
           <div className="flex items-center gap-[var(--jingle-gap-sm)]">
-            <button
+            <Button
               className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] border-0 px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-control)] font-medium text-foreground"
               onClick={submit}
               onMouseDown={(event) => event.preventDefault()}
               type="button"
+              variant="ghost"
             >
               <span>{copy.open}</span>
               {primaryActionShortcut ? (
@@ -153,7 +156,7 @@ export function LauncherCommandArgumentsPage(props: {
                   {primaryActionShortcut}
                 </span>
               ) : null}
-            </button>
+            </Button>
           </div>
         </>
       }
@@ -190,13 +193,14 @@ export function LauncherCommandArgumentsPage(props: {
                 ) : null}
               </span>
               {argument.control === "select" ? (
-                <select
+                <Select
                   ref={(element) => {
                     if (index === 0) {
                       firstInputRef.current = element
                     }
                   }}
                   className="launcher-command-argument-control"
+                  wrapperClassName="w-full"
                   value={value}
                   onChange={(event) => setValue(argument.name, event.target.value)}
                 >
@@ -205,7 +209,7 @@ export function LauncherCommandArgumentsPage(props: {
                       {item.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               ) : (
                 <Input
                   ref={(element) => {

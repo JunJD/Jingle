@@ -29,6 +29,10 @@ export function useDisableTabNavigation(inputRef: RefObject<TextInputElement | n
         return
       }
 
+      if (event.target instanceof Element && event.target.closest('[role="dialog"]')) {
+        return
+      }
+
       event.preventDefault()
       focusTextInput(inputRef.current)
     }

@@ -494,7 +494,7 @@ function RuntimeFormField(props: {
   if (field.kind === "message") {
     const toneClass =
       field.tone === "critical"
-        ? "border-red-500/20 bg-red-500/8 text-red-600"
+        ? "border-destructive/35 bg-background-elevated text-foreground"
         : "border-border bg-background-elevated text-muted-foreground"
 
     return (

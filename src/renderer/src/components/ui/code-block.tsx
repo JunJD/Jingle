@@ -2,7 +2,7 @@
 import { useState } from "react"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { oneLight } from "react-syntax-highlighter/dist/cjs/styles/prism"
-import { CopyButton } from "./button"
+import { Button, CopyButton } from "./button"
 import { cn } from "@/lib/utils"
 
 interface CodeBlockTab {
@@ -15,10 +15,14 @@ interface CodeBlockTab {
 interface CodeBlockProps {
   className?: string
   code?: string
+  copiedLabel: string
+  copyErrorLabel: string
+  copyLabel: string
   filename?: string
   highlightLines?: number[]
   language?: string
   maxLines?: number
+  moreLinesLabel: (count: number) => string
   showLineNumbers?: boolean
   tabs?: CodeBlockTab[]
 }
@@ -86,8 +90,12 @@ export const CodeBlock = ({
   language,
   filename,
   code,
+  copiedLabel,
+  copyErrorLabel,
+  copyLabel,
   highlightLines = EMPTY_HIGHLIGHT_LINES,
   maxLines,
+  moreLinesLabel,
   showLineNumbers = true,
   tabs = EMPTY_TABS
 }: CodeBlockProps): React.JSX.Element => {
@@ -115,10 +123,13 @@ export const CodeBlock = ({
           {tabsExist && (
             <div className="flex flex-wrap gap-1">
               {tabs.map((tab, index) => (
-                <button
+                <Button
                   key={tab.name}
                   type="button"
                   onClick={() => setActiveTab(index)}
+                  aria-pressed={activeTab === index}
+                  size="sm"
+                  variant="ghost"
                   className={`rounded-md px-2 py-1 font-sans [font-size:var(--jingle-font-meta)] leading-4 transition-colors ${
                     activeTab === index
                       ? "bg-background-interactive text-foreground"
@@ -126,7 +137,7 @@ export const CodeBlock = ({
                   }`}
                 >
                   {tab.name}
-                </button>
+                </Button>
               ))}
             </div>
           )}
@@ -137,8 +148,9 @@ export const CodeBlock = ({
               </div>
               <CopyButton
                 className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 font-sans [font-size:var(--jingle-font-meta)] leading-4 text-muted-foreground transition-colors hover:bg-background-interactive hover:text-foreground"
-                copiedLabel="Copied"
-                copyLabel="Copy"
+                copiedLabel={copiedLabel}
+                copyErrorLabel={copyErrorLabel}
+                copyLabel={copyLabel}
                 iconClassName="size-[14px]"
                 text={activeCode}
               />
@@ -195,7 +207,7 @@ export const CodeBlock = ({
       </SyntaxHighlighter>
       {visible.hidden > 0 ? (
         <div className="pt-2 font-sans [font-size:var(--jingle-font-meta)] leading-4 text-muted-foreground">
-          +{visible.hidden}
+          {moreLinesLabel(visible.hidden)}
         </div>
       ) : null}
     </div>

@@ -21,6 +21,10 @@ import {
   Search,
   Trash2
 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { IconButton } from "@/components/ui/icon-button"
+import { Input } from "@/components/ui/input"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import "./IpcNetworkApp.css"
 
 const AUTO_REFRESH_INTERVAL_MS = 800
@@ -107,9 +111,7 @@ function directionIcon(direction: DevtoolsNetworkDirection): React.JSX.Element {
   if (direction === "main-to-renderer") {
     return <ArrowDownLeft aria-hidden="true" size={14} />
   }
-  return (
-    <ArrowRightLeft aria-hidden="true" size={14} />
-  )
+  return <ArrowRightLeft aria-hidden="true" size={14} />
 }
 
 function statusLabel(status: DevtoolsNetworkStatus): string {
@@ -248,14 +250,16 @@ function FilterPill<T extends string>(props: {
   const isActive = activeValue === value
 
   return (
-    <button
+    <Button
       aria-pressed={isActive}
       className={`ipc-network-filter-pill ${isActive ? "is-active" : ""}`}
       onClick={() => onSelect(value)}
+      size="sm"
       type="button"
+      variant="ghost"
     >
       {label}
-    </button>
+    </Button>
   )
 }
 
@@ -273,23 +277,35 @@ function NetworkDetailSection(props: {
   return (
     <section className={`ipc-network-json-section ${expanded ? "is-expanded" : ""}`}>
       <div className="ipc-network-json-section-header">
-        <button className="ipc-network-json-section-toggle" onClick={onToggle} type="button">
+        <Button
+          aria-expanded={expanded}
+          className="ipc-network-json-section-toggle"
+          onClick={onToggle}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
           {expanded ? (
             <ChevronDown aria-hidden="true" size={13} />
           ) : (
             <ChevronRight aria-hidden="true" size={13} />
           )}
           <span>{title}</span>
-        </button>
-        <button
-          aria-label={copyLabel}
+        </Button>
+        <IconButton
           className="ipc-network-section-copy-button"
+          label={copyLabel}
           onClick={onCopy}
-          title={copyLabel}
+          size="icon-sm"
           type="button"
+          variant="ghost"
         >
-          {copied ? <Check size={13} /> : <Copy size={13} />}
-        </button>
+          {copied ? (
+            <Check aria-hidden="true" className="size-[13px]" />
+          ) : (
+            <Copy aria-hidden="true" className="size-[13px]" />
+          )}
+        </IconButton>
       </div>
       {expanded ? <div className="ipc-network-section-body">{children}</div> : null}
     </section>
@@ -312,6 +328,14 @@ function DetailPropertyList(props: {
 }
 
 export function IpcNetworkApp(): React.JSX.Element {
+  return (
+    <TooltipProvider>
+      <IpcNetworkContent />
+    </TooltipProvider>
+  )
+}
+
+function IpcNetworkContent(): React.JSX.Element {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>("all")
@@ -405,7 +429,8 @@ export function IpcNetworkApp(): React.JSX.Element {
   const selectedEntryFromAllEntries = selectedEntry
     ? (orderedEntries.find((entry) => entry.id === selectedEntry.id) ?? null)
     : null
-  const selectedEntryDetailEntry = selectedEntryFromAllEntries ?? selectedEntry?.entrySnapshot ?? null
+  const selectedEntryDetailEntry =
+    selectedEntryFromAllEntries ?? selectedEntry?.entrySnapshot ?? null
   const selectedEntryIsStale = selectedEntry !== null && !selectedEntryFromAllEntries
   const visibleEntries = useMemo(() => {
     if (!selectedEntryFromAllEntries) {
@@ -423,8 +448,8 @@ export function IpcNetworkApp(): React.JSX.Element {
     !selectedEntryFromAllEntries ||
     filteredEntries.some((entry) => entry.id === selectedEntryFromAllEntries.id)
   const selectedEntryExpandedSections = selectedEntryDetailEntry
-    ? expandedSectionsByEntryId[selectedEntryDetailEntry.id] ??
-      createDefaultExpandedSections(selectedEntryDetailEntry)
+    ? (expandedSectionsByEntryId[selectedEntryDetailEntry.id] ??
+      createDefaultExpandedSections(selectedEntryDetailEntry))
     : null
   const selectedEntryDetailText = selectedEntryDetailEntry
     ? createEntryDetailText(selectedEntryDetailEntry)
@@ -435,24 +460,21 @@ export function IpcNetworkApp(): React.JSX.Element {
     ? createGeneralDetails(selectedEntryDetailEntry)
     : []
 
-  const copyText = useCallback(
-    async (text: string, key: string) => {
-      try {
-        await navigator.clipboard.writeText(text)
-        setCopiedKey(key)
-        if (copyResetTimerRef.current !== null) {
-          window.clearTimeout(copyResetTimerRef.current)
-        }
-        copyResetTimerRef.current = window.setTimeout(() => {
-          setCopiedKey((currentKey) => (currentKey === key ? null : currentKey))
-          copyResetTimerRef.current = null
-        }, 1400)
-      } catch (error) {
-        setLoadError(error instanceof Error ? error.message : String(error))
+  const copyText = useCallback(async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedKey(key)
+      if (copyResetTimerRef.current !== null) {
+        window.clearTimeout(copyResetTimerRef.current)
       }
-    },
-    []
-  )
+      copyResetTimerRef.current = window.setTimeout(() => {
+        setCopiedKey((currentKey) => (currentKey === key ? null : currentKey))
+        copyResetTimerRef.current = null
+      }, 1400)
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : String(error))
+    }
+  }, [])
 
   const toggleDetailSection = useCallback(
     (sectionId: DetailSectionId) => {
@@ -507,7 +529,7 @@ export function IpcNetworkApp(): React.JSX.Element {
 
         <label className="ipc-network-search">
           <Search aria-hidden="true" size={15} />
-          <input
+          <Input
             aria-label="Filter IPC events"
             placeholder="Filter channel, payload, status..."
             value={query}
@@ -521,34 +543,41 @@ export function IpcNetworkApp(): React.JSX.Element {
         </label>
 
         <div className="ipc-network-controls">
-          <button
-            type="button"
+          <IconButton
             className="ipc-network-icon-button"
+            label="Auto-refresh"
             onClick={() => setAutoRefresh((value) => !value)}
-            title={autoRefresh ? "Pause" : "Resume"}
-            aria-label={autoRefresh ? "Pause" : "Resume"}
-          >
-            {autoRefresh ? <Pause size={15} /> : <Play size={15} />}
-          </button>
-          <button
+            pressed={autoRefresh}
+            tooltip={autoRefresh ? "Pause auto-refresh" : "Resume auto-refresh"}
             type="button"
+            variant="ghost"
+          >
+            {autoRefresh ? (
+              <Pause aria-hidden="true" className="size-[15px]" />
+            ) : (
+              <Play aria-hidden="true" className="size-[15px]" />
+            )}
+          </IconButton>
+          <IconButton
             className="ipc-network-icon-button"
-            disabled={loading}
+            label="Refresh"
+            loading={loading}
+            loadingLabel="Refreshing IPC events"
             onClick={() => void loadEntries()}
-            title="Refresh"
-            aria-label="Refresh"
-          >
-            <RefreshCw className={loading ? "is-spinning" : undefined} size={15} />
-          </button>
-          <button
             type="button"
-            className="ipc-network-icon-button ipc-network-icon-button--danger"
-            onClick={() => void clearEntries()}
-            title="Clear"
-            aria-label="Clear"
+            variant="ghost"
           >
-            <Trash2 size={15} />
-          </button>
+            <RefreshCw aria-hidden="true" className="size-[15px]" />
+          </IconButton>
+          <IconButton
+            className="ipc-network-icon-button ipc-network-icon-button--danger"
+            label="Clear IPC events"
+            onClick={() => void clearEntries()}
+            type="button"
+            variant="ghost"
+          >
+            <Trash2 aria-hidden="true" className="size-[15px]" />
+          </IconButton>
         </div>
       </header>
 
@@ -619,55 +648,57 @@ export function IpcNetworkApp(): React.JSX.Element {
               </tr>
             </thead>
             <tbody>
-              {visibleEntries.length > 0 ? visibleEntries.map((entry) => (
-                <tr
-                  key={entry.id}
-                  aria-selected={entry.id === selectedEntryDetailEntry?.id}
-                  className={[
-                    entry.id === selectedEntryDetailEntry?.id ? "is-selected" : "",
-                    !filteredEntries.some((filteredEntry) => filteredEntry.id === entry.id)
-                      ? "is-filter-kept"
-                      : ""
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  tabIndex={0}
-                  onClick={() => selectEntry(entry)}
-                  onKeyDown={(event) => {
-                    if (isActivationKey(event.key)) {
-                      event.preventDefault()
-                      selectEntry(entry)
-                    } else if (event.key === "ArrowDown") {
-                      event.preventDefault()
-                      selectAdjacentEntry(selectedEntryDetailEntry ?? entry, "next")
-                    } else if (event.key === "ArrowUp") {
-                      event.preventDefault()
-                      selectAdjacentEntry(selectedEntryDetailEntry ?? entry, "previous")
-                    }
-                  }}
-                >
-                  <td className="ipc-network-muted">#{entry.sequence}</td>
-                  <td>{formatTime(entry.startedAt)}</td>
-                  <td>
-                    <span className="ipc-network-direction">
-                      {directionIcon(entry.direction)}
-                      {directionLabel(entry.direction)}
-                    </span>
-                  </td>
-                  <td>{entry.source}</td>
-                  <td>{entry.pattern}</td>
-                  <td>
-                    <span className={`ipc-network-status ipc-network-status--${entry.status}`}>
-                      {statusLabel(entry.status)}
-                    </span>
-                  </td>
-                  <td className="ipc-network-channel" title={entry.channel}>
-                    {entry.channel}
-                  </td>
-                  <td>{formatDuration(entry)}</td>
-                  <td>{entry.webContentsId ?? "-"}</td>
-                </tr>
-              )) : (
+              {visibleEntries.length > 0 ? (
+                visibleEntries.map((entry) => (
+                  <tr
+                    key={entry.id}
+                    aria-selected={entry.id === selectedEntryDetailEntry?.id}
+                    className={[
+                      entry.id === selectedEntryDetailEntry?.id ? "is-selected" : "",
+                      !filteredEntries.some((filteredEntry) => filteredEntry.id === entry.id)
+                        ? "is-filter-kept"
+                        : ""
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    tabIndex={0}
+                    onClick={() => selectEntry(entry)}
+                    onKeyDown={(event) => {
+                      if (isActivationKey(event.key)) {
+                        event.preventDefault()
+                        selectEntry(entry)
+                      } else if (event.key === "ArrowDown") {
+                        event.preventDefault()
+                        selectAdjacentEntry(selectedEntryDetailEntry ?? entry, "next")
+                      } else if (event.key === "ArrowUp") {
+                        event.preventDefault()
+                        selectAdjacentEntry(selectedEntryDetailEntry ?? entry, "previous")
+                      }
+                    }}
+                  >
+                    <td className="ipc-network-muted">#{entry.sequence}</td>
+                    <td>{formatTime(entry.startedAt)}</td>
+                    <td>
+                      <span className="ipc-network-direction">
+                        {directionIcon(entry.direction)}
+                        {directionLabel(entry.direction)}
+                      </span>
+                    </td>
+                    <td>{entry.source}</td>
+                    <td>{entry.pattern}</td>
+                    <td>
+                      <span className={`ipc-network-status ipc-network-status--${entry.status}`}>
+                        {statusLabel(entry.status)}
+                      </span>
+                    </td>
+                    <td className="ipc-network-channel" title={entry.channel}>
+                      {entry.channel}
+                    </td>
+                    <td>{formatDuration(entry)}</td>
+                    <td>{entry.webContentsId ?? "-"}</td>
+                  </tr>
+                ))
+              ) : (
                 <tr className="ipc-network-empty-row">
                   <td colSpan={9}>No matching IPC events</td>
                 </tr>
@@ -681,14 +712,16 @@ export function IpcNetworkApp(): React.JSX.Element {
             <>
               <header className="ipc-network-detail-header">
                 <div>
-                  <h2 title={selectedEntryDetailEntry.channel}>{selectedEntryDetailEntry.channel}</h2>
+                  <h2 title={selectedEntryDetailEntry.channel}>
+                    {selectedEntryDetailEntry.channel}
+                  </h2>
                   <span>{directionLabel(selectedEntryDetailEntry.direction)}</span>
                 </div>
                 <div className="ipc-network-detail-actions">
                   {selectedEntryIsStale ? (
                     <span className="ipc-network-stale-badge">Snapshot</span>
                   ) : null}
-                  <button
+                  <Button
                     aria-label={
                       copiedKey === `${selectedEntryDetailEntry.id}:agent`
                         ? "Copied event summary for agent analysis"
@@ -701,24 +734,21 @@ export function IpcNetworkApp(): React.JSX.Element {
                         `${selectedEntryDetailEntry.id}:agent`
                       )
                     }
-                    title={
-                      copiedKey === `${selectedEntryDetailEntry.id}:agent`
-                        ? "Copied event summary for agent analysis"
-                        : "Copy event summary for agent analysis"
-                    }
+                    size="sm"
                     type="button"
+                    variant="ghost"
                   >
                     {copiedKey === `${selectedEntryDetailEntry.id}:agent` ? (
-                      <Check size={13} />
+                      <Check aria-hidden="true" className="size-[13px]" />
                     ) : (
-                      <Copy size={13} />
+                      <Copy aria-hidden="true" className="size-[13px]" />
                     )}
                     <span>
                       {copiedKey === `${selectedEntryDetailEntry.id}:agent`
                         ? "Copied"
                         : "Copy to Agent"}
                     </span>
-                  </button>
+                  </Button>
                   <span
                     className={`ipc-network-status ipc-network-status--${selectedEntryDetailEntry.status}`}
                   >

@@ -5,13 +5,13 @@ import {
   ChevronDown,
   ChevronRight,
   ListTodo,
-  Loader2,
   TriangleAlert,
   XCircle
 } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
 export type AgentToolState = "running" | "approval" | "complete" | "error"
@@ -23,6 +23,13 @@ const stateClassNames: Record<AgentToolState, string> = {
   running: "text-status-info"
 }
 
+const AGENT_TOOL_GROUP_LEADING_TOGGLE = (
+  <span className="relative inline-flex size-[var(--jingle-icon-action)] shrink-0 items-center justify-center">
+    <ChevronRight className="jingle-agent-tool-chevron absolute size-[var(--jingle-icon-action)] opacity-45 group-hover:opacity-100 group-data-[state=open]:hidden" />
+    <ChevronDown className="jingle-agent-tool-chevron absolute hidden size-[var(--jingle-icon-action)] group-data-[state=open]:block" />
+  </span>
+)
+
 export function AgentToolStatusIcon(props: {
   className?: string
   state: AgentToolState
@@ -30,7 +37,7 @@ export function AgentToolStatusIcon(props: {
   const { className, state } = props
 
   if (state === "running") {
-    return <Loader2 className={cn("animate-spin", stateClassNames[state], className)} />
+    return <Spinner className={cn(stateClassNames[state], className)} />
   }
 
   if (state === "approval") {
@@ -247,7 +254,9 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
               detail={subtitle}
               detailClassName="jingle-agent-tool-detail"
               icon={
-                icon ?? <AgentToolStatusIcon className="size-[var(--jingle-icon-sm)]" state={state} />
+                icon ?? (
+                  <AgentToolStatusIcon className="size-[var(--jingle-icon-sm)]" state={state} />
+                )
               }
               label={title}
               labelClassName="jingle-agent-tool-title"
@@ -321,12 +330,6 @@ export function AgentToolGroupTrigger(props: AgentToolGroupTriggerProps): React.
   const hasLeadingIcon = icon !== null
   const usesLeadingToggle = !hasLeadingIcon && showLeadingToggle
   const shouldShowTrailingToggle = showTrailingToggle ?? (!hasLeadingIcon && !usesLeadingToggle)
-  const leadingToggle = (
-    <span className="relative inline-flex size-[var(--jingle-icon-action)] shrink-0 items-center justify-center">
-      <ChevronRight className="jingle-agent-tool-chevron absolute size-[var(--jingle-icon-action)] opacity-45 group-hover:opacity-100 group-data-[state=open]:hidden" />
-      <ChevronDown className="jingle-agent-tool-chevron absolute hidden size-[var(--jingle-icon-action)] group-data-[state=open]:block" />
-    </span>
-  )
   const leadingIcon = hasLeadingIcon ? (
     <span className="relative inline-flex size-[var(--jingle-icon-action)] shrink-0 items-center justify-center">
       <span className="transition-opacity group-hover:opacity-0 group-data-[state=open]:opacity-0">
@@ -336,7 +339,7 @@ export function AgentToolGroupTrigger(props: AgentToolGroupTriggerProps): React.
       <ChevronDown className="jingle-agent-tool-chevron absolute hidden size-[var(--jingle-icon-action)] group-data-[state=open]:block" />
     </span>
   ) : usesLeadingToggle ? (
-    leadingToggle
+    AGENT_TOOL_GROUP_LEADING_TOGGLE
   ) : null
   const label = leadingAccessory ? (
     <span className="inline-flex min-w-0 max-w-full items-center gap-[var(--jingle-gap-sm)]">

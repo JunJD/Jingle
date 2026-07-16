@@ -58,6 +58,7 @@ type IndexedComposerMentionOption = {
 
 const SECTION_LABEL_CLASS =
   "px-[var(--jingle-space-2)] pb-[var(--jingle-space-0-5)] pt-[var(--jingle-space-1-5)] [font-size:var(--jingle-font-meta)] font-medium text-muted-foreground"
+const EMPTY_WORKSPACE_FILE_MENTIONS: ComposerWorkspaceFileMention[] = []
 
 function filterSourceMentionOptions(
   mentions: ExtensionSourceMention[],
@@ -279,7 +280,7 @@ export function ExtensionSourceTypeaheadPlugin(props: {
     onQueryChange,
     onSelectableOptionsChange,
     sourceMentions,
-    workspaceFileMentions = [],
+    workspaceFileMentions = EMPTY_WORKSPACE_FILE_MENTIONS,
     workspaceFileSearchEnabled = false,
     workspaceFileSearchIncomplete = false,
     workspaceFileSearchInProgress = false

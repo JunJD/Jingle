@@ -143,9 +143,13 @@ export function PresentArtifactsDetail(props: {
         <ToolDetailSection label={copy.common.rawResult}>
           <CodeBlock
             code={viewModel.rawResult}
+            copiedLabel={copy.common.copied}
+            copyErrorLabel={copy.common.copyFailed}
+            copyLabel={copy.common.copy}
             filename={viewModel.hasJsonResult ? "result.json" : "result.txt"}
             language={viewModel.hasJsonResult ? "json" : "text"}
             maxLines={12}
+            moreLinesLabel={copy.toolCall.moreLines}
           />
         </ToolDetailSection>
       ) : null}

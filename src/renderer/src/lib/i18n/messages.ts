@@ -104,6 +104,8 @@ export interface AppCopy {
     approval: string
     close: string
     completed: string
+    copy: string
+    copyFailed: string
     copied: string
     error: string
     justNow: string
@@ -485,6 +487,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       approval: "待审批",
       close: "关闭",
       completed: "已完成",
+      copy: "复制",
+      copyFailed: "复制失败",
       copied: "已复制",
       error: "错误",
       justNow: "刚刚",
@@ -893,6 +897,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       approval: "Approval",
       close: "Close",
       completed: "Completed",
+      copy: "Copy",
+      copyFailed: "Copy failed",
       copied: "Copied",
       error: "Error",
       justNow: "just now",

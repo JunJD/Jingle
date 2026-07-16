@@ -1,7 +1,7 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import type { VariantProps } from "class-variance-authority"
-import { CheckIcon, CopyIcon } from "lucide-react"
+import { CheckIcon, CopyIcon, XIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "./button-variants"
 import { Spinner } from "./spinner"
@@ -59,16 +59,18 @@ function Button({
 }
 
 export interface CopyButtonProps extends Omit<ButtonProps, "children" | "onClick"> {
-  copiedLabel?: string
-  copyLabel?: string
+  copiedLabel: string
+  copyErrorLabel: string
+  copyLabel: string
   iconClassName?: string
   text: string
 }
 
 function CopyButton({
   className,
-  copiedLabel = "Copied",
-  copyLabel = "Copy",
+  copiedLabel,
+  copyErrorLabel,
+  copyLabel,
   iconClassName,
   ref,
   text,
@@ -76,26 +78,32 @@ function CopyButton({
   variant = "ghost",
   ...props
 }: CopyButtonProps): React.JSX.Element {
-  const [copied, setCopied] = React.useState(false)
+  const [copyState, setCopyState] = React.useState<"copied" | "error" | "idle">("idle")
 
   React.useEffect(() => {
-    if (!copied) {
+    if (copyState === "idle") {
       return
     }
 
     const timeoutId = window.setTimeout(() => {
-      setCopied(false)
+      setCopyState("idle")
     }, 1500)
 
     return () => window.clearTimeout(timeoutId)
-  }, [copied])
+  }, [copyState])
 
   const handleClick = React.useCallback(async () => {
-    await navigator.clipboard.writeText(text)
-    setCopied(true)
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopyState("copied")
+    } catch (error) {
+      console.error("[CopyButton] Failed to write to the clipboard.", error)
+      setCopyState("error")
+    }
   }, [text])
 
-  const label = copied ? copiedLabel : copyLabel
+  const label =
+    copyState === "copied" ? copiedLabel : copyState === "error" ? copyErrorLabel : copyLabel
 
   return (
     <Button
@@ -108,8 +116,16 @@ function CopyButton({
       type={type}
       variant={variant}
     >
-      {copied ? <CheckIcon className={iconClassName} /> : <CopyIcon className={iconClassName} />}
-      <span className="sr-only">{label}</span>
+      {copyState === "copied" ? (
+        <CheckIcon className={iconClassName} />
+      ) : copyState === "error" ? (
+        <XIcon className={iconClassName} />
+      ) : (
+        <CopyIcon className={iconClassName} />
+      )}
+      <span aria-live="polite" className="sr-only">
+        {label}
+      </span>
     </Button>
   )
 }

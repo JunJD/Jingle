@@ -1,5 +1,6 @@
-import { ArrowLeft, ArrowRight, PanelLeftOpen, SquarePen } from "lucide-react"
+import { ArrowLeft, ArrowRight, PanelLeftClose, PanelLeftOpen, SquarePen } from "lucide-react"
 import type { ReactNode } from "react"
+import { IconButton } from "@/components/ui/icon-button"
 
 interface LauncherAiHeaderLeadingActionsProps {
   canGoToNextChat: boolean
@@ -47,20 +48,21 @@ function LauncherAiHeaderAction(props: {
   } = props
 
   return (
-    <button
-      type="button"
-      aria-label={label}
-      className="launcher-icon-button flex h-[var(--launcher-icon-button-size)] w-[var(--launcher-icon-button-size)] shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground disabled:opacity-35"
+    <IconButton
+      className="launcher-icon-button flex size-[var(--launcher-icon-button-size)] shrink-0 appearance-none items-center justify-center rounded-[var(--jingle-radius-sm)] border-0 p-0 text-muted-foreground transition hover:text-foreground disabled:opacity-35"
       disabled={disabled}
-      title={label}
+      label={label}
       onClick={disabled ? undefined : onClick}
       onMouseDown={(event) => event.preventDefault()}
       onPointerEnter={disabled ? undefined : onPointerEnter}
       onPointerLeave={disabled ? undefined : onPointerLeave}
-      data-active={active ? "" : undefined}
+      pressed={active}
+      size="icon-sm"
+      type="button"
+      variant="ghost"
     >
       {icon}
-    </button>
+    </IconButton>
   )
 }
 
@@ -116,7 +118,7 @@ export function LauncherAiHeaderLeadingActions(
   }
 
   return (
-    <div className="flex min-w-0 items-center gap-[var(--jingle-gap-xs)]">
+    <div className="flex w-full min-w-0 items-center gap-[var(--jingle-gap-xs)]">
       {showBackButton ? (
         <LauncherAiHeaderAction
           icon={<ArrowLeft className="size-[var(--jingle-icon-sm)]" />}
@@ -129,9 +131,9 @@ export function LauncherAiHeaderLeadingActions(
         disabled={!canOpenSidebar}
         icon={
           isSidebarOpen ? (
-            <PanelLeftOpen className="size-[var(--jingle-icon-sm)] rotate-180" />
+            <PanelLeftClose className="size-[var(--jingle-icon-sm)]" strokeWidth={1.8} />
           ) : (
-            <PanelLeftOpen className="size-[var(--jingle-icon-sm)]" />
+            <PanelLeftOpen className="size-[var(--jingle-icon-sm)]" strokeWidth={1.8} />
           )
         }
         label={isSidebarOpen ? labels.collapseSidebar : labels.expandSidebar}
@@ -141,9 +143,9 @@ export function LauncherAiHeaderLeadingActions(
       />
       {threadNavigationActions}
       {newQuestionAction}
-      <div className="ml-[var(--jingle-space-1)] flex min-w-0 flex-col items-start">
+      <div className="ml-[var(--jingle-space-1)] flex min-w-0 max-w-[36rem] flex-1 flex-col items-start justify-center gap-[2px] self-stretch py-[var(--jingle-space-1)]">
         <div
-          className="max-w-[28rem] truncate [font-size:var(--jingle-font-control)] font-medium leading-[var(--jingle-line-control-sm)] text-foreground"
+          className="w-full truncate [font-size:var(--jingle-font-control)] font-semibold leading-[18px] text-foreground"
           data-launcher-ai-thread-title=""
         >
           {title}

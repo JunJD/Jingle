@@ -1,4 +1,12 @@
-import * as DropdownMenu from "@/components/ui/dropdown-menu"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import {
   BookOpenText,
   Clock,
@@ -75,7 +83,7 @@ function ThreadMenuItem(props: ThreadMenuItemProps): React.JSX.Element {
   }
 
   return (
-    <DropdownMenu.Item
+    <DropdownMenuItem
       className="launcher-thread-menu__item"
       disabled={disabled}
       onSelect={itemOnSelect}
@@ -83,7 +91,7 @@ function ThreadMenuItem(props: ThreadMenuItemProps): React.JSX.Element {
       <span className="launcher-thread-menu__icon">{icon}</span>
       <span className="launcher-thread-menu__label">{children}</span>
       {trailingLabelElement}
-    </DropdownMenu.Item>
+    </DropdownMenuItem>
   )
 }
 
@@ -95,21 +103,18 @@ function ThreadMenuSubmenu(props: {
   const { children, icon, label } = props
 
   return (
-    <DropdownMenu.Sub>
-      <DropdownMenu.SubTrigger className="launcher-thread-menu__item">
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger className="launcher-thread-menu__item">
         <span className="launcher-thread-menu__icon">{icon}</span>
         <span className="launcher-thread-menu__label">{label}</span>
-        <span className="launcher-thread-menu__chevron">›</span>
-      </DropdownMenu.SubTrigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.SubContent
-          className="launcher-thread-menu launcher-thread-menu__subcontent"
-          sideOffset={8}
-        >
-          {children}
-        </DropdownMenu.SubContent>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Sub>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent
+        className="launcher-thread-menu launcher-thread-menu__subcontent"
+        sideOffset={8}
+      >
+        {children}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
   )
 }
 
@@ -146,8 +151,8 @@ export function LauncherAiThreadMenu(props: LauncherAiThreadMenuProps): React.JS
   }
 
   return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
         <button
           type="button"
           aria-label={labels.moreActions}
@@ -160,89 +165,87 @@ export function LauncherAiThreadMenu(props: LauncherAiThreadMenuProps): React.JS
         >
           <MoreHorizontal className="size-[var(--jingle-icon-sm)]" />
         </button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          align="end"
-          className="launcher-thread-menu"
-          side="bottom"
-          sideOffset={6}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="launcher-thread-menu"
+        side="bottom"
+        sideOffset={6}
+      >
+        <ThreadMenuItem icon={<Pin />} onSelect={onTogglePinned}>
+          {pinLabel}
+        </ThreadMenuItem>
+        {pinnedWindowItem}
+        <ThreadMenuItem
+          icon={<Pencil />}
+          onSelect={preventDefaultSelect}
+          trailingLabel={labels.underDevelopment}
         >
-          <ThreadMenuItem icon={<Pin />} onSelect={onTogglePinned}>
-            {pinLabel}
+          {labels.renameChat}
+        </ThreadMenuItem>
+        <ThreadMenuItem
+          icon={<MessageSquarePlus />}
+          onSelect={preventDefaultSelect}
+          trailingLabel={labels.underDevelopment}
+        >
+          {labels.openSideChat}
+        </ThreadMenuItem>
+
+        <ThreadMenuSubmenu icon={<Copy />} label={labels.copyChat}>
+          <ThreadMenuItem icon={<Folder />} onSelect={onCopyWorkingDirectory}>
+            {labels.copyWorkingDirectory}
           </ThreadMenuItem>
-          {pinnedWindowItem}
+          <ThreadMenuItem icon={<FileText />} onSelect={onCopySessionId}>
+            {labels.copySessionId}
+          </ThreadMenuItem>
           <ThreadMenuItem
-            icon={<Pencil />}
+            icon={<Link />}
             onSelect={preventDefaultSelect}
             trailingLabel={labels.underDevelopment}
           >
-            {labels.renameChat}
+            {labels.copyDeeplink}
           </ThreadMenuItem>
           <ThreadMenuItem
-            icon={<MessageSquarePlus />}
+            icon={<BookOpenText />}
             onSelect={preventDefaultSelect}
             trailingLabel={labels.underDevelopment}
           >
-            {labels.openSideChat}
+            {labels.copyAsMarkdown}
           </ThreadMenuItem>
+        </ThreadMenuSubmenu>
 
-          <ThreadMenuSubmenu icon={<Copy />} label={labels.copyChat}>
-            <ThreadMenuItem icon={<Folder />} onSelect={onCopyWorkingDirectory}>
-              {labels.copyWorkingDirectory}
-            </ThreadMenuItem>
-            <ThreadMenuItem icon={<FileText />} onSelect={onCopySessionId}>
-              {labels.copySessionId}
-            </ThreadMenuItem>
-            <ThreadMenuItem
-              icon={<Link />}
-              onSelect={preventDefaultSelect}
-              trailingLabel={labels.underDevelopment}
-            >
-              {labels.copyDeeplink}
-            </ThreadMenuItem>
-            <ThreadMenuItem
-              icon={<BookOpenText />}
-              onSelect={preventDefaultSelect}
-              trailingLabel={labels.underDevelopment}
-            >
-              {labels.copyAsMarkdown}
-            </ThreadMenuItem>
-          </ThreadMenuSubmenu>
-
-          <ThreadMenuSubmenu icon={<GitBranch />} label={labels.branchMenu}>
-            <ThreadMenuItem
-              disabled={!canBranchThread}
-              icon={<GitBranch />}
-              onSelect={onBranchIntoLocal}
-            >
-              {labels.branchIntoLocal}
-            </ThreadMenuItem>
-            <ThreadMenuItem
-              icon={<GitBranch />}
-              onSelect={preventDefaultSelect}
-              trailingLabel={labels.underDevelopment}
-            >
-              {labels.branchIntoSameWorktree}
-            </ThreadMenuItem>
-            <ThreadMenuItem
-              icon={<GitBranch />}
-              onSelect={preventDefaultSelect}
-              trailingLabel={labels.underDevelopment}
-            >
-              {labels.branchIntoNewWorktree}
-            </ThreadMenuItem>
-          </ThreadMenuSubmenu>
-
+        <ThreadMenuSubmenu icon={<GitBranch />} label={labels.branchMenu}>
           <ThreadMenuItem
-            icon={<Clock />}
+            disabled={!canBranchThread}
+            icon={<GitBranch />}
+            onSelect={onBranchIntoLocal}
+          >
+            {labels.branchIntoLocal}
+          </ThreadMenuItem>
+          <ThreadMenuItem
+            icon={<GitBranch />}
             onSelect={preventDefaultSelect}
             trailingLabel={labels.underDevelopment}
           >
-            {labels.addAutomation}
+            {labels.branchIntoSameWorktree}
           </ThreadMenuItem>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+          <ThreadMenuItem
+            icon={<GitBranch />}
+            onSelect={preventDefaultSelect}
+            trailingLabel={labels.underDevelopment}
+          >
+            {labels.branchIntoNewWorktree}
+          </ThreadMenuItem>
+        </ThreadMenuSubmenu>
+
+        <ThreadMenuItem
+          icon={<Clock />}
+          onSelect={preventDefaultSelect}
+          trailingLabel={labels.underDevelopment}
+        >
+          {labels.addAutomation}
+        </ThreadMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

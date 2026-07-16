@@ -436,7 +436,9 @@ function CommandCard(props: {
               {title}
             </span>
           </div>
-          <div className="[font-size:var(--jingle-font-body)] text-muted-foreground">{description}</div>
+          <div className="[font-size:var(--jingle-font-body)] text-muted-foreground">
+            {description}
+          </div>
         </div>
         <div className="rounded-full border border-border bg-background px-[var(--jingle-space-2-5)] py-[var(--jingle-space-1)] [font-size:var(--jingle-font-meta)] uppercase tracking-[0.08em] text-muted-foreground">
           {labelMode}: {formatCommandMode(mode, locale)}

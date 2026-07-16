@@ -44,8 +44,12 @@ defineToolComponent({
         {viewModel.content ? (
           <CodeBlock
             code={viewModel.content}
+            copiedLabel={copy.common.copied}
+            copyErrorLabel={copy.common.copyFailed}
+            copyLabel={copy.common.copy}
             filename={viewModel.target ?? undefined}
             maxLines={12}
+            moreLinesLabel={copy.toolCall.moreLines}
           />
         ) : null}
       </ToolDetailStack>

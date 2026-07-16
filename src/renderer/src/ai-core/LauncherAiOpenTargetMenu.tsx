@@ -1,4 +1,8 @@
-import * as DropdownMenu from "@/components/ui/dropdown-menu"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { OpenTarget } from "@shared/open-targets"
 import { ChevronDown, FolderOpen, MonitorUp, Terminal } from "lucide-react"
@@ -147,8 +151,8 @@ export function LauncherAiOpenTargetMenu(props: LauncherAiOpenTargetMenuProps): 
           <FolderOpen className="size-[var(--jingle-icon-sm)]" />
         )}
       </button>
-      <DropdownMenu.Root open={isOpen} onOpenChange={setIsOpen}>
-        <DropdownMenu.Trigger asChild>
+      <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+        <DropdownMenuTrigger asChild>
           <button
             type="button"
             aria-label={labels.openTarget}
@@ -162,38 +166,36 @@ export function LauncherAiOpenTargetMenu(props: LauncherAiOpenTargetMenuProps): 
           >
             <ChevronDown className="size-[var(--jingle-icon-xs)]" />
           </button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content
-            align="end"
-            className="launcher-ai-menu launcher-ai-open-target-menu"
-            side="bottom"
-            sideOffset={6}
-          >
-            {folderName ? (
-              <div className="launcher-ai-open-target-menu__context" title={folderPath ?? ""}>
-                {folderName}
-              </div>
-            ) : null}
-            {targets.length === 0 ? (
-              <LauncherAiMenuItem disabled icon={<FolderOpen />}>
-                {labels.openTarget}
-              </LauncherAiMenuItem>
-            ) : null}
-            {targets.map((target) => (
-              <LauncherAiMenuItem
-                key={target.id}
-                icon={getTargetIcon(target)}
-                onSelect={() => {
-                  openTarget(target.id)
-                }}
-              >
-                {target.label}
-              </LauncherAiMenuItem>
-            ))}
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          className="launcher-ai-menu launcher-ai-open-target-menu"
+          side="bottom"
+          sideOffset={6}
+        >
+          {folderName ? (
+            <div className="launcher-ai-open-target-menu__context" title={folderPath ?? ""}>
+              {folderName}
+            </div>
+          ) : null}
+          {targets.length === 0 ? (
+            <LauncherAiMenuItem disabled icon={<FolderOpen />}>
+              {labels.openTarget}
+            </LauncherAiMenuItem>
+          ) : null}
+          {targets.map((target) => (
+            <LauncherAiMenuItem
+              key={target.id}
+              icon={getTargetIcon(target)}
+              onSelect={() => {
+                openTarget(target.id)
+              }}
+            >
+              {target.label}
+            </LauncherAiMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 }

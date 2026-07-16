@@ -1,7 +1,7 @@
 "use client"
 
 import { Button } from "./ui/button"
-import { HoverCard, HoverCardContent, HoverCardPortal, HoverCardTrigger } from "./ui/hover-card"
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card"
 import { cn } from "@/lib/utils"
 
 import {
@@ -366,17 +366,15 @@ export const AttachmentHoverCardContent = ({
   className,
   ...props
 }: AttachmentHoverCardContentProps) => (
-  <HoverCardPortal>
-    <HoverCardContent
-      align={align}
-      sideOffset={sideOffset}
-      className={cn(
-        "z-50 w-auto rounded-xl border border-border/80 bg-popover/95 p-2 shadow-lg backdrop-blur-sm",
-        className
-      )}
-      {...props}
-    />
-  </HoverCardPortal>
+  <HoverCardContent
+    align={align}
+    sideOffset={sideOffset}
+    className={cn(
+      "z-50 w-auto rounded-xl border border-border/80 bg-popover/95 p-2 shadow-lg backdrop-blur-sm",
+      className
+    )}
+    {...props}
+  />
 )
 
 export type AttachmentHoverPreviewProps = HTMLAttributes<HTMLDivElement> & {

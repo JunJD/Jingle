@@ -1,6 +1,6 @@
-import { Loader2 } from "lucide-react"
 import { useRef, type ReactNode, type Ref } from "react"
 import { LauncherTextInput, type LauncherTextInputProps } from "./LauncherTextInput"
+import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import type { LauncherInputElement } from "@launcher-shell/input-element"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
@@ -86,14 +86,7 @@ function LauncherInputStatusIndicator(props: {
       )}
     >
       {status === "tooling" ? (
-        <>
-          <span className="absolute inset-[-3px] rounded-full border border-status-info/35" />
-          <span className="absolute inset-0 rounded-full bg-status-info/18 animate-ping" />
-          <Loader2
-            className="relative size-[var(--jingle-icon-compact)] animate-spin"
-            strokeWidth={2.25}
-          />
-        </>
+        <Spinner className="relative size-[var(--jingle-icon-compact)]" strokeWidth={2.25} />
       ) : (
         <span className="h-[var(--jingle-status-dot-size)] w-[var(--jingle-status-dot-size)] rounded-full bg-current" />
       )}

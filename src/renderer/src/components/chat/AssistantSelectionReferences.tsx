@@ -10,6 +10,8 @@ import {
   AttachmentHoverCardContent,
   AttachmentHoverCardTrigger
 } from "@/components/attachments"
+import { Button } from "@/components/ui/button"
+import { IconButton } from "@/components/ui/icon-button"
 import { useAssistantSelectionReferenceNavigation } from "./assistant-selection-reference-navigation-context"
 import { getAssistantSelectionRefs } from "./useAssistantSelectionRefs"
 
@@ -33,9 +35,9 @@ function AssistantSelectionPreviewList(props: {
             key={`${ref.sourceThreadId}:${ref.sourceMessageId}:${index}`}
             className="group/reference flex min-w-0 items-start gap-[var(--jingle-space-2)] rounded-[var(--jingle-radius-md)] bg-background-secondary/45 px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)]"
           >
-            <button
+            <Button
               type="button"
-              className="mt-[var(--jingle-leading-nudge)] flex size-[var(--jingle-icon-sm)] shrink-0 items-center justify-center rounded-full bg-background-elevated/60 text-muted-foreground [font-size:var(--jingle-font-caption)] transition-colors enabled:hover:bg-background-secondary/80 enabled:hover:text-foreground disabled:cursor-default"
+              className="mt-[var(--jingle-leading-nudge)] size-[var(--jingle-icon-sm)] shrink-0 rounded-full bg-background-elevated/60 p-0 text-muted-foreground [font-size:var(--jingle-font-caption)] enabled:hover:bg-background-secondary/80 enabled:hover:text-foreground disabled:cursor-default"
               aria-label={copy.chat.revealSelectionReference}
               disabled={!canReveal}
               title={canReveal ? copy.chat.revealSelectionReference : undefined}
@@ -46,12 +48,13 @@ function AssistantSelectionPreviewList(props: {
 
                 referenceNavigation.revealReference(ref)
               }}
+              variant="ghost"
             >
               {index + 1}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="min-w-0 flex-1 whitespace-pre-wrap text-left [overflow-wrap:anywhere] [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-body)] text-foreground/88 transition-colors enabled:hover:text-foreground disabled:cursor-default"
+              className="h-auto min-w-0 flex-1 justify-start whitespace-pre-wrap rounded-none p-0 text-left [overflow-wrap:anywhere] [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-body)] text-foreground/88 enabled:hover:bg-transparent enabled:hover:text-foreground disabled:cursor-default"
               disabled={!canReveal}
               title={canReveal ? copy.chat.revealSelectionReference : undefined}
               onClick={() => {
@@ -61,19 +64,21 @@ function AssistantSelectionPreviewList(props: {
 
                 referenceNavigation.revealReference(ref)
               }}
+              variant="ghost"
             >
               {ref.selectedText}
-            </button>
+            </Button>
             {onRemove ? (
-              <button
+              <IconButton
                 type="button"
                 className="mt-[var(--jingle-leading-nudge)] inline-flex size-[var(--jingle-icon-sm)] shrink-0 items-center justify-center rounded-full text-muted-foreground opacity-60 transition-colors hover:bg-background-secondary/70 hover:text-foreground group-hover/reference:opacity-100"
-                aria-label={copy.chat.removeSelectionReference}
-                title={copy.chat.removeSelectionReference}
+                label={copy.chat.removeSelectionReference}
                 onClick={() => onRemove(ref)}
+                size="icon-sm"
+                variant="ghost"
               >
                 <X className="size-[var(--jingle-icon-micro)]" />
-              </button>
+              </IconButton>
             ) : null}
           </div>
         )
@@ -106,11 +111,15 @@ export function AssistantSelectionReferencePill(props: {
   return (
     <AttachmentHoverCard closeDelay={180}>
       <div
-        className={cn("flex min-w-0 max-w-full items-center gap-[var(--jingle-space-1)]", className)}
+        className={cn(
+          "flex min-w-0 max-w-full items-center gap-[var(--jingle-space-1)]",
+          className
+        )}
       >
         <AttachmentHoverCardTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="ghost"
             className="inline-flex h-[28px] max-w-full min-w-0 items-center gap-[var(--jingle-space-1-5)] rounded-full border border-border/60 bg-background-secondary/42 px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-meta)] text-muted-foreground transition-colors duration-100 hover:border-border/75 hover:bg-background-secondary/62 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             title={label}
             onClick={() => {
@@ -121,18 +130,19 @@ export function AssistantSelectionReferencePill(props: {
           >
             <MessageSquareQuote className="size-[var(--jingle-icon-sm)] shrink-0 text-muted-foreground" />
             <span className="min-w-0 truncate">{label}</span>
-          </button>
+          </Button>
         </AttachmentHoverCardTrigger>
         {removable && onClear ? (
-          <button
+          <IconButton
             type="button"
             className="inline-flex size-[24px] shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors duration-100 hover:bg-background-secondary/62 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label={copy.chat.removeSelectionReference}
-            title={copy.chat.removeSelectionReference}
+            label={copy.chat.removeSelectionReference}
             onClick={onClear}
+            size="icon-sm"
+            variant="ghost"
           >
             <X className="size-[var(--jingle-icon-xs)]" />
-          </button>
+          </IconButton>
         ) : null}
       </div>
       <AttachmentHoverCardContent

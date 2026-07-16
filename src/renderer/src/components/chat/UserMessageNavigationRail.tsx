@@ -8,6 +8,7 @@ import {
   type RefObject
 } from "react"
 import type { VListHandle } from "virtua"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n"
 import "./user-message-navigation-rail.css"
@@ -267,7 +268,7 @@ export const UserMessageNavigationRail = memo(function UserMessageNavigationRail
             const isActive = activeItemIds.has(item.id)
             const isScrubbed = scrubbedItemId === item.id
             return (
-              <button
+              <Button
                 aria-current={isActive ? "true" : undefined}
                 aria-label={copy.chat.userMessageNavigationJump(item.position)}
                 className="jingle-user-message-navigation-rail-row group/navigation-row flex h-2.5 w-9 shrink-0 cursor-default items-center outline-none"
@@ -289,6 +290,7 @@ export const UserMessageNavigationRail = memo(function UserMessageNavigationRail
                 onFocus={(event) => updatePreview(item, event.currentTarget)}
                 onPointerEnter={(event) => updatePreview(item, event.currentTarget)}
                 type="button"
+                variant="ghost"
               >
                 <span className="flex h-0.5 w-[30px] items-center">
                   <span
@@ -301,13 +303,13 @@ export const UserMessageNavigationRail = memo(function UserMessageNavigationRail
                     )}
                   />
                 </span>
-              </button>
+              </Button>
             )
           })}
         </div>
         {preview ? (
           <div
-            className="pointer-events-none absolute left-full z-30 w-80 max-w-[calc(100vw-var(--jingle-space-4))] -translate-y-1/2 overflow-hidden rounded-[var(--jingle-radius-lg)] bg-popover/95 p-[var(--jingle-space-2)] text-popover-foreground shadow-xl ring-[0.5px] ring-border/80 backdrop-blur-sm"
+            className="pointer-events-none absolute left-full z-30 w-80 max-w-[calc(100vw-var(--jingle-space-4))] -translate-y-1/2 overflow-hidden rounded-[var(--jingle-radius-lg)] border border-border/80 bg-popover p-[var(--jingle-space-2)] text-popover-foreground shadow-md"
             style={{ top: preview.top }}
           >
             <div className="min-w-0 truncate [font-size:var(--jingle-font-body)] font-medium leading-[var(--jingle-line-body)] text-foreground">

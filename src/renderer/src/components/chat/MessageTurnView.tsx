@@ -1428,6 +1428,7 @@ function UserMessage(props: {
                 <CopyButton
                   className="size-[22px] rounded-[var(--jingle-radius-sm)] text-muted-foreground hover:text-foreground [&_svg]:size-[var(--jingle-icon-sm)]"
                   copiedLabel={copy.common.copied}
+                  copyErrorLabel={copy.common.copyFailed}
                   copyLabel={copy.chat.copyMessage}
                   iconClassName="size-[var(--jingle-icon-sm)]"
                   text={copyText}
@@ -1642,6 +1643,7 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
                 <CopyButton
                   className="size-[22px] rounded-[var(--jingle-radius-sm)] text-muted-foreground hover:text-foreground [&_svg]:size-[var(--jingle-icon-sm)]"
                   copiedLabel={copy.common.copied}
+                  copyErrorLabel={copy.common.copyFailed}
                   copyLabel={copy.chat.copyMessage}
                   iconClassName="size-[var(--jingle-icon-action)]"
                   text={copyText}

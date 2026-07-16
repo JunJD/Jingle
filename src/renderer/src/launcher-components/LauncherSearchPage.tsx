@@ -1,5 +1,8 @@
 import { useCallback, useMemo, useState, type RefObject } from "react"
-import { ArrowRightToLine, Loader2, Settings2 } from "lucide-react"
+import { ArrowRightToLine, Settings2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { IconButton } from "@/components/ui/icon-button"
+import { Spinner } from "@/components/ui/spinner"
 import { LauncherActionOverlay } from "@/features/launcher-actions/LauncherActionOverlay"
 import { useLauncherActionController } from "@/features/launcher-actions/controller"
 import type {
@@ -70,15 +73,14 @@ function LauncherSearchFooter(props: {
           </div>
         ) : isSearchMode ? (
           <div className="flex items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-control)] font-medium text-muted-foreground">
-            {isSearchLoading ? (
-              <Loader2 className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)] animate-spin" />
-            ) : null}
+            {isSearchLoading ? <Spinner size="sm" /> : null}
             <span>{isSearchLoading ? searchingLabel : searchResultsLabel}</span>
           </div>
         ) : (
-          <button
+          <Button
             data-launcher-open-settings
             type="button"
+            variant="ghost"
             onClick={() => executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenSettings)}
             onMouseDown={(event) => event.preventDefault()}
             className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] border-0 px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-control)] font-medium text-foreground"
@@ -87,14 +89,15 @@ function LauncherSearchFooter(props: {
           >
             <Settings2 className="h-[var(--jingle-icon-sm)] w-[var(--jingle-icon-sm)]" />
             <span>{openSettingsLabel}</span>
-          </button>
+          </Button>
         )}
       </div>
 
       <div className="flex items-center gap-[var(--jingle-gap-sm)]">
         {actionController.canOpenActions ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
             onClick={actionController.openActions}
             onMouseDown={(event) => event.preventDefault()}
             className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] border-0 px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-control)] font-medium text-foreground"
@@ -105,11 +108,12 @@ function LauncherSearchFooter(props: {
                 {actionController.actionPanelShortcut}
               </span>
             ) : null}
-          </button>
+          </Button>
         ) : null}
 
-        <button
+        <Button
           type="button"
+          variant="ghost"
           onClick={actionController.executePrimaryAction}
           onMouseDown={(event) => event.preventDefault()}
           disabled={!actionController.primaryAction}
@@ -121,7 +125,7 @@ function LauncherSearchFooter(props: {
               {actionController.primaryActionShortcut}
             </span>
           ) : null}
-        </button>
+        </Button>
       </div>
     </>
   )
@@ -135,18 +139,21 @@ function LauncherSearchHeaderTrailing(props: {
   const { aiEntryLabel, aiFooterLeading, executeHomeCommand } = props
 
   return (
-    <div className="flex shrink-0 items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-control)] font-medium text-muted-foreground">
+    <div
+      className="flex shrink-0 items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-control)] font-medium text-muted-foreground"
+      data-press-surface="instant"
+    >
       <span>{aiFooterLeading}</span>
-      <button
+      <IconButton
+        label={aiEntryLabel}
         type="button"
+        variant="ghost"
         onClick={() => executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenAi)}
         onMouseDown={(event) => event.preventDefault()}
-        className="flex size-[var(--jingle-hit-target-sm)] shrink-0 appearance-none items-center justify-center rounded-[var(--jingle-radius-sm)] border border-border bg-background-secondary text-muted-foreground shadow-none transition hover:bg-background-interactive hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        title={aiEntryLabel}
-        aria-label={aiEntryLabel}
+        className="flex size-[var(--jingle-hit-target-sm)] shrink-0 appearance-none items-center justify-center rounded-[var(--jingle-radius-sm)] border border-border bg-background-secondary text-muted-foreground shadow-none hover:bg-background-interactive hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         <ArrowRightToLine className="size-[var(--jingle-icon-compact)]" strokeWidth={1.8} />
-      </button>
+      </IconButton>
     </div>
   )
 }
@@ -222,13 +229,8 @@ function useLauncherSearchShortcuts(params: {
   setShowUseWithManager: (show: boolean) => void
   showUseWithManager: boolean
 }): void {
-  const {
-    executeHomeCommand,
-    inputRef,
-    inputValue,
-    setShowUseWithManager,
-    showUseWithManager
-  } = params
+  const { executeHomeCommand, inputRef, inputValue, setShowUseWithManager, showUseWithManager } =
+    params
   useShortcutScopeLayer(HOME_SHORTCUT_SCOPES)
   const isInputShortcutTarget = useCallback(
     (target: EventTarget | null): boolean => target === inputRef.current,
@@ -511,12 +513,7 @@ export function LauncherSearchPage(props: {
         executeHomeCommand={executeHomeCommand}
       />
     )
-  }, [
-    copy.launcher.aiEntryLabel,
-    copy.launcher.aiFooterLeading,
-    executeHomeCommand,
-    isSearchMode
-  ])
+  }, [copy.launcher.aiEntryLabel, copy.launcher.aiFooterLeading, executeHomeCommand, isSearchMode])
 
   return (
     <div className="relative h-full">

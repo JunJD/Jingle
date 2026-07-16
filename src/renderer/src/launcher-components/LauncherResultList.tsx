@@ -1,5 +1,7 @@
 import { useRef } from "react"
 import { Settings2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { IconButton } from "@/components/ui/icon-button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useI18n } from "@/lib/i18n"
 import { cn, truncateMiddle } from "@/lib/utils"
@@ -80,10 +82,7 @@ function getResultTrailingLabel(
   })
 }
 
-function getLauncherOpenLabel(input: {
-  categoryLabel: string
-  openGenericLabel: string
-}): string {
+function getLauncherOpenLabel(input: { categoryLabel: string; openGenericLabel: string }): string {
   if (input.categoryLabel.length > 0) {
     return input.categoryLabel
   }
@@ -192,16 +191,17 @@ export function LauncherResultList(props: {
                   )}
                 </span>
                 {sectionAction ? (
-                  <button
+                  <IconButton
+                    label={sectionAction.title}
                     type="button"
-                    className="launcher-action-link flex h-5 w-5 shrink-0 appearance-none items-center justify-center rounded-[6px] border-0 text-muted-foreground transition hover:text-foreground"
-                    title={sectionAction.title}
-                    aria-label={sectionAction.title}
+                    size="icon-sm"
+                    variant="ghost"
+                    className="launcher-action-link h-5 w-5 rounded-[6px] border-0 bg-transparent text-muted-foreground hover:text-foreground"
                     onClick={() => onSectionAction?.(sectionAction)}
                     onMouseDown={(event) => event.preventDefault()}
                   >
                     <Settings2 className="h-3.5 w-3.5" />
-                  </button>
+                  </IconButton>
                 ) : null}
               </div>
             </div>
@@ -212,16 +212,17 @@ export function LauncherResultList(props: {
         const isPlanned = row.item.availability === "planned"
 
         return (
-          <button
+          <Button
             key={row.key}
             ref={(element) => {
               itemRefs.current[row.index] = element
             }}
             type="button"
+            variant="ghost"
             onClick={() => onExecute(row.index)}
             onMouseDown={(event) => event.preventDefault()}
             className={cn(
-              "launcher-result-row relative mx-[var(--launcher-result-row-x)] grid h-[var(--jingle-row-h-md)] w-[calc(100%-(var(--launcher-result-row-x)*2))] appearance-none grid-cols-[var(--launcher-result-icon-column)_minmax(0,1fr)_var(--launcher-result-trailing-column)] items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] border-0 px-[var(--launcher-result-row-padding-x)] text-left transition",
+              "launcher-result-row relative mx-[var(--launcher-result-row-x)] grid h-[var(--jingle-row-h-md)] w-[calc(100%-(var(--launcher-result-row-x)*2))] grid-cols-[var(--launcher-result-icon-column)_minmax(0,1fr)_var(--launcher-result-trailing-column)] items-center justify-normal gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] border-0 bg-transparent px-[var(--launcher-result-row-padding-x)] text-left hover:bg-[var(--launcher-item-hover)]",
               isSelected && "launcher-result-row--selected"
             )}
             style={{
@@ -243,7 +244,7 @@ export function LauncherResultList(props: {
             <div className="justify-self-end text-right [font-size:var(--jingle-font-meta)] font-medium text-muted-foreground">
               {getResultTrailingLabel(row.item, copy)}
             </div>
-          </button>
+          </Button>
         )
       })}
     </ScrollArea>

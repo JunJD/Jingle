@@ -1,4 +1,11 @@
-import * as DropdownMenu from "@/components/ui/dropdown-menu"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import { ChevronDown, Info, RefreshCw, Sparkles } from "lucide-react"
 import { useId, useMemo, useState } from "react"
 import type { Todo } from "@/types"
@@ -67,12 +74,12 @@ function ThreadDigestSection(props: {
     digest && digest.generatedAt !== null ? updatedAtFormatter.format(digest.generatedAt) : null
 
   return (
-    <DropdownMenu.Group className="mt-2 border-t border-[color-mix(in_srgb,var(--launcher-border)_72%,transparent)] px-1 pb-0.5 pt-2.5">
+    <DropdownMenuGroup className="mt-2 border-t border-[color-mix(in_srgb,var(--launcher-border)_72%,transparent)] px-1 pb-0.5 pt-2.5">
       <div className="flex min-h-7 items-center justify-between gap-3">
-        <DropdownMenu.Label className="p-0 text-xs font-semibold leading-4 text-[color-mix(in_srgb,var(--muted-foreground)_82%,var(--foreground))]">
+        <DropdownMenuLabel className="p-0 text-xs font-semibold leading-4 text-[color-mix(in_srgb,var(--muted-foreground)_82%,var(--foreground))]">
           {labels.environmentDigest}
-        </DropdownMenu.Label>
-        <DropdownMenu.Item
+        </DropdownMenuLabel>
+        <DropdownMenuItem
           className="flex min-h-7 cursor-default select-none items-center gap-1.5 rounded-[var(--jingle-radius-sm)] px-2 text-xs outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-background-interactive data-[highlighted]:text-foreground"
           disabled={isGenerating}
           onSelect={(event) => {
@@ -88,11 +95,11 @@ function ThreadDigestSection(props: {
                 ? labels.environmentDigestRegenerate
                 : labels.environmentDigestGenerate}
           </span>
-        </DropdownMenu.Item>
+        </DropdownMenuItem>
       </div>
 
       {summary ? (
-        <DropdownMenu.Item
+        <DropdownMenuItem
           aria-describedby={summaryId}
           aria-expanded={expanded}
           aria-label={expanded ? labels.environmentDigestCollapse : labels.environmentDigestExpand}
@@ -118,7 +125,7 @@ function ThreadDigestSection(props: {
               expanded && "rotate-180"
             )}
           />
-        </DropdownMenu.Item>
+        </DropdownMenuItem>
       ) : (
         <p className="pt-1 text-xs leading-4 text-muted-foreground">
           {labels.environmentDigestEmpty}
@@ -138,7 +145,7 @@ function ThreadDigestSection(props: {
           {error}
         </p>
       ) : null}
-    </DropdownMenu.Group>
+    </DropdownMenuGroup>
   )
 }
 
@@ -191,8 +198,8 @@ export function LauncherAiEnvironmentMenu(
   }
 
   return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
         <button
           type="button"
           aria-label={labels.environmentInfo}
@@ -206,47 +213,45 @@ export function LauncherAiEnvironmentMenu(
         >
           <Info className="size-[var(--jingle-icon-sm)]" />
         </button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          align="end"
-          className="launcher-ai-menu launcher-ai-environment-menu"
-          side="bottom"
-          sideOffset={6}
-          style={{
-            maxHeight: "var(--radix-dropdown-menu-content-available-height)",
-            overflowY: "auto"
-          }}
-        >
-          <div className="launcher-ai-environment-menu__heading">{labels.environmentInfo}</div>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="launcher-ai-menu launcher-ai-environment-menu"
+        side="bottom"
+        sideOffset={6}
+        style={{
+          maxHeight: "var(--radix-dropdown-menu-content-available-height)",
+          overflowY: "auto"
+        }}
+      >
+        <div className="launcher-ai-environment-menu__heading">{labels.environmentInfo}</div>
+        <EnvironmentRow
+          dataAttributes={workspaceDataAttributes}
+          label={labels.environmentWorkspace}
+          value={workspaceValue}
+        />
+        <EnvironmentRow label={labels.environmentModel} value={modelLabel} />
+        {environment.permissionLabel !== null ? (
           <EnvironmentRow
-            dataAttributes={workspaceDataAttributes}
-            label={labels.environmentWorkspace}
-            value={workspaceValue}
+            label={labels.environmentPermission}
+            value={environment.permissionLabel}
           />
-          <EnvironmentRow label={labels.environmentModel} value={modelLabel} />
-          {environment.permissionLabel !== null ? (
-            <EnvironmentRow
-              label={labels.environmentPermission}
-              value={environment.permissionLabel}
-            />
-          ) : null}
-          <EnvironmentRow label={labels.environmentThread} value={threadLabel} />
-          {environment.threadId ? (
-            <ThreadDigestSection
-              key={environment.threadId}
-              labels={labels}
-              threadId={environment.threadId}
-            />
-          ) : null}
-          <LauncherAiProgressList
-            className="launcher-ai-environment-menu__progress"
-            label={labels.environmentProgress}
-            moreLabel={labels.environmentProgressMore}
-            todos={environment.todos}
+        ) : null}
+        <EnvironmentRow label={labels.environmentThread} value={threadLabel} />
+        {environment.threadId ? (
+          <ThreadDigestSection
+            key={environment.threadId}
+            labels={labels}
+            threadId={environment.threadId}
           />
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+        ) : null}
+        <LauncherAiProgressList
+          className="launcher-ai-environment-menu__progress"
+          label={labels.environmentProgress}
+          moreLabel={labels.environmentProgressMore}
+          todos={environment.todos}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

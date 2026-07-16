@@ -1,4 +1,4 @@
-import * as DropdownMenu from "@/components/ui/dropdown-menu"
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import type { ReactNode } from "react"
 
 function preventDefaultSelect(event: Event): void {
@@ -15,7 +15,7 @@ export function LauncherAiMenuItem(props: {
   const { children, disabled = false, icon, onSelect, shortcut } = props
 
   return (
-    <DropdownMenu.Item
+    <DropdownMenuItem
       className="launcher-ai-menu__item"
       disabled={disabled}
       onSelect={onSelect ?? preventDefaultSelect}
@@ -23,6 +23,6 @@ export function LauncherAiMenuItem(props: {
       <span className="launcher-ai-menu__icon">{icon}</span>
       <span className="launcher-ai-menu__label">{children}</span>
       {shortcut ? <span className="launcher-ai-menu__shortcut">{shortcut}</span> : null}
-    </DropdownMenu.Item>
+    </DropdownMenuItem>
   )
 }
