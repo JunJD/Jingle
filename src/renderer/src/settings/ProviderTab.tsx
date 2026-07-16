@@ -14,12 +14,17 @@ type ProviderTabProps = {
 
 function ProviderTabSkeleton(): React.JSX.Element {
   return (
-    <div className="mx-auto w-full max-w-[var(--jingle-settings-content-max-width)] space-y-[var(--jingle-space-4)]">
-      <div className="h-[var(--jingle-settings-provider-skeleton-lg)] animate-pulse rounded-[var(--jingle-radius-panel)] border border-border/70 bg-background-secondary/70" />
-      <div className="h-[var(--jingle-settings-provider-skeleton-md)] animate-pulse rounded-[var(--jingle-radius-panel)] border border-dashed border-border/80 bg-background-secondary/45" />
+    <div
+      aria-busy="true"
+      aria-label="正在读取 provider 配置"
+      className="mx-auto w-full max-w-[var(--jingle-settings-content-max-width)] space-y-[var(--jingle-space-4)]"
+      role="status"
+    >
+      <div className="h-[var(--jingle-settings-provider-skeleton-lg)] rounded-[var(--jingle-radius-panel)] border border-border/70 bg-background-secondary/70" />
+      <div className="h-[var(--jingle-settings-provider-skeleton-md)] rounded-[var(--jingle-radius-panel)] border border-dashed border-border/80 bg-background-secondary/45" />
       <div className="space-y-[var(--jingle-space-2)]">
-        <div className="h-[var(--jingle-settings-provider-skeleton-sm)] animate-pulse rounded-[var(--jingle-radius-panel)] border border-border/80 bg-background-elevated/70" />
-        <div className="h-[var(--jingle-settings-provider-skeleton-sm)] animate-pulse rounded-[var(--jingle-radius-panel)] border border-border/80 bg-background-elevated/70" />
+        <div className="h-[var(--jingle-settings-provider-skeleton-sm)] rounded-[var(--jingle-radius-panel)] border border-border/80 bg-background-elevated/70" />
+        <div className="h-[var(--jingle-settings-provider-skeleton-sm)] rounded-[var(--jingle-radius-panel)] border border-border/80 bg-background-elevated/70" />
       </div>
     </div>
   )
@@ -33,8 +38,14 @@ function ProviderTabError(props: {
   return (
     <div className="space-y-[var(--jingle-space-3)]">
       <InlineError text={props.error} />
-      <Button type="button" variant="outline" disabled={props.loading} onClick={props.onRetry}>
-        <RotateCw className={props.loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+      <Button
+        type="button"
+        variant="outline"
+        loading={props.loading}
+        loadingLabel="正在重新读取 provider 配置"
+        onClick={props.onRetry}
+      >
+        <RotateCw className="h-4 w-4" />
         重试
       </Button>
     </div>
