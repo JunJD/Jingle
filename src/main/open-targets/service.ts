@@ -88,7 +88,7 @@ function spawnDetachedWithEnv(
 }
 
 async function openWithMacApplication(targetPath: string, appPath: string): Promise<void> {
-  await spawnDetached("open", ["-a", appPath, targetPath])
+  await spawnDetached("/usr/bin/open", ["-a", appPath, targetPath])
 }
 
 async function openWithCursorCli(targetPath: string, appPath: string): Promise<void> {
@@ -112,7 +112,7 @@ async function openWithCursorCli(targetPath: string, appPath: string): Promise<v
 }
 
 async function openInMacTerminal(folderPath: string): Promise<void> {
-  await spawnDetached("open", ["-a", "Terminal", folderPath])
+  await spawnDetached("/usr/bin/open", ["-a", "Terminal", folderPath])
 }
 
 async function openFolderInFileManager(folderPath: string): Promise<void> {
@@ -121,7 +121,7 @@ async function openFolderInFileManager(folderPath: string): Promise<void> {
   }
 
   if (process.platform === "darwin") {
-    await spawnDetached("open", [folderPath])
+    await spawnDetached("/usr/bin/open", [folderPath])
     return
   }
 
@@ -132,7 +132,7 @@ async function openFolderInFileManager(folderPath: string): Promise<void> {
 }
 
 async function revealPathInMacFileManager(targetPath: string): Promise<void> {
-  await spawnDetached("open", ["-R", targetPath])
+  await spawnDetached("/usr/bin/open", ["-R", targetPath])
 }
 
 function getOpenPathApplicationPath(result: LauncherSearchResult): string | null {

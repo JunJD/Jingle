@@ -44,7 +44,7 @@ async function openLauncherPath(
 
   if (kind === "application" && process.platform === "darwin") {
     await new Promise<void>((resolve, reject) => {
-      const child = spawn("open", [path], {
+      const child = spawn("/usr/bin/open", [path], {
         detached: true,
         stdio: "ignore"
       })

@@ -250,7 +250,7 @@ async function openUrlWithDesktopApplication(
   }
 
   await new Promise<void>((resolve, reject) => {
-    const child = spawn("open", [...appSpecifier, url], {
+    const child = spawn("/usr/bin/open", [...appSpecifier, url], {
       detached: true,
       stdio: "ignore"
     })
