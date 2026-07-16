@@ -11,6 +11,7 @@ import {
   Attachments
 } from "@/components/attachments"
 import { Button } from "@/components/ui/button"
+import { IconButton } from "@/components/ui/icon-button"
 import { useI18n } from "@/lib/i18n"
 
 function getClipboardLabel(
@@ -55,15 +56,16 @@ export function ClipboardChip(props: {
   }
 
   const clearButton = (
-    <button
+    <IconButton
+      label={copy.launcher.clearClipboardContext}
       type="button"
       onClick={onClear}
       onMouseDown={(event) => event.preventDefault()}
-      aria-label={copy.launcher.clearClipboardContext}
-      className="flex h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] shrink-0 appearance-none items-center justify-center rounded-full border-0 bg-transparent p-0 text-muted-foreground transition hover:text-foreground"
+      variant="ghost"
+      className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] rounded-full border-0 bg-transparent p-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
     >
       <X className="size-[var(--jingle-icon-compact)]" />
-    </button>
+    </IconButton>
   )
 
   if (context.kind === "text") {
@@ -72,19 +74,20 @@ export function ClipboardChip(props: {
         className="launcher-clipboard-chip launcher-clipboard-chip--candidate flex min-w-0 items-center gap-[var(--jingle-gap-sm)] rounded-full border border-dashed border-border/80 bg-background/60 px-[var(--jingle-space-2)] py-[var(--jingle-space-1)]"
         title={context.text}
       >
-        <button
+        <Button
           type="button"
           onClick={onAccept}
           onMouseDown={(event) => event.preventDefault()}
           aria-label={copy.launcher.addClipboardContext}
-          className="flex min-w-0 flex-1 appearance-none items-center gap-[var(--jingle-gap-sm)] bg-transparent p-0 text-left text-muted-foreground"
+          variant="ghost"
+          className="h-auto min-w-0 flex-1 justify-start gap-[var(--jingle-gap-sm)] rounded-none bg-transparent p-0 text-left text-muted-foreground hover:bg-transparent"
         >
           <FileText className="size-[var(--jingle-icon-sm)] shrink-0" />
           <span className="max-w-[var(--launcher-chip-max-width)] truncate [font-size:var(--jingle-font-control)] font-medium">
             {context.text}
           </span>
           <Plus className="size-[var(--jingle-icon-compact)] shrink-0" />
-        </button>
+        </Button>
         {clearButton}
       </div>
     )
@@ -139,19 +142,20 @@ export function ClipboardChip(props: {
       className="launcher-clipboard-chip launcher-clipboard-chip--candidate flex min-w-0 items-center gap-[var(--jingle-gap-sm)] rounded-full border border-dashed border-border/80 bg-background/60 px-[var(--jingle-space-2)] py-[var(--jingle-space-1)]"
       title={getClipboardLabel(context, copy)}
     >
-      <button
+      <Button
         type="button"
         onClick={onAccept}
         onMouseDown={(event) => event.preventDefault()}
         aria-label={copy.launcher.addClipboardContext}
-        className="flex min-w-0 flex-1 appearance-none items-center gap-[var(--jingle-gap-sm)] bg-transparent p-0 text-left"
+        variant="ghost"
+        className="h-auto min-w-0 flex-1 justify-start gap-[var(--jingle-gap-sm)] rounded-none bg-transparent p-0 text-left hover:bg-transparent"
       >
         {getClipboardIcon(context)}
         <span className="max-w-[var(--launcher-chip-max-width)] truncate [font-size:var(--jingle-font-control)] font-medium">
           {getClipboardLabel(context, copy)}
         </span>
         <Plus className="size-[var(--jingle-icon-compact)] shrink-0 text-muted-foreground" />
-      </button>
+      </Button>
       {clearButton}
     </div>
   )
