@@ -27,6 +27,7 @@ import {
   buildRaycastAiMigrationPreview
 } from "../../packages/extension-migration/src/preview-raycast-ai-migration.mjs"
 import { validateNativeExtensionPackageBoundaries } from "../../scripts/native-extension-package-boundaries.mjs"
+import { validateNativeExtensionPackageManifest } from "../../src/shared/native-extensions"
 
 const repoRoot = process.cwd()
 const realRaycastExtensionsRepo =
@@ -483,8 +484,29 @@ test("Raycast migration preview reports dependency decisions and unsupported API
               arguments: [
                 {
                   name: "query",
+                  placeholder: "Search Query",
                   required: false,
                   type: "text"
+                },
+                {
+                  name: "token",
+                  placeholder: "Access Token",
+                  type: "password"
+                },
+                {
+                  data: [
+                    {
+                      title: "Pages",
+                      value: "pages"
+                    },
+                    {
+                      title: "Databases",
+                      value: "databases"
+                    }
+                  ],
+                  name: "scope",
+                  placeholder: "Search Scope",
+                  type: "dropdown"
                 }
               ],
               description: "Search pages.",
@@ -679,6 +701,47 @@ test("Raycast migration preview reports dependency decisions and unsupported API
       out: null
     })
     const serializedPackagePreview = JSON.parse(JSON.stringify(packagePreview))
+    const expectedCommandArguments = [
+      {
+        name: "query",
+        placeholder: "Search Query",
+        required: false,
+        title: "Search Query",
+        type: "text"
+      },
+      {
+        name: "token",
+        placeholder: "Access Token",
+        required: false,
+        title: "Access Token",
+        type: "password"
+      },
+      {
+        data: [
+          {
+            title: "Pages",
+            value: "pages"
+          },
+          {
+            title: "Databases",
+            value: "databases"
+          }
+        ],
+        name: "scope",
+        placeholder: "Search Scope",
+        required: false,
+        title: "Search Scope",
+        type: "dropdown"
+      }
+    ]
+
+    assert.deepEqual(
+      packagePreview.manifestPreview.commands[0]?.arguments,
+      expectedCommandArguments
+    )
+    assert.doesNotThrow(() =>
+      validateNativeExtensionPackageManifest(packagePreview.manifestPreview)
+    )
 
     assert.deepEqual(preview.manifestPreview.aiCapability.toolNames, ["searchPages"])
     assert.deepEqual(preview.manifestPreview.connection.auth.secretNames, ["accessToken"])
@@ -915,13 +978,7 @@ test("Raycast migration preview reports dependency decisions and unsupported API
       "toast"
     ])
     assert.deepEqual(manifestPatch.runtimeShell, { allowedUrlSchemes: ["notion"] })
-    assert.deepEqual(manifestPatch.commands[0]?.arguments, [
-      {
-        name: "query",
-        required: false,
-        type: "text"
-      }
-    ])
+    assert.deepEqual(manifestPatch.commands[0]?.arguments, expectedCommandArguments)
     assert.deepEqual(manifestPatch.commands[0]?.runtime, { viewport: { bodyHeight: 520 } })
     assert.deepEqual(manifestPatch.commands[0]?.preferences[0]?.default, "jingle")
     assert.deepEqual(manifestPatch.commands[0]?.preferences[0]?.data, [

@@ -563,6 +563,35 @@ function mapPlatforms(platforms) {
   return mapped.length > 0 ? mapped : undefined
 }
 
+function migrateCommandArguments(argumentsSchema) {
+  if (!Array.isArray(argumentsSchema)) {
+    return []
+  }
+
+  return argumentsSchema.map((argument) => {
+    // Raycast arguments have no title field; placeholder is their required display copy.
+    const migratedArgument = {
+      name: argument.name,
+      placeholder: argument.placeholder,
+      required: argument.required ?? false,
+      title: argument.placeholder,
+      type: argument.type
+    }
+
+    if (argument.type !== "dropdown") {
+      return migratedArgument
+    }
+
+    return {
+      ...migratedArgument,
+      data: argument.data.map((option) => ({
+        title: option.title,
+        value: option.value
+      }))
+    }
+  })
+}
+
 function buildManifestPreview(pkg, sourceFiles, target) {
   const tools = Array.isArray(pkg.tools) ? pkg.tools : []
   const toolNames = tools.map((tool) => toJingleToolName(tool.name)).filter(Boolean)
@@ -598,7 +627,7 @@ function buildManifestPreview(pkg, sourceFiles, target) {
     },
     capabilities: inferLauncherCapabilities(pkg),
     commands: (pkg.commands ?? []).map((command) => ({
-      arguments: command.arguments ?? [],
+      arguments: migrateCommandArguments(command.arguments),
       description: command.description,
       mode: command.mode,
       name: command.name,
