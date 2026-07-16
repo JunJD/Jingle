@@ -6,7 +6,6 @@ import {
   CircleAlert,
   Gift,
   KeyRound,
-  Loader2,
   Plus,
   Search,
   SlidersHorizontal
@@ -325,19 +324,18 @@ function ProviderCard(props: {
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-[var(--jingle-space-2)] pl-[52px] sm:pl-0">
-        <button
+        <Button
           type="button"
-          className="inline-flex h-8 items-center gap-[var(--jingle-space-1)] rounded-[var(--jingle-radius-md)] border border-border bg-background px-[var(--jingle-space-3)] [font-size:var(--jingle-font-body)] font-medium text-foreground transition hover:bg-background-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          disabled={loading}
+          className="h-8 gap-[var(--jingle-space-1)] bg-background px-[var(--jingle-space-3)] [font-size:var(--jingle-font-body)]"
+          loading={loading}
+          loadingLabel={configured ? "正在读取 provider 配置" : "正在准备 provider 配置"}
           onClick={onConfigure}
+          size="sm"
+          variant="outline"
         >
-          {loading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-          )}
+          <SlidersHorizontal className="h-3.5 w-3.5" />
           {configured ? "编辑" : "配置"}
-        </button>
+        </Button>
         {configured ? (
           <button
             type="button"

@@ -1,5 +1,5 @@
 import { useMemo, useReducer } from "react"
-import { Loader2, Plus, Trash2, X } from "lucide-react"
+import { Plus, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   SettingsField,
@@ -417,8 +417,14 @@ export function CustomProviderForm(props: {
               <Trash2 className="h-4 w-4" />
               取消
             </button>
-            <Button type="button" disabled={!canSave || saving} onClick={handleSubmit}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : submitLabel}
+            <Button
+              type="button"
+              disabled={!canSave}
+              loading={saving}
+              loadingLabel="正在保存 provider 配置"
+              onClick={handleSubmit}
+            >
+              {submitLabel}
             </Button>
           </div>
         </div>

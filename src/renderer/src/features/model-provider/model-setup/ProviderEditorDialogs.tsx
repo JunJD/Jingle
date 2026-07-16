@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
-import { Loader2, Trash2 } from "lucide-react"
+import { Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Dialog,
   DialogContent,
@@ -200,9 +201,13 @@ function ProviderCredentialsDialog(props: {
 
         <div className="grid gap-[var(--jingle-space-4)]">
           {loading ? (
-            <div className="flex items-center gap-[var(--jingle-space-2)] [font-size:var(--jingle-font-body)] text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              读取配置
+            <div
+              aria-live="polite"
+              className="flex items-center gap-[var(--jingle-space-2)] [font-size:var(--jingle-font-body)] text-muted-foreground"
+              role="status"
+            >
+              <Spinner size="sm" />
+              <span>读取配置</span>
             </div>
           ) : null}
 
@@ -263,8 +268,14 @@ function ProviderCredentialsDialog(props: {
             <Button type="button" variant="outline" disabled={saving} onClick={onClose}>
               取消
             </Button>
-            <Button type="button" disabled={!canSave || saving} onClick={handleSave}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "保存配置"}
+            <Button
+              type="button"
+              disabled={!canSave}
+              loading={saving}
+              loadingLabel="正在保存 provider 配置"
+              onClick={handleSave}
+            >
+              保存配置
             </Button>
           </div>
         </DialogFooter>
@@ -325,10 +336,12 @@ function ProviderActivationDialog(props: {
           </Button>
           <Button
             type="button"
-            disabled={saving || Boolean(unavailableMessage)}
+            disabled={Boolean(unavailableMessage)}
+            loading={saving}
+            loadingLabel="正在启用 provider"
             onClick={handleActivate}
           >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "启用 provider"}
+            启用 provider
           </Button>
         </DialogFooter>
       </DialogContent>
