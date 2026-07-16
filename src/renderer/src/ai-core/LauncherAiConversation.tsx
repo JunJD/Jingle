@@ -10,95 +10,23 @@ import { useThreadSelector } from "@/lib/thread-context"
 import { cn } from "@/lib/utils"
 import type { EditLastUserMessageAndInvokeInput } from "@/lib/agent-control"
 import type { LauncherAiThreadLoadingReason } from "./useLauncherAiThreadNavigation"
-import type { ArtifactRecord, FileArtifactRecord } from "@shared/artifacts"
+import {
+  useLauncherAiArtifactController,
+  useLauncherArtifactImagePreview
+} from "./use-launcher-ai-artifact-controller"
+import {
+  compareLauncherArtifactsByCreatedAt,
+  projectLauncherArtifactCard,
+  type LauncherImageArtifact
+} from "./launcher-ai-artifact-projection"
+import type { ArtifactRecord } from "@shared/artifacts"
 import type { ComposerMessageInput, ComposerMessageRef } from "@shared/message-content"
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useMemo, useRef } from "react"
 import type { VListHandle } from "virtua"
 
 const EMPTY_ARTIFACTS: readonly ArtifactRecord[] = []
 const LAUNCHER_AI_AT_BOTTOM_THRESHOLD_PX = 60
 type AssistantSelectionRef = Extract<ComposerMessageRef, { type: "assistant-message-selection" }>
-
-type ArtifactImagePreviewState =
-  | {
-      status: "error"
-    }
-  | {
-      src: string
-      status: "ready"
-    }
-  | {
-      status: "loading"
-    }
-
-function formatArtifactSize(bytes: number | null): string | null {
-  if (bytes === null) {
-    return null
-  }
-
-  if (bytes < 1024) {
-    return `${bytes} B`
-  }
-
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`
-  }
-
-  if (bytes < 1024 * 1024 * 1024) {
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
-}
-
-function getArtifactExtension(artifact: ArtifactRecord): string | null {
-  if (artifact.source.type !== "managed-file-path") {
-    return null
-  }
-
-  const fileName = artifact.source.uri.split(/[\\/]/).at(-1) ?? ""
-  const extension = fileName.includes(".") ? fileName.split(".").at(-1) : null
-  return extension ? extension.toUpperCase() : null
-}
-
-function isImageArtifact(artifact: ArtifactRecord): artifact is FileArtifactRecord {
-  if (artifact.kind !== "file" || artifact.source.type !== "managed-file-path") {
-    return false
-  }
-
-  if (artifact.mimeType?.startsWith("image/")) {
-    return true
-  }
-
-  return /\.(avif|gif|jpe?g|png|webp)$/i.test(artifact.source.uri)
-}
-
-function compareArtifactsByCreatedAt(a: ArtifactRecord, b: ArtifactRecord): number {
-  return b.createdAt.getTime() - a.createdAt.getTime()
-}
-
-function getArtifactMeta(artifact: ArtifactRecord): string {
-  return (
-    artifact.subtitle ??
-    artifact.previewText ??
-    formatArtifactSize(artifact.sizeBytes) ??
-    artifact.mimeType ??
-    getArtifactExtension(artifact) ??
-    artifact.kind
-  )
-}
-
-function isLauncherArtifactOpenable(artifact: ArtifactRecord): boolean {
-  return artifact.source.type !== "inline-text"
-}
-
-async function openLauncherArtifact(artifact: ArtifactRecord): Promise<void> {
-  const resolution = await window.api.artifacts.open(artifact.id)
-
-  if (resolution.type === "copy-link") {
-    await navigator.clipboard.writeText(resolution.value)
-  }
-}
 
 function LauncherArtifactTypeIcon(props: { artifact: ArtifactRecord }): React.JSX.Element {
   const { artifact } = props
@@ -138,40 +66,9 @@ function LauncherAiPresenceMark(): React.JSX.Element {
   )
 }
 
-function LauncherArtifactImagePreview(props: { artifact: FileArtifactRecord }): React.JSX.Element {
+function LauncherArtifactImagePreview(props: { artifact: LauncherImageArtifact }): React.JSX.Element {
   const { artifact } = props
-  const [preview, setPreview] = useState<ArtifactImagePreviewState>({ status: "loading" })
-
-  useEffect(() => {
-    let isCancelled = false
-
-    async function loadPreview(): Promise<void> {
-      const result = await window.api.artifacts.readBinaryFile(artifact.id)
-      if (isCancelled) {
-        return
-      }
-
-      if (!result.success || !result.content) {
-        setPreview({ status: "error" })
-        return
-      }
-
-      setPreview({
-        src: `data:${artifact.mimeType ?? "image/png"};base64,${result.content}`,
-        status: "ready"
-      })
-    }
-
-    void loadPreview().catch(() => {
-      if (!isCancelled) {
-        setPreview({ status: "error" })
-      }
-    })
-
-    return () => {
-      isCancelled = true
-    }
-  }, [artifact.id, artifact.mimeType])
+  const preview = useLauncherArtifactImagePreview(artifact)
 
   if (preview.status === "ready") {
     return (
@@ -195,11 +92,14 @@ function LauncherArtifactImagePreview(props: { artifact: FileArtifactRecord }): 
   )
 }
 
-function LauncherArtifactCard(props: { artifact: ArtifactRecord }): React.JSX.Element {
-  const { artifact } = props
-  const isImage = isImageArtifact(artifact)
-  const isOpenable = isLauncherArtifactOpenable(artifact)
-  const meta = getArtifactMeta(artifact)
+function LauncherArtifactCard(props: {
+  artifact: ArtifactRecord
+  onOpenArtifact: (artifact: ArtifactRecord) => Promise<void>
+}): React.JSX.Element {
+  const { artifact, onOpenArtifact } = props
+  const projection = projectLauncherArtifactCard(artifact)
+  const { isOpenable, meta, preview } = projection
+  const isImage = preview.kind === "image"
   const className = cn(
     "group flex min-w-0 flex-col overflow-hidden rounded-[var(--jingle-radius-panel)] border border-border/70 bg-background-secondary/60 text-left transition-colors",
     isOpenable ? "hover:border-border hover:bg-background-secondary" : "cursor-default",
@@ -211,7 +111,7 @@ function LauncherArtifactCard(props: { artifact: ArtifactRecord }): React.JSX.El
         <div className="aspect-[4/3] w-full overflow-hidden bg-background-secondary">
           <LauncherArtifactImagePreview
             key={`${artifact.id}:${artifact.updatedAt.toISOString()}`}
-            artifact={artifact}
+            artifact={preview.artifact}
           />
         </div>
       ) : null}
@@ -260,8 +160,9 @@ function LauncherArtifactCard(props: { artifact: ArtifactRecord }): React.JSX.El
       data-launcher-artifact-card=""
       data-launcher-artifact-kind={artifact.kind}
       data-launcher-artifact-openable="true"
+      data-launcher-artifact-preview={preview.kind}
       data-launcher-artifact-title={artifact.title}
-      onClick={() => void openLauncherArtifact(artifact)}
+      onClick={() => void onOpenArtifact(artifact)}
       type="button"
     >
       {content}
@@ -271,14 +172,15 @@ function LauncherArtifactCard(props: { artifact: ArtifactRecord }): React.JSX.El
 
 function LauncherArtifactsPanel(props: {
   artifacts: readonly ArtifactRecord[]
+  onOpenArtifact: (artifact: ArtifactRecord) => Promise<void>
 }): React.JSX.Element | null {
-  const { artifacts } = props
+  const { artifacts, onOpenArtifact } = props
   const { copy } = useI18n()
   const visibleArtifacts = useMemo(
     () =>
       artifacts
         .filter((artifact) => artifact.status === "ready")
-        .toSorted(compareArtifactsByCreatedAt)
+        .toSorted(compareLauncherArtifactsByCreatedAt)
         .slice(0, 6),
     [artifacts]
   )
@@ -299,7 +201,11 @@ function LauncherArtifactsPanel(props: {
       </div>
       <div className="grid grid-cols-1 gap-[var(--jingle-space-2)] sm:grid-cols-2">
         {visibleArtifacts.map((artifact) => (
-          <LauncherArtifactCard artifact={artifact} key={artifact.id} />
+          <LauncherArtifactCard
+            artifact={artifact}
+            key={artifact.id}
+            onOpenArtifact={onOpenArtifact}
+          />
         ))}
       </div>
     </section>
@@ -317,10 +223,11 @@ const LauncherAiFooter = memo(function LauncherAiFooter(props: {
     threadId,
     (state) => state?.agent.artifacts ?? EMPTY_ARTIFACTS
   )
+  const { openArtifact } = useLauncherAiArtifactController()
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-[var(--launcher-ai-turn-gap)]">
-      <LauncherArtifactsPanel artifacts={artifacts} />
+      <LauncherArtifactsPanel artifacts={artifacts} onOpenArtifact={openArtifact} />
 
       {!isLoading && <ContextEvidencePanel threadId={threadId} />}
 
