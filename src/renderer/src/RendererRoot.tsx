@@ -5,6 +5,7 @@ import { LauncherSelectionProvider } from "@launcher-shell/LauncherSelectionCont
 import { DEFAULT_APP_THEME_SETTINGS, type AppThemeSettings } from "@shared/app-theme"
 import { DEFAULT_APP_LOCALE, normalizeAppLocale, type AppLocale } from "@shared/i18n"
 import { IPC_NETWORK_WINDOW_KIND } from "@jingle/devtools-network"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { I18nProvider } from "@/lib/i18n"
 import { DurableWindowApp } from "./ai-core/MainWindowApp"
 import { IpcNetworkApp } from "./devtools/IpcNetworkApp"
@@ -37,7 +38,9 @@ export function RendererRoot(props: {
   if (props.windowKind === IPC_NETWORK_WINDOW_KIND) {
     return (
       <React.StrictMode>
-        <IpcNetworkApp />
+        <TooltipProvider>
+          <IpcNetworkApp />
+        </TooltipProvider>
       </React.StrictMode>
     )
   }
@@ -66,25 +69,27 @@ function AppRendererRoot(props: {
 
   return (
     <React.StrictMode>
-      <ShortcutProvider windowKind={shortcutWindowKind}>
-        <I18nProvider key={locale} initialLocale={locale}>
-          {windowKind === "launcher" ? (
-            <ThreadProvider eventSurface="launcher">
-              <LauncherClipboardProvider>
-                <LauncherSelectionProvider>
-                  <LauncherApp />
-                </LauncherSelectionProvider>
-              </LauncherClipboardProvider>
-            </ThreadProvider>
-          ) : windowKind === "main" || windowKind === "thread-window" ? (
-            <ThreadProvider eventSurface="main">
-              <DurableWindowApp />
-            </ThreadProvider>
-          ) : windowKind === "settings" ? (
-            <SettingsApp />
-          ) : null}
-        </I18nProvider>
-      </ShortcutProvider>
+      <TooltipProvider>
+        <ShortcutProvider windowKind={shortcutWindowKind}>
+          <I18nProvider key={locale} initialLocale={locale}>
+            {windowKind === "launcher" ? (
+              <ThreadProvider eventSurface="launcher">
+                <LauncherClipboardProvider>
+                  <LauncherSelectionProvider>
+                    <LauncherApp />
+                  </LauncherSelectionProvider>
+                </LauncherClipboardProvider>
+              </ThreadProvider>
+            ) : windowKind === "main" || windowKind === "thread-window" ? (
+              <ThreadProvider eventSurface="main">
+                <DurableWindowApp />
+              </ThreadProvider>
+            ) : windowKind === "settings" ? (
+              <SettingsApp />
+            ) : null}
+          </I18nProvider>
+        </ShortcutProvider>
+      </TooltipProvider>
     </React.StrictMode>
   )
 }
