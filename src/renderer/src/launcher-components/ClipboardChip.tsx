@@ -9,7 +9,7 @@ import {
   AttachmentPreview,
   AttachmentRemove,
   Attachments
-} from "@/components/ui/attachments"
+} from "@/components/attachments"
 import { useI18n } from "@/lib/i18n"
 
 function getClipboardLabel(

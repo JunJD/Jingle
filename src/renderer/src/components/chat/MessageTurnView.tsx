@@ -69,7 +69,7 @@ import {
   AttachmentHoverPreview,
   AttachmentPreview,
   type AttachmentData
-} from "../ui/attachments"
+} from "../attachments"
 import {
   Message,
   MessageAction,

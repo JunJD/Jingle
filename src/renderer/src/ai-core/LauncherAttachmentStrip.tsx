@@ -10,7 +10,7 @@ import {
   AttachmentRemove,
   Attachments,
   type AttachmentData
-} from "@/components/ui/attachments"
+} from "@/components/attachments"
 import { useI18n } from "@/lib/i18n"
 import type { LauncherAiAttachmentDraft } from "./useAiAttachments"
 

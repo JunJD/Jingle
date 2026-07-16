@@ -1,12 +1,12 @@
 "use client"
 
-import { Button } from "./button"
+import { Button } from "./ui/button"
 import {
   HoverCard,
   HoverCardContent,
   HoverCardPortal,
   HoverCardTrigger
-} from "./hover-card"
+} from "./ui/hover-card"
 import { cn } from "@/lib/utils"
 
 import {

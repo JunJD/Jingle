@@ -9,7 +9,7 @@ import {
   AttachmentHoverCard,
   AttachmentHoverCardContent,
   AttachmentHoverCardTrigger
-} from "@/components/ui/attachments"
+} from "@/components/attachments"
 import { useAssistantSelectionReferenceNavigation } from "./assistant-selection-reference-navigation-context"
 import { getAssistantSelectionRefs } from "./useAssistantSelectionRefs"
 
