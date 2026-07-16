@@ -13,7 +13,7 @@ import {
 } from "@jingle/agent-client"
 import type { AgentContextInclusion } from "./jingle-memory"
 import type { HITLDecision, HITLRequest, Message, Todo } from "./app-types"
-import type { IpcErrorPayload } from "./ipc-error"
+import type { AgentRunFailure } from "./agent-run-failure"
 
 export type AgentThreadEventSubscriptionSurface = "launcher" | "pinned-ai-session"
 
@@ -49,7 +49,7 @@ export function parseAgentConnectThreadEventsResult(
 
 export type AgentThreadRuntimeState = JingleAgentThreadRuntimeState<
   AgentContextInclusion,
-  IpcErrorPayload,
+  AgentRunFailure,
   JingleAgentFollowUpQueueSummary,
   Message,
   HITLRequest,
@@ -61,7 +61,7 @@ export type AgentThreadRuntimeState = JingleAgentThreadRuntimeState<
 
 export type AgentThreadEvent = JingleAgentThreadEvent<
   AgentContextInclusion,
-  IpcErrorPayload,
+  AgentRunFailure,
   JingleAgentFollowUpQueueSummary,
   Message,
   HITLRequest,
@@ -74,7 +74,7 @@ export type AgentThreadEvent = JingleAgentThreadEvent<
 
 export type AgentThreadEventDraft = JingleAgentThreadEventDraft<
   AgentContextInclusion,
-  IpcErrorPayload,
+  AgentRunFailure,
   JingleAgentFollowUpQueueSummary,
   Message,
   HITLRequest,
@@ -88,7 +88,7 @@ export type AgentThreadEventDraft = JingleAgentThreadEventDraft<
 export function createDefaultAgentThreadRuntimeState(threadId: string): AgentThreadRuntimeState {
   return createJingleAgentThreadRuntimeState<
     AgentContextInclusion,
-    IpcErrorPayload,
+    AgentRunFailure,
     JingleAgentFollowUpQueueSummary,
     Message,
     HITLRequest,

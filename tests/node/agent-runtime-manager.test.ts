@@ -228,8 +228,10 @@ test("agent runtime manager keeps runtime error facts unformatted", async () => 
     events: [
       {
         error: {
-          code: "INTERNAL",
+          ipcCode: "INTERNAL",
+          kind: "context_window_exceeded",
           message: "prompt is too long: 120000 tokens > 64000 maximum",
+          schemaVersion: 1,
           status: 500
         },
         revision: 1,

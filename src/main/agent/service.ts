@@ -19,7 +19,8 @@ import {
 import { resolveNativeExtensionConnection } from "../native-extensions/connection-resolver"
 import { resolveNativeExtensionExecutionContext } from "../native-extensions/execution-context"
 import { updateRunExtensionAiCapabilitiesSnapshot } from "./persistence"
-import { isAbortLikeError, isModelAuthenticationError, normalizeAgentRuntimeError } from "./errors"
+import { isAbortLikeError, isModelAuthenticationError, toAgentRunFailure } from "./errors"
+import type { AgentRunFailure } from "@shared/agent-run-failure"
 import { createAgentRunHandle } from "./runtime"
 import { createAgentRuntime } from "./runtime-assembly"
 import { createExtensionAiRuntime } from "./extension-ai-runtime"
@@ -42,7 +43,7 @@ import { getHitlRequest } from "../db/hitl"
 import { getRun } from "../db/runs"
 import { getThread } from "../db/threads"
 import { listProjectedThreadMessages } from "../db/message-state"
-import { buildIpcErrorEvent, buildIpcErrorPayload, JingleIpcError } from "../ipc/error"
+import { buildIpcErrorPayload, JingleIpcError } from "../ipc/error"
 import { JingleMemoryService } from "../jingle-memory/service"
 import { WorkspaceService } from "../workspace/service"
 import { readRunPermissionModeSnapshot, readThreadPermissionMode } from "./permission-mode"
@@ -75,11 +76,7 @@ export type AgentStreamPayload =
   | { type: "cancelled" }
   | {
       type: "error"
-      error: string
-      code?: string
-      details?: string[]
-      message?: string
-      status?: number
+      failure: AgentRunFailure
     }
   | {
       type: "run_rejected"
@@ -436,13 +433,13 @@ function reportAgentRuntimeError(input: {
   label: string
   sink: AgentStreamSink
 }): void {
-  const normalizedError = normalizeAgentRuntimeError(input.channel, input.error)
+  const failure = toAgentRunFailure(input.channel, input.error)
   if (!isModelAuthenticationError(input.error)) {
     console.error(input.label, input.error)
   }
   input.sink.send({
     type: "error",
-    ...buildIpcErrorEvent(input.channel, normalizedError)
+    failure
   })
 }
 

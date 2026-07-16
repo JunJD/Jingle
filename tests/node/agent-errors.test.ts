@@ -4,9 +4,14 @@ import {
   isAbortLikeError,
   isModelAuthenticationError,
   isTransportInterruptionError,
-  normalizeAgentRuntimeError
+  normalizeAgentRuntimeError,
+  toAgentRunFailure
 } from "../../src/main/agent/errors"
 import { JingleIpcError } from "../../src/main/ipc/error"
+import {
+  createLegacyAgentRunFailure,
+  parseAgentRunFailure
+} from "../../src/shared/agent-run-failure"
 
 test("isAbortLikeError matches direct abort errors", () => {
   const error = new Error("The operation was aborted.")
@@ -85,4 +90,69 @@ test("normalizeAgentRuntimeError converts model auth failures to unauthenticated
   assert.equal(error.code, "UNAUTHENTICATED")
   assert.equal(error.status, 401)
   assert.equal(error.message, "Authentication failed. Please check your API key in settings.")
+})
+
+test("AgentRunFailure codec rejects malformed and future-version payloads", () => {
+  assert.equal(parseAgentRunFailure(null), null)
+  assert.equal(
+    parseAgentRunFailure({
+      ipcCode: "INTERNAL",
+      kind: "unknown",
+      message: "boom",
+      schemaVersion: 2,
+      status: 500
+    }),
+    null
+  )
+  assert.equal(
+    parseAgentRunFailure({
+      ipcCode: "NOT_A_CODE",
+      kind: "authentication",
+      message: "boom",
+      schemaVersion: 1,
+      status: 401
+    }),
+    null
+  )
+  for (const invalid of [
+    { details: ["valid", 42], status: 500 },
+    { details: "not-an-array", status: 500 },
+    { status: Number.NaN },
+    { status: Number.POSITIVE_INFINITY },
+    { extra: true, status: 500 }
+  ]) {
+    assert.equal(
+      parseAgentRunFailure({
+        ipcCode: "INTERNAL",
+        kind: "unknown",
+        message: "boom",
+        schemaVersion: 1,
+        ...invalid
+      }),
+      null
+    )
+  }
+})
+
+test("legacy persisted error text degrades to unknown without semantic reclassification", () => {
+  assert.deepEqual(
+    createLegacyAgentRunFailure("401 authentication_error rate_limit context window exceeded"),
+    {
+      ipcCode: "INTERNAL",
+      kind: "unknown",
+      message: "401 authentication_error rate_limit context window exceeded",
+      schemaVersion: 1,
+      status: 500
+    }
+  )
+})
+
+test("main capture classifies a raw provider failure once into the durable contract", () => {
+  assert.deepEqual(toAgentRunFailure("agent:invoke", new Error("429 rate_limit")), {
+    ipcCode: "INTERNAL",
+    kind: "rate_limited",
+    message: "429 rate_limit",
+    schemaVersion: 1,
+    status: 500
+  })
 })

@@ -1,5 +1,10 @@
 import { randomUUID } from "crypto"
 import {
+  AGENT_RUN_FAILURE_METADATA_KEY,
+  encodeAgentRunFailure,
+  type AgentRunFailure
+} from "@shared/agent-run-failure"
+import {
   buildJingleCheckpointLookupConfig,
   resolveJingleCheckpointRunStatus
 } from "@jingle/langchain-agent-harness/transitional"
@@ -184,7 +189,18 @@ function mergeRunResumeMetadata(
   run: ExistingRun,
   metadata: Record<string, unknown> | undefined
 ): Record<string, unknown> {
-  return mergeRunMetadata(run, metadata ?? {})
+  return removeRunFailureMetadata(mergeRunMetadata(run, metadata ?? {}))
+}
+
+function removeRunFailureMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...metadata }
+  delete next[AGENT_RUN_FAILURE_METADATA_KEY]
+  delete next.error
+  return next
+}
+
+function mergeRunMetadataWithoutFailure(run: ExistingRun): Record<string, unknown> {
+  return removeRunFailureMetadata(mergeRunMetadata(run, {}))
 }
 
 function mergeRunExtensionAiCapabilitiesSnapshotMetadata(
@@ -204,9 +220,9 @@ function mergeRunExtensionAiCapabilitiesSnapshotMetadata(
   })
 }
 
-function mergeRunErrorMetadata(run: ExistingRun, error: unknown): Record<string, unknown> {
+function mergeRunFailureMetadata(run: ExistingRun, failure: AgentRunFailure): Record<string, unknown> {
   return mergeRunMetadata(run, {
-    error: error instanceof Error ? error.message : String(error)
+    [AGENT_RUN_FAILURE_METADATA_KEY]: encodeAgentRunFailure(failure)
   })
 }
 
@@ -310,7 +326,8 @@ export async function syncRunFromLatestCheckpointFacts(
   const facts = extractThreadFactsFromCheckpoint(threadId, latest, { runId })
   const generatedTitle = facts.title
 
-  await updateRun(runId, {
+  await updateRunMetadata(runId, {
+    merge: mergeRunMetadataWithoutFailure,
     status
   })
 
@@ -355,7 +372,8 @@ export async function finalizeRunWithoutCheckpoint(
 ): Promise<PersistedRunStatus> {
   const status: PersistedRunStatus = options?.interrupted ? "interrupted" : "success"
 
-  await updateRun(runId, {
+  await updateRunMetadata(runId, {
+    merge: mergeRunMetadataWithoutFailure,
     status
   })
 
@@ -369,7 +387,7 @@ export async function finalizeRunWithoutCheckpoint(
 export async function markRunFailed(
   threadId: string,
   runId: string,
-  error: unknown
+  failure: AgentRunFailure
 ): Promise<void> {
   let syncedStatus: PersistedRunStatus | null = null
   try {
@@ -381,7 +399,7 @@ export async function markRunFailed(
   if (syncedStatus === "interrupted" || (await hasPendingHitlRequestForRun(threadId, runId))) {
     await updateRunMetadata(runId, {
       status: "interrupted",
-      merge: (run) => mergeRunErrorMetadata(run, error)
+      merge: (run) => mergeRunFailureMetadata(run, failure)
     })
 
     await updateThread(threadId, {
@@ -392,7 +410,7 @@ export async function markRunFailed(
 
   await updateRunMetadata(runId, {
     status: "error",
-    merge: (run) => mergeRunErrorMetadata(run, error)
+    merge: (run) => mergeRunFailureMetadata(run, failure)
   })
 
   await updateThread(threadId, {
@@ -407,7 +425,8 @@ export async function markRunAborted(threadId: string, runId: string): Promise<v
     // Ignore checkpoint sync failures on abort and just preserve the status.
   }
 
-  await updateRun(runId, {
+  await updateRunMetadata(runId, {
+    merge: mergeRunMetadataWithoutFailure,
     status: "interrupted"
   })
 

@@ -10,6 +10,7 @@ import type { JingleActiveAgentRun } from "@jingle/agent-client"
 import type { AgentThreadDataSnapshot } from "../../src/shared/app-types"
 import type { HITLRequest } from "../../src/shared/hitl"
 import type { ArtifactRecord } from "../../src/shared/artifacts"
+import { createLegacyAgentRunFailure } from "../../src/shared/agent-run-failure"
 import {
   createThreadStore,
   type ThreadState,
@@ -1275,7 +1276,7 @@ test("thread data snapshot restores non-runtime facts and stale events do not ro
       },
       runState: {
         contextInclusions: [],
-        error: "Needs approval",
+        error: createLegacyAgentRunFailure("Needs approval"),
         forkState: { canFork: false, reason: "pending_hitl" },
         pendingApproval,
         runId: "run-1",

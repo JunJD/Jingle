@@ -60,17 +60,13 @@ type AgentContextInclusion = JingleRuntimeContextInclusion
 type HITLRequest = JingleRuntimePendingApproval
 type HITLDecision = JingleRuntimeHitlDecision
 type Todo = unknown
-type IpcErrorPayload = {
-  channel?: string
-  code: string
-  details?: unknown
+type AgentRuntimeError = {
   message: string
-  status: number
 }
 
 type AgentThreadRuntimeState = JingleAgentThreadRuntimeState<
   AgentContextInclusion,
-  IpcErrorPayload,
+  AgentRuntimeError,
   JingleAgentFollowUpQueueSummary,
   Message,
   HITLRequest,
@@ -82,7 +78,7 @@ type AgentThreadRuntimeState = JingleAgentThreadRuntimeState<
 
 type AgentThreadEvent = JingleAgentThreadEvent<
   AgentContextInclusion,
-  IpcErrorPayload,
+  AgentRuntimeError,
   JingleAgentFollowUpQueueSummary,
   Message,
   HITLRequest,
@@ -112,6 +108,10 @@ function reduceJingleAgentThreadRuntimeEventInternal(
     case "thread.statusChanged":
       return {
         ...state,
+        activeRun:
+          event.status === "interrupted" && state.pendingApproval
+            ? patchJingleActiveAgentRun(state.activeRun, { status: "waiting_approval" })
+            : state.activeRun,
         error: event.error,
         revision: event.revision,
         status: event.status

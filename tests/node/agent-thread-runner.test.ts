@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { AIMessageChunk } from "@langchain/core/messages"
 import type { AgentThreadDataSnapshot, Message } from "../../src/shared/app-types"
+import type { AgentThreadEvent } from "../../src/shared/agent-thread-contract"
 import type { HITLRequest } from "../../src/shared/hitl"
 import { AgentThreadRunner } from "../../src/main/agent/agent-thread-runner"
 import type { ThreadsService } from "../../src/main/threads/service"
@@ -14,6 +15,7 @@ import {
   readJingleSteeringAppliedMarker,
   readJingleSteeringStatus
 } from "../../src/shared/message-steering"
+import type { AgentRunFailure } from "../../src/shared/agent-run-failure"
 
 function createThreadsService(threadData: AgentThreadDataSnapshot): ThreadsService {
   return {
@@ -113,8 +115,11 @@ function createPendingApproval(id: string, toolCallId: string): HITLRequest {
 
 function createThreadData(
   input: {
+    error?: AgentRunFailure | null
     messages?: Message[]
     pendingApproval?: HITLRequest | null
+    runId?: string | null
+    status?: AgentThreadDataSnapshot["thread"]["status"]
     todos?: AgentThreadDataSnapshot["runState"]["todos"]
   } = {}
 ): AgentThreadDataSnapshot {
@@ -122,7 +127,7 @@ function createThreadData(
   return {
     thread: {
       metadata: undefined,
-      status: pendingApproval ? "interrupted" : "idle",
+      status: input.status ?? (pendingApproval ? "interrupted" : "idle"),
       thread_id: "thread-1",
       title: undefined
     },
@@ -132,17 +137,184 @@ function createThreadData(
     },
     runState: {
       contextInclusions: [],
-      error: null,
+      error: input.error ?? null,
       forkState: {
         canFork: true
       },
       pendingApproval,
-      runId: null,
+      runId: input.runId ?? null,
       todos: input.todos ?? [],
       workspacePath: null
     }
   }
 }
+
+test("AgentThreadRunner preserves identical failure facts across live snapshot, replay, and hydrate", async () => {
+  const failure: AgentRunFailure = {
+    details: ["retry-after=30"],
+    ipcCode: "INTERNAL",
+    kind: "rate_limited",
+    message: "Provider request rejected",
+    schemaVersion: 1,
+    status: 429
+  }
+  const persistedBeforeFailure = createThreadData({ runId: "run-parity" })
+  const liveHub = new AgentThreadRunner(createThreadsService(persistedBeforeFailure))
+  await liveHub.prepareInvoke("thread-parity", { content: "run", id: "user-parity" })
+  await liveHub.handlePayload("thread-parity", {
+    runId: "run-parity",
+    type: "run_started"
+  })
+  await liveHub.handlePayload("thread-parity", { failure, type: "error" })
+
+  const liveState = await liveHub.readThreadState("thread-parity")
+  const liveSnapshot = liveHub.readLiveThreadDataSnapshot("thread-parity", persistedBeforeFailure)
+  const replayEvents: Array<AgentThreadEvent> = []
+  await liveHub.connectThreadEvents(
+    "thread-parity",
+    "parity-replay",
+    (batch) => replayEvents.push(...batch.events),
+    { fromRevision: 0 }
+  )
+  const replayFailure = replayEvents.findLast(
+    (event) => event.type === "thread.statusChanged" && event.status === "error"
+  )
+  assert.deepEqual(liveState.error, failure)
+  assert.deepEqual(liveSnapshot?.runState.error, failure)
+  assert.equal(replayFailure?.type, "thread.statusChanged")
+  if (replayFailure?.type === "thread.statusChanged") {
+    assert.deepEqual(replayFailure.error, failure)
+  }
+
+  const hydratedData = createThreadData({
+    error: failure,
+    runId: "run-parity",
+    status: "error"
+  })
+  const hydratedHub = new AgentThreadRunner(createThreadsService(hydratedData))
+  assert.deepEqual((await hydratedHub.readThreadState("thread-parity-hydrated")).error, failure)
+})
+
+test("AgentThreadRunner keeps cancellation terminal state separate from failure", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+  await hub.prepareInvoke("thread-cancelled", { content: "run", id: "user-cancelled" })
+  await hub.handlePayload("thread-cancelled", { type: "cancelled" })
+
+  const state = await hub.readThreadState("thread-cancelled")
+  assert.equal(state.status, "cancelled")
+  assert.equal(state.error, null)
+
+  await hub.handlePayload("thread-cancelled", {
+    failure: {
+      ipcCode: "INTERNAL",
+      kind: "unknown",
+      message: "late failure",
+      schemaVersion: 1,
+      status: 500
+    },
+    type: "error"
+  })
+  const afterLateFailure = await hub.readThreadState("thread-cancelled")
+  assert.equal(afterLateFailure.status, "cancelled")
+  assert.equal(afterLateFailure.error, null)
+})
+
+test("AgentThreadRunner keeps pending approval interrupted when its execution attempt fails", async () => {
+  const pendingApproval = createPendingApproval("approval-pending-failure", "tool-pending-failure")
+  const hub = new AgentThreadRunner(
+    createThreadsService(
+      createThreadData({
+        messages: [createUserMessage("user-pending-failure", "run")],
+        pendingApproval,
+        runId: "run-pending-failure"
+      })
+    )
+  )
+  await hub.prepareResume("thread-pending-failure")
+  const failure: AgentRunFailure = {
+    ipcCode: "UNAVAILABLE",
+    kind: "transport_interrupted",
+    message: "connection ended",
+    schemaVersion: 1,
+    status: 503
+  }
+  await hub.handlePayload("thread-pending-failure", { failure, type: "error" })
+
+  const state = await hub.readThreadState("thread-pending-failure")
+  assert.equal(state.status, "interrupted")
+  assert.deepEqual(state.error, failure)
+  assert.equal(state.pendingApproval?.id, pendingApproval.id)
+  assert.equal(state.activeRun?.status, "waiting_approval")
+
+  await hub.handlePayload("thread-pending-failure", { type: "cancelled" })
+  const afterLateCancellation = await hub.readThreadState("thread-pending-failure")
+  assert.equal(afterLateCancellation.status, "interrupted")
+  assert.deepEqual(afterLateCancellation.error, failure)
+})
+
+test("AgentThreadRunner keeps a pending approval interrupt authoritative over late failure", async () => {
+  const pendingApproval = createPendingApproval("approval-authoritative", "tool-authoritative")
+  const hub = new AgentThreadRunner(
+    createThreadsService(
+      createThreadData({
+        messages: [createUserMessage("user-authoritative", "run")],
+        pendingApproval,
+        runId: "run-authoritative"
+      })
+    )
+  )
+  await hub.prepareResume("thread-authoritative")
+  await hub.handlePayload("thread-authoritative", { type: "done" })
+  await hub.handlePayload("thread-authoritative", {
+    failure: {
+      ipcCode: "INTERNAL",
+      kind: "unknown",
+      message: "late failure",
+      schemaVersion: 1,
+      status: 500
+    },
+    type: "error"
+  })
+
+  const state = await hub.readThreadState("thread-authoritative")
+  assert.equal(state.status, "interrupted")
+  assert.equal(state.error, null)
+  assert.equal(state.pendingApproval?.id, pendingApproval.id)
+})
+
+test("AgentThreadRunner live snapshot preserves runtime error clearing while persistence lags", async () => {
+  const staleFailure: AgentRunFailure = {
+    ipcCode: "INTERNAL",
+    kind: "unknown",
+    message: "stale failure",
+    schemaVersion: 1,
+    status: 500
+  }
+  const persisted = createThreadData({ error: staleFailure, status: "error" })
+  const hub = new AgentThreadRunner(createThreadsService(persisted))
+  await hub.prepareInvoke("thread-cleared-error", { content: "retry", id: "user-retry" })
+
+  const liveSnapshot = hub.readLiveThreadDataSnapshot("thread-cleared-error", persisted)
+  assert.equal((await hub.readThreadState("thread-cleared-error")).error, null)
+  assert.equal(liveSnapshot?.runState.error, null)
+})
+
+test("AgentThreadRunner rejects an invalid failure wire payload", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+  await assert.rejects(
+    hub.handlePayload("thread-invalid-failure", {
+      failure: {
+        ipcCode: "INTERNAL",
+        kind: "unknown",
+        message: "invalid version",
+        schemaVersion: 2,
+        status: 500
+      } as unknown as AgentRunFailure,
+      type: "error"
+    }),
+    /invalid agent run failure payload/
+  )
+})
 
 test("AgentThreadRunner hydrates history and fans out runtime event batches", async () => {
   const history = createThreadData({
@@ -402,15 +574,20 @@ test("AgentThreadRunner preserves pending approval while resume is waiting for s
   assert.ok(eventTypes.includes("run.resumed"))
 
   await hub.handlePayload("thread-1", {
-    code: "BAD_REQUEST",
-    error: "Resume failed",
-    message: "Resume failed",
+    failure: {
+      ipcCode: "INTERNAL",
+      kind: "unknown",
+      message: "Resume failed",
+      schemaVersion: 1,
+      status: 500
+    },
     type: "error"
   })
 
   const afterFailedResume = await hub.readThreadState("thread-1")
-  assert.equal(afterFailedResume.status, "error")
+  assert.equal(afterFailedResume.status, "interrupted")
   assert.equal(afterFailedResume.pendingApproval?.id, "hitl:thread-1:run-1:tool-1")
+  assert.equal(afterFailedResume.activeRun?.status, "waiting_approval")
 })
 
 test("AgentThreadRunner clears pending approval only after resumed run starts", async () => {

@@ -9,8 +9,11 @@ import type { SerializerProtocol } from "@langchain/langgraph-checkpoint"
 import { appleRemindersManifest } from "../../installable-extensions/apple-reminders/manifest"
 import { appleRemindersMain } from "../../installable-extensions/apple-reminders/main"
 import type { AgentService } from "../../src/main/agent/service"
+import { AGENT_RUN_FAILURE_METADATA_KEY } from "../../src/shared/agent-run-failure"
+import { toAgentRunFailure } from "../../src/main/agent/errors"
 import { ExtensionMainDefinitionRegistry } from "../../src/main/extensions/registry/main-definition-registry"
 import type { ExtensionMainRef } from "../../src/main/extensions/registry/types"
+import { ThreadsService } from "../../src/main/threads/service"
 
 const repoRoot = process.cwd()
 const originalJingleHome = process.env.JINGLE_HOME
@@ -1481,14 +1484,135 @@ test("run failure preserves interrupted status when pending HITL remains", async
     status: "pending"
   })
 
-  await markRunFailed(threadId, runId, new Error("checkpoint write timed out"))
+  await markRunFailed(
+    threadId,
+    runId,
+    toAgentRunFailure("agent:runtime", new Error("checkpoint write timed out"))
+  )
 
   const run = await getRun(runId)
   const thread = await getThread(threadId)
   const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
   assert.equal(run?.status, "interrupted")
   assert.equal(thread?.status, "interrupted")
-  assert.equal(metadata.error, "checkpoint write timed out")
+  assert.deepEqual(metadata[AGENT_RUN_FAILURE_METADATA_KEY], {
+    ipcCode: "INTERNAL",
+    kind: "unknown",
+    message: "checkpoint write timed out",
+    schemaVersion: 1,
+    status: 500
+  })
+})
+
+test("thread hydrate rejects an invalid new agent run failure instead of using legacy fallback", async () => {
+  const { createRun, createThread } = await loadDbModules()
+  const threadId = "thread-invalid-agent-run-failure"
+  await createThread(threadId)
+  await createRun("run-invalid-agent-run-failure", threadId, {
+    metadata: {
+      [AGENT_RUN_FAILURE_METADATA_KEY]: {
+        ipcCode: "INTERNAL",
+        kind: "unknown",
+        message: "invalid version",
+        schemaVersion: 2,
+        status: 500
+      },
+      error: "401 authentication_error"
+    },
+    status: "error"
+  })
+  const threadsService = Object.create(ThreadsService.prototype) as ThreadsService
+
+  await assert.rejects(
+    threadsService.getLatestRunSummary(threadId),
+    /invalid agent run failure/
+  )
+})
+
+test("thread hydrate degrades legacy error text to unknown without reclassification", async () => {
+  const { createRun, createThread } = await loadDbModules()
+  const threadId = "thread-legacy-agent-run-failure"
+  await createThread(threadId)
+  await createRun("run-legacy-agent-run-failure", threadId, {
+    metadata: {
+      error: "401 authentication_error rate_limit context window exceeded"
+    },
+    status: "error"
+  })
+  const threadsService = Object.create(ThreadsService.prototype) as ThreadsService
+
+  assert.deepEqual((await threadsService.getLatestRunSummary(threadId)).error, {
+    ipcCode: "INTERNAL",
+    kind: "unknown",
+    message: "401 authentication_error rate_limit context window exceeded",
+    schemaVersion: 1,
+    status: 500
+  })
+})
+
+test("resume and successful completion clear a stale durable run failure", async () => {
+  const { createRun, createThread, getRun } = await loadDbModules()
+  const { finalizeRunWithoutCheckpoint, resumeAgentRun } = await import(
+    "../../src/main/agent/persistence"
+  )
+  const threadId = "thread-clears-stale-run-failure"
+  const runId = "run-clears-stale-run-failure"
+  await createThread(threadId)
+  await createRun(runId, threadId, {
+    metadata: {
+      [AGENT_RUN_FAILURE_METADATA_KEY]: toAgentRunFailure(
+        "agent:runtime",
+        new Error("previous resume failed")
+      ),
+      error: "401 authentication_error"
+    },
+    status: "interrupted"
+  })
+
+  await resumeAgentRun(threadId, runId, undefined, {
+    resumeEvent: {
+      requestId: "request-clears-stale-run-failure"
+    }
+  })
+  const resumedMetadata = JSON.parse((await getRun(runId))?.metadata ?? "{}") as Record<
+    string,
+    unknown
+  >
+  assert.equal(Object.hasOwn(resumedMetadata, AGENT_RUN_FAILURE_METADATA_KEY), false)
+  assert.equal(Object.hasOwn(resumedMetadata, "error"), false)
+
+  await finalizeRunWithoutCheckpoint(threadId, runId)
+  const completedMetadata = JSON.parse((await getRun(runId))?.metadata ?? "{}") as Record<
+    string,
+    unknown
+  >
+  assert.equal(Object.hasOwn(completedMetadata, AGENT_RUN_FAILURE_METADATA_KEY), false)
+  assert.equal(Object.hasOwn(completedMetadata, "error"), false)
+  const threadsService = Object.create(ThreadsService.prototype) as ThreadsService
+  assert.equal((await threadsService.getLatestRunSummary(threadId)).error, null)
+})
+
+test("abort clears stale durable failure even when checkpoint sync cannot complete", async () => {
+  const { createRun, createThread, getRun } = await loadDbModules()
+  const { markRunAborted } = await import("../../src/main/agent/persistence")
+  const threadId = "thread-abort-clears-stale-run-failure"
+  const runId = "run-abort-clears-stale-run-failure"
+  await createThread(threadId)
+  await createRun(runId, threadId, {
+    metadata: {
+      [AGENT_RUN_FAILURE_METADATA_KEY]: toAgentRunFailure(
+        "agent:runtime",
+        new Error("stale failure")
+      ),
+      error: "legacy stale failure"
+    },
+    status: "running"
+  })
+
+  await markRunAborted(threadId, runId)
+  const metadata = JSON.parse((await getRun(runId))?.metadata ?? "{}") as Record<string, unknown>
+  assert.equal(Object.hasOwn(metadata, AGENT_RUN_FAILURE_METADATA_KEY), false)
+  assert.equal(Object.hasOwn(metadata, "error"), false)
 })
 
 test("agent run metadata snapshots permission mode and preserves it through resume", async () => {

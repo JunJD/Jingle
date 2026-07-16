@@ -42,9 +42,9 @@ import {
   type AgentThreadRuntimeState
 } from "@shared/agent-thread-contract"
 import { deriveThreadBootstrapState } from "@shared/agent-thread-bootstrap"
-import { getIpcErrorStatus, isIpcErrorCode, type IpcErrorPayload } from "@shared/ipc-error"
 import { parseCompleteToolCallArgsObject } from "@shared/tool-call-args"
 import type { AgentStreamPayload } from "./service"
+import { parseAgentRunFailure, type AgentRunFailure } from "@shared/agent-run-failure"
 import {
   appendAssistantMessageContent,
   createUserRuntimeMessage,
@@ -74,17 +74,6 @@ interface AgentHubEntry {
 
 interface AgentThreadHistoryReader {
   getPersistedAgentThreadData(threadId: string): Promise<AgentThreadDataSnapshot>
-}
-
-function toRuntimeError(payload: Extract<AgentStreamPayload, { type: "error" }>): IpcErrorPayload {
-  const code = isIpcErrorCode(payload.code) ? payload.code : "INTERNAL"
-
-  return {
-    code,
-    ...(payload.details ? { details: payload.details } : {}),
-    message: payload.message ?? payload.error,
-    status: typeof payload.status === "number" ? payload.status : getIpcErrorStatus(code)
-  }
 }
 
 function toThreadSnapshotStatus(
@@ -152,6 +141,7 @@ class ThreadRuntimeProjector {
   >()
   private pendingResumeDecision: HITLDecision | null = null
   private runtimeState: AgentThreadRuntimeState
+  private terminalSettled = true
 
   constructor(threadId: string) {
     this.runtimeState = createDefaultAgentThreadRuntimeState(threadId)
@@ -194,6 +184,7 @@ class ThreadRuntimeProjector {
 
   prepareInvoke(message: AgentInvokeMessage): void {
     this.resetStreamingState()
+    this.terminalSettled = false
     this.pendingResumeDecision = null
     const userMessage = createUserRuntimeMessage(message)
     this.upsertMessage(userMessage, { appendAssistantText: false })
@@ -212,6 +203,7 @@ class ThreadRuntimeProjector {
 
   prepareEditLastUserMessageAndInvoke(message: AgentInvokeMessage): void {
     this.resetStreamingState()
+    this.terminalSettled = false
     this.pendingResumeDecision = null
     const userMessage = createUserRuntimeMessage(message)
     this.upsertMessage(userMessage, { appendAssistantText: false })
@@ -301,6 +293,7 @@ class ThreadRuntimeProjector {
 
   prepareResume(decision?: HITLDecision): void {
     this.resetStreamingState()
+    this.terminalSettled = false
     this.pendingResumeDecision = decision ?? null
     const activeRun = this.createActiveRunFromLatestUserMessage()
     if (activeRun) {
@@ -348,13 +341,29 @@ class ThreadRuntimeProjector {
         return
 
       case "error": {
-        const error = toRuntimeError(payload)
+        const error = parseAgentRunFailure(payload.failure)
+        if (!error) {
+          throw new Error("[AgentThreadRunner] Received an invalid agent run failure payload.")
+        }
+        if (this.terminalSettled) {
+          return
+        }
+        if (this.runtimeState.pendingApproval) {
+          this.terminalSettled = true
+          this.commitRuntimeEvent({
+            error,
+            status: "interrupted",
+            type: "thread.statusChanged"
+          })
+          return
+        }
+        this.terminalSettled = true
         this.commitRuntimeEvent({
           error,
           status: "error",
           type: "thread.statusChanged"
         })
-        this.finishActiveRun("error", error)
+        this.finishActiveRun("error", error, { terminalClaimed: true })
         return
       }
     }
@@ -581,10 +590,25 @@ class ThreadRuntimeProjector {
 
   private finishActiveRun(
     status: TerminalRuntimeStatus,
-    error: IpcErrorPayload | null = null
+    error: AgentRunFailure | null = null,
+    options: { terminalClaimed?: boolean } = {}
   ): void {
     if (status === "interrupted" && this.runtimeState.activeRun?.status === "waiting_approval") {
+      this.terminalSettled = true
+      if (this.runtimeState.status !== "interrupted") {
+        this.commitRuntimeEvent({
+          error: this.runtimeState.error,
+          status: "interrupted",
+          type: "thread.statusChanged"
+        })
+      }
       return
+    }
+    if (!options.terminalClaimed) {
+      if (this.terminalSettled) {
+        return
+      }
+      this.terminalSettled = true
     }
 
     const completedAt = new Date()
@@ -1487,7 +1511,7 @@ export class AgentThreadRunner {
         messages: runtimeState.messagesPage
       },
       runState: {
-        error: runtimeState.error?.message ?? persistedThreadData.runState.error,
+        error: runtimeState.error,
         contextInclusions: runtimeState.contextInclusions,
         forkState: toRuntimeForkState(runtimeState, persistedThreadData.runState.forkState),
         pendingApproval: runtimeState.pendingApproval,

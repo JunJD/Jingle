@@ -9,7 +9,6 @@ import { DEFAULT_MODELS } from "@shared/models"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
 import { deriveThreadBootstrapState } from "@shared/agent-thread-bootstrap"
 import type { AgentThreadDataSnapshot } from "@shared/app-types"
-import type { IpcErrorPayload } from "@shared/ipc-error"
 import { projectMessages } from "./message-projection"
 import type { ThreadState } from "./thread-store-core"
 
@@ -21,18 +20,6 @@ function toRuntimeSnapshotStatus(
   }
 
   return "idle"
-}
-
-function toSnapshotErrorPayload(error: string | null): IpcErrorPayload | null {
-  if (!error) {
-    return null
-  }
-
-  return {
-    code: "INTERNAL",
-    message: error,
-    status: 500
-  }
 }
 
 export function applyRuntimeSnapshotToThreadState(
@@ -56,7 +43,7 @@ export function applyRuntimeSnapshotToThreadState(
     },
     snapshot: {
       contextInclusions: snapshot.runState.contextInclusions,
-      error: toSnapshotErrorPayload(snapshot.runState.error),
+      error: snapshot.runState.error,
       messagesPage: snapshot.messages.messages,
       sourceStatus: toRuntimeSnapshotStatus(snapshot.thread.status),
       threadStatus: snapshot.thread.status

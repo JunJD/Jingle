@@ -24,6 +24,7 @@ import {
   resumeAgentRun,
   syncRunFromLatestCheckpointFacts
 } from "./persistence"
+import { toAgentRunFailure } from "./errors"
 
 export interface JingleInvokeRunLifecycleInput {
   aiCapabilities: ResolvedExtensionAiCapability[]
@@ -160,7 +161,7 @@ export function createRuntimeRunLifecycleController(input: {
       await markRunAborted(threadId, runId)
     },
     markRunFailed: async ({ error, runId, threadId }) => {
-      await markRunFailed(threadId, runId, error)
+      await markRunFailed(threadId, runId, toAgentRunFailure("agent:runtime", error))
     },
     recordMemoryRecordingRefs: ({ recordingRefs, runId, threadId }) =>
       recordJingleMemoryRecordingRefs({

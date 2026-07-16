@@ -1,28 +1,16 @@
 import type { AgentThreadDataSnapshot } from "./app-types"
-import type { IpcErrorPayload } from "./ipc-error"
+import type { AgentRunFailure } from "./agent-run-failure"
 import type { JingleRuntimeStatus } from "@jingle/agent-client"
 import { deriveJingleActiveRunFromMessages, type JingleActiveAgentRun } from "@jingle/agent-client"
 
 export interface AgentThreadBootstrapState {
   activeRun: JingleActiveAgentRun | null
   contextInclusions: AgentThreadDataSnapshot["runState"]["contextInclusions"]
-  error: IpcErrorPayload | null
+  error: AgentRunFailure | null
   latestRunId: string | null
   pendingApproval: AgentThreadDataSnapshot["runState"]["pendingApproval"]
   status: JingleRuntimeStatus
   todos: AgentThreadDataSnapshot["runState"]["todos"]
-}
-
-function toBootstrapError(error: string | null): IpcErrorPayload | null {
-  if (error === null) {
-    return null
-  }
-
-  return {
-    code: "INTERNAL",
-    message: error,
-    status: 500
-  }
 }
 
 export function deriveThreadBootstrapState(
@@ -51,7 +39,7 @@ export function deriveThreadBootstrapState(
   return {
     activeRun,
     contextInclusions: threadData.runState.contextInclusions,
-    error: toBootstrapError(threadData.runState.error),
+    error: threadData.runState.error,
     latestRunId: threadData.runState.runId,
     pendingApproval: threadData.runState.pendingApproval,
     status,

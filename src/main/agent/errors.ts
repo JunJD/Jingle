@@ -1,10 +1,20 @@
 import { JingleIpcError } from "../ipc/error"
+import {
+  AGENT_RUN_FAILURE_SCHEMA_VERSION,
+  parseAgentRunFailure,
+  type AgentRunFailure,
+  type AgentRunFailureKind
+} from "@shared/agent-run-failure"
+import { buildIpcErrorPayload } from "../ipc/error"
 
 const ABORT_FINGERPRINT_PATTERN = /aborterror|aborted|controller is already closed/
 
 const MODEL_AUTHENTICATION_FINGERPRINT_PATTERN =
   /model_authentication|invalid_api_key|authentication_error|authentication fails/
 const MODEL_AUTHENTICATION_STATUS_PATTERN = /(?:401.*authentication|authentication.*401)/
+const CONTEXT_WINDOW_PATTERN =
+  /context(?:_| )?(?:length|window)|prompt is too long|maximum context length|too many tokens/i
+const RATE_LIMIT_PATTERN = /rate(?:_| )?limit|too many requests|\b429\b/i
 
 const TRANSPORT_INTERRUPTION_CODES = new Set([
   "UND_ERR_SOCKET",
@@ -178,4 +188,48 @@ export function normalizeAgentRuntimeError(channel: string, error: unknown): unk
   }
 
   return error
+}
+
+function errorChainMatches(error: unknown, pattern: RegExp): boolean {
+  const visited = new Set<unknown>()
+  const queue: unknown[] = [error]
+  while (queue.length > 0) {
+    const current = queue.shift()
+    if (!current || visited.has(current)) {
+      continue
+    }
+    visited.add(current)
+    if (pattern.test(getErrorFingerprint(current))) {
+      return true
+    }
+    queue.push(...errorCauseQueue(current))
+  }
+  return false
+}
+
+export function toAgentRunFailure(channel: string, error: unknown): AgentRunFailure {
+  const existing = parseAgentRunFailure(error)
+  if (existing) {
+    return existing
+  }
+  const normalized = normalizeAgentRuntimeError(channel, error)
+  const payload = buildIpcErrorPayload(channel, normalized)
+  let kind: AgentRunFailureKind = "unknown"
+  if (isModelAuthenticationError(error)) {
+    kind = "authentication"
+  } else if (errorChainMatches(error, CONTEXT_WINDOW_PATTERN)) {
+    kind = "context_window_exceeded"
+  } else if (errorChainMatches(error, RATE_LIMIT_PATTERN)) {
+    kind = "rate_limited"
+  } else if (isTransportInterruptionError(error)) {
+    kind = "transport_interrupted"
+  }
+  return {
+    schemaVersion: AGENT_RUN_FAILURE_SCHEMA_VERSION,
+    kind,
+    ipcCode: payload.code,
+    message: payload.message,
+    status: payload.status,
+    ...(payload.details ? { details: payload.details } : {})
+  }
 }

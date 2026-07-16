@@ -21,6 +21,7 @@ import type {
   JingleAgentResumeDecision
 } from "@jingle/agent-client"
 import type { AgentContextInclusion } from "@shared/jingle-memory"
+import type { AgentRunFailure } from "@shared/agent-run-failure"
 export type { HITLDecision, HITLRequest } from "@shared/hitl"
 export type {
   CreateThreadInput,
@@ -226,7 +227,7 @@ export interface AgentThreadInfoSnapshot {
 
 export interface AgentThreadRunStateSnapshot {
   contextInclusions: AgentContextInclusion[]
-  error: string | null
+  error: AgentRunFailure | null
   forkState: ThreadForkState
   pendingApproval: HITLRequest | null
   runId: string | null

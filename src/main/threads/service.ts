@@ -66,6 +66,12 @@ import {
   type AgentContextInclusion,
   type JingleMemoryContextSnapshot
 } from "@shared/jingle-memory"
+import {
+  AGENT_RUN_FAILURE_METADATA_KEY,
+  createLegacyAgentRunFailure,
+  parseAgentRunFailure,
+  type AgentRunFailure
+} from "@shared/agent-run-failure"
 import type {
   AgentThreadDataSnapshot,
   CreateThreadInput,
@@ -278,7 +284,7 @@ export class ThreadsService {
   ) {}
 
   async getLatestRunSummary(threadId: string): Promise<{
-    error: string | null
+    error: AgentRunFailure | null
     metadata: Record<string, unknown> | null
     runId: string | null
   }> {
@@ -291,15 +297,21 @@ export class ThreadsService {
       }
     }
 
-    let error: string | null = null
+    let error: AgentRunFailure | null = null
     let metadata: Record<string, unknown> | null = null
     if (latestRun.metadata) {
       try {
         metadata = JSON.parse(latestRun.metadata) as Record<string, unknown>
-        error = typeof metadata.error === "string" ? metadata.error : null
       } catch {
-        error = null
         metadata = null
+      }
+      if (metadata && Object.hasOwn(metadata, AGENT_RUN_FAILURE_METADATA_KEY)) {
+        error = parseAgentRunFailure(metadata[AGENT_RUN_FAILURE_METADATA_KEY])
+        if (!error) {
+          throw new Error(`Run ${latestRun.run_id} has an invalid agent run failure.`)
+        }
+      } else if (metadata && typeof metadata.error === "string") {
+        error = createLegacyAgentRunFailure(metadata.error)
       }
     }
 

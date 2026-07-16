@@ -1,4 +1,5 @@
 interface JingleAgentErrorPayload {
+  kind: "authentication" | "context_window_exceeded" | "rate_limited" | "transport_interrupted" | "unknown"
   message: string
 }
 
@@ -22,28 +23,16 @@ function formatJingleAgentErrorForView(
     return null
   }
 
-  const errorMessage = errorPayload.message
-  const contextWindowMatch = errorMessage.match(/prompt is too long: (\d+) tokens > (\d+) maximum/i)
-  if (contextWindowMatch) {
-    const [, usedTokens, maxTokens] = contextWindowMatch
-    const usedK = Math.round(parseInt(usedTokens, 10) / 1000)
-    const maxK = Math.round(parseInt(maxTokens, 10) / 1000)
-    return `Context window exceeded (${usedK}K / ${maxK}K tokens). The conversation history is too long. Please start a new thread to continue.`
+  if (errorPayload.kind === "context_window_exceeded") {
+    return "Context window exceeded. The conversation history is too long. Please start a new thread to continue."
   }
-
-  if (errorMessage.includes("rate_limit") || errorMessage.includes("429")) {
+  if (errorPayload.kind === "rate_limited") {
     return "Rate limit exceeded. Please wait a moment before sending another message."
   }
-
-  if (
-    errorMessage.includes("401") ||
-    errorMessage.includes("invalid_api_key") ||
-    errorMessage.includes("authentication")
-  ) {
+  if (errorPayload.kind === "authentication") {
     return "Authentication failed. Please check your API key in settings."
   }
-
-  return errorMessage
+  return errorPayload.message
 }
 
 export function resolveJingleAgentViewState(input: JingleAgentViewInput): JingleAgentViewState {

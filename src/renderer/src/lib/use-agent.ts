@@ -4,7 +4,7 @@ import {
   resolveJingleAgentFollowUpDrainPlan
 } from "@jingle/agent-client"
 import { resolveJingleAgentViewState } from "@jingle/agent-react"
-import type { IpcErrorPayload } from "@shared/ipc-error"
+import type { AgentRunFailure } from "@shared/agent-run-failure"
 import { useThreadContext, useThreadSelector } from "./thread-context"
 import {
   editLastUserMessageAndInvokeAgentThread,
@@ -34,7 +34,7 @@ export interface AgentView {
 export type { AgentControl } from "./agent-control"
 
 interface DismissedThreadError {
-  error: IpcErrorPayload | null
+  error: AgentRunFailure | null
   threadId: string | null
 }
 
