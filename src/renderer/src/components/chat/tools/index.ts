@@ -1,6 +1,9 @@
 export type {
   ToolComponentDefinition,
   ToolComponentProps,
+  ToolProjectionInput,
+  ToolRenderContext,
+  ToolRendererCommands,
   ToolDisplay,
   ToolPresentation,
   ToolComponentStatus

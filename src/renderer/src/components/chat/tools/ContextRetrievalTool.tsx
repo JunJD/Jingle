@@ -8,23 +8,122 @@ import {
   type TraceEvidenceToolResult
 } from "@shared/context-retrieval-results"
 import { defineToolComponent } from "./registry-core"
-import { getQueryArg, joinSummaryParts, truncateMiddle } from "./shared"
+import { joinSummaryParts, projectRequiredStringArg, truncateMiddle } from "./shared"
 import {
   ToolCodeBlock,
   ToolCollapsibleSection,
+  ToolContractNotice,
   ToolDetailSection,
   ToolDetailStack,
+  ToolDetailText,
   ToolPreviewLines
 } from "./shared-components"
+import type { ToolComponentStatus } from "./types"
 
-function getContextRetrievalResult(input: {
-  rawResult: string
-  result?: unknown
-}): ContextRetrievalToolResult | null {
+type ContextRetrievalResultProjection =
+  | { kind: "absent" }
+  | { kind: "error"; text: string }
+  | { field: "result"; kind: "invalid" }
+  | { kind: "ready"; result: ContextRetrievalToolResult }
+
+type ContextRetrievalToolName = "get_message_context" | "get_trace_evidence" | "search_history"
+
+function readRequestIdentity(args: Record<string, unknown>, field: string): string | null {
+  const value = args[field]
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null
+}
+
+function isCanonicalEmptyUnavailableTraceEvidenceResult(result: TraceEvidenceToolResult): boolean {
   return (
-    parseContextRetrievalToolResult(input.result) ??
-    parseContextRetrievalToolResult(input.rawResult)
+    result.status === "unavailable" &&
+    result.artifacts.length === 0 &&
+    result.step === null &&
+    result.blobs.input === null &&
+    result.blobs.output === null &&
+    Object.values(result.trace).every((value) => value === null)
   )
+}
+
+function traceEvidenceMatchesRequest(
+  args: Record<string, unknown>,
+  result: TraceEvidenceToolResult
+): boolean {
+  if (isCanonicalEmptyUnavailableTraceEvidenceResult(result)) {
+    return true
+  }
+
+  const selectors = {
+    artifactId: readRequestIdentity(args, "artifactId"),
+    runId: readRequestIdentity(args, "runId"),
+    toolCallId: readRequestIdentity(args, "toolCallId"),
+    traceId: readRequestIdentity(args, "traceId"),
+    traceStepId: readRequestIdentity(args, "traceStepId")
+  }
+  if (!Object.values(selectors).some(Boolean)) {
+    return false
+  }
+
+  return (
+    (!selectors.traceStepId || result.step?.traceStepId === selectors.traceStepId) &&
+    (!selectors.traceId || result.trace.traceId === selectors.traceId) &&
+    (!selectors.runId || result.trace.runId === selectors.runId) &&
+    (!selectors.toolCallId || result.step?.toolCallId === selectors.toolCallId) &&
+    (!selectors.artifactId ||
+      result.artifacts.some((artifact) => artifact.artifactId === selectors.artifactId))
+  )
+}
+
+function contextRetrievalResultMatchesRequest(input: {
+  args: Record<string, unknown>
+  result: ContextRetrievalToolResult
+  toolName: ContextRetrievalToolName
+}): boolean {
+  switch (input.toolName) {
+    case "search_history":
+      return (
+        input.result.kind === "history_search" &&
+        input.result.query === readRequestIdentity(input.args, "query")
+      )
+    case "get_message_context":
+      return (
+        input.result.kind === "message_context" &&
+        input.result.focus.messageId === readRequestIdentity(input.args, "messageId") &&
+        input.result.focus.threadId === readRequestIdentity(input.args, "threadId")
+      )
+    case "get_trace_evidence":
+      return (
+        input.result.kind === "trace_evidence" &&
+        traceEvidenceMatchesRequest(input.args, input.result)
+      )
+  }
+}
+
+function projectContextRetrievalResult(input: {
+  args: Record<string, unknown>
+  rawResult: string
+  result: unknown
+  status: ToolComponentStatus
+  toolName: ContextRetrievalToolName
+}): ContextRetrievalResultProjection {
+  if (input.status === "failed") {
+    return input.rawResult.trim()
+      ? { kind: "error", text: input.rawResult }
+      : { field: "result", kind: "invalid" }
+  }
+
+  const result = parseContextRetrievalToolResult(input.result)
+  if (
+    result &&
+    contextRetrievalResultMatchesRequest({
+      args: input.args,
+      result,
+      toolName: input.toolName
+    })
+  ) {
+    return { kind: "ready", result }
+  }
+
+  return input.status === "complete" ? { field: "result", kind: "invalid" } : { kind: "absent" }
 }
 
 function renderDiagnostics(diagnostics: string[] | undefined): React.JSX.Element | null {
@@ -83,7 +182,7 @@ function renderHistorySearchDetail(result: SearchHistoryToolResult): React.JSX.E
               <ToolCollapsibleSection
                 key={`thread:${item.threadId}`}
                 label="Thread Digest"
-                summary={joinSummaryParts(item.title ?? item.threadId, `${item.messageCount} messages`)}
+                summary={joinSummaryParts(item.title, `${item.messageCount} messages`)}
               >
                 <ToolPreviewLines text={item.summary} maxLines={8} />
               </ToolCollapsibleSection>
@@ -183,7 +282,9 @@ function renderTraceEvidenceDetail(result: TraceEvidenceToolResult): React.JSX.E
                   artifact.status
                 )}
               >
-                {artifact.preview ? <ToolPreviewLines text={artifact.preview} maxLines={8} /> : null}
+                {artifact.preview ? (
+                  <ToolPreviewLines text={artifact.preview} maxLines={8} />
+                ) : null}
               </ToolCollapsibleSection>
             ))}
           </div>
@@ -205,75 +306,163 @@ function renderContextRetrievalDetail(result: ContextRetrievalToolResult): React
   }
 }
 
+function renderContextRetrievalProjection(
+  copy: Parameters<typeof ToolContractNotice>[0]["copy"],
+  projection: ContextRetrievalResultProjection
+): React.JSX.Element | null {
+  switch (projection.kind) {
+    case "absent":
+      return null
+    case "error":
+      return <ToolDetailText>{projection.text}</ToolDetailText>
+    case "invalid":
+      return <ToolContractNotice copy={copy} field={projection.field} />
+    case "ready":
+      return renderContextRetrievalDetail(projection.result)
+  }
+}
+
+function renderContextToolDetail(input: {
+  copy: Parameters<typeof ToolContractNotice>[0]["copy"]
+  invalidField: string | null
+  result: ContextRetrievalResultProjection
+}): React.JSX.Element | null {
+  const resultDetail = renderContextRetrievalProjection(input.copy, input.result)
+  if (!input.invalidField && !resultDetail) {
+    return null
+  }
+
+  return (
+    <>
+      {input.invalidField ? (
+        <ToolContractNotice copy={input.copy} field={input.invalidField} />
+      ) : null}
+      {resultDetail}
+    </>
+  )
+}
+
 defineToolComponent({
   name: "search_history",
   icon: MessageSquareText,
-  hasDetail({ rawResult, result }) {
-    return Boolean(getContextRetrievalResult({ rawResult, result }))
-  },
-  renderDisplay({ copy, args }) {
-    const query = getQueryArg(args)
-
+  project({ args, rawResult, result, status }) {
+    const query = projectRequiredStringArg(args, "query", status === "arguments_streaming")
     return {
-      detail: query ? truncateMiddle(query, 60) : null,
+      invalidField: query.kind === "invalid" ? query.field : null,
+      queryDetail: query.kind === "ready" ? truncateMiddle(query.value, 60) : null,
+      retrievalResult: projectContextRetrievalResult({
+        args,
+        rawResult,
+        result,
+        status,
+        toolName: "search_history"
+      })
+    }
+  },
+  hasDetail({ viewModel }) {
+    return Boolean(viewModel.invalidField) || viewModel.retrievalResult.kind !== "absent"
+  },
+  renderDisplay({ copy, viewModel }) {
+    return {
+      detail: viewModel.queryDetail,
       title: copy.toolCall.labels.search_history
     }
   },
-  renderDetail({ rawResult, result }) {
-    const retrievalResult = getContextRetrievalResult({ rawResult, result })
-    return retrievalResult ? renderContextRetrievalDetail(retrievalResult) : null
+  renderDetail({ copy, viewModel }) {
+    return renderContextToolDetail({
+      copy,
+      invalidField: viewModel.invalidField,
+      result: viewModel.retrievalResult
+    })
   }
 })
 
 defineToolComponent({
   name: "get_message_context",
   icon: MessageSquareText,
-  hasDetail({ rawResult, result }) {
-    return Boolean(getContextRetrievalResult({ rawResult, result }))
-  },
-  renderDisplay({ copy, args }) {
-    const messageId = typeof args.messageId === "string" ? args.messageId.trim() : ""
-    const threadId = typeof args.threadId === "string" ? args.threadId.trim() : ""
+  project({ args, rawResult, result, status }) {
+    const isStreaming = status === "arguments_streaming"
+    const messageId = projectRequiredStringArg(args, "messageId", isStreaming)
+    const threadId = projectRequiredStringArg(args, "threadId", isStreaming)
+    const invalidFields = [messageId, threadId]
+      .filter((field) => field.kind === "invalid")
+      .map((field) => field.field)
 
     return {
       detail: joinSummaryParts(
-        threadId ? truncateMiddle(threadId, 28) : null,
-        messageId ? truncateMiddle(messageId, 36) : null
+        threadId.kind === "ready" ? truncateMiddle(threadId.value, 28) : null,
+        messageId.kind === "ready" ? truncateMiddle(messageId.value, 36) : null
       ),
+      invalidField: invalidFields.length > 0 ? invalidFields.join("|") : null,
+      retrievalResult: projectContextRetrievalResult({
+        args,
+        rawResult,
+        result,
+        status,
+        toolName: "get_message_context"
+      })
+    }
+  },
+  hasDetail({ viewModel }) {
+    return Boolean(viewModel.invalidField) || viewModel.retrievalResult.kind !== "absent"
+  },
+  renderDisplay({ copy, viewModel }) {
+    return {
+      detail: viewModel.detail,
       title: copy.toolCall.labels.get_message_context
     }
   },
-  renderDetail({ rawResult, result }) {
-    const retrievalResult = getContextRetrievalResult({ rawResult, result })
-    return retrievalResult ? renderContextRetrievalDetail(retrievalResult) : null
+  renderDetail({ copy, viewModel }) {
+    return renderContextToolDetail({
+      copy,
+      invalidField: viewModel.invalidField,
+      result: viewModel.retrievalResult
+    })
   }
 })
 
 defineToolComponent({
   name: "get_trace_evidence",
   icon: MessageSquareText,
-  hasDetail({ rawResult, result }) {
-    return Boolean(getContextRetrievalResult({ rawResult, result }))
-  },
-  renderDisplay({ copy, args }) {
-    const traceStepId =
-      typeof args.traceStepId === "string"
-        ? args.traceStepId.trim()
-        : typeof args.toolCallId === "string"
-          ? args.toolCallId.trim()
-          : typeof args.artifactId === "string"
-            ? args.artifactId.trim()
-            : typeof args.runId === "string"
-              ? args.runId.trim()
-              : ""
+  project({ args, rawResult, result, status }) {
+    const primarySelector = ["traceStepId", "toolCallId", "traceId", "runId"]
+      .map((field) => (typeof args[field] === "string" ? args[field].trim() : ""))
+      .find(Boolean)
+    const artifactId = typeof args.artifactId === "string" ? args.artifactId.trim() : ""
+    const detail = joinSummaryParts(
+      primarySelector ? truncateMiddle(primarySelector, 36) : null,
+      artifactId ? truncateMiddle(artifactId, 36) : null
+    )
 
     return {
-      detail: traceStepId ? truncateMiddle(traceStepId, 36) : null,
+      detail: detail || null,
+      invalidField:
+        primarySelector || artifactId || status === "arguments_streaming"
+          ? null
+          : "traceStepId|toolCallId|traceId|runId|artifactId",
+      retrievalResult: projectContextRetrievalResult({
+        args,
+        rawResult,
+        result,
+        status,
+        toolName: "get_trace_evidence"
+      })
+    }
+  },
+  hasDetail({ viewModel }) {
+    return Boolean(viewModel.invalidField) || viewModel.retrievalResult.kind !== "absent"
+  },
+  renderDisplay({ copy, viewModel }) {
+    return {
+      detail: viewModel.detail,
       title: copy.toolCall.labels.get_trace_evidence
     }
   },
-  renderDetail({ rawResult, result }) {
-    const retrievalResult = getContextRetrievalResult({ rawResult, result })
-    return retrievalResult ? renderContextRetrievalDetail(retrievalResult) : null
+  renderDetail({ copy, viewModel }) {
+    return renderContextToolDetail({
+      copy,
+      invalidField: viewModel.invalidField,
+      result: viewModel.retrievalResult
+    })
   }
 })

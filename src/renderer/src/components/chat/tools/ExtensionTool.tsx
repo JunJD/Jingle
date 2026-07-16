@@ -1,50 +1,54 @@
 import { Plug } from "lucide-react"
 import { extensionToolCallUiSchema } from "@shared/tool-presentation"
+import type { ToolCall } from "@/types"
 import { ToolCodeBlock, ToolDetailStack, ToolDetailSection } from "./shared-components"
-import type { ToolComponentDefinition, ToolComponentProps } from "./types"
+import { createToolComponentDefinition } from "./registry-core"
 
-function parseExtensionToolCallUi(toolCall: ToolComponentProps["toolCall"]) {
+function parseExtensionToolCallUi(toolCall: ToolCall) {
   return extensionToolCallUiSchema.parse({
     display: toolCall.display,
     presentation: toolCall.presentation
   })
 }
 
-export const extensionToolComponent: ToolComponentDefinition = {
+export const extensionToolComponent = createToolComponentDefinition({
   name: "extension",
   icon: Plug,
-  hasDetail(props) {
-    const ui = parseExtensionToolCallUi(props.toolCall)
-    return Boolean(ui.display.description || props.rawArgs || props.rawResult)
-  },
-  renderDisplay(props) {
-    const ui = parseExtensionToolCallUi(props.toolCall)
+  project({ rawArgs, rawResult, toolCall }) {
     return {
-      detail: ui.presentation.capabilityDisplayName,
-      title: ui.display.title
+      rawArgs,
+      rawResult,
+      ui: parseExtensionToolCallUi(toolCall)
     }
   },
-  renderDetail(props) {
-    const ui = parseExtensionToolCallUi(props.toolCall)
-
+  hasDetail({ viewModel }) {
+    return Boolean(viewModel.ui.display.description || viewModel.rawArgs || viewModel.rawResult)
+  },
+  renderDisplay({ viewModel }) {
+    return {
+      detail: viewModel.ui.presentation.capabilityDisplayName,
+      title: viewModel.ui.display.title
+    }
+  },
+  renderDetail({ copy, viewModel }) {
     return (
       <ToolDetailStack>
-        <ToolDetailSection label={ui.presentation.capabilityTitle}>
+        <ToolDetailSection label={viewModel.ui.presentation.capabilityTitle}>
           <div className="[font-size:var(--jingle-font-control)] leading-[var(--jingle-line-chat)] text-muted-foreground">
-            {ui.display.description}
+            {viewModel.ui.display.description}
           </div>
         </ToolDetailSection>
-        {props.rawArgs ? (
-          <ToolDetailSection label={props.copy.common.rawArguments}>
-            <ToolCodeBlock>{props.rawArgs}</ToolCodeBlock>
+        {viewModel.rawArgs ? (
+          <ToolDetailSection label={copy.common.rawArguments}>
+            <ToolCodeBlock>{viewModel.rawArgs}</ToolCodeBlock>
           </ToolDetailSection>
         ) : null}
-        {props.rawResult ? (
-          <ToolDetailSection label={props.copy.common.rawResult}>
-            <ToolCodeBlock>{props.rawResult}</ToolCodeBlock>
+        {viewModel.rawResult ? (
+          <ToolDetailSection label={copy.common.rawResult}>
+            <ToolCodeBlock>{viewModel.rawResult}</ToolCodeBlock>
           </ToolDetailSection>
         ) : null}
       </ToolDetailStack>
     )
   }
-}
+})

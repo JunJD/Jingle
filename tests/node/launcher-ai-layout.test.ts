@@ -462,20 +462,20 @@ test("chat tool details stay out of the collapsed streaming render path", async 
     readWorkspaceFile("src/renderer/src/components/agent-ui/Tool.tsx")
   ])
 
+  assert.match(actionViewSource, /const hasDetail = component\.hasDetail\(renderContext\)/)
   assert.match(
     actionViewSource,
-    /const hasDetail = definition\.renderDetail \? definition\.hasDetail\(componentProps\) : false/
+    /renderDetail\(\) \{\s*return component\.renderDetail\(renderContext\)\s*\}/
   )
-  assert.doesNotMatch(actionViewSource, /definition\.hasDetail\?\.\(componentProps\) \?\? true/)
   assert.match(actionMessageSource, /const canExpandDetail = hasDetail && !approvalRequest/)
   assert.match(
     actionMessageSource,
     /if \(!canExpandDetail \|\| !isExpanded\) \{\s*return null\s*\}/
   )
-  assert.match(actionMessageSource, /definition\.renderDetail\?\.\(/)
+  assert.match(actionMessageSource, /return renderDetail\(\)/)
   assert.ok(
     actionMessageSource.indexOf("if (!canExpandDetail || !isExpanded)") <
-      actionMessageSource.indexOf("definition.renderDetail?.("),
+      actionMessageSource.indexOf("return renderDetail()"),
     "detail render should be gated by expand state"
   )
   assert.match(actionMessageSource, /detail=\{detailContent\}/)

@@ -7,15 +7,12 @@ import type { FileMutationResultMetadata } from "@shared/file-mutation-result"
 import type { FileMutationToolApprovalItem, ToolApprovalItem } from "@shared/tool-approval"
 import type { MutationChangeType, MutationPredictionChange } from "@shared/mutation-prediction"
 import { parseCompleteToolCallArgsObject } from "@shared/tool-call-args"
-import { formatPatch, parsePatch, type StructuredPatch } from "diff"
 import { parse as parsePartialJson } from "partial-json"
 
 export type FileMutationViewModelSource =
   | "streaming_preview"
   | "approval_preview"
   | "completed_result"
-  | "tool_args_preview"
-  | "artifact"
 
 export type FileMutationDiffMode = "diff" | "code" | "tree"
 
@@ -51,6 +48,15 @@ export type FileMutationProjection =
       kind: "partial_args"
       rawArgs: string
     }
+  | {
+      field: string
+      kind: "invalid"
+      reason: "invalid_args"
+    }
+  | {
+      kind: "invalid"
+      reason: "empty_metadata" | "metadata_mismatch" | "missing_metadata"
+    }
 
 interface StreamingFileMutationViewModelInput {
   argsText: string | undefined
@@ -61,7 +67,6 @@ interface StreamingFileMutationViewModelInput {
 interface ToolFileMutationViewModelInput {
   args: Record<string, unknown>
   fileMutationResult?: FileMutationResultMetadata | null
-  hasResult: boolean
   status: string
   toolCallId: string
   toolName: string
@@ -75,7 +80,11 @@ interface ChangeListFileMutationViewModelInput {
   toolCallId: string
 }
 
-function stableFileKey(source: FileMutationViewModelSource, toolCallId: string, path: string): string {
+function stableFileKey(
+  source: FileMutationViewModelSource,
+  toolCallId: string,
+  path: string
+): string {
   return `${source}:${toolCallId}:${path}`
 }
 
@@ -142,7 +151,7 @@ function buildFileFromReview(input: {
   toolCallId: string
 }): FileMutationFileViewModel | null {
   const { review, source, toolCallId } = input
-  if (!review.path) {
+  if (!review.path?.trim()) {
     return null
   }
 
@@ -171,6 +180,55 @@ function buildFileFromReview(input: {
   }
 
   return null
+}
+
+function getInvalidFileMutationArgsField(
+  toolName: FileMutationToolName,
+  args: Record<string, unknown>
+): string | null {
+  const invalidFields: string[] = []
+  if (typeof args.file_path !== "string" || args.file_path.trim().length === 0) {
+    invalidFields.push("file_path")
+  }
+
+  if (toolName === "write_file") {
+    if (typeof args.content !== "string") {
+      invalidFields.push("content")
+    }
+  } else {
+    if (typeof args.old_string !== "string") {
+      invalidFields.push("old_string")
+    }
+    if (typeof args.new_string !== "string") {
+      invalidFields.push("new_string")
+    }
+  }
+
+  return invalidFields.length > 0 ? invalidFields.join("|") : null
+}
+
+export function buildRequiredFileMutationArgsProjection(input: {
+  args: Record<string, unknown>
+  toolName: string
+}): FileMutationProjection | null {
+  if (!isFileMutationToolName(input.toolName)) {
+    return null
+  }
+
+  const invalidField = getInvalidFileMutationArgsField(input.toolName, input.args)
+  if (invalidField) {
+    return {
+      field: invalidField,
+      kind: "invalid",
+      reason: "invalid_args"
+    }
+  }
+
+  return {
+    kind: "pending_args",
+    path: input.args.file_path as string,
+    toolName: input.toolName
+  }
 }
 
 function buildFileFromToolArgs(input: {
@@ -275,20 +333,30 @@ export function buildApprovalFileMutationViewModel(
   })
 }
 
-function buildCompletedFilesFromResultMetadata(
+type CompletedFileMutationMetadataProjection =
+  | {
+      files: FileMutationFileViewModel[]
+      kind: "ready"
+    }
+  | Extract<FileMutationProjection, { kind: "invalid" }>
+
+function projectCompletedFilesFromResultMetadata(
   metadata: FileMutationResultMetadata | null | undefined,
   input: Pick<ToolFileMutationViewModelInput, "toolCallId" | "toolName">
-): FileMutationFileViewModel[] {
+): CompletedFileMutationMetadataProjection {
+  if (!metadata) {
+    return { kind: "invalid", reason: "missing_metadata" }
+  }
+
   if (
-    !metadata ||
     metadata.status !== "completed" ||
     metadata.toolCallId !== input.toolCallId ||
     metadata.toolName !== input.toolName
   ) {
-    return []
+    return { kind: "invalid", reason: "metadata_mismatch" }
   }
 
-  return metadata.files.map((file) => ({
+  const files = metadata.files.map((file) => ({
     after: file.after,
     before: file.before,
     changeType: file.changeType,
@@ -297,73 +365,8 @@ function buildCompletedFilesFromResultMetadata(
     patch: null,
     path: file.path
   }))
-}
 
-function stripPatchPathPrefix(path: string): string {
-  if (path === "/dev/null") {
-    return path
-  }
-
-  return path.startsWith("a/") || path.startsWith("b/") ? path.slice(2) : path
-}
-
-function getPatchPath(patch: StructuredPatch, index: number): string {
-  if (patch.newFileName && patch.newFileName !== "/dev/null") {
-    return stripPatchPathPrefix(patch.newFileName)
-  }
-
-  if (patch.oldFileName && patch.oldFileName !== "/dev/null") {
-    return stripPatchPathPrefix(patch.oldFileName)
-  }
-
-  return `patch-${index + 1}`
-}
-
-function getPatchChangeType(patch: StructuredPatch): MutationChangeType {
-  if (patch.isCreate) {
-    return "create"
-  }
-
-  if (patch.isDelete) {
-    return "delete"
-  }
-
-  return "modify"
-}
-
-function buildPatchFiles(input: {
-  patchText: string
-  source: FileMutationViewModelSource
-  toolCallId: string
-}): FileMutationFileViewModel[] {
-  const parsed = parsePatch(input.patchText)
-
-  if (parsed.length === 0) {
-    return [
-      {
-        after: null,
-        before: null,
-        changeType: null,
-        diffMode: "diff",
-        key: stableFileKey(input.source, input.toolCallId, "patch"),
-        patch: input.patchText,
-        path: "Patch"
-      }
-    ]
-  }
-
-  return parsed.map((patch, index) => {
-    const path = getPatchPath(patch, index)
-    return {
-      after: null,
-      before: null,
-      changeType: getPatchChangeType(patch),
-      diffMode: "diff" as const,
-      key: stableFileKey(input.source, input.toolCallId, path),
-      patch: formatPatch(patch),
-      path
-    }
-  })
+  return files.length > 0 ? { files, kind: "ready" } : { kind: "invalid", reason: "empty_metadata" }
 }
 
 export function buildChangeListFileMutationViewModel(
@@ -395,47 +398,25 @@ export function buildCompletedFileMutationViewModel(
     return null
   }
 
-  const filesFromMetadata = buildCompletedFilesFromResultMetadata(input.fileMutationResult, input)
+  const argsProjection = buildRequiredFileMutationArgsProjection(input)
+  if (argsProjection?.kind === "invalid") {
+    return argsProjection
+  }
+
+  const metadataProjection = projectCompletedFilesFromResultMetadata(
+    input.fileMutationResult,
+    input
+  )
+  if (metadataProjection.kind === "invalid") {
+    return metadataProjection
+  }
+
   const viewModel = createViewModel({
-    files: filesFromMetadata,
+    files: metadataProjection.files,
     source: "completed_result",
     status: "completed",
     toolCallId: input.toolCallId
   })
 
-  if (viewModel) {
-    return { kind: "view", viewModel }
-  }
-
-  if (!input.hasResult) {
-    return null
-  }
-
-  const argsPreviewViewModel = buildFileFromToolArgs({
-    args: input.args,
-    source: "tool_args_preview",
-    status: "completed",
-    toolCallId: input.toolCallId,
-    toolName: input.toolName
-  })
-
-  return argsPreviewViewModel ? { kind: "view", viewModel: argsPreviewViewModel } : null
-}
-
-export function buildPatchArtifactFileMutationViewModel(input: {
-  patchText: string
-  title?: string | null
-}): FileMutationViewModel {
-  const toolCallId = input.title === undefined || input.title === null ? "patch" : input.title
-  return {
-    files: buildPatchFiles({
-      patchText: input.patchText,
-      source: "artifact",
-      toolCallId
-    }),
-    key: `artifact:${toolCallId}`,
-    source: "artifact",
-    status: "completed",
-    title: input.title === undefined ? null : input.title
-  }
+  return viewModel ? { kind: "view", viewModel } : { kind: "invalid", reason: "empty_metadata" }
 }

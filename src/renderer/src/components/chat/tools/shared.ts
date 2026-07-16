@@ -1,20 +1,5 @@
-import type { FileInfo, Todo } from "@/types"
-import {
-  getExecuteCommandPolicy,
-  type ExecuteCommandPolicy
-} from "@shared/execute-command-policy"
-import {
-  getMutationPrediction,
-  type MutationPrediction
-} from "@shared/mutation-prediction"
-
-export type ToolFileEntry = string | FileInfo
-
-export interface ToolGrepMatch {
-  path: string
-  line?: number
-  text?: string
-}
+import { getExecuteCommandPolicy, type ExecuteCommandPolicy } from "@shared/execute-command-policy"
+import { getMutationPrediction, type MutationPrediction } from "@shared/mutation-prediction"
 
 export function joinSummaryParts(...parts: Array<string | number | null | undefined>): string {
   return parts
@@ -31,16 +16,6 @@ export function getPathArg(args: Record<string, unknown>): string | null {
   return typeof args.path === "string" && args.path.trim().length > 0 ? args.path : null
 }
 
-export function getFilePathArg(args: Record<string, unknown>): string | null {
-  return typeof args.file_path === "string" && args.file_path.trim().length > 0
-    ? args.file_path
-    : null
-}
-
-export function getCommandArg(args: Record<string, unknown>): string | null {
-  return typeof args.command === "string" && args.command.trim().length > 0 ? args.command : null
-}
-
 export function getExecuteCommandPolicyArg(
   args: Record<string, unknown>
 ): ExecuteCommandPolicy | null {
@@ -49,14 +24,6 @@ export function getExecuteCommandPolicyArg(
 
 export function getMutationPredictionArg(args: Record<string, unknown>): MutationPrediction | null {
   return getMutationPrediction(args)
-}
-
-export function getPatternArg(args: Record<string, unknown>): string | null {
-  return typeof args.pattern === "string" && args.pattern.trim().length > 0 ? args.pattern : null
-}
-
-export function getQueryArg(args: Record<string, unknown>): string | null {
-  return typeof args.query === "string" && args.query.trim().length > 0 ? args.query : null
 }
 
 export function truncateMiddle(value: string, limit = 72): string {
@@ -93,51 +60,73 @@ export function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0
 }
 
-export function asStringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : []
+export type RequiredStringArgProjection =
+  | {
+      kind: "ready"
+      value: string
+    }
+  | {
+      kind: "pending"
+    }
+  | {
+      field: string
+      kind: "invalid"
+    }
+
+export function projectRequiredStringArg(
+  args: Record<string, unknown>,
+  field: string,
+  allowPending = false
+): RequiredStringArgProjection {
+  const value = args[field]
+  if (isNonEmptyString(value)) {
+    return { kind: "ready", value }
+  }
+
+  return allowPending ? { kind: "pending" } : { field, kind: "invalid" }
 }
 
-export function asFileEntries(value: unknown): ToolFileEntry[] {
-  return Array.isArray(value)
-    ? value.filter(
-        (item): item is ToolFileEntry =>
-          typeof item === "string" ||
-          (Boolean(item) &&
-            typeof item === "object" &&
-            "path" in item &&
-            typeof item.path === "string")
-      )
-    : []
+export type ToolTodoStatus = "completed" | "in_progress" | "pending"
+
+export interface ToolTodoProjection {
+  content: string
+  key: string
+  status: ToolTodoStatus
 }
 
-export function asGrepMatches(value: unknown): ToolGrepMatch[] {
-  return Array.isArray(value)
-    ? value.filter(
-        (item): item is ToolGrepMatch =>
-          Boolean(item) &&
-          typeof item === "object" &&
-          "path" in item &&
-          typeof item.path === "string" &&
-          (!("line" in item) || item.line === undefined || typeof item.line === "number") &&
-          (!("text" in item) || item.text === undefined || typeof item.text === "string")
-      )
-    : []
+export type ToolTodosProjection =
+  | { field: "todos"; kind: "invalid" }
+  | { kind: "pending" }
+  | { kind: "ready"; todos: ToolTodoProjection[] }
+
+function isToolTodoStatus(value: unknown): value is ToolTodoStatus {
+  return value === "completed" || value === "in_progress" || value === "pending"
 }
 
-export function asTodos(value: unknown): Todo[] {
-  return Array.isArray(value)
-    ? value.filter(
-        (item): item is Todo =>
-          Boolean(item) &&
-          typeof item === "object" &&
-          "id" in item &&
-          typeof item.id === "string" &&
-          "content" in item &&
-          typeof item.content === "string" &&
-          "status" in item &&
-          typeof item.status === "string"
-      )
-    : []
+export function projectToolTodos(value: unknown, allowPending = false): ToolTodosProjection {
+  if (!Array.isArray(value)) {
+    return allowPending ? { kind: "pending" } : { field: "todos", kind: "invalid" }
+  }
+
+  const todos: ToolTodoProjection[] = []
+  for (const [index, item] of value.entries()) {
+    if (
+      !item ||
+      typeof item !== "object" ||
+      !("content" in item) ||
+      typeof item.content !== "string" ||
+      !("status" in item) ||
+      !isToolTodoStatus(item.status)
+    ) {
+      return allowPending ? { kind: "pending" } : { field: "todos", kind: "invalid" }
+    }
+
+    todos.push({
+      content: item.content,
+      key: `${index}:${item.status}:${item.content}`,
+      status: item.status
+    })
+  }
+
+  return { kind: "ready", todos }
 }

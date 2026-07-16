@@ -1,9 +1,10 @@
 import { Children, useState } from "react"
-import { CheckCircle2, ChevronDown, Circle, Clock3, File, Folder, XCircle } from "lucide-react"
+import { CheckCircle2, ChevronDown, Circle, Clock3 } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
-import type { Todo } from "@/types"
-import { getBasename, type ToolFileEntry } from "./shared"
+import { InlineNotice } from "@/components/ui/inline-notice"
+import type { AppCopy } from "@/lib/i18n/messages"
+import type { ToolTodoProjection } from "./shared"
 
 export function ToolDetailStack(props: {
   children: React.ReactNode
@@ -27,6 +28,15 @@ export function ToolDetailStack(props: {
   )
 }
 
+export function ToolContractNotice(props: { copy: AppCopy; field: string }): React.JSX.Element {
+  const { copy, field } = props
+  return (
+    <InlineNotice data-tool-contract-missing-field={field} tone="warning">
+      {copy.chat.messageContentUnavailable}
+    </InlineNotice>
+  )
+}
+
 export function ToolCodeBlock(props: {
   children: string
   className?: string
@@ -41,6 +51,28 @@ export function ToolCodeBlock(props: {
     <pre
       className={cn(
         "min-w-0 max-w-full overflow-x-auto rounded-[var(--jingle-radius-panel)] bg-background-secondary/60 px-[var(--jingle-space-3)] py-[var(--jingle-space-2-5)] whitespace-pre-wrap break-all font-mono [font-size:var(--jingle-font-code)] leading-[var(--jingle-line-code)] text-foreground/85",
+        className
+      )}
+    >
+      {children}
+    </pre>
+  )
+}
+
+export function ToolDetailText(props: {
+  children: string
+  className?: string
+}): React.JSX.Element | null {
+  const { children, className } = props
+
+  if (!children.trim()) {
+    return null
+  }
+
+  return (
+    <pre
+      className={cn(
+        "jingle-tool-detail-text min-w-0 max-w-full overflow-x-auto whitespace-pre-wrap break-all",
         className
       )}
     >
@@ -105,48 +137,6 @@ export function ToolDetailSection(props: {
   )
 }
 
-export function ToolFileList(props: {
-  items: ToolFileEntry[]
-  trimToBaseName?: boolean
-  maxItems?: number
-}): React.JSX.Element | null {
-  const { items, maxItems = 12, trimToBaseName = false } = props
-  const preview = items.slice(0, maxItems)
-
-  if (preview.length === 0) {
-    return null
-  }
-
-  return (
-    <div className="grid gap-[var(--jingle-gap-xs)]">
-      {preview.map((item, index) => {
-        const path = typeof item === "string" ? item : item.path
-        const isDirectory = typeof item === "object" && Boolean(item.is_dir)
-        const label = trimToBaseName ? getBasename(path) : path
-
-        return (
-          <div
-            key={`${path}-${index}`}
-            className="flex min-w-0 items-start gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)]"
-          >
-            {isDirectory ? (
-              <Folder className="mt-[var(--jingle-leading-nudge)] size-[var(--jingle-icon-sm)] shrink-0 text-muted-foreground" />
-            ) : (
-              <File className="mt-[var(--jingle-leading-nudge)] size-[var(--jingle-icon-sm)] shrink-0 text-muted-foreground" />
-            )}
-            <span className="min-w-0 break-all text-foreground/80">{label}</span>
-          </div>
-        )
-      })}
-      {items.length > maxItems ? (
-        <div className="[font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-body)] text-muted-foreground">
-          +{items.length - maxItems}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
 export function ToolCollapsibleSection(props: {
   children: React.ReactNode
   defaultOpen?: boolean
@@ -189,7 +179,7 @@ export function ToolCollapsibleSection(props: {
   )
 }
 
-export function ToolTodoList(props: { todos: Todo[] }): React.JSX.Element | null {
+export function ToolTodoList(props: { todos: ToolTodoProjection[] }): React.JSX.Element | null {
   const { todos } = props
 
   if (todos.length === 0) {
@@ -199,19 +189,17 @@ export function ToolTodoList(props: { todos: Todo[] }): React.JSX.Element | null
   return (
     <div className="grid gap-[var(--jingle-space-1-5)]">
       {todos.map((todo) => {
-        const isDone = todo.status === "completed" || todo.status === "cancelled"
+        const isDone = todo.status === "completed"
         const Icon =
           todo.status === "completed"
             ? CheckCircle2
             : todo.status === "in_progress"
               ? Clock3
-              : todo.status === "cancelled"
-                ? XCircle
-                : Circle
+              : Circle
 
         return (
           <div
-            key={todo.id}
+            key={todo.key}
             className={cn(
               "flex min-w-0 items-start gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)] text-foreground/80",
               isDone && "opacity-60"

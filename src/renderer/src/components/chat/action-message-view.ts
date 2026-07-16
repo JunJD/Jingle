@@ -9,9 +9,11 @@ import {
   type ToolComponentDefinition,
   type ToolDisplay,
   type ToolComponentStatus,
-  type ToolPresentation
+  type ToolPresentation,
+  type ToolRenderContext
 } from "./tools"
-import { normalizeToolRenderModel } from "./tools/normalize"
+import { projectToolProjectionFacts } from "./tools/normalize"
+import { toolRendererCommands } from "./tools/tool-renderer-commands"
 
 interface CreateActionMessageViewInput {
   activeArgsText?: string
@@ -20,8 +22,8 @@ interface CreateActionMessageViewInput {
   fileMutationResult?: FileMutationResultMetadata | null
   presentation: ToolPresentation
   result?: unknown
-  status?: ToolComponentStatus
-  threadId?: string
+  status: ToolComponentStatus
+  threadId: string
   toolCall: ToolCall
 }
 
@@ -77,13 +79,12 @@ export function createActionMessageView(input: CreateActionMessageViewInput) {
     approvalRequest,
     copy,
     fileMutationResult,
-    presentation,
     result,
     status,
     threadId,
     toolCall
   } = input
-  const model = normalizeToolRenderModel({
+  const facts = projectToolProjectionFacts({
     activeArgsText,
     approvalRequest,
     fileMutationResult,
@@ -92,24 +93,26 @@ export function createActionMessageView(input: CreateActionMessageViewInput) {
     toolCall
   })
   const definition = getActionMessageToolComponent(toolCall)
-  const componentProps = {
-    copy,
-    isExpanded: Boolean(approvalRequest),
-    presentation,
+  const component = definition.project({
+    ...facts,
     threadId,
-    toolCall,
-    ...model
+    toolCall
+  })
+  const renderContext: ToolRenderContext = {
+    commands: toolRendererCommands,
+    copy
   }
-  const display = normalizeActionMessageDisplay(definition.renderDisplay(componentProps))
-  const hasDetail = definition.renderDetail ? definition.hasDetail(componentProps) : false
+  const display = normalizeActionMessageDisplay(component.renderDisplay(renderContext))
+  const hasDetail = component.hasDetail(renderContext)
 
   return {
-    definition,
     display,
     hasDetail,
     icon: definition.icon,
-    model,
-    status: model.status,
-    statusLabel: getToolStatusLabel(copy, model.status)
+    renderDetail() {
+      return component.renderDetail(renderContext)
+    },
+    status: facts.status,
+    statusLabel: getToolStatusLabel(copy, facts.status)
   }
 }

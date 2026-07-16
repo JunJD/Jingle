@@ -160,6 +160,25 @@ function isStatus(value: unknown): value is ContextRetrievalResultStatus {
   return value === "empty" || value === "ok" || value === "unavailable"
 }
 
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string"
+}
+
+function isOptionalDiagnostics(value: unknown): value is string[] | undefined {
+  return (
+    value === undefined || (Array.isArray(value) && value.every((item) => typeof item === "string"))
+  )
+}
+
+function isToolCalls(value: unknown): value is Array<{ id: string; name: string }> {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) => isRecord(item) && typeof item.id === "string" && typeof item.name === "string"
+    )
+  )
+}
+
 function isNextActions(value: unknown): value is ContextRetrievalNextAction[] {
   return (
     Array.isArray(value) &&
@@ -186,7 +205,39 @@ function isSearchHistoryToolResult(value: unknown): value is SearchHistoryToolRe
     typeof value.query === "string" &&
     typeof value.summary === "string" &&
     Array.isArray(value.items) &&
+    value.items.every(isHistorySearchResultItem) &&
+    isOptionalDiagnostics(value.diagnostics) &&
     isNextActions(value.nextActions)
+  )
+}
+
+function isHistorySearchResultItem(
+  value: unknown
+): value is RetrievedThreadDigestResultItem | RetrievedHistoryMessageResultItem {
+  if (!isRecord(value)) {
+    return false
+  }
+
+  if (value.type === "thread_digest") {
+    return (
+      Number.isSafeInteger(value.messageCount) &&
+      (value.messageCount as number) >= 0 &&
+      typeof value.summary === "string" &&
+      typeof value.threadId === "string" &&
+      isNullableString(value.title)
+    )
+  }
+
+  return (
+    value.type === "history_message" &&
+    typeof value.messageId === "string" &&
+    typeof value.role === "string" &&
+    isNullableString(value.runId) &&
+    typeof value.snippet === "string" &&
+    typeof value.threadId === "string" &&
+    (value.title === undefined || isNullableString(value.title)) &&
+    isNullableString(value.toolCallId) &&
+    isToolCalls(value.toolCalls)
   )
 }
 
@@ -200,13 +251,31 @@ function isMessageContextToolResult(value: unknown): value is MessageContextTool
     isStatus(value.status) &&
     isRecord(value.focus) &&
     typeof value.focus.messageId === "string" &&
+    isNullableString(value.focus.runId) &&
     typeof value.focus.threadId === "string" &&
     Array.isArray(value.items) &&
+    value.items.every(isMessageContextResultItem) &&
+    isOptionalDiagnostics(value.diagnostics) &&
     isNextActions(value.nextActions) &&
     typeof value.summary === "string" &&
     isRecord(value.window) &&
-    typeof value.window.after === "number" &&
-    typeof value.window.before === "number"
+    Number.isSafeInteger(value.window.after) &&
+    (value.window.after as number) >= 0 &&
+    Number.isSafeInteger(value.window.before) &&
+    (value.window.before as number) >= 0
+  )
+}
+
+function isMessageContextResultItem(value: unknown): value is MessageContextResultItem {
+  return (
+    isRecord(value) &&
+    typeof value.messageId === "string" &&
+    typeof value.role === "string" &&
+    isNullableString(value.runId) &&
+    typeof value.text === "string" &&
+    typeof value.threadId === "string" &&
+    isNullableString(value.toolCallId) &&
+    isToolCalls(value.toolCalls)
   )
 }
 
@@ -219,9 +288,70 @@ function isTraceEvidenceToolResult(value: unknown): value is TraceEvidenceToolRe
     value.kind === "trace_evidence" &&
     isStatus(value.status) &&
     Array.isArray(value.artifacts) &&
+    value.artifacts.every(isTraceArtifactResultItem) &&
     isRecord(value.blobs) &&
+    isTraceBlobResult(value.blobs.input) &&
+    isTraceBlobResult(value.blobs.output) &&
+    isOptionalDiagnostics(value.diagnostics) &&
     isNextActions(value.nextActions) &&
     typeof value.summary === "string" &&
-    isRecord(value.trace)
+    isTraceStepResult(value.step) &&
+    isTraceResult(value.trace)
+  )
+}
+
+function isTraceBlobResult(value: unknown): value is TraceBlobResult | null {
+  return (
+    value === null ||
+    (isRecord(value) &&
+      typeof value.kind === "string" &&
+      isNullableString(value.preview) &&
+      Number.isSafeInteger(value.sizeBytes) &&
+      (value.sizeBytes as number) >= 0 &&
+      typeof value.text === "string")
+  )
+}
+
+function isTraceArtifactResultItem(value: unknown): value is TraceArtifactResultItem {
+  return (
+    isRecord(value) &&
+    typeof value.artifactId === "string" &&
+    typeof value.kind === "string" &&
+    isNullableString(value.preview) &&
+    isNullableString(value.runId) &&
+    typeof value.status === "string" &&
+    typeof value.threadId === "string" &&
+    typeof value.title === "string" &&
+    isNullableString(value.toolCallId)
+  )
+}
+
+function isTraceStepResult(value: unknown): value is TraceEvidenceToolResult["step"] {
+  return (
+    value === null ||
+    (isRecord(value) &&
+      (value.durationMs === null ||
+        (typeof value.durationMs === "number" &&
+          Number.isFinite(value.durationMs) &&
+          value.durationMs >= 0)) &&
+      typeof value.status === "string" &&
+      Number.isSafeInteger(value.stepIndex) &&
+      (value.stepIndex as number) >= 0 &&
+      typeof value.stepType === "string" &&
+      isNullableString(value.toolCallId) &&
+      isNullableString(value.toolName) &&
+      typeof value.traceStepId === "string")
+  )
+}
+
+function isTraceResult(value: unknown): value is TraceEvidenceToolResult["trace"] {
+  return (
+    isRecord(value) &&
+    isNullableString(value.model) &&
+    isNullableString(value.provider) &&
+    isNullableString(value.runId) &&
+    isNullableString(value.status) &&
+    isNullableString(value.threadId) &&
+    isNullableString(value.traceId)
   )
 }

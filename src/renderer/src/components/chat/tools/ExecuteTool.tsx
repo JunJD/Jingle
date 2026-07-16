@@ -1,34 +1,41 @@
 import { Terminal } from "lucide-react"
 import { defineToolComponent } from "./registry-core"
-import { ToolCodeBlock, ToolDetailStack } from "./shared-components"
-import { getCommandArg, truncateMiddle } from "./shared"
+import { ToolCodeBlock, ToolContractNotice, ToolDetailStack } from "./shared-components"
+import { projectRequiredStringArg, truncateMiddle } from "./shared"
 
 defineToolComponent({
   name: "execute",
   icon: Terminal,
-  hasDetail({ args, rawResult }) {
-    return Boolean(getCommandArg(args) || rawResult)
-  },
-  renderDisplay({ copy, args }) {
-    const command = getCommandArg(args)
-
+  project({ args, rawResult, status }) {
+    const command = projectRequiredStringArg(args, "command", status === "arguments_streaming")
     return {
-      detail: command ? truncateMiddle(command, 60) : null,
+      command,
+      detail: command.kind === "ready" ? truncateMiddle(command.value, 60) : null,
+      output: rawResult
+    }
+  },
+  hasDetail({ viewModel }) {
+    return (
+      viewModel.command.kind === "invalid" ||
+      Boolean(viewModel.command.kind === "ready" && viewModel.command.value) ||
+      Boolean(viewModel.output)
+    )
+  },
+  renderDisplay({ copy, viewModel }) {
+    return {
+      detail: viewModel.detail,
       title: copy.toolCall.labels.execute
     }
   },
-  renderDetail({ args, rawResult }) {
-    const command = getCommandArg(args)
-    const output = rawResult
-
-    if (!command && !output) {
-      return null
-    }
-
+  renderDetail({ copy, viewModel }) {
     return (
       <ToolDetailStack>
-        {command ? <ToolCodeBlock>{`$ ${command}`}</ToolCodeBlock> : null}
-        {output ? <ToolCodeBlock>{output}</ToolCodeBlock> : null}
+        {viewModel.command.kind === "invalid" ? (
+          <ToolContractNotice copy={copy} field={viewModel.command.field} />
+        ) : viewModel.command.kind === "ready" ? (
+          <ToolCodeBlock>{`$ ${viewModel.command.value}`}</ToolCodeBlock>
+        ) : null}
+        {viewModel.output ? <ToolCodeBlock>{viewModel.output}</ToolCodeBlock> : null}
       </ToolDetailStack>
     )
   }

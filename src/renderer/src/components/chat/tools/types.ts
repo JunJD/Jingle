@@ -8,22 +8,32 @@ import type { JingleAgentToolExecutionViewStatus } from "@jingle/agent-react"
 export type ToolComponentStatus = JingleAgentToolExecutionViewStatus
 export type ToolPresentation = "standalone" | "grouped"
 
-export interface ToolRenderModel {
+export interface RawToolProjectionFacts {
   args: Record<string, unknown>
   fileMutation: FileMutationProjection | null
-  hasResult: boolean
   rawArgs: string
   rawResult: string
   result?: unknown
   status: ToolComponentStatus
 }
 
-export interface ToolComponentProps extends ToolRenderModel {
-  copy: AppCopy
-  presentation: ToolPresentation
-  threadId?: string
+export interface ToolProjectionInput extends RawToolProjectionFacts {
+  threadId: string
   toolCall: ToolCall
-  isExpanded: boolean
+}
+
+export interface ToolRendererCommands {
+  openArtifact: (artifactId: string) => Promise<void>
+  openExternal: (url: string) => Promise<void>
+}
+
+export interface ToolRenderContext {
+  commands: ToolRendererCommands
+  copy: AppCopy
+}
+
+export interface ToolComponentProps<TViewModel> extends ToolRenderContext {
+  viewModel: TViewModel
 }
 
 export interface ToolDisplay {
@@ -32,22 +42,39 @@ export interface ToolDisplay {
   title: ReactNode
 }
 
-interface ToolComponentBaseDefinition {
+interface ToolComponentBaseSpecification<TViewModel> {
   name: string
   icon: LucideIcon
-  renderDisplay: (props: ToolComponentProps) => ToolDisplay
+  project: (input: ToolProjectionInput) => TViewModel
+  renderDisplay: (props: ToolComponentProps<TViewModel>) => ToolDisplay
 }
 
-interface ToolComponentSummaryDefinition extends ToolComponentBaseDefinition {
+interface ToolComponentSummarySpecification<
+  TViewModel
+> extends ToolComponentBaseSpecification<TViewModel> {
   hasDetail?: undefined
   renderDetail?: undefined
 }
 
-interface ToolComponentDetailDefinition extends ToolComponentBaseDefinition {
-  hasDetail: (props: ToolComponentProps) => boolean
-  renderDetail: (props: ToolComponentProps) => ReactNode
+interface ToolComponentDetailSpecification<
+  TViewModel
+> extends ToolComponentBaseSpecification<TViewModel> {
+  hasDetail: (props: ToolComponentProps<TViewModel>) => boolean
+  renderDetail: (props: ToolComponentProps<TViewModel>) => ReactNode
 }
 
-export type ToolComponentDefinition =
-  | ToolComponentSummaryDefinition
-  | ToolComponentDetailDefinition
+export type ToolComponentSpecification<TViewModel> =
+  | ToolComponentSummarySpecification<TViewModel>
+  | ToolComponentDetailSpecification<TViewModel>
+
+export interface ProjectedToolComponent {
+  hasDetail: (context: ToolRenderContext) => boolean
+  renderDetail: (context: ToolRenderContext) => ReactNode
+  renderDisplay: (context: ToolRenderContext) => ToolDisplay
+}
+
+export interface ToolComponentDefinition {
+  icon: LucideIcon
+  name: string
+  project: (input: ToolProjectionInput) => ProjectedToolComponent
+}

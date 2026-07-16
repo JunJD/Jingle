@@ -2,41 +2,35 @@ import type { HITLRequest, ToolCall } from "@/types"
 import type { FileMutationResultMetadata } from "@shared/file-mutation-result"
 import { parseCompleteToolCallArgsObject } from "@shared/tool-call-args"
 import { stringifyToolValue } from "./shared"
-import type { ToolRenderModel } from "./types"
+import type { RawToolProjectionFacts } from "./types"
 import {
   buildApprovalFileMutationViewModel,
   buildCompletedFileMutationViewModel,
+  buildRequiredFileMutationArgsProjection,
   buildStreamingFileMutationViewModel,
   type FileMutationProjection
 } from "./file-mutation-view-model"
 
 const EMPTY_ARGS: Record<string, unknown> = {}
 
-interface NormalizeToolRenderModelInput {
+interface ProjectToolProjectionFactsInput {
   activeArgsText?: string
   approvalRequest?: HITLRequest | null
   fileMutationResult?: FileMutationResultMetadata | null
   result?: unknown
-  status?: ToolRenderModel["status"]
+  status: RawToolProjectionFacts["status"]
   toolCall: ToolCall
 }
 
 function buildFileMutationProjection(input: {
   activeArgsText?: string
-  args: Record<string, unknown>
   approvalRequest?: HITLRequest | null
+  args: Record<string, unknown>
   fileMutationResult?: FileMutationResultMetadata | null
-  result?: unknown
-  status: ToolRenderModel["status"]
+  status: RawToolProjectionFacts["status"]
   toolCall: ToolCall
 }): FileMutationProjection | null {
-  const { activeArgsText, args, approvalRequest, fileMutationResult, result, status, toolCall } =
-    input
-
-  if (approvalRequest?.review) {
-    const viewModel = buildApprovalFileMutationViewModel(approvalRequest.review, toolCall.id)
-    return viewModel ? { kind: "view", viewModel } : null
-  }
+  const { activeArgsText, approvalRequest, args, fileMutationResult, status, toolCall } = input
 
   if (status === "arguments_streaming") {
     return buildStreamingFileMutationViewModel({
@@ -46,18 +40,30 @@ function buildFileMutationProjection(input: {
     })
   }
 
+  const argsProjection = buildRequiredFileMutationArgsProjection({
+    args,
+    toolName: toolCall.name
+  })
+  if (!argsProjection || argsProjection.kind === "invalid") {
+    return argsProjection
+  }
+
+  if (approvalRequest?.review) {
+    const viewModel = buildApprovalFileMutationViewModel(approvalRequest.review, toolCall.id)
+    return viewModel ? { kind: "view", viewModel } : argsProjection
+  }
+
   if (status === "complete") {
     return buildCompletedFileMutationViewModel({
       args,
       fileMutationResult,
-      hasResult: result !== undefined,
       status,
       toolCallId: toolCall.id,
       toolName: toolCall.name
     })
   }
 
-  return null
+  return argsProjection
 }
 
 function resolveActiveToolArgs(argsText: string | undefined): Record<string, unknown> | null {
@@ -83,21 +89,6 @@ function resolveToolArgs(
   return EMPTY_ARGS
 }
 
-function resolveToolStatus(
-  approvalRequest: HITLRequest | null | undefined,
-  explicitStatus: ToolRenderModel["status"] | undefined
-): ToolRenderModel["status"] {
-  if (approvalRequest) {
-    return "approval"
-  }
-
-  if (explicitStatus) {
-    return explicitStatus
-  }
-
-  return "complete"
-}
-
 function resolveRawArgs(argsText: string | undefined, args: Record<string, unknown>): string {
   if (argsText !== undefined) {
     return argsText
@@ -106,27 +97,19 @@ function resolveRawArgs(argsText: string | undefined, args: Record<string, unkno
   return stringifyToolValue(args)
 }
 
-export function normalizeToolRenderModel(input: NormalizeToolRenderModelInput): ToolRenderModel {
-  const {
-    activeArgsText,
-    approvalRequest,
-    fileMutationResult,
-    result,
-    status: explicitStatus,
-    toolCall
-  } = input
+export function projectToolProjectionFacts(
+  input: ProjectToolProjectionFactsInput
+): RawToolProjectionFacts {
+  const { activeArgsText, approvalRequest, fileMutationResult, result, status, toolCall } = input
   const activeArgs = resolveActiveToolArgs(activeArgsText)
   const args = resolveToolArgs(activeArgs, toolCall)
-  const status = resolveToolStatus(approvalRequest, explicitStatus)
-
   const rawArgs = resolveRawArgs(activeArgsText, args)
   const rawResult = result === undefined ? "" : stringifyToolValue(result)
   const fileMutation = buildFileMutationProjection({
     activeArgsText,
-    args,
     approvalRequest,
+    args,
     fileMutationResult,
-    result,
     status,
     toolCall
   })
@@ -134,7 +117,6 @@ export function normalizeToolRenderModel(input: NormalizeToolRenderModelInput): 
   return {
     args,
     fileMutation,
-    hasResult: result !== undefined,
     rawArgs,
     rawResult,
     result,

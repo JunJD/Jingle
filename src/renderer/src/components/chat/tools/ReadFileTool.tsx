@@ -1,40 +1,52 @@
 import { FileText } from "lucide-react"
 import { CodeBlock } from "@/components/ui/code-block"
 import { defineToolComponent } from "./registry-core"
-import { ToolCodeBlock, ToolDetailStack } from "./shared-components"
-import { countLines, getBasename, getFilePathArg } from "./shared"
+import { ToolCodeBlock, ToolContractNotice, ToolDetailStack } from "./shared-components"
+import { countLines, getBasename, projectRequiredStringArg } from "./shared"
 
 defineToolComponent({
   name: "read_file",
   icon: FileText,
-  hasDetail({ args, rawResult }) {
-    return Boolean(getFilePathArg(args) || rawResult)
-  },
-  renderDisplay({ copy, args, rawResult }) {
-    const path = getFilePathArg(args)
-    const target = path ? getBasename(path) : null
-    const lineCount = rawResult.trim() ? copy.toolCall.readLines(countLines(rawResult)) : null
-
+  project({ args, rawResult, status }) {
+    const path = projectRequiredStringArg(args, "file_path", status === "arguments_streaming")
     return {
-      detail: target ?? lineCount,
+      content: rawResult,
+      lineCount: rawResult.trim() ? countLines(rawResult) : null,
+      path,
+      target: path.kind === "ready" ? getBasename(path.value) : null
+    }
+  },
+  hasDetail({ viewModel }) {
+    return (
+      viewModel.path.kind === "invalid" ||
+      Boolean(viewModel.path.kind === "ready" && viewModel.path.value) ||
+      Boolean(viewModel.content)
+    )
+  },
+  renderDisplay({ copy, viewModel }) {
+    return {
+      detail:
+        viewModel.target ??
+        (viewModel.lineCount === null ? null : copy.toolCall.readLines(viewModel.lineCount)),
       title: copy.toolCall.labels.read_file
     }
   },
-  renderDetail({ args, rawResult }) {
-    const path = getFilePathArg(args)
-    const content = rawResult
-
-    if (!path && !content) {
-      return null
-    }
-
+  renderDetail({ copy, viewModel }) {
     return (
       <ToolDetailStack>
-        {path ? (
-          <ToolCodeBlock className="text-[var(--jingle-agent-timeline-muted)]">{path}</ToolCodeBlock>
+        {viewModel.path.kind === "invalid" ? (
+          <ToolContractNotice copy={copy} field={viewModel.path.field} />
+        ) : viewModel.path.kind === "ready" ? (
+          <ToolCodeBlock className="text-[var(--jingle-agent-timeline-muted)]">
+            {viewModel.path.value}
+          </ToolCodeBlock>
         ) : null}
-        {content ? (
-          <CodeBlock code={content} filename={path ? getBasename(path) : undefined} maxLines={12} />
+        {viewModel.content ? (
+          <CodeBlock
+            code={viewModel.content}
+            filename={viewModel.target ?? undefined}
+            maxLines={12}
+          />
         ) : null}
       </ToolDetailStack>
     )

@@ -1,48 +1,43 @@
 import { ChevronDown, ExternalLink, Search } from "lucide-react"
+import {
+  parseWebSearchResponseForQuery,
+  type WebSearchResponse,
+  type WebSearchResult
+} from "@shared/web-search"
 import { defineToolComponent } from "./registry-core"
-import { ToolCodeBlock, ToolDetailStack } from "./shared-components"
-import { getQueryArg, truncateMiddle } from "./shared"
+import { ToolCodeBlock, ToolContractNotice, ToolDetailStack } from "./shared-components"
+import { projectRequiredStringArg, truncateMiddle } from "./shared"
+import type { ToolComponentStatus, ToolRendererCommands } from "./types"
 
-interface SearchResultItem {
-  snippet?: string
-  title?: string
-  url?: string
-}
+type WebSearchResultProjection =
+  | { kind: "absent" }
+  | { kind: "error"; text: string }
+  | { field: "result"; kind: "invalid" }
+  | { kind: "ready"; response: WebSearchResponse }
 
-interface SearchResultPayload {
-  results?: SearchResultItem[]
-}
-
-function getSearchPayload(value: unknown): SearchResultPayload | null {
-  if (value && typeof value === "object") {
-    return value as SearchResultPayload
+function projectWebSearchResult(input: {
+  query: string | null
+  rawResult: string
+  result: unknown
+  status: ToolComponentStatus
+}): WebSearchResultProjection {
+  if (input.status === "failed") {
+    return input.rawResult.trim()
+      ? { kind: "error", text: input.rawResult }
+      : { field: "result", kind: "invalid" }
   }
 
-  if (typeof value !== "string") {
-    return null
+  const response = input.query ? parseWebSearchResponseForQuery(input.result, input.query) : null
+  if (response) {
+    return { kind: "ready", response }
   }
 
-  const trimmed = value.trim()
-  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
-    return null
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed)
-    return parsed && typeof parsed === "object" ? (parsed as SearchResultPayload) : null
-  } catch {
-    return null
-  }
-}
-
-function openSearchResult(url: string): void {
-  void window.electron.openExternal(url).catch((error) => {
-    console.error("[WebSearchTool] Failed to open external link.", error)
-  })
+  return input.status === "complete" ? { field: "result", kind: "invalid" } : { kind: "absent" }
 }
 
 function renderSearchResultsList(
-  items: Array<Required<Pick<SearchResultItem, "title" | "url">> & SearchResultItem>
+  items: readonly WebSearchResult[],
+  openExternal: ToolRendererCommands["openExternal"]
 ): React.JSX.Element {
   return (
     <div className="grid gap-[var(--jingle-gap-sm)]">
@@ -75,7 +70,9 @@ function renderSearchResultsList(
                 type="button"
                 className="inline-flex items-center gap-[var(--jingle-space-1-5)] [font-size:var(--jingle-font-meta)] font-medium leading-[var(--jingle-line-body)] text-muted-foreground transition-colors hover:text-foreground"
                 onClick={() => {
-                  openSearchResult(item.url)
+                  void openExternal(item.url).catch((error) => {
+                    console.error("[WebSearchTool] Failed to open search result.", error)
+                  })
                 }}
               >
                 <ExternalLink className="size-[var(--jingle-icon-sm)]" />
@@ -92,40 +89,45 @@ function renderSearchResultsList(
 defineToolComponent({
   name: "web_search",
   icon: Search,
-  hasDetail({ args, rawResult }) {
-    return Boolean(getQueryArg(args) || rawResult)
-  },
-  renderDisplay({ copy, args }) {
-    const query = getQueryArg(args)
+  project({ args, rawResult, result, status }) {
+    const query = projectRequiredStringArg(args, "query", status === "arguments_streaming")
 
     return {
-      detail: query ? truncateMiddle(query, 60) : null,
+      query,
+      queryDetail: query.kind === "ready" ? truncateMiddle(query.value, 60) : null,
+      result: projectWebSearchResult({
+        query: query.kind === "ready" ? query.value : null,
+        rawResult,
+        result,
+        status
+      })
+    }
+  },
+  hasDetail({ viewModel }) {
+    return viewModel.query.kind === "invalid" || viewModel.result.kind !== "absent"
+  },
+  renderDisplay({ copy, viewModel }) {
+    return {
+      detail: viewModel.queryDetail,
       title: copy.toolCall.labels.web_search
     }
   },
-  renderDetail({ args, rawResult, result }) {
-    const query = getQueryArg(args)
-    const payload = getSearchPayload(result) ?? getSearchPayload(rawResult)
-    const results = Array.isArray(payload?.results)
-      ? payload.results.filter(
-          (item): item is Required<Pick<SearchResultItem, "title" | "url">> & SearchResultItem =>
-            Boolean(item?.title) && Boolean(item?.url)
-        )
-      : []
-
-    if (!query && !rawResult) {
-      return null
-    }
-
+  renderDetail({ commands, copy, viewModel }) {
     return (
       <ToolDetailStack>
-        {query ? (
-          <ToolCodeBlock className="text-[var(--jingle-agent-timeline-muted)]">{query}</ToolCodeBlock>
+        {viewModel.query.kind === "invalid" ? (
+          <ToolContractNotice copy={copy} field={viewModel.query.field} />
+        ) : viewModel.query.kind === "ready" ? (
+          <ToolCodeBlock className="text-[var(--jingle-agent-timeline-muted)]">
+            {viewModel.query.value}
+          </ToolCodeBlock>
         ) : null}
-        {results.length > 0 ? (
-          renderSearchResultsList(results)
-        ) : !payload && rawResult ? (
-          <ToolCodeBlock>{rawResult}</ToolCodeBlock>
+        {viewModel.result.kind === "invalid" ? (
+          <ToolContractNotice copy={copy} field={viewModel.result.field} />
+        ) : viewModel.result.kind === "error" ? (
+          <ToolCodeBlock>{viewModel.result.text}</ToolCodeBlock>
+        ) : viewModel.result.kind === "ready" && viewModel.result.response.results.length > 0 ? (
+          renderSearchResultsList(viewModel.result.response.results, commands.openExternal)
         ) : null}
       </ToolDetailStack>
     )

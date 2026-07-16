@@ -2,20 +2,42 @@ import { useMemo } from "react"
 import { ArrowUpRight, PackageOpen } from "lucide-react"
 import type { ArtifactRecord } from "@shared/artifacts"
 import { CodeBlock } from "@/components/ui/code-block"
-import { artifactRendererCommands } from "@/lib/artifact-renderer-commands"
+import type { AppCopy } from "@/lib/i18n/messages"
 import { useThreadSelector } from "@/lib/thread-context"
 import { cn } from "@/lib/utils"
 import { defineToolComponent } from "./registry-core"
-import type { ToolComponentProps } from "./types"
-import { ToolDetailSection, ToolDetailStack } from "./shared-components"
+import type { ToolRendererCommands } from "./types"
+import { ToolContractNotice, ToolDetailSection, ToolDetailStack } from "./shared-components"
 
-function getArtifactItems(args: Record<string, unknown>): Array<Record<string, unknown>> {
-  return Array.isArray(args.artifacts)
-    ? args.artifacts.filter(
-        (item): item is Record<string, unknown> =>
-          Boolean(item) && typeof item === "object" && !Array.isArray(item)
-      )
-    : []
+type PresentArtifactsArgsProjection =
+  | { field: "artifacts"; kind: "invalid" }
+  | { kind: "pending" }
+  | { itemCount: number; kind: "ready" }
+
+function projectPresentArtifactsArgs(
+  args: Record<string, unknown>,
+  allowPending: boolean
+): PresentArtifactsArgsProjection {
+  if (!Array.isArray(args.artifacts) || args.artifacts.length === 0) {
+    return allowPending ? { kind: "pending" } : { field: "artifacts", kind: "invalid" }
+  }
+
+  const validKinds = new Set(["file", "link", "patch", "summary"])
+  const isValid = args.artifacts.every(
+    (item) =>
+      Boolean(item) &&
+      typeof item === "object" &&
+      !Array.isArray(item) &&
+      "kind" in item &&
+      typeof item.kind === "string" &&
+      validKinds.has(item.kind)
+  )
+
+  return isValid
+    ? { itemCount: args.artifacts.length, kind: "ready" }
+    : allowPending
+      ? { kind: "pending" }
+      : { field: "artifacts", kind: "invalid" }
 }
 
 function compareArtifactByKey(a: ArtifactRecord, b: ArtifactRecord): number {
@@ -39,36 +61,39 @@ function isJsonText(value: string): boolean {
 
 const EMPTY_THREAD_ARTIFACTS: readonly ArtifactRecord[] = []
 
-function requireToolThreadId(threadId: string | undefined, toolName: string): string {
-  if (!threadId) {
-    throw new Error(`Tool renderer "${toolName}" requires threadId.`)
-  }
-
-  return threadId
-}
-
 function isPresentedArtifactOpenable(artifact: ArtifactRecord): boolean {
   return artifact.source.type !== "inline-text"
 }
 
-export function PresentArtifactsDetail(
-  props: Pick<ToolComponentProps, "copy" | "rawResult" | "threadId" | "toolCall">
-): React.JSX.Element {
-  const { copy, rawResult, toolCall } = props
-  const threadId = requireToolThreadId(props.threadId, toolCall.name)
+interface PresentArtifactsViewModel {
+  args: PresentArtifactsArgsProjection
+  hasJsonResult: boolean
+  rawResult: string
+  threadId: string
+  toolCallId: string
+}
+
+export function PresentArtifactsDetail(props: {
+  copy: AppCopy
+  openArtifact: ToolRendererCommands["openArtifact"]
+  viewModel: PresentArtifactsViewModel
+}): React.JSX.Element {
+  const { copy, openArtifact, viewModel } = props
   const threadArtifacts = useThreadSelector(
-    threadId,
+    viewModel.threadId,
     (state) => state?.agent.artifacts ?? EMPTY_THREAD_ARTIFACTS
   )
-  const hasJsonResult = isJsonText(rawResult)
   const resolvedArtifacts = useMemo(() => {
     return threadArtifacts
-      .filter((artifact) => artifact.toolCallId === toolCall.id)
+      .filter((artifact) => artifact.toolCallId === viewModel.toolCallId)
       .toSorted(compareArtifactByKey)
-  }, [threadArtifacts, toolCall.id])
+  }, [threadArtifacts, viewModel.toolCallId])
 
   return (
     <ToolDetailStack>
+      {viewModel.args.kind === "invalid" ? (
+        <ToolContractNotice copy={copy} field={viewModel.args.field} />
+      ) : null}
       {resolvedArtifacts.length > 0 ? (
         <ToolDetailSection label={copy.toolCall.labels.present_artifacts}>
           <div className="grid gap-[var(--jingle-space-1-5)]">
@@ -93,7 +118,9 @@ export function PresentArtifactsDetail(
                       return
                     }
 
-                    void artifactRendererCommands.openArtifact(artifact.id)
+                    void openArtifact(artifact.id).catch((error) => {
+                      console.error("[PresentArtifactsTool] Failed to open artifact.", error)
+                    })
                   }}
                   type="button"
                 >
@@ -112,12 +139,12 @@ export function PresentArtifactsDetail(
           </div>
         </ToolDetailSection>
       ) : null}
-      {rawResult.trim() ? (
+      {viewModel.rawResult.trim() ? (
         <ToolDetailSection label={copy.common.rawResult}>
           <CodeBlock
-            code={rawResult}
-            filename={hasJsonResult ? "result.json" : "result.txt"}
-            language={hasJsonResult ? "json" : "text"}
+            code={viewModel.rawResult}
+            filename={viewModel.hasJsonResult ? "result.json" : "result.txt"}
+            language={viewModel.hasJsonResult ? "json" : "text"}
             maxLines={12}
           />
         </ToolDetailSection>
@@ -129,24 +156,34 @@ export function PresentArtifactsDetail(
 defineToolComponent({
   icon: PackageOpen,
   name: "present_artifacts",
-  hasDetail({ args, rawResult }) {
-    return getArtifactItems(args).length > 0 || rawResult.trim().length > 0
-  },
-  renderDisplay({ copy, args }) {
-    const items = getArtifactItems(args)
-
+  project({ args, rawResult, status, threadId, toolCall }) {
     return {
-      detail: items.length > 0 ? `${items.length}` : null,
+      args: projectPresentArtifactsArgs(args, status === "arguments_streaming"),
+      hasJsonResult: isJsonText(rawResult),
+      rawResult,
+      threadId,
+      toolCallId: toolCall.id
+    }
+  },
+  hasDetail({ viewModel }) {
+    return (
+      viewModel.args.kind === "invalid" ||
+      (viewModel.args.kind === "ready" && viewModel.args.itemCount > 0) ||
+      viewModel.rawResult.trim().length > 0
+    )
+  },
+  renderDisplay({ copy, viewModel }) {
+    return {
+      detail: viewModel.args.kind === "ready" ? `${viewModel.args.itemCount}` : null,
       title: copy.toolCall.labels.present_artifacts
     }
   },
-  renderDetail({ copy, rawResult, threadId, toolCall }) {
+  renderDetail({ commands, copy, viewModel }) {
     return (
       <PresentArtifactsDetail
         copy={copy}
-        rawResult={rawResult}
-        threadId={threadId}
-        toolCall={toolCall}
+        openArtifact={commands.openArtifact}
+        viewModel={viewModel}
       />
     )
   }

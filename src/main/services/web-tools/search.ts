@@ -1,11 +1,11 @@
 import { getEnvValue } from "../../storage"
+import { normalizeWebSearchQuery } from "@shared/web-search"
 import { getTavilyClient, toTavilyTimeoutSeconds } from "./tavily"
 import type { WebSearchResponse, WebSearchResult } from "./types"
 import { normalizePublicHttpUrl } from "./url-guard"
 
 const DEFAULT_MAX_RESULTS = 5
 const MAX_MAX_RESULTS = 10
-const MAX_QUERY_LENGTH = 400
 const DEFAULT_TIMEOUT_MS = 15_000
 const MAX_SNIPPET_LENGTH = 320
 
@@ -20,10 +20,6 @@ function getConfiguredMaxResults(): number {
   }
 
   return clamp(Math.floor(raw), 1, MAX_MAX_RESULTS)
-}
-
-function normalizeQuery(query: string): string {
-  return query.trim().replace(/\s+/g, " ").slice(0, MAX_QUERY_LENGTH)
 }
 
 function truncateSnippet(value: string): string {
@@ -44,7 +40,7 @@ function createEmptySearchResponse(query: string): WebSearchResponse {
 }
 
 export async function searchWeb(query: string): Promise<WebSearchResponse> {
-  const normalizedQuery = normalizeQuery(query)
+  const normalizedQuery = normalizeWebSearchQuery(query)
   if (!normalizedQuery) {
     return createEmptySearchResponse("")
   }

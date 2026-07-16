@@ -25,7 +25,7 @@ interface ActionMessageProps {
   expanded?: boolean
   presentation?: ToolPresentation
   showSummary?: boolean
-  status?: ToolComponentStatus
+  status: ToolComponentStatus
   threadId: string
 }
 
@@ -167,7 +167,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
       toolCall
     ]
   )
-  const { definition, display, hasDetail, icon: Icon, model, status, statusLabel } = view
+  const { display, hasDetail, icon: Icon, renderDetail, status, statusLabel } = view
   const activityStatus = getActionMessageStatus(status, activeToolCall)
   const autoExpanded = Boolean(approvalRequest) || defaultExpanded
   const isExpanded = approvalRequest ? true : (expanded ?? manualExpanded ?? autoExpanded)
@@ -177,17 +177,8 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
       return null
     }
 
-    return (
-      definition.renderDetail?.({
-        copy,
-        isExpanded,
-        presentation,
-        threadId,
-        toolCall,
-        ...model
-      }) ?? null
-    )
-  }, [canExpandDetail, copy, definition, isExpanded, model, presentation, threadId, toolCall])
+    return renderDetail()
+  }, [canExpandDetail, isExpanded, renderDetail])
 
   const toolState = toAgentToolState(activityStatus)
   const statusMeta =
