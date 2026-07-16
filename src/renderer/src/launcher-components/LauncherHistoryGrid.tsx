@@ -46,20 +46,14 @@ export function LauncherHistoryGrid(props: {
 
   return (
     <div
-      className="grid grid-cols-8 overflow-hidden border-t border-dashed border-[var(--launcher-border)]"
+      className="grid grid-cols-8 overflow-hidden"
       style={{ gridAutoRows: "minmax(0, 1fr)", height }}
     >
       {items.map((item, index) => {
         const isSelected = index === selectedIndex
 
         return (
-          <div
-            key={item.id}
-            className={cn(
-              "relative h-full border-r border-dashed border-[var(--launcher-border)]",
-              "text-foreground"
-            )}
-          >
+          <div key={item.id} className="relative h-full text-foreground">
             <ContextMenu>
               <ContextMenuTrigger asChild>
                 <Button
