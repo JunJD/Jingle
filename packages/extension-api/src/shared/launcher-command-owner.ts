@@ -89,9 +89,15 @@ export function validateLauncherCommandOwnerManifest(manifest: LauncherCommandOw
 
     commandNameSet.add(command.name)
 
+    const commandArguments = (command as { arguments?: unknown }).arguments
+    const commandArgumentsField = `Launcher command owner "${manifest.id}" command "${command.name}" arguments`
+    if (commandArguments !== undefined && !Array.isArray(commandArguments)) {
+      throw new Error(`${commandArgumentsField} must be an array when declared`)
+    }
+
     const argumentNameSet = new Set<string>()
-    for (const [argumentIndex, argument] of (command.arguments ?? []).entries()) {
-      const argumentField = `Launcher command owner "${manifest.id}" command "${command.name}" arguments[${argumentIndex}]`
+    for (const [argumentIndex, argument] of (commandArguments ?? []).entries()) {
+      const argumentField = `${commandArgumentsField}[${argumentIndex}]`
       assertNonEmptyString(argument.name, `${argumentField}.name must be non-empty`)
       if (argumentNameSet.has(argument.name)) {
         throw new Error(
@@ -108,9 +114,14 @@ export function validateLauncherCommandOwnerManifest(manifest: LauncherCommandOw
         )
       }
 
-      const argumentType = (argument as { type?: unknown }).type ?? "text"
+      if (argument.required !== undefined && typeof argument.required !== "boolean") {
+        throw new Error(`${argumentField}.required must be a boolean when declared`)
+      }
+
+      const declaredArgumentType = (argument as { type?: unknown }).type
+      const argumentType = declaredArgumentType === undefined ? "text" : declaredArgumentType
       if (argumentType !== "text" && argumentType !== "password" && argumentType !== "dropdown") {
-        throw new Error(`${argumentField}.type "${String(argument.type)}" is not supported`)
+        throw new Error(`${argumentField}.type "${String(declaredArgumentType)}" is not supported`)
       }
 
       if (argumentType !== "dropdown") {
@@ -137,7 +148,7 @@ export function validateLauncherCommandOwnerManifest(manifest: LauncherCommandOw
       }
     }
 
-    if (command.requiresLauncherArguments && !command.arguments?.length) {
+    if (command.requiresLauncherArguments && !commandArguments?.length) {
       throw new Error(
         `Launcher command owner "${manifest.id}" command "${command.name}" requires launcher arguments without declaring any argument schema`
       )

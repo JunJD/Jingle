@@ -59,6 +59,24 @@ test("launcher command owner rejects malformed argument contracts at registratio
     assert.throws(() => validateLauncherCommandOwnerManifest(createOwnerManifest(argument)))
   }
 
+  assert.throws(
+    () =>
+      validateLauncherCommandOwnerManifest(
+        createOwnerManifest({ name: "text", title: "Text", type: null })
+      ),
+    /\.type "null" is not supported/
+  )
+  assert.throws(
+    () =>
+      validateLauncherCommandOwnerManifest(
+        createOwnerManifest({ name: "text", required: "true", title: "Text", type: "text" })
+      ),
+    /\.required must be a boolean when declared/
+  )
+  assert.doesNotThrow(() =>
+    validateLauncherCommandOwnerManifest(createOwnerManifest({ name: "text", title: "Text" }))
+  )
+
   const duplicateNameManifest = createOwnerManifest({ name: "text", title: "Text", type: "text" })
   duplicateNameManifest.commands[0].arguments?.push({
     name: "text",
@@ -69,6 +87,31 @@ test("launcher command owner rejects malformed argument contracts at registratio
     () => validateLauncherCommandOwnerManifest(duplicateNameManifest),
     /duplicate argument "text"/
   )
+
+  for (const invalidCommandArguments of [null, { name: "text" }]) {
+    const invalidArgumentsManifest = createOwnerManifest({
+      name: "text",
+      title: "Text",
+      type: "text"
+    })
+    const invalidCommand = invalidArgumentsManifest.commands[0] as unknown as {
+      arguments?: unknown
+    }
+    invalidCommand.arguments = invalidCommandArguments
+    assert.throws(
+      () => validateLauncherCommandOwnerManifest(invalidArgumentsManifest),
+      /arguments must be an array when declared/
+    )
+  }
+
+  const omittedArgumentsManifest = createOwnerManifest({
+    name: "text",
+    title: "Text",
+    type: "text"
+  })
+  omittedArgumentsManifest.commands[0].arguments = undefined
+  omittedArgumentsManifest.commands[0].requiresLauncherArguments = false
+  assert.doesNotThrow(() => validateLauncherCommandOwnerManifest(omittedArgumentsManifest))
 })
 
 test("launcher argument page requires an explicit command contract", () => {
