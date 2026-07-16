@@ -78,6 +78,7 @@ export function createNativeExtensionClient<
   TMethods extends Record<string, NativeExtensionClientMethod<unknown, unknown>>
 >(extensionName: string, declaredMethods: readonly string[], methods: TMethods) {
   const clientMethodNames = Object.keys(methods)
+  const declaredMethodNames = new Set(declaredMethods)
 
   if (declaredMethods.length !== clientMethodNames.length) {
     throw new Error(
@@ -86,7 +87,7 @@ export function createNativeExtensionClient<
   }
 
   for (const methodName of clientMethodNames) {
-    if (!declaredMethods.includes(methodName)) {
+    if (!declaredMethodNames.has(methodName)) {
       throw new Error(
         `Native extension client "${extensionName}" implements "${methodName}" but it is not declared in the manifest`
       )
