@@ -171,9 +171,7 @@ export function ToolCollapsibleSection(props: {
             )}
           />
         </CollapsibleTrigger>
-        <CollapsibleContent className="pt-[var(--jingle-space-3)] data-[state=closed]:animate-out data-[state=open]:animate-in">
-          {children}
-        </CollapsibleContent>
+        <CollapsibleContent className="pt-[var(--jingle-space-3)]">{children}</CollapsibleContent>
       </div>
     </Collapsible>
   )
