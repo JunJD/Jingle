@@ -296,6 +296,101 @@ test("setThreadArchived removes archived threads from active history state", asy
   )
 })
 
+test("loadSidebarView serializes overlapping reads before committing global sidebar state", async () => {
+  type SidebarView = Awaited<ReturnType<HistoryShellApi["threadSidebar"]["getView"]>>
+  let resolveOlder!: (view: SidebarView) => void
+  let resolveNewer!: (view: SidebarView) => void
+  const older = new Promise<SidebarView>((resolve) => {
+    resolveOlder = resolve
+  })
+  const newer = new Promise<SidebarView>((resolve) => {
+    resolveNewer = resolve
+  })
+  let requestCount = 0
+  const store = createHistoryShellStore(
+    createApi({
+      threadSidebar: {
+        ...createApi().threadSidebar,
+        getView: () => (requestCount++ === 0 ? older : newer)
+      }
+    })
+  )
+  const olderRequest = store.getState().loadSidebarView()
+  const newerRequest = store.getState().loadSidebarView()
+  const newerView: SidebarView = {
+    chatThreads: [],
+    pinnedThreads: [],
+    preferences: DEFAULT_THREAD_SIDEBAR_PREFERENCES,
+    projectCatalog: [{ projectId: "project-newer", title: "Newer" }],
+    projectGroups: []
+  }
+  const olderView: SidebarView = {
+    chatThreads: [],
+    pinnedThreads: [],
+    preferences: DEFAULT_THREAD_SIDEBAR_PREFERENCES,
+    projectCatalog: [{ projectId: "project-older", title: "Older" }],
+    projectGroups: []
+  }
+
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(requestCount, 1)
+
+  resolveOlder(olderView)
+  await olderRequest
+  assert.deepEqual(store.getState().sidebarView, olderView)
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(requestCount, 2)
+
+  resolveNewer(newerView)
+  await newerRequest
+  assert.deepEqual(store.getState().sidebarView, newerView)
+})
+
+test("workflow sidebar refresh stays ordered with pinned and archived thread mutations", async () => {
+  type SidebarView = Awaited<ReturnType<HistoryShellApi["threadSidebar"]["getView"]>>
+  let resolveWorkflowRefresh!: (view: SidebarView) => void
+  const workflowRefresh = new Promise<SidebarView>((resolve) => {
+    resolveWorkflowRefresh = resolve
+  })
+  const view = (projectId: string): SidebarView => ({
+    chatThreads: [],
+    pinnedThreads: [],
+    preferences: DEFAULT_THREAD_SIDEBAR_PREFERENCES,
+    projectCatalog: [{ projectId, title: projectId }],
+    projectGroups: []
+  })
+  const workflowView = view("workflow-refresh")
+  const pinnedView = view("pinned-mutation")
+  const archivedView = view("archived-mutation")
+  let viewRequestCount = 0
+  const store = createHistoryShellStore(
+    createApi({
+      threadSidebar: {
+        ...createApi().threadSidebar,
+        getView: () => {
+          viewRequestCount += 1
+          if (viewRequestCount === 1) {
+            return workflowRefresh
+          }
+          return Promise.resolve(viewRequestCount === 2 ? pinnedView : archivedView)
+        }
+      }
+    })
+  )
+
+  const refresh = store.getState().loadSidebarView()
+  const pin = store.getState().setThreadPinned("thread-work", true)
+  const archive = store.getState().setThreadArchived("thread-work", true)
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(viewRequestCount, 1)
+
+  resolveWorkflowRefresh(workflowView)
+  await Promise.all([refresh, pin, archive])
+
+  assert.equal(viewRequestCount, 3)
+  assert.deepEqual(store.getState().sidebarView, archivedView)
+})
+
 test("addSidebarProject creates a project from a selected folder and refreshes project grouping", async () => {
   const calls: string[] = []
   const nextView = {

@@ -3,6 +3,7 @@ import { Prisma, type WorkflowLabel, type WorkflowStatus } from "@prisma/client"
 import type { ThreadRow } from "./threads"
 import { mapThreadRow } from "./threads"
 import { getPrismaClient } from "./client"
+import { normalizeWorkflowLabelRawValue } from "@shared/thread-workflow"
 import type {
   AddThreadWorkflowLabelInput,
   CreateProjectWorkflowLabelInput,
@@ -15,6 +16,7 @@ import type {
   ThreadWorkflowLabelAssignment,
   ThreadWorkflowSourceRef,
   ThreadWorkflowSummary,
+  ThreadWorkflowView,
   WorkflowColor,
   WorkflowLabelDefinition,
   WorkflowLabelValueType,
@@ -127,6 +129,33 @@ const projectWorkflowDefinitionInclude = {
 
 type ProjectWorkflowDefinitionRow = Prisma.ProjectGetPayload<{
   include: typeof projectWorkflowDefinitionInclude
+}>
+
+const threadWorkflowViewInclude = {
+  workflow: {
+    include: {
+      status: true
+    }
+  },
+  workflowLabels: {
+    include: {
+      label: true
+    },
+    orderBy: {
+      createdAt: "asc"
+    }
+  },
+  workspaceBinding: {
+    include: {
+      project: {
+        include: projectWorkflowDefinitionInclude
+      }
+    }
+  }
+} satisfies Prisma.ThreadInclude
+
+type ThreadWorkflowViewRow = Prisma.ThreadGetPayload<{
+  include: typeof threadWorkflowViewInclude
 }>
 
 export interface CreateClassifiedThreadInput {
@@ -260,14 +289,19 @@ function mapLabelDefinition(row: WorkflowLabel): WorkflowLabelDefinition {
 function mapLabelAssignment(
   row: ThreadWorkflowSummaryRow["workflowLabels"][number]
 ): ThreadWorkflowLabelAssignment {
+  const label = mapLabelDefinition(row.label)
+  const rawValue = normalizeWorkflowLabelRawValue(label.valueType, row.rawValue)
+  if (rawValue !== row.rawValue) {
+    throw new Error(`Workflow label assignment "${row.labelId}" is not stored canonically.`)
+  }
   return {
-    label: mapLabelDefinition(row.label),
-    rawValue: row.rawValue
+    label,
+    rawValue
   }
 }
 
 function resolveWorkflowProjectId(
-  row: ThreadWorkflowSummaryRow | ThreadWorkflowMutationRow
+  row: ThreadWorkflowSummaryRow | ThreadWorkflowMutationRow | ThreadWorkflowViewRow
 ): string | null {
   const binding = row.workspaceBinding
   if (!binding) {
@@ -321,6 +355,19 @@ function mapThreadWorkflowSummary(row: ThreadWorkflowSummaryRow): ThreadWorkflow
     threadId: row.threadId,
     updatedAt: workflow ? new Date(Number(workflow.updatedAt)) : null,
     workspacePath: row.workspaceBinding?.workspacePath ?? null
+  }
+}
+
+function mapThreadWorkflowView(row: ThreadWorkflowViewRow | null): ThreadWorkflowView {
+  if (!row) {
+    return { project: null, summary: null }
+  }
+
+  const summary = mapThreadWorkflowSummary(row)
+  const project = row.workspaceBinding?.project ?? null
+  return {
+    project: project ? mapProjectWorkflowDefinition(project) : null,
+    summary
   }
 }
 
@@ -623,6 +670,23 @@ export async function getThreadWorkflowSummary(
   return row ? mapThreadWorkflowSummary(row) : null
 }
 
+async function getThreadWorkflowViewFromClient(
+  client: Prisma.TransactionClient | ReturnType<typeof getPrismaClient>,
+  threadId: string
+): Promise<ThreadWorkflowView> {
+  const row = await client.thread.findUnique({
+    include: threadWorkflowViewInclude,
+    where: {
+      threadId
+    }
+  })
+  return mapThreadWorkflowView(row)
+}
+
+export async function getThreadWorkflowView(threadId: string): Promise<ThreadWorkflowView> {
+  return getThreadWorkflowViewFromClient(getPrismaClient(), threadId)
+}
+
 export async function listThreadWorkflowSummaries(
   threadIds: readonly string[]
 ): Promise<ThreadWorkflowSummary[]> {
@@ -741,7 +805,10 @@ export async function createClassifiedThread(
         data: {
           createdAt: now,
           labelId: label.labelId,
-          rawValue: labelInput.value ?? "",
+          rawValue: normalizeWorkflowLabelRawValue(
+            normalizeLabelValueType(label.valueType),
+            labelInput.value ?? ""
+          ),
           threadId: input.threadId
         }
       })
@@ -863,9 +930,9 @@ export async function applyThreadWorkflowRuntimeTransition(
 
 export async function setThreadWorkflowStatus(
   input: SetThreadWorkflowStatusInput
-): Promise<ThreadWorkflowSummary> {
+): Promise<ThreadWorkflowView> {
   const prisma = getPrismaClient()
-  await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
     const { projectId } = await requireProjectThreadState(tx, input.threadId)
     const status = await tx.workflowStatus.findUnique({
       where: {
@@ -899,20 +966,15 @@ export async function setThreadWorkflowStatus(
         threadId: input.threadId
       }
     })
+    return getThreadWorkflowViewFromClient(tx, input.threadId)
   })
-
-  const summary = await getThreadWorkflowSummary(input.threadId)
-  if (!summary) {
-    throw new Error(`Thread "${input.threadId}" does not have a Project workflow.`)
-  }
-  return summary
 }
 
 export async function addThreadWorkflowLabel(
   input: AddThreadWorkflowLabelInput
-): Promise<ThreadWorkflowSummary> {
+): Promise<ThreadWorkflowView> {
   const prisma = getPrismaClient()
-  await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
     const state = await requireProjectThreadState(tx, input.threadId)
     const { projectId } = state
     const label = await tx.workflowLabel.findUnique({
@@ -928,6 +990,10 @@ export async function addThreadWorkflowLabel(
         `Workflow label "${input.labelId}" belongs to Project "${label.projectId}", not "${projectId}".`
       )
     }
+    const rawValue = normalizeWorkflowLabelRawValue(
+      normalizeLabelValueType(label.valueType),
+      input.rawValue
+    )
 
     const now = BigInt(Date.now())
     if (!state.workflow) {
@@ -946,7 +1012,7 @@ export async function addThreadWorkflowLabel(
       data: {
         createdAt: now,
         labelId: label.labelId,
-        rawValue: input.rawValue,
+        rawValue,
         threadId: input.threadId
       }
     })
@@ -958,20 +1024,15 @@ export async function addThreadWorkflowLabel(
         threadId: input.threadId
       }
     })
+    return getThreadWorkflowViewFromClient(tx, input.threadId)
   })
-
-  const summary = await getThreadWorkflowSummary(input.threadId)
-  if (!summary) {
-    throw new Error(`Thread "${input.threadId}" does not have a Project workflow.`)
-  }
-  return summary
 }
 
 export async function removeThreadWorkflowLabel(
   input: RemoveThreadWorkflowLabelInput
-): Promise<ThreadWorkflowSummary> {
+): Promise<ThreadWorkflowView> {
   const prisma = getPrismaClient()
-  await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
     const state = await requireProjectThreadState(tx, input.threadId)
     const { projectId } = state
     const label = await tx.workflowLabel.findUnique({
@@ -987,11 +1048,15 @@ export async function removeThreadWorkflowLabel(
         `Workflow label "${input.labelId}" belongs to Project "${label.projectId}", not "${projectId}".`
       )
     }
+    const rawValue = normalizeWorkflowLabelRawValue(
+      normalizeLabelValueType(label.valueType),
+      input.rawValue
+    )
 
     const deleted = await tx.threadLabel.deleteMany({
       where: {
         labelId: input.labelId,
-        rawValue: input.rawValue,
+        rawValue,
         threadId: input.threadId
       }
     })
@@ -1010,11 +1075,6 @@ export async function removeThreadWorkflowLabel(
         }
       })
     }
+    return getThreadWorkflowViewFromClient(tx, input.threadId)
   })
-
-  const summary = await getThreadWorkflowSummary(input.threadId)
-  if (!summary) {
-    throw new Error(`Thread "${input.threadId}" does not have a Project workflow.`)
-  }
-  return summary
 }

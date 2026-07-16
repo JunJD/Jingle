@@ -18,6 +18,7 @@ import {
   setThreadWorkflowStatus
 } from "../../src/main/db/thread-workflow"
 import { upsertProject, upsertThreadWorkspaceBinding } from "../../src/main/db/thread-workspace"
+import { ThreadWorkflowService } from "../../src/main/thread-workflow/service"
 
 const repoRoot = process.cwd()
 const originalJingleHome = process.env.JINGLE_HOME
@@ -89,16 +90,130 @@ test("Project workflow taxonomy initializes manual Thread classification", async
   assert.ok(running)
   assert.ok(source)
   const classified = await setThreadWorkflowStatus({ statusId: running.statusId, threadId })
-  assert.equal(classified.status?.key, "running")
+  assert.equal(classified.summary?.status?.key, "running")
   const labeled = await addThreadWorkflowLabel({
     labelId: source.labelId,
     rawValue: "github",
     threadId
   })
   assert.deepEqual(
-    labeled.labels.map((assignment) => [assignment.label.key, assignment.rawValue]),
+    labeled.summary?.labels.map((assignment) => [assignment.label.key, assignment.rawValue]),
     [["source", "github"]]
   )
+})
+
+test("workflow label values are validated and stored canonically by the main owner", async () => {
+  const project = await createProject("workflow-project-label-values")
+  let definition = (await listProjectWorkflowDefinitions()).find(
+    (entry) => entry.projectId === project.project_id
+  )
+  assert.ok(definition)
+
+  for (const [name, valueType] of [
+    ["Boolean value", "boolean"],
+    ["String value", "string"],
+    ["Number value", "number"],
+    ["Date value", "date"],
+    ["Link value", "link"]
+  ] as const) {
+    definition = await createProjectWorkflowLabel({
+      name,
+      projectId: project.project_id,
+      valueType
+    })
+  }
+
+  const threadId = "workflow-label-value-thread"
+  await createThread(threadId, { title: "Canonical labels" })
+  await upsertThreadWorkspaceBinding({
+    projectId: project.project_id,
+    threadId,
+    workspaceKey: project.workspace_key,
+    workspaceKind: "project",
+    workspacePath: project.canonical_workspace_path
+  })
+
+  const labels = new Map(definition.labels.map((label) => [label.valueType, label]))
+  const add = (valueType: "boolean" | "date" | "link" | "number" | "string", rawValue: string) => {
+    const label = labels.get(valueType)
+    assert.ok(label)
+    return addThreadWorkflowLabel({ labelId: label.labelId, rawValue, threadId })
+  }
+
+  await add("boolean", "")
+  await add("string", "  release blocker  ")
+  await add("number", "01.500")
+  await add("date", "2026-07-16")
+  const view = await add("link", "https://example.com/work")
+  assert.deepEqual(
+    view.summary?.labels.map((assignment) => [assignment.label.valueType, assignment.rawValue]),
+    [
+      ["boolean", ""],
+      ["string", "release blocker"],
+      ["number", "1.5"],
+      ["date", "2026-07-16"],
+      ["link", "https://example.com/work"]
+    ]
+  )
+
+  await assert.rejects(add("boolean", "true"), /require an empty value/)
+  const presenceOnlyStringView = await add("string", "   ")
+  assert.equal(
+    presenceOnlyStringView.summary?.labels.some(
+      (assignment) => assignment.label.valueType === "string" && assignment.rawValue === ""
+    ),
+    true
+  )
+  await assert.rejects(add("number", "Infinity"), /Invalid number/)
+  await assert.rejects(add("date", "2026-02-30"), /Invalid date/)
+  await assert.rejects(add("link", "file:///tmp/work"), /must use http or https/)
+})
+
+test("workflow service publishes scoped changes only after successful persistence", async () => {
+  const project = await createProject("workflow-project-service-events")
+  const definition = (await listProjectWorkflowDefinitions()).find(
+    (entry) => entry.projectId === project.project_id
+  )
+  assert.ok(definition)
+  const ready = definition.statuses.find((status) => status.key === "ready")
+  assert.ok(ready)
+
+  const threadId = "workflow-service-event-thread"
+  await createThread(threadId, { title: "Service events" })
+  await upsertThreadWorkspaceBinding({
+    projectId: project.project_id,
+    threadId,
+    workspaceKey: project.workspace_key,
+    workspaceKind: "project",
+    workspacePath: project.canonical_workspace_path
+  })
+
+  const service = new ThreadWorkflowService()
+  const events: unknown[] = []
+  const unsubscribe = service.onChanged((event) => events.push(event))
+  const view = await service.setStatus({ statusId: ready.statusId, threadId })
+  assert.equal(view.project?.projectId, project.project_id)
+  assert.equal(view.summary?.status?.statusId, ready.statusId)
+  await service.createLabel({
+    name: "Priority",
+    projectId: project.project_id,
+    valueType: "number"
+  })
+  await service.applyRuntimeTransitions([
+    { currentGate: "approval", threadId },
+    { currentGate: null, statusKey: "running", threadId }
+  ])
+  await assert.rejects(
+    service.addLabel({ labelId: "missing-label", rawValue: "", threadId }),
+    /Unknown workflow label/
+  )
+  unsubscribe()
+
+  assert.deepEqual(events, [
+    { scope: "thread", threadId },
+    { projectId: project.project_id, scope: "project" },
+    { scope: "thread", threadId }
+  ])
 })
 
 test("Project workflow taxonomy preserves Project-owned status customization", async () => {
@@ -249,6 +364,26 @@ test("classified Thread creation persists Project, status, labels, and source at
       ["source", "github"],
       ["kind", "issue"]
     ]
+  )
+
+  await createClassifiedThread({
+    project: {
+      canonicalWorkspacePath: project.canonical_workspace_path,
+      projectId: project.project_id,
+      workspaceKey: project.workspace_key
+    },
+    threadId: "workflow-classified-presence-only-label",
+    title: "RunBot workflow",
+    workflow: {
+      labels: [{ key: "source" }],
+      statusKey: "ready"
+    }
+  })
+  assert.deepEqual(
+    (await getThreadWorkflowSummary("workflow-classified-presence-only-label"))?.labels.map(
+      (assignment) => [assignment.label.key, assignment.rawValue]
+    ),
+    [["source", ""]]
   )
 })
 

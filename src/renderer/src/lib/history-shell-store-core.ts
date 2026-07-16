@@ -61,7 +61,17 @@ const initialData: HistoryShellData = {
 export function createHistoryShellStore(api: HistoryShellApi): HistoryShellStore {
   const listeners = new Set<() => void>()
   let data: HistoryShellData = { ...initialData }
+  let sidebarViewOperationQueue = Promise.resolve()
   let snapshot: HistoryShellState
+
+  const runSidebarViewOperation = <T>(operation: () => Promise<T>): Promise<T> => {
+    const task = sidebarViewOperationQueue.catch(() => undefined).then(operation)
+    sidebarViewOperationQueue = task.then(
+      () => undefined,
+      () => undefined
+    )
+    return task
+  }
 
   const emit = (): void => {
     snapshot = {
@@ -114,37 +124,43 @@ export function createHistoryShellStore(api: HistoryShellApi): HistoryShellStore
       }
 
       await api.threadWorkspace.addProject(workspacePath)
-      const sidebarView = await api.threadSidebar.setOrganizeMode("project")
-      setData({ sidebarView })
+      await runSidebarViewOperation(async () => {
+        const sidebarView = await api.threadSidebar.setOrganizeMode("project")
+        setData({ sidebarView })
+      })
     },
 
-    loadSidebarView: async (): Promise<void> => {
-      const sidebarView = await api.threadSidebar.getView()
-      setData({ sidebarView })
-    },
+    loadSidebarView: (): Promise<void> =>
+      runSidebarViewOperation(async () => {
+        const sidebarView = await api.threadSidebar.getView()
+        setData({ sidebarView })
+      }),
 
-    loadThreads: async (): Promise<void> => {
-      const [threads, sidebarView] = await Promise.all([
-        api.threads.list(),
-        api.threadSidebar.getView()
-      ])
-      setData({ sidebarView, threads })
-    },
+    loadThreads: (): Promise<void> =>
+      runSidebarViewOperation(async () => {
+        const [threads, sidebarView] = await Promise.all([
+          api.threads.list(),
+          api.threadSidebar.getView()
+        ])
+        setData({ sidebarView, threads })
+      }),
 
     deleteThread: async (threadId: string): Promise<void> => {
       await api.threads.delete(threadId)
-      const sidebarView = await api.threadSidebar.getView()
-      setData((current) => {
-        const nextThreads = current.threads.filter((thread) => thread.thread_id !== threadId)
+      await runSidebarViewOperation(async () => {
+        const sidebarView = await api.threadSidebar.getView()
+        setData((current) => {
+          const nextThreads = current.threads.filter((thread) => thread.thread_id !== threadId)
 
-        return {
-          currentThreadId:
-            current.currentThreadId === threadId
-              ? (nextThreads[0]?.thread_id ?? null)
-              : current.currentThreadId,
-          sidebarView,
-          threads: nextThreads
-        }
+          return {
+            currentThreadId:
+              current.currentThreadId === threadId
+                ? (nextThreads[0]?.thread_id ?? null)
+                : current.currentThreadId,
+            sidebarView,
+            threads: nextThreads
+          }
+        })
       })
     },
 
@@ -168,53 +184,61 @@ export function createHistoryShellStore(api: HistoryShellApi): HistoryShellStore
       })
     },
 
-    setSidebarOrganizeMode: async (mode: ThreadSidebarOrganizeMode): Promise<void> => {
-      const sidebarView = await api.threadSidebar.setOrganizeMode(mode)
-      setData({ sidebarView })
-    },
+    setSidebarOrganizeMode: (mode: ThreadSidebarOrganizeMode): Promise<void> =>
+      runSidebarViewOperation(async () => {
+        const sidebarView = await api.threadSidebar.setOrganizeMode(mode)
+        setData({ sidebarView })
+      }),
 
-    setSidebarSortBy: async (sortBy: ThreadSidebarSortBy): Promise<void> => {
-      const sidebarView = await api.threadSidebar.setSortBy(sortBy)
-      setData({ sidebarView })
-    },
+    setSidebarSortBy: (sortBy: ThreadSidebarSortBy): Promise<void> =>
+      runSidebarViewOperation(async () => {
+        const sidebarView = await api.threadSidebar.setSortBy(sortBy)
+        setData({ sidebarView })
+      }),
 
     setThreadArchived: async (threadId: string, archived: boolean): Promise<void> => {
       const updated = await api.threads.setArchived(threadId, archived)
-      const sidebarView = await api.threadSidebar.getView()
-      setData((current) => {
-        const nextThreads = archived
-          ? current.threads.filter((thread) => thread.thread_id !== threadId)
-          : upsertThreadByRecency(current.threads, updated)
+      await runSidebarViewOperation(async () => {
+        const sidebarView = await api.threadSidebar.getView()
+        setData((current) => {
+          const nextThreads = archived
+            ? current.threads.filter((thread) => thread.thread_id !== threadId)
+            : upsertThreadByRecency(current.threads, updated)
 
-        return {
-          currentThreadId:
-            archived && current.currentThreadId === threadId
-              ? (nextThreads[0]?.thread_id ?? null)
-              : current.currentThreadId,
-          sidebarView,
-          threads: nextThreads
-        }
+          return {
+            currentThreadId:
+              archived && current.currentThreadId === threadId
+                ? (nextThreads[0]?.thread_id ?? null)
+                : current.currentThreadId,
+            sidebarView,
+            threads: nextThreads
+          }
+        })
       })
     },
 
     setThreadPinned: async (threadId: string, pinned: boolean): Promise<void> => {
       const updated = await api.threads.setPinned(threadId, pinned)
-      const sidebarView = await api.threadSidebar.getView()
-      setData((current) => ({
-        sidebarView,
-        threads: current.threads.map((thread) =>
-          thread.thread_id === updated.thread_id ? updated : thread
-        )
-      }))
+      await runSidebarViewOperation(async () => {
+        const sidebarView = await api.threadSidebar.getView()
+        setData((current) => ({
+          sidebarView,
+          threads: current.threads.map((thread) =>
+            thread.thread_id === updated.thread_id ? updated : thread
+          )
+        }))
+      })
     },
 
     updateThread: async (threadId: string, updates: Partial<Thread>): Promise<void> => {
       const updated = await api.threads.update(threadId, updates)
-      const sidebarView = await api.threadSidebar.getView()
-      setData((current) => ({
-        sidebarView,
-        threads: upsertThreadByRecency(current.threads, updated)
-      }))
+      await runSidebarViewOperation(async () => {
+        const sidebarView = await api.threadSidebar.getView()
+        setData((current) => ({
+          sidebarView,
+          threads: upsertThreadByRecency(current.threads, updated)
+        }))
+      })
     },
 
     loadModelProviderState: async (): Promise<void> => {

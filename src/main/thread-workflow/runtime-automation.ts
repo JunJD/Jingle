@@ -4,13 +4,20 @@ import type { AgentThreadRunner } from "../agent/agent-thread-runner"
 import type { ApplyThreadWorkflowRuntimeTransitionInput } from "../db/thread-workflow"
 
 interface ThreadWorkflowRuntimeTransitionWriter {
-  applyRuntimeTransition(input: ApplyThreadWorkflowRuntimeTransitionInput): Promise<boolean>
+  applyRuntimeTransitions(
+    inputs: readonly ApplyThreadWorkflowRuntimeTransitionInput[]
+  ): Promise<boolean>
 }
 
 export interface ThreadWorkflowRuntimeAutomationOptions {
   agentThreadRunner: Pick<AgentThreadRunner, "connectAllThreadEvents">
-  onChanged: (threadId: string) => void
   workflow: ThreadWorkflowRuntimeTransitionWriter
+}
+
+export interface ThreadWorkflowRuntimeAutomationShutdownOptions {
+  flushAgentControllerProjections: () => Promise<void>
+  shutdownAgentService: () => Promise<void>
+  stopAutomation: (() => Promise<void>) | null
 }
 
 function workflowStatusKeyForFinishedRun(
@@ -80,13 +87,7 @@ export function startThreadWorkflowRuntimeAutomation(
       const previous = queues.get(batch.threadId) ?? Promise.resolve()
       const task = previous
         .then(async () => {
-          let changed = false
-          for (const transition of transitions) {
-            changed = (await options.workflow.applyRuntimeTransition(transition)) || changed
-          }
-          if (changed) {
-            options.onChanged(batch.threadId)
-          }
+          await options.workflow.applyRuntimeTransitions(transitions)
         })
         .catch((error: unknown) => {
           console.error("[ThreadWorkflow] Runtime automation failed.", {
@@ -106,5 +107,16 @@ export function startThreadWorkflowRuntimeAutomation(
   return async () => {
     stopListening()
     await Promise.all(queues.values())
+  }
+}
+
+export async function shutdownAgentServiceBeforeThreadWorkflowAutomation(
+  options: ThreadWorkflowRuntimeAutomationShutdownOptions
+): Promise<void> {
+  try {
+    await options.shutdownAgentService()
+    await options.flushAgentControllerProjections()
+  } finally {
+    await options.stopAutomation?.()
   }
 }

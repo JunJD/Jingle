@@ -1326,6 +1326,34 @@ body[data-window="pinned-ai-session"],
   gap: 1px;
 }
 
+.launcher-ai-sidebar-panel__work-index {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.launcher-ai-sidebar-panel__work-index
+  .launcher-ai-sidebar-panel__item-row[data-depth="child"]
+  .launcher-ai-sidebar-panel__item-meta {
+  display: block;
+}
+
+.launcher-workflow-status-dot {
+  display: block;
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
+  border-radius: 50%;
+  background: var(--workflow-status-color-light, var(--muted-foreground));
+}
+
+.dark .launcher-workflow-status-dot {
+  background: var(--workflow-status-color-dark, var(--muted-foreground));
+}
+
 .launcher-ai-sidebar-panel__item-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

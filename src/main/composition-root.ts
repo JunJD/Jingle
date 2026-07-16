@@ -1,8 +1,9 @@
 import "reflect-metadata"
-import { BrowserWindow, type IpcMain } from "electron"
+import type { BrowserWindow, IpcMain } from "electron"
 import { container, type DependencyContainer } from "tsyringe"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import { AgentThreadRunner } from "./agent/agent-thread-runner"
+import { AgentController } from "./agent/controller"
 import { registerAgentIpcHandlers, registerAgentModule } from "./agent/module"
 import { AgentService } from "./agent/service"
 import {
@@ -86,7 +87,10 @@ import {
   registerThreadWorkflowIpcHandlers,
   registerThreadWorkflowModule
 } from "./thread-workflow/module"
-import { startThreadWorkflowRuntimeAutomation } from "./thread-workflow/runtime-automation"
+import {
+  shutdownAgentServiceBeforeThreadWorkflowAutomation,
+  startThreadWorkflowRuntimeAutomation
+} from "./thread-workflow/runtime-automation"
 import { ThreadWorkflowService } from "./thread-workflow/service"
 import { registerThreadsIpcHandlers, registerThreadsModule } from "./threads/module"
 import {
@@ -177,13 +181,6 @@ export class MainCompositionRoot {
     )
     this.stopThreadWorkflowRuntimeAutomation = startThreadWorkflowRuntimeAutomation({
       agentThreadRunner: this.dependencyContainer.resolve(AgentThreadRunner),
-      onChanged: (threadId) => {
-        for (const window of BrowserWindow.getAllWindows()) {
-          if (!window.isDestroyed()) {
-            window.webContents.send("threadWorkflow:changed", { threadId })
-          }
-        }
-      },
       workflow: this.dependencyContainer.resolve(ThreadWorkflowService)
     })
     this.applyShortcutSettings()
@@ -217,12 +214,14 @@ export class MainCompositionRoot {
     this.stopLauncherSearchIndexRefresh = null
     const stopThreadWorkflowRuntimeAutomation = this.stopThreadWorkflowRuntimeAutomation
     this.stopThreadWorkflowRuntimeAutomation = null
-    if (stopThreadWorkflowRuntimeAutomation) {
-      await stopThreadWorkflowRuntimeAutomation()
-    }
     stopNativeSelectionCapture()
     await Promise.all([
-      this.dependencyContainer.resolve(AgentService).shutdown(),
+      shutdownAgentServiceBeforeThreadWorkflowAutomation({
+        flushAgentControllerProjections: () =>
+          this.dependencyContainer.resolve(AgentController).flushRuntimeProjections(),
+        shutdownAgentService: () => this.dependencyContainer.resolve(AgentService).shutdown(),
+        stopAutomation: stopThreadWorkflowRuntimeAutomation
+      }),
       this.dependencyContainer.resolve(ThreadDigestService).shutdown()
     ])
     resolveExtensionRuntimeMenuBarService(this.dependencyContainer).dispose()

@@ -211,6 +211,8 @@ export interface AppCopy {
     sidebarPinned: string
     sidebarProjects: string
     sidebarSearch: string
+    sidebarWork: string
+    clearWorkFilter: string
     sidebarSearchLoading: string
     sidebarSearchNoResults: string
     sortByCreated: string
@@ -218,6 +220,7 @@ export interface AppCopy {
     sortByUpdated: string
     underDevelopment: string
     unpinChat: string
+    workFilterError: string
     commandMatches: string
     manageUseWithCommands: string
     useWithAvailable: string
@@ -339,6 +342,33 @@ export interface AppCopy {
     source: string
     status: string
     title: string
+  }
+  threadWorkflow: {
+    add: string
+    addLabelDefinition: string
+    addStatus: string
+    backToAssignments: string
+    closedCategory: string
+    defaultStatus: string
+    edit: string
+    labelDefinitions: string
+    labelName: string
+    labels: string
+    manageDefinitions: string
+    noLabels: string
+    noParentLabel: string
+    openCategory: string
+    parentLabel: string
+    removeLabel: (label: string) => string
+    selectColor: (color: string) => string
+    setDefaultStatus: (status: string) => string
+    status: string
+    statusDefinitions: string
+    statusName: string
+    unclassified: string
+    valueType: string
+    valuePlaceholder: (label: string) => string
+    valueTypes: Record<"boolean" | "date" | "link" | "number" | "string", string>
   }
 }
 
@@ -558,6 +588,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       sidebarPinned: "置顶",
       sidebarProjects: "项目",
       sidebarSearch: "搜索",
+      sidebarWork: "工作",
+      clearWorkFilter: "清除工作筛选",
       sidebarSearchLoading: "正在加载聊天...",
       sidebarSearchNoResults: "没有匹配的对话",
       sortByCreated: "创建时间",
@@ -565,6 +597,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       sortByUpdated: "最近更新",
       underDevelopment: "待开发",
       unpinChat: "取消置顶",
+      workFilterError: "部分工作分类暂时无法显示。",
       commandMatches: "命令",
       manageUseWithCommands: "管理 Use With 命令",
       useWithAvailable: "可用",
@@ -707,6 +740,39 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       source: "来源",
       status: "状态",
       title: "确认启动 Agent"
+    },
+    threadWorkflow: {
+      add: "添加",
+      addLabelDefinition: "添加标签定义",
+      addStatus: "添加状态",
+      backToAssignments: "返回会话分类",
+      closedCategory: "已关闭",
+      defaultStatus: "默认状态",
+      edit: "编辑会话工作流",
+      labelDefinitions: "标签定义",
+      labelName: "标签名称",
+      labels: "标签",
+      manageDefinitions: "管理分类定义",
+      noLabels: "暂无标签",
+      noParentLabel: "无父标签",
+      openCategory: "进行中",
+      parentLabel: "父标签",
+      removeLabel: (label) => `移除标签 ${label}`,
+      selectColor: (color) => `选择颜色 ${color}`,
+      setDefaultStatus: (status) => `将 ${status} 设为默认状态`,
+      status: "状态",
+      statusDefinitions: "状态定义",
+      statusName: "状态名称",
+      unclassified: "未分类",
+      valueType: "值类型",
+      valuePlaceholder: (label) => `输入${label}`,
+      valueTypes: {
+        boolean: "开关",
+        date: "日期",
+        link: "链接",
+        number: "数字",
+        string: "文本"
+      }
     }
   },
   "en-US": {
@@ -926,6 +992,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       sidebarPinned: "Pinned",
       sidebarProjects: "Projects",
       sidebarSearch: "Search",
+      sidebarWork: "Work",
+      clearWorkFilter: "Clear work filter",
       sidebarSearchLoading: "Loading chats...",
       sidebarSearchNoResults: "No matching chats",
       sortByCreated: "Created Time",
@@ -933,6 +1001,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       sortByUpdated: "Recently Updated",
       underDevelopment: "Coming soon",
       unpinChat: "Unpin Chat",
+      workFilterError: "Some work classifications are temporarily unavailable.",
       commandMatches: "Commands",
       manageUseWithCommands: "Manage Fallback Commands",
       useWithAvailable: "Available",
@@ -1081,6 +1150,39 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       source: "Source",
       status: "Status",
       title: "Confirm Agent launch"
+    },
+    threadWorkflow: {
+      add: "Add",
+      addLabelDefinition: "Add label definition",
+      addStatus: "Add status",
+      backToAssignments: "Back to thread classification",
+      closedCategory: "Closed",
+      defaultStatus: "Default status",
+      edit: "Edit thread workflow",
+      labelDefinitions: "Label definitions",
+      labelName: "Label name",
+      labels: "Labels",
+      manageDefinitions: "Manage classification definitions",
+      noLabels: "No labels",
+      noParentLabel: "No parent label",
+      openCategory: "Open",
+      parentLabel: "Parent label",
+      removeLabel: (label) => `Remove ${label}`,
+      selectColor: (color) => `Select color ${color}`,
+      setDefaultStatus: (status) => `Set ${status} as default`,
+      status: "Status",
+      statusDefinitions: "Status definitions",
+      statusName: "Status name",
+      unclassified: "Unclassified",
+      valueType: "Value type",
+      valuePlaceholder: (label) => `Enter ${label}`,
+      valueTypes: {
+        boolean: "Toggle",
+        date: "Date",
+        link: "Link",
+        number: "Number",
+        string: "Text"
+      }
     }
   }
 }

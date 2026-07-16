@@ -4,6 +4,7 @@ import type { AgentThreadEvent } from "../../src/shared/agent-thread-contract"
 import type { JingleRuntimeEventBatch } from "@jingle/agent-client"
 import {
   resolveThreadWorkflowRuntimeTransition,
+  shutdownAgentServiceBeforeThreadWorkflowAutomation,
   startThreadWorkflowRuntimeAutomation
 } from "../../src/main/thread-workflow/runtime-automation"
 
@@ -53,11 +54,10 @@ test("workflow automation maps agent lifecycle facts without making runtime the 
   )
 })
 
-test("workflow automation serializes one thread batch and notifies after persistence", async () => {
+test("workflow automation serializes one thread batch through the workflow service owner", async () => {
   let listener: ((batch: JingleRuntimeEventBatch<AgentThreadEvent>) => void) | null = null
   let stopped = false
   const transitions: Array<{ currentGate: string | null; statusKey?: string }> = []
-  const changedThreads: string[] = []
 
   const stop = startThreadWorkflowRuntimeAutomation({
     agentThreadRunner: {
@@ -68,13 +68,14 @@ test("workflow automation serializes one thread batch and notifies after persist
         }
       }
     },
-    onChanged: (threadId) => changedThreads.push(threadId),
     workflow: {
-      applyRuntimeTransition: async (transition) => {
-        transitions.push({
-          currentGate: transition.currentGate,
-          ...(transition.statusKey ? { statusKey: transition.statusKey } : {})
-        })
+      applyRuntimeTransitions: async (batch) => {
+        transitions.push(
+          ...batch.map((transition) => ({
+            currentGate: transition.currentGate,
+            ...(transition.statusKey ? { statusKey: transition.statusKey } : {})
+          }))
+        )
         return true
       }
     }
@@ -120,7 +121,6 @@ test("workflow automation serializes one thread batch and notifies after persist
     { currentGate: "approval" },
     { currentGate: null, statusKey: "cancelled" }
   ])
-  assert.deepEqual(changedThreads, ["thread-1"])
 })
 
 test("workflow automation preserves event order across concurrent batches for one thread", async () => {
@@ -142,9 +142,10 @@ test("workflow automation preserves event order across concurrent batches for on
         return () => undefined
       }
     },
-    onChanged: () => undefined,
     workflow: {
-      applyRuntimeTransition: async (transition) => {
+      applyRuntimeTransitions: async (batch) => {
+        const transition = batch[0]
+        assert.ok(transition)
         const value = transition.statusKey ?? transition.currentGate ?? "cleared"
         transitions.push(`start:${value}`)
         if (transitions.length === 1) {
@@ -209,4 +210,85 @@ test("workflow automation preserves event order across concurrent batches for on
     "start:cancelled",
     "finish:cancelled"
   ])
+})
+
+test("application shutdown keeps workflow automation connected through active run cancellation", async () => {
+  let listener: ((batch: JingleRuntimeEventBatch<AgentThreadEvent>) => void) | null = null
+  let stopped = false
+  const shutdownOrder: string[] = []
+  const transitions: string[] = []
+  const stopAutomation = startThreadWorkflowRuntimeAutomation({
+    agentThreadRunner: {
+      connectAllThreadEvents: (_subscriberId, nextListener) => {
+        listener = nextListener
+        return () => {
+          stopped = true
+          shutdownOrder.push("automation")
+        }
+      }
+    },
+    workflow: {
+      applyRuntimeTransitions: async (batch) => {
+        transitions.push(...batch.map((transition) => transition.statusKey ?? "unchanged"))
+        return true
+      }
+    }
+  })
+
+  assert.ok(listener)
+  const emit = listener as (batch: JingleRuntimeEventBatch<AgentThreadEvent>) => void
+  emit({
+    events: [
+      {
+        revision: 1,
+        run: {
+          assistantMessageId: null,
+          currentToolCallId: null,
+          phase: "thinking",
+          phaseStartedAt: new Date(),
+          runId: "run-quit",
+          startedAt: new Date(),
+          status: "running",
+          threadId: "thread-quit",
+          toolCalls: [],
+          turnId: "turn-quit",
+          userMessageId: "turn-quit"
+        },
+        type: "run.started"
+      }
+    ],
+    latestRevision: 1,
+    threadId: "thread-quit"
+  })
+
+  await shutdownAgentServiceBeforeThreadWorkflowAutomation({
+    flushAgentControllerProjections: async () => {
+      assert.equal(stopped, false)
+      shutdownOrder.push("projection")
+      emit({
+        events: [
+          {
+            completedAt: new Date(),
+            durationMs: 10,
+            error: null,
+            revision: 2,
+            runId: "run-quit",
+            status: "cancelled",
+            type: "run.finished"
+          }
+        ],
+        latestRevision: 2,
+        threadId: "thread-quit"
+      })
+    },
+    shutdownAgentService: async () => {
+      assert.equal(stopped, false)
+      shutdownOrder.push("agent")
+    },
+    stopAutomation
+  })
+
+  assert.equal(stopped, true)
+  assert.deepEqual(shutdownOrder, ["agent", "projection", "automation"])
+  assert.deepEqual(transitions, ["running", "cancelled"])
 })

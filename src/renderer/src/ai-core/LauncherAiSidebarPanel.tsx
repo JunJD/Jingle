@@ -11,11 +11,14 @@ import {
   Pin,
   Search,
   SquarePen,
+  Tag,
   X
 } from "lucide-react"
 import {
+  useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ComponentPropsWithRef,
   type ReactNode
 } from "react"
@@ -27,6 +30,7 @@ import type {
   ThreadSidebarThreadItem,
   ThreadSidebarView
 } from "@shared/thread-sidebar"
+import type { ThreadWorkflowSummary, WorkflowStatusDefinition } from "@shared/thread-workflow"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -38,8 +42,53 @@ import * as DropdownMenu from "@/components/ui/dropdown-menu"
 import { formatRelativeTime } from "@/lib/utils"
 import type { AppLocale } from "@shared/i18n"
 
-type SidebarSectionKey = "chats" | "pinned" | "projects"
+type SidebarSectionKey = "chats" | "pinned" | "projects" | "work"
 type SidebarThreadMenuActionResult = Promise<void> | void
+
+type WorkFilter =
+  | { kind: "status"; projectId: string; statusId: string }
+  | { kind: "label"; labelId: string; projectId: string; rawValue: string }
+
+interface SidebarWorkThreadProjection {
+  labels: ThreadWorkflowSummary["labels"]
+  projectId: string
+  projectTitle: string
+  status: WorkflowStatusDefinition | null
+}
+
+interface SidebarWorkProjection {
+  invalidProjectIds: string[]
+  threads: SidebarWorkThreadProjection[]
+}
+
+function projectSidebarWorkThreads(
+  threads: LauncherAiSidebarThreadItem[],
+  projectTitles: ReadonlyMap<string, string>
+): SidebarWorkProjection {
+  const invalidProjectIds = new Set<string>()
+  const projections: SidebarWorkThreadProjection[] = []
+
+  for (const thread of threads) {
+    const workflow = thread.workflow
+    const projectId = workflow?.projectId
+    if (!workflow || !projectId) {
+      continue
+    }
+    const projectTitle = projectTitles.get(projectId)
+    if (!projectTitle) {
+      invalidProjectIds.add(projectId)
+      continue
+    }
+    projections.push({
+      labels: workflow.labels,
+      projectId,
+      projectTitle,
+      status: workflow.status
+    })
+  }
+
+  return { invalidProjectIds: Array.from(invalidProjectIds), threads: projections }
+}
 
 export interface LauncherAiSidebarThreadItem {
   id: string
@@ -48,6 +97,7 @@ export interface LauncherAiSidebarThreadItem {
   workspacePath: string | null
   title: string
   updatedAt: Date
+  workflow: ThreadWorkflowSummary | null
 }
 
 export interface LauncherAiSidebarProjectGroup {
@@ -134,10 +184,13 @@ interface LauncherAiSidebarPanelProps {
     sidebarPinned: string
     sidebarProjects: string
     sidebarSearch: string
+    sidebarWork: string
+    clearWorkFilter: string
     sortByCreated: string
     sortByManual: string
     sortByUpdated: string
     unpinChat: string
+    workFilterError: string
   }
   locale: AppLocale
   mode: "expanded" | "preview"
@@ -200,6 +253,53 @@ function EmptySectionRow(props: { children: ReactNode }): React.JSX.Element {
   return <div className="launcher-ai-sidebar-panel__empty">{props.children}</div>
 }
 
+function WorkflowStatusDot(props: { status: WorkflowStatusDefinition }): React.JSX.Element {
+  const { status } = props
+  const style = status.color
+    ? ({
+        "--workflow-status-color-dark": status.color.dark,
+        "--workflow-status-color-light": status.color.light
+      } as CSSProperties)
+    : undefined
+
+  return <span aria-hidden="true" className="launcher-workflow-status-dot" style={style} />
+}
+
+function isSameWorkFilter(left: WorkFilter | null, right: WorkFilter): boolean {
+  if (!left || left.kind !== right.kind || left.projectId !== right.projectId) {
+    return false
+  }
+  if (left.kind === "status" && right.kind === "status") {
+    return left.statusId === right.statusId
+  }
+  return (
+    left.kind === "label" &&
+    right.kind === "label" &&
+    left.labelId === right.labelId &&
+    left.rawValue === right.rawValue
+  )
+}
+
+function matchesWorkFilter(
+  thread: LauncherAiSidebarThreadItem,
+  filter: WorkFilter | null
+): boolean {
+  if (!filter) {
+    return true
+  }
+  const workflow = thread.workflow
+  if (!workflow || workflow.projectId !== filter.projectId) {
+    return false
+  }
+  if (filter.kind === "status") {
+    return workflow.status?.statusId === filter.statusId
+  }
+  return workflow.labels.some(
+    (assignment) =>
+      assignment.label.labelId === filter.labelId && assignment.rawValue === filter.rawValue
+  )
+}
+
 interface SidebarRowProps extends Omit<ComponentPropsWithRef<"div">, "title"> {
   actions?: ReactNode
   active?: boolean
@@ -209,6 +309,7 @@ interface SidebarRowProps extends Omit<ComponentPropsWithRef<"div">, "title"> {
   label: ReactNode
   meta?: ReactNode
   onPress: () => void
+  pressed?: boolean
   title?: string
   variant?: "item" | "section"
 }
@@ -224,6 +325,7 @@ function SidebarRow(props: SidebarRowProps): React.JSX.Element {
     label,
     meta,
     onPress,
+    pressed,
     ref,
     title,
     variant = "item",
@@ -246,13 +348,12 @@ function SidebarRow(props: SidebarRowProps): React.JSX.Element {
       <button
         type="button"
         aria-expanded={expanded}
+        aria-pressed={pressed}
         className="launcher-ai-sidebar-panel__item"
         title={resolvedTitle}
         onClick={onPress}
       >
-        {icon == null ? null : (
-          <span className="launcher-ai-sidebar-panel__item-icon">{icon}</span>
-        )}
+        {icon == null ? null : <span className="launcher-ai-sidebar-panel__item-icon">{icon}</span>}
         <span className="launcher-ai-sidebar-panel__item-title">{label}</span>
         {expanded == null ? null : (
           <ChevronRight
@@ -667,7 +768,7 @@ export function LauncherAiSidebarPanel(props: LauncherAiSidebarPanelProps): Reac
     onSetSidebarSortBy,
     projectActions,
     sidebarView,
-    threadMenuActions,
+    threadMenuActions
   } = props
   const [collapsedSections, setCollapsedSections] = useState<ReadonlySet<SidebarSectionKey>>(
     () => new Set()
@@ -675,16 +776,29 @@ export function LauncherAiSidebarPanel(props: LauncherAiSidebarPanelProps): Reac
   const [projectExpansionOverrides, setProjectExpansionOverrides] = useState<
     ReadonlyMap<string, boolean>
   >(() => new Map())
+  const [workFilter, setWorkFilter] = useState<WorkFilter | null>(null)
   const isThreadContextMenuOpenRef = useRef(false)
   const isPointerInsidePanelRef = useRef(false)
-  const chatThreads = (sidebarView?.chatThreads ?? []).map((thread) =>
-    mapSidebarThreadItem(thread, activeThreadId)
+  const chatThreads = useMemo(
+    () =>
+      (sidebarView?.chatThreads ?? []).map((thread) =>
+        mapSidebarThreadItem(thread, activeThreadId)
+      ),
+    [activeThreadId, sidebarView?.chatThreads]
   )
-  const pinnedThreads = (sidebarView?.pinnedThreads ?? []).map((thread) =>
-    mapSidebarThreadItem(thread, activeThreadId)
+  const pinnedThreads = useMemo(
+    () =>
+      (sidebarView?.pinnedThreads ?? []).map((thread) =>
+        mapSidebarThreadItem(thread, activeThreadId)
+      ),
+    [activeThreadId, sidebarView?.pinnedThreads]
   )
-  const projectGroups = (sidebarView?.projectGroups ?? []).map((group) =>
-    mapSidebarProjectGroup(group, activeThreadId)
+  const projectGroups = useMemo(
+    () =>
+      (sidebarView?.projectGroups ?? []).map((group) =>
+        mapSidebarProjectGroup(group, activeThreadId)
+      ),
+    [activeThreadId, sidebarView?.projectGroups]
   )
   let sidebarPreferences = DEFAULT_THREAD_SIDEBAR_PREFERENCES
   if (sidebarView) {
@@ -718,6 +832,138 @@ export function LauncherAiSidebarPanel(props: LauncherAiSidebarPanelProps): Reac
   const isPinnedOpen = !collapsedSections.has("pinned")
   const isProjectsOpen = !collapsedSections.has("projects")
   const isChatsOpen = !collapsedSections.has("chats")
+  const isWorkOpen = !collapsedSections.has("work")
+  const allThreads = useMemo(() => {
+    const byId = new Map<string, LauncherAiSidebarThreadItem>()
+    for (const thread of pinnedThreads) {
+      byId.set(thread.id, thread)
+    }
+    for (const group of projectGroups) {
+      for (const thread of group.threads) {
+        byId.set(thread.id, thread)
+      }
+    }
+    for (const thread of chatThreads) {
+      byId.set(thread.id, thread)
+    }
+    return Array.from(byId.values())
+  }, [chatThreads, pinnedThreads, projectGroups])
+  const projectTitles = useMemo(
+    () =>
+      new Map(
+        (sidebarView?.projectCatalog ?? []).map((project) => [project.projectId, project.title])
+      ),
+    [sidebarView?.projectCatalog]
+  )
+  const workProjection = useMemo(
+    () => projectSidebarWorkThreads(allThreads, projectTitles),
+    [allThreads, projectTitles]
+  )
+  const workStatusItems = useMemo(() => {
+    const items = new Map<
+      string,
+      {
+        count: number
+        filter: Extract<WorkFilter, { kind: "status" }>
+        label: string
+        projectTitle: string
+        status: WorkflowStatusDefinition
+      }
+    >()
+    for (const workflow of workProjection.threads) {
+      if (!workflow.status) {
+        continue
+      }
+      const key = `${workflow.projectId}:${workflow.status.statusId}`
+      const existing = items.get(key)
+      if (existing) {
+        existing.count += 1
+      } else {
+        items.set(key, {
+          count: 1,
+          filter: {
+            kind: "status",
+            projectId: workflow.projectId,
+            statusId: workflow.status.statusId
+          },
+          label: workflow.status.label,
+          projectTitle: workflow.projectTitle,
+          status: workflow.status
+        })
+      }
+    }
+    return Array.from(items.values()).toSorted(
+      (left, right) =>
+        left.projectTitle.localeCompare(right.projectTitle) ||
+        left.status.orderIndex - right.status.orderIndex
+    )
+  }, [workProjection.threads])
+  const workLabelItems = useMemo(() => {
+    const items = new Map<
+      string,
+      {
+        count: number
+        filter: Extract<WorkFilter, { kind: "label" }>
+        label: string
+        orderIndex: number
+        projectTitle: string
+      }
+    >()
+    for (const workflow of workProjection.threads) {
+      for (const assignment of workflow.labels) {
+        const key = `${workflow.projectId}:${assignment.label.labelId}:${assignment.rawValue}`
+        const existing = items.get(key)
+        if (existing) {
+          existing.count += 1
+        } else {
+          items.set(key, {
+            count: 1,
+            filter: {
+              kind: "label",
+              labelId: assignment.label.labelId,
+              projectId: workflow.projectId,
+              rawValue: assignment.rawValue
+            },
+            label: assignment.rawValue
+              ? `${assignment.label.name}: ${assignment.rawValue}`
+              : assignment.label.name,
+            orderIndex: assignment.label.orderIndex,
+            projectTitle: workflow.projectTitle
+          })
+        }
+      }
+    }
+    return Array.from(items.values()).toSorted(
+      (left, right) =>
+        left.projectTitle.localeCompare(right.projectTitle) ||
+        left.orderIndex - right.orderIndex ||
+        left.label.localeCompare(right.label)
+    )
+  }, [workProjection.threads])
+  const workflowProjectCount = new Set(
+    [...workStatusItems, ...workLabelItems].map((item) => item.filter.projectId)
+  ).size
+  const effectiveWorkFilter =
+    workFilter &&
+    [...workStatusItems, ...workLabelItems].some((item) =>
+      isSameWorkFilter(workFilter, item.filter)
+    )
+      ? workFilter
+      : null
+  const formatWorkItemLabel = (projectTitle: string, label: string): string =>
+    workflowProjectCount > 1 ? `${projectTitle} · ${label}` : label
+  const visiblePinnedThreads = pinnedThreads.filter((thread) =>
+    matchesWorkFilter(thread, effectiveWorkFilter)
+  )
+  const visibleChatThreads = chatThreads.filter((thread) =>
+    matchesWorkFilter(thread, effectiveWorkFilter)
+  )
+  const visibleProjectGroups = projectGroups
+    .map((group) => ({
+      ...group,
+      threads: group.threads.filter((thread) => matchesWorkFilter(thread, effectiveWorkFilter))
+    }))
+    .filter((group) => group.threads.length > 0 || !effectiveWorkFilter)
   const handlePanelPointerEnter = (): void => {
     isPointerInsidePanelRef.current = true
     onPointerEnter?.()
@@ -797,12 +1043,87 @@ export function LauncherAiSidebarPanel(props: LauncherAiSidebarPanelProps): Reac
       </div>
 
       <div className="launcher-ai-sidebar-panel__section">
+        {workProjection.invalidProjectIds.length > 0 ? (
+          <p
+            aria-live="assertive"
+            className="launcher-ai-sidebar-panel__empty text-destructive"
+            role="alert"
+          >
+            {labels.workFilterError}
+          </p>
+        ) : null}
+        {workStatusItems.length > 0 || workLabelItems.length > 0 ? (
+          <>
+            <SectionHeading
+              actions={
+                effectiveWorkFilter ? (
+                  <button
+                    type="button"
+                    aria-label={labels.clearWorkFilter}
+                    className="launcher-ai-sidebar-panel__item-action"
+                    title={labels.clearWorkFilter}
+                    onClick={() => setWorkFilter(null)}
+                  >
+                    <X aria-hidden="true" />
+                  </button>
+                ) : undefined
+              }
+              isOpen={isWorkOpen}
+              onToggle={() => toggleSection("work")}
+            >
+              {labels.sidebarWork}
+            </SectionHeading>
+            {isWorkOpen ? (
+              <div className="launcher-ai-sidebar-panel__work-index">
+                {workStatusItems.map((item) => {
+                  const selected = isSameWorkFilter(effectiveWorkFilter, item.filter)
+                  return (
+                    <SidebarRow
+                      active={selected}
+                      depth="child"
+                      icon={<WorkflowStatusDot status={item.status} />}
+                      key={`${item.filter.projectId}:${item.filter.statusId}`}
+                      label={formatWorkItemLabel(item.projectTitle, item.label)}
+                      meta={item.count}
+                      pressed={selected}
+                      onPress={() =>
+                        setWorkFilter((current) =>
+                          isSameWorkFilter(current, item.filter) ? null : item.filter
+                        )
+                      }
+                    />
+                  )
+                })}
+                {workLabelItems.map((item) => {
+                  const selected = isSameWorkFilter(effectiveWorkFilter, item.filter)
+                  return (
+                    <SidebarRow
+                      active={selected}
+                      depth="child"
+                      icon={<Tag aria-hidden="true" />}
+                      key={`${item.filter.projectId}:${item.filter.labelId}:${item.filter.rawValue}`}
+                      label={formatWorkItemLabel(item.projectTitle, item.label)}
+                      meta={item.count}
+                      pressed={selected}
+                      onPress={() =>
+                        setWorkFilter((current) =>
+                          isSameWorkFilter(current, item.filter) ? null : item.filter
+                        )
+                      }
+                    />
+                  )
+                })}
+              </div>
+            ) : null}
+          </>
+        ) : null}
+
         <SectionHeading isOpen={isPinnedOpen} onToggle={() => toggleSection("pinned")}>
           {labels.sidebarPinned}
         </SectionHeading>
         {isPinnedOpen ? (
-          pinnedThreads.length > 0 ? (
-            pinnedThreads.map((thread) => (
+          visiblePinnedThreads.length > 0 ? (
+            visiblePinnedThreads.map((thread) => (
               <ThreadRow
                 key={thread.id}
                 canBranchThread={canBranchThread}
@@ -821,12 +1142,12 @@ export function LauncherAiSidebarPanel(props: LauncherAiSidebarPanelProps): Reac
         ) : null}
 
         <SectionHeading
-            actions={
-              <ProjectSectionActions
-                labels={projectSectionLabels}
-                organizeMode={sidebarPreferences.organizeMode}
-                sortBy={sidebarPreferences.sortBy}
-                onAddProject={onAddProject}
+          actions={
+            <ProjectSectionActions
+              labels={projectSectionLabels}
+              organizeMode={sidebarPreferences.organizeMode}
+              sortBy={sidebarPreferences.sortBy}
+              onAddProject={onAddProject}
               onSetOrganizeMode={onSetSidebarOrganizeMode}
               onSetSortBy={onSetSidebarSortBy}
             />
@@ -837,8 +1158,8 @@ export function LauncherAiSidebarPanel(props: LauncherAiSidebarPanelProps): Reac
           {labels.sidebarProjects}
         </SectionHeading>
         {isProjectsOpen ? (
-          projectGroups.length > 0 ? (
-            projectGroups.map((group) => {
+          visibleProjectGroups.length > 0 ? (
+            visibleProjectGroups.map((group) => {
               const isProjectOpen =
                 projectExpansionOverrides.get(group.key) ?? group.key === activeProjectKey
 
@@ -880,8 +1201,8 @@ export function LauncherAiSidebarPanel(props: LauncherAiSidebarPanelProps): Reac
           {labels.sidebarChats}
         </SectionHeading>
         {isChatsOpen ? (
-          chatThreads.length > 0 ? (
-            chatThreads.map((thread) => (
+          visibleChatThreads.length > 0 ? (
+            visibleChatThreads.map((thread) => (
               <ThreadRow
                 key={thread.id}
                 canBranchThread={canBranchThread}
@@ -913,6 +1234,7 @@ function mapSidebarThreadItem(
     isPinned: thread.isPinned,
     title: thread.title,
     updatedAt: thread.updatedAt,
+    workflow: thread.workflow,
     workspacePath: thread.workspacePath
   }
 }

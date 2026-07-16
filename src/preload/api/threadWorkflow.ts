@@ -1,48 +1,67 @@
-import type {
-  AddThreadWorkflowLabelInput,
-  CreateProjectWorkflowLabelInput,
-  CreateProjectWorkflowStatusInput,
-  ProjectWorkflowDefinition,
-  RemoveThreadWorkflowLabelInput,
-  SetThreadWorkflowStatusInput,
-  SetProjectDefaultWorkflowStatusInput,
-  ThreadWorkflowChangedEvent,
-  ThreadWorkflowSummary
+import {
+  projectWorkflowDefinitionSchema,
+  projectWorkflowDefinitionsSchema,
+  threadWorkflowChangedEventSchema,
+  threadWorkflowViewSchema,
+  type AddThreadWorkflowLabelInput,
+  type CreateProjectWorkflowLabelInput,
+  type CreateProjectWorkflowStatusInput,
+  type ProjectWorkflowDefinition,
+  type RemoveThreadWorkflowLabelInput,
+  type SetProjectDefaultWorkflowStatusInput,
+  type SetThreadWorkflowStatusInput,
+  type ThreadWorkflowChangedEvent,
+  type ThreadWorkflowView
 } from "@shared/thread-workflow"
 import { invokeIpc, ipcRenderer } from "../ipc"
 
 export const threadWorkflowApi = {
   onChanged: (listener: (event: ThreadWorkflowChangedEvent) => void): (() => void) => {
-    const handler = (_event: unknown, payload: ThreadWorkflowChangedEvent): void => {
-      listener(payload)
+    const handler = (_event: unknown, payload: unknown): void => {
+      const parsed = threadWorkflowChangedEventSchema.safeParse(payload)
+      if (!parsed.success) {
+        console.error("[ThreadWorkflow] Ignored an invalid change event.")
+        return
+      }
+      listener(parsed.data)
     }
     ipcRenderer.on("threadWorkflow:changed", handler)
     return () => ipcRenderer.removeListener("threadWorkflow:changed", handler)
   },
-  listProjects: (): Promise<ProjectWorkflowDefinition[]> => {
-    return invokeIpc("threadWorkflow:listProjects")
+  listProjects: async (): Promise<ProjectWorkflowDefinition[]> => {
+    return projectWorkflowDefinitionsSchema.parse(await invokeIpc("threadWorkflow:listProjects"))
   },
-  get: (threadId: string): Promise<ThreadWorkflowSummary | null> => {
-    return invokeIpc("threadWorkflow:get", threadId)
+  get: async (threadId: string): Promise<ThreadWorkflowView> => {
+    return threadWorkflowViewSchema.parse(await invokeIpc("threadWorkflow:get", { threadId }))
   },
-  createStatus: (input: CreateProjectWorkflowStatusInput): Promise<ProjectWorkflowDefinition> => {
-    return invokeIpc("threadWorkflow:createStatus", input)
+  createStatus: async (
+    input: CreateProjectWorkflowStatusInput
+  ): Promise<ProjectWorkflowDefinition> => {
+    return projectWorkflowDefinitionSchema.parse(
+      await invokeIpc("threadWorkflow:createStatus", input)
+    )
   },
-  setDefaultStatus: (
+  setDefaultStatus: async (
     input: SetProjectDefaultWorkflowStatusInput
   ): Promise<ProjectWorkflowDefinition> => {
-    return invokeIpc("threadWorkflow:setDefaultStatus", input)
+    return projectWorkflowDefinitionSchema.parse(
+      await invokeIpc("threadWorkflow:setDefaultStatus", input)
+    )
   },
-  createLabel: (input: CreateProjectWorkflowLabelInput): Promise<ProjectWorkflowDefinition> => {
-    return invokeIpc("threadWorkflow:createLabel", input)
+  createLabel: async (
+    input: CreateProjectWorkflowLabelInput
+  ): Promise<ProjectWorkflowDefinition> => {
+    return projectWorkflowDefinitionSchema.parse(
+      await invokeIpc("threadWorkflow:createLabel", input)
+    )
   },
-  setStatus: (input: SetThreadWorkflowStatusInput): Promise<ThreadWorkflowSummary> => {
-    return invokeIpc("threadWorkflow:setStatus", input)
+  setStatus: async (input: SetThreadWorkflowStatusInput): Promise<ThreadWorkflowView> => {
+    return threadWorkflowViewSchema.parse(await invokeIpc("threadWorkflow:setStatus", input))
   },
-  addLabel: (input: AddThreadWorkflowLabelInput): Promise<ThreadWorkflowSummary> => {
-    return invokeIpc("threadWorkflow:addLabel", input)
+  addLabel: async (input: AddThreadWorkflowLabelInput): Promise<ThreadWorkflowView> => {
+    return threadWorkflowViewSchema.parse(await invokeIpc("threadWorkflow:addLabel", input))
   },
-  removeLabel: (input: RemoveThreadWorkflowLabelInput): Promise<ThreadWorkflowSummary> => {
-    return invokeIpc("threadWorkflow:removeLabel", input)
+  removeLabel: async (input: RemoveThreadWorkflowLabelInput): Promise<ThreadWorkflowView> => {
+    return threadWorkflowViewSchema.parse(await invokeIpc("threadWorkflow:removeLabel", input))
   }
 }

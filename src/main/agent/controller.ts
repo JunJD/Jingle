@@ -182,6 +182,12 @@ export class AgentController {
     })
   }
 
+  async flushRuntimeProjections(): Promise<void> {
+    while (this.runtimeProjectionQueues.size > 0) {
+      await Promise.all(this.runtimeProjectionQueues.values())
+    }
+  }
+
   private resolveAgentSender(event: IpcMainInvokeEvent, channel: string): AgentControllerSender {
     if (event.senderFrame !== event.sender.mainFrame) {
       throw new JingleIpcError({

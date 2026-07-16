@@ -28,6 +28,7 @@ import {
 import { LauncherAiHeaderActions } from "./LauncherAiHeaderActions"
 import { LauncherAiHeaderLeadingActions } from "./LauncherAiHeaderLeadingActions"
 import { LauncherAiHeaderModelPicker } from "./LauncherAiHeaderModelPicker"
+import { LauncherAiWorkflowAccessory } from "./LauncherAiWorkflowAccessory"
 import { LauncherAiModelPicker } from "./LauncherAiModelPicker"
 import { LauncherAiSidebarPanel } from "./LauncherAiSidebarPanel"
 import { LauncherAiThreadSearchOverlay } from "./LauncherAiThreadSearchOverlay"
@@ -1081,10 +1082,13 @@ export function LauncherAiPage(): React.JSX.Element {
     sidebarPinned: copy.launcher.sidebarPinned,
     sidebarProjects: copy.launcher.sidebarProjects,
     sidebarSearch: copy.launcher.sidebarSearch,
+    sidebarWork: copy.launcher.sidebarWork,
+    clearWorkFilter: copy.launcher.clearWorkFilter,
     sortByCreated: copy.launcher.sortByCreated,
     sortByManual: copy.launcher.sortByManual,
     sortByUpdated: copy.launcher.sortByUpdated,
-    unpinChat: copy.launcher.unpinChat
+    unpinChat: copy.launcher.unpinChat,
+    workFilterError: copy.launcher.workFilterError
   }
   const openThreadSearch = useCallback((): void => {
     dispatchThreadSearch({ type: "open" })
@@ -1428,11 +1432,23 @@ export function LauncherAiPage(): React.JSX.Element {
               showThreadNavigationActions={canNavigateAcrossThreads}
               title={sidebarTitle}
               titleAccessory={
-                <LauncherAiHeaderModelPicker
-                  currentModelId={currentModelId}
-                  fallbackLabel={copy.launcher.aiThreadTitle}
-                  onSelectModel={selectModel}
-                />
+                <div className="flex h-5 w-full min-w-0 items-center gap-[var(--jingle-space-1)] overflow-hidden">
+                  <LauncherAiHeaderModelPicker
+                    currentModelId={currentModelId}
+                    fallbackLabel={copy.launcher.aiThreadTitle}
+                    onSelectModel={selectModel}
+                  />
+                  {threadId ? (
+                    <span aria-hidden="true" className="h-2.5 w-px shrink-0 bg-border/64" />
+                  ) : null}
+                  {threadId ? (
+                    <LauncherAiWorkflowAccessory
+                      key={threadId}
+                      canManageDefinitions={!isPinnedThreadSurface}
+                      threadId={threadId}
+                    />
+                  ) : null}
+                </div>
               }
               onGoToNextChat={() => {
                 void handleGoToNextChat()

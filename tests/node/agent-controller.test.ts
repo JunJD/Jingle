@@ -154,10 +154,18 @@ test("AgentController orders cancellation after an accepted run projection", asy
     const cancellation = ipcMain.invoke("agent:cancel", { threadId: "thread-1" })
     await new Promise<void>((resolve) => setImmediate(resolve))
     assert.deepEqual(events, ["prepare.started"])
+    let projectionFlushSettled = false
+    const projectionFlush = controller.flushRuntimeProjections().then(() => {
+      projectionFlushSettled = true
+    })
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    assert.equal(projectionFlushSettled, false)
 
     releasePrepare()
     assert.deepEqual(await invoke, { disposition: "run", type: "accepted" })
     await cancellation
+    await projectionFlush
+    assert.equal(projectionFlushSettled, true)
     assert.deepEqual(events, ["prepare.started", "prepare.finished", "cancelled"])
     assert.deepEqual(sender.sent.at(-1), {
       channel: "agent:command-lifecycle:message-1",
