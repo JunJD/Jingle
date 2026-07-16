@@ -1,0 +1,4 @@
+interface:
+  display_name: "Jingle Diagnostics"
+  short_description: "Check Jingle failure-graph coverage and bounded evidence"
+  default_prompt: "Use $investigate-jingle-diagnostics to check this explicit diagnostic bundle for compatible warn/error graph coverage, then inspect bounded evidence only when failure coverage exists."

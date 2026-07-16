@@ -14,6 +14,10 @@ raycast
 !.codex/agents/
 .codex/agents/*
 !.codex/agents/*.toml
+!.codex/skills/
+.codex/skills/*
+!.codex/skills/investigate-jingle-diagnostics/
+!.codex/skills/investigate-jingle-diagnostics/**
 .claude/
 .ipo/
 .x-media/

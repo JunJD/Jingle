@@ -15,7 +15,11 @@ import { NATIVE_EXTENSION_ASSET_PROTOCOL } from "./native-extensions/assets"
 import { startNativeMinimalIsland, stopNativeMinimalIsland } from "./services/native-minimal-island"
 import { stopNativeSelectionCapture } from "./services/native-selection-capture"
 import { installProcessDiagnostics } from "./diagnostics/electron-events"
-import { diagnosticsLogger } from "./diagnostics/instance"
+import {
+  diagnosticsGraph,
+  diagnosticsLogger,
+  startDiagnosticsSession
+} from "./diagnostics/instance"
 import { disposeAppEntry, installAppEntry } from "./app-entry"
 import {
   configureDevtoolsNetworkRecorder,
@@ -62,6 +66,7 @@ let settingsRendererReady = false
 let pendingOAuthCallbackUrl: string | null = null
 let shutdownComplete = false
 let shutdownPromise: Promise<void> | null = null
+const DIAGNOSTICS_SHUTDOWN_FLUSH_TIMEOUT_MS = 1_500
 const bypassSingleInstanceLock = process.env.JINGLE_BDD === "1"
 const hasSingleInstanceLock = bypassSingleInstanceLock ? true : app.requestSingleInstanceLock()
 
@@ -241,16 +246,42 @@ async function shutdownMainProcess(): Promise<void> {
   }
 
   shutdownPromise ??= (async () => {
-    stopNativeMinimalIsland()
-    stopNativeSelectionCapture()
-    disposeAppEntry()
-    await mainCompositionRoot?.dispose()
-    mainCompositionRoot = null
-    await closeRuntimeCheckpointers()
-    await closeDatabase()
-    shutdownComplete = true
+    try {
+      stopNativeMinimalIsland()
+      stopNativeSelectionCapture()
+      disposeAppEntry()
+      await mainCompositionRoot?.dispose()
+      mainCompositionRoot = null
+      await closeRuntimeCheckpointers()
+      await closeDatabase()
+      shutdownComplete = true
+    } finally {
+      await flushDiagnosticsOnShutdown()
+    }
   })()
   await shutdownPromise
+}
+
+async function flushDiagnosticsOnShutdown(): Promise<void> {
+  let timeout: NodeJS.Timeout | undefined
+  const timeoutPromise = new Promise<void>((resolve) => {
+    timeout = setTimeout(() => {
+      console.error(
+        `[Diagnostics] Shutdown flush exceeded ${DIAGNOSTICS_SHUTDOWN_FLUSH_TIMEOUT_MS}ms.`
+      )
+      resolve()
+    }, DIAGNOSTICS_SHUTDOWN_FLUSH_TIMEOUT_MS)
+    timeout.unref()
+  })
+  try {
+    await Promise.race([diagnosticsGraph.flush(), timeoutPromise])
+  } catch {
+    console.error("[Diagnostics] Shutdown flush failed.")
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout)
+    }
+  }
 }
 
 if (!hasSingleInstanceLock) {
@@ -258,6 +289,8 @@ if (!hasSingleInstanceLock) {
 }
 
 if (hasSingleInstanceLock) {
+  startDiagnosticsSession()
+
   app.on("second-instance", (_event, commandLine) => {
     const protocolUrl = findJingleProtocolUrl(commandLine)
     if (protocolUrl) {

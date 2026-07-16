@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -11,19 +11,28 @@ import {
 } from "../../src/main/diagnostics/process-errors"
 import { normalizeRendererErrorReport } from "../../src/main/diagnostics/renderer-report"
 
-function createTempLogDir(): string {
-  const dir = join(tmpdir(), `jingle-diagnostics-${Date.now()}-${Math.random()}`)
-  mkdirSync(dir, { recursive: true })
-  return dir
+function createTempLogPaths(): { logDir: string; rootDir: string } {
+  const rootDir = join(tmpdir(), `jingle-diagnostics-${Date.now()}-${Math.random()}`)
+  mkdirSync(rootDir, { recursive: true })
+  return { logDir: join(rootDir, "logs"), rootDir }
 }
 
 test("diagnostics logger writes structured local log records", async () => {
-  const logDir = createTempLogDir()
+  const { logDir, rootDir } = createTempLogPaths()
   try {
-    const logger = new DiagnosticsLogger({ logDir })
+    const logger = new DiagnosticsLogger({ logDir, rootDir })
 
-    logger.error("Renderer process gone", {
+    logger.error("Renderer reported error", {
+      appVersion: "3.2.1",
+      commandId: "command-1",
+      electronVersion: "37.2.0",
+      isPackaged: true,
+      message: "Renderer promise rejected",
+      platform: "darwin",
+      presentationId: 42,
       reason: "crashed",
+      requestId: "request-1",
+      threadId: "thread-1",
       windowKind: "main"
     })
     await logger.flush()
@@ -32,44 +41,66 @@ test("diagnostics logger writes structured local log records", async () => {
     const record = JSON.parse(line) as Record<string, unknown>
 
     assert.equal(record["level"], "error")
-    assert.equal(record["message"], "Renderer process gone")
+    assert.equal(record["message"], "Renderer reported error")
+    assert.equal(record["detailMessage"], "Renderer promise rejected")
+    assert.equal(record["threadId"], "thread-1")
+    assert.equal(record["commandId"], "command-1")
+    assert.equal(record["requestId"], "request-1")
+    assert.equal(record["presentationId"], 42)
+    assert.equal(record["appVersion"], "3.2.1")
+    assert.equal(record["electronVersion"], "37.2.0")
+    assert.equal(record["isPackaged"], true)
+    assert.equal(record["platform"], "darwin")
     assert.equal(record["reason"], "crashed")
     assert.equal(record["windowKind"], "main")
     assert.equal(typeof record["timestamp"], "string")
   } finally {
-    rmSync(logDir, { recursive: true, force: true })
+    rmSync(rootDir, { recursive: true, force: true })
   }
 })
 
 test("diagnostics logger rotates old local log files", async () => {
-  const logDir = createTempLogDir()
+  const { logDir, rootDir } = createTempLogPaths()
   try {
     const logger = new DiagnosticsLogger({
       logDir,
       maxBytes: 120,
-      maxFiles: 2
+      maxFiles: 2,
+      rootDir
     })
 
-    logger.info("first", { payload: "x".repeat(100) })
-    logger.info("second", { payload: "y".repeat(100) })
-    logger.info("third", { payload: "z".repeat(100) })
+    for (const message of ["first", "second", "third", "fourth", "fifth", "sixth"]) {
+      logger.info(message, { payload: message.repeat(40) })
+    }
     await logger.flush()
 
-    assert.equal(existsSync(logger.getLogFilePath()), true)
-    assert.equal(existsSync(`${logger.getLogFilePath()}.1`), true)
-    assert.equal(existsSync(`${logger.getLogFilePath()}.2`), true)
-    assert.equal(existsSync(`${logger.getLogFilePath()}.3`), false)
+    const currentPath = logger.getLogFilePath()
+    const rotatedPaths = [currentPath, `${currentPath}.1`, `${currentPath}.2`]
+    assert.deepEqual(
+      rotatedPaths.map((path) => {
+        const record = JSON.parse(readFileSync(path, "utf8").trim()) as { message: string }
+        return record.message
+      }),
+      ["sixth", "fifth", "fourth"]
+    )
+    assert.equal(existsSync(`${currentPath}.3`), false)
+    if (process.platform !== "win32") {
+      assert.deepEqual(
+        rotatedPaths.map((path) => statSync(path).mode & 0o777),
+        [0o600, 0o600, 0o600]
+      )
+    }
   } finally {
-    rmSync(logDir, { recursive: true, force: true })
+    rmSync(rootDir, { recursive: true, force: true })
   }
 })
 
-test("diagnostics logger writes fatal records synchronously", () => {
-  const logDir = createTempLogDir()
+test("diagnostics logger writes fatal records through the ordered queue", async () => {
+  const { logDir, rootDir } = createTempLogPaths()
   try {
-    const logger = new DiagnosticsLogger({ logDir })
+    const logger = new DiagnosticsLogger({ logDir, rootDir })
 
-    logger.errorSync("Main process fatal error", {
+    await logger.errorAndFlush("Main process fatal error", {
       error: {
         message: "boom"
       },
@@ -86,7 +117,7 @@ test("diagnostics logger writes fatal records synchronously", () => {
       message: "boom"
     })
   } finally {
-    rmSync(logDir, { recursive: true, force: true })
+    rmSync(rootDir, { recursive: true, force: true })
   }
 })
 
