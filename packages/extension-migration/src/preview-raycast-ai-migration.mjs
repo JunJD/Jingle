@@ -549,6 +549,7 @@ function normalizeInstructions(value) {
         .trim()
     )
     .filter(Boolean)
+    .map((line) => rewritePresentationText(line))
 }
 
 function mapPlatforms(platforms) {
@@ -572,9 +573,9 @@ function migrateCommandArguments(argumentsSchema) {
     // Raycast arguments have no title field; placeholder is their required display copy.
     const migratedArgument = {
       name: argument.name,
-      placeholder: argument.placeholder,
+      placeholder: rewritePresentationText(argument.placeholder),
       required: argument.required ?? false,
-      title: argument.placeholder,
+      title: rewritePresentationText(argument.placeholder),
       type: argument.type
     }
 
@@ -585,11 +586,50 @@ function migrateCommandArguments(argumentsSchema) {
     return {
       ...migratedArgument,
       data: argument.data.map((option) => ({
-        title: option.title,
+        title: rewritePresentationText(option.title),
         value: option.value
       }))
     }
   })
+}
+
+function migrateCommand(command) {
+  const commandArguments = migrateCommandArguments(command.arguments)
+
+  return {
+    arguments: commandArguments,
+    description: rewritePresentationText(command.description),
+    mode: command.mode,
+    name: command.name,
+    preferences: migratePreferences(command.preferences),
+    requiresLauncherArguments: commandArguments.length > 0,
+    runtime: buildCommandRuntimeManifestPreview(command),
+    title: rewritePresentationText(command.title)
+  }
+}
+
+function rewritePresentationText(value) {
+  if (typeof value === "string") {
+    return rewritePublicJingleCopy(value)
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([locale, text]) => [locale, rewritePublicJingleCopy(text)])
+  )
+}
+
+function rewritePresentationFields(value, fields) {
+  const rewritten = { ...value }
+  for (const field of fields) {
+    if (Object.hasOwn(value, field)) {
+      rewritten[field] = rewritePresentationText(value[field])
+    }
+  }
+  return rewritten
 }
 
 function buildManifestPreview(pkg, sourceFiles, target) {
@@ -603,53 +643,47 @@ function buildManifestPreview(pkg, sourceFiles, target) {
       .map((tool) => [
         toJingleToolName(tool.name),
         {
-          description: tool.description ?? tool.title ?? tool.name,
-          title: tool.title ?? tool.name
+          description: rewritePresentationText(tool.description ?? tool.title ?? tool.name),
+          title: rewritePresentationText(tool.title ?? tool.name)
         }
       ])
   )
 
-  return rewritePublicJingleCopy({
+  const title = rewritePresentationText(target.title)
+
+  return {
     aiCapability: {
       connectionId: "default",
-      description: pkg.description,
-      guide: buildGuide(pkg, target, connectionSecretNames),
+      description: rewritePresentationText(pkg.description),
+      guide: rewritePresentationText(buildGuide(pkg, target, connectionSecretNames)),
       id: target.extensionId,
       instructions: normalizeInstructions(pkg.ai?.instructions),
       mention: {
-        label: target.title,
+        label: title,
         value: target.extensionId
       },
       supportedPlatforms: mapPlatforms(pkg.platforms),
-      title: target.title,
+      title,
       toolDisplays,
       toolNames
     },
     capabilities: inferLauncherCapabilities(pkg),
-    commands: (pkg.commands ?? []).map((command) => ({
-      arguments: migrateCommandArguments(command.arguments),
-      description: command.description,
-      mode: command.mode,
-      name: command.name,
-      preferences: migratePreferences(command.preferences),
-      runtime: buildCommandRuntimeManifestPreview(command),
-      title: command.title
-    })),
+    commands: (pkg.commands ?? []).map((command) => migrateCommand(command)),
     connection: {
       auth: buildConnectionAuthPreview(connectionSecretNames),
       id: "default",
       provider: pkg.name,
-      title: target.title
+      title
     },
-    description: pkg.description,
+    description: rewritePresentationText(pkg.description),
     icon: pkg.icon ? `assets/${pkg.icon}` : undefined,
     name: target.extensionId,
     preferences: migratedPreferences,
     runtimeCapabilities: inferRuntimeCapabilities(sourceFiles),
     runtimeShell: inferRuntimeShell(sourceFiles),
     supportedPlatforms: mapPlatforms(pkg.platforms),
-    title: target.title
-  })
+    title
+  }
 }
 
 function buildCommandRuntimeManifestPreview(command) {
@@ -773,7 +807,17 @@ function migratePreferences(preferences) {
 }
 
 function migratePreference(preference) {
-  let migratedPreference = preference
+  let migratedPreference = rewritePresentationFields(preference, [
+    "description",
+    "label",
+    "placeholder",
+    "title"
+  ])
+  if (Array.isArray(preference.data)) {
+    migratedPreference.data = preference.data.map((option) =>
+      rewritePresentationFields(option, ["title"])
+    )
+  }
 
   if (migratedPreference.type !== "appPicker") {
     return migratedPreference

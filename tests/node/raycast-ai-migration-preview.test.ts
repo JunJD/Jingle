@@ -306,6 +306,11 @@ test("Raycast migration shell host entry keeps no-view commands in runtime metad
     const runtimeSource = String(artifacts["jingle-package/runtime.ts"])
 
     assert.match(manifestSource, /"name": "quick-add-reminder"/)
+    assert.equal(
+      preview.manifestPreview.commands.find((command) => command.name === "quick-add-reminder")
+        ?.requiresLauncherArguments,
+      false
+    )
     assert.match(runtimeMetadataSource, /"name": "quick-add-reminder"/)
     assert.match(runtimeSource, /"quick-add-reminder": \{\n\s+mode: "no-view"/)
     assert.match(runtimeSource, /not wired into the Jingle runtime/)
@@ -496,16 +501,16 @@ test("Raycast migration preview reports dependency decisions and unsupported API
                 {
                   data: [
                     {
-                      title: "Pages",
-                      value: "pages"
+                      title: "Raycast Pro",
+                      value: "raycast-pro"
                     },
                     {
                       title: "Databases",
                       value: "databases"
                     }
                   ],
-                  name: "scope",
-                  placeholder: "Search Scope",
+                  name: "target-raycast",
+                  placeholder: "Search Scope in Raycast",
                   type: "dropdown"
                 }
               ],
@@ -719,18 +724,18 @@ test("Raycast migration preview reports dependency decisions and unsupported API
       {
         data: [
           {
-            title: "Pages",
-            value: "pages"
+            title: "Jingle Pro",
+            value: "raycast-pro"
           },
           {
             title: "Databases",
             value: "databases"
           }
         ],
-        name: "scope",
-        placeholder: "Search Scope",
+        name: "target-raycast",
+        placeholder: "Search Scope in Jingle",
         required: false,
-        title: "Search Scope",
+        title: "Search Scope in Jingle",
         type: "dropdown"
       }
     ]
@@ -738,6 +743,10 @@ test("Raycast migration preview reports dependency decisions and unsupported API
     assert.deepEqual(
       packagePreview.manifestPreview.commands[0]?.arguments,
       expectedCommandArguments
+    )
+    assert.equal(
+      packagePreview.manifestPreview.commands[0]?.requiresLauncherArguments,
+      true
     )
     assert.doesNotThrow(() =>
       validateNativeExtensionPackageManifest(packagePreview.manifestPreview)
@@ -980,7 +989,8 @@ test("Raycast migration preview reports dependency decisions and unsupported API
     assert.deepEqual(manifestPatch.runtimeShell, { allowedUrlSchemes: ["notion"] })
     assert.deepEqual(manifestPatch.commands[0]?.arguments, expectedCommandArguments)
     assert.deepEqual(manifestPatch.commands[0]?.runtime, { viewport: { bodyHeight: 520 } })
-    assert.deepEqual(manifestPatch.commands[0]?.preferences[0]?.default, "jingle")
+    assert.equal(manifestPatch.commands[0]?.requiresLauncherArguments, true)
+    assert.deepEqual(manifestPatch.commands[0]?.preferences[0]?.default, "raycast")
     assert.deepEqual(manifestPatch.commands[0]?.preferences[0]?.data, [
       {
         title: "Open in Notion",
@@ -988,7 +998,7 @@ test("Raycast migration preview reports dependency decisions and unsupported API
       },
       {
         title: "Preview in Jingle",
-        value: "jingle"
+        value: "raycast"
       }
     ])
     assert.deepEqual(manifestPatch.aiCapability.instructions, ["Search before retrieving pages."])
@@ -1069,7 +1079,9 @@ test("Raycast migration preview reports dependency decisions and unsupported API
     )
     assert.match(jingleManifest, /"viewport": searchPageViewport/)
     assert.doesNotMatch(jingleManifest, /@raycast\/api|@raycast\/utils/)
-    assert.doesNotMatch(jingleManifest, /Raycast|raycast/)
+    assert.match(jingleManifest, /"title": "Jingle Pro"/)
+    assert.match(jingleManifest, /"name": "target-raycast"/)
+    assert.match(jingleManifest, /"value": "raycast-pro"/)
     const jingleTools = await readFile(
       join(artifactDir, "jingle-package", "main", "tools.ts"),
       "utf8"
