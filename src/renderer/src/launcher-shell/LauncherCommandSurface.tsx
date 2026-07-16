@@ -152,6 +152,7 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
 
   if (
     activeCommandHostReady &&
+    activeCommandArguments !== null &&
     commandNeedsLauncherArguments({
       argumentsSchema: activeCommandArguments,
       requiresLauncherArguments: activeCommandRequiresLauncherArguments,
@@ -160,8 +161,9 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
   ) {
     return (
       <LauncherCommandArgumentsPage
-        argumentsSchema={activeCommandArguments ?? []}
+        argumentsProjection={activeCommandArguments}
         commandTitle={activeCommandErrorTitle}
+        key={`${route.kind}:${route.commandName}`}
         locale={locale}
         onBack={closeActivePlugin}
         onSubmit={(options) => openCommand(route, options)}

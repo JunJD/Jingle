@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { ExtensionRuntimeToastRequestEvent } from "@shared/extension-runtime-protocol"
 import type { LauncherShellConfig } from "@shared/launcher"
-import type {
-  LauncherCommandArgumentManifest,
-  LauncherCommandOwnerCapability
-} from "@shared/launcher-command-owner"
+import type { LauncherCommandOwnerCapability } from "@shared/launcher-command-owner"
 import { resolveLocalizedText, type AppLocale } from "@shared/i18n"
 import { getLauncherCommandDefinition, getLauncherCommandOwnerId } from "../pages"
 import { commandNeedsLauncherArguments } from "../command-arguments"
+import {
+  projectLauncherCommandArguments,
+  type LauncherCommandArgumentProjection
+} from "../command-argument-projection"
 import type {
   LauncherCommandAddress,
   LauncherCommandOpenOptions,
@@ -49,7 +50,7 @@ interface CommandPreferencesState {
 
 export interface ActiveLauncherCommandState {
   activeBuiltInCommand: boolean
-  activeCommandArguments: readonly LauncherCommandArgumentManifest[] | null
+  activeCommandArguments: readonly LauncherCommandArgumentProjection[] | null
   activeCommandCapabilities: readonly LauncherCommandOwnerCapability[] | null
   activeCommandClipboardEnabled: boolean
   activeCommandError: string | null
@@ -149,8 +150,11 @@ export function useActiveLauncherCommand(
   const activeCommandErrorTitle = isLauncherCommandRoute(route)
     ? resolveLocalizedText(activeManifestCommand?.title, locale, route.commandName)
     : "Command"
-  const activeCommandArguments = activeCommand?.arguments ?? null
-  const activeCommandRequiresLauncherArguments = activeCommand?.requiresLauncherArguments === true
+  const activeCommandArguments = activeManifestCommand?.arguments
+    ? projectLauncherCommandArguments(activeManifestCommand.arguments, locale)
+    : null
+  const activeCommandRequiresLauncherArguments =
+    activeManifestCommand?.requiresLauncherArguments === true
   const viewportHeight = !isLauncherCommandRoute(route)
     ? fallbackViewportHeight
     : (activeViewCommand?.getViewportHeight(shellConfig) ?? fallbackViewportHeight)

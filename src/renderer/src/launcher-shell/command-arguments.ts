@@ -1,4 +1,3 @@
-import type { LauncherCommandArgumentManifest } from "@shared/launcher-command-owner"
 import type { LauncherCommandRoute } from "./pages/types"
 
 function hasRouteArguments(route: LauncherCommandRoute): boolean {
@@ -6,7 +5,7 @@ function hasRouteArguments(route: LauncherCommandRoute): boolean {
 }
 
 export function commandNeedsLauncherArguments(input: {
-  argumentsSchema: readonly LauncherCommandArgumentManifest[] | undefined | null
+  argumentsSchema: readonly unknown[] | undefined | null
   requiresLauncherArguments: boolean
   route: LauncherCommandRoute
 }): boolean {

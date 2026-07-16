@@ -6,7 +6,6 @@ import type {
 import type { AppLocale } from "@shared/i18n"
 import type { LauncherShellConfig } from "@shared/launcher"
 import type {
-  LauncherCommandArgumentManifest,
   LauncherCommandMode as SharedLauncherCommandMode,
   LauncherCommandOwnerManifest as SharedLauncherCommandOwnerManifest
 } from "@shared/launcher-command-owner"
@@ -109,7 +108,6 @@ export type LauncherCommandOwnerManifest = SharedLauncherCommandOwnerManifest<
 export type LauncherCommandMode = SharedLauncherCommandMode
 
 interface LauncherCommandSearchDefinition {
-  arguments?: LauncherCommandArgumentManifest[]
   buildIntentItems?: (params: {
     copy: AppCopy
     locale: AppLocale
@@ -117,7 +115,6 @@ interface LauncherCommandSearchDefinition {
   }) => LauncherCommandIntent[]
   commandName: LauncherCommandName
   loadCommandPreferences?: () => Promise<Record<string, unknown>>
-  requiresLauncherArguments?: boolean
   requiresSearchArgument?: boolean
   validateCommandPreferences?: (
     preferences: Record<string, unknown>,

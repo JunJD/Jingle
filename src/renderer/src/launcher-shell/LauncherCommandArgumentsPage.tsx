@@ -2,46 +2,37 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ArrowLeft } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { useLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
-import { resolveLocalizedText, type AppLocale } from "@shared/i18n"
-import type { LauncherCommandArgumentManifest } from "@shared/launcher-command-owner"
+import type { AppLocale } from "@shared/i18n"
 import type { LauncherShellConfig } from "@shared/launcher"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import { LauncherChrome } from "@launcher-components/LauncherChrome"
+import type { LauncherCommandArgumentProjection } from "./command-argument-projection"
 import type { LauncherInputElement } from "./input-element"
 import type { LauncherCommandOpenOptions, LauncherCommandRoute } from "./pages/types"
 
 type ArgumentInputElement = HTMLInputElement | HTMLSelectElement
 
-function getArgumentLabel(argument: LauncherCommandArgumentManifest, locale: AppLocale): string {
-  return resolveLocalizedText(argument.title ?? argument.placeholder, locale, argument.name)
-}
-
-function getInitialArgumentValue(argument: LauncherCommandArgumentManifest): string {
-  if (argument.type === "dropdown") {
-    return String(argument.data?.[0]?.value ?? "")
-  }
-
-  return ""
-}
-
 function buildInitialArguments(
-  argumentsSchema: readonly LauncherCommandArgumentManifest[]
+  argumentsProjection: readonly LauncherCommandArgumentProjection[]
 ): Record<string, string> {
   return Object.fromEntries(
-    argumentsSchema.map((argument) => [argument.name, getInitialArgumentValue(argument)])
+    argumentsProjection.map((argument) => [argument.name, argument.initialValue])
   )
 }
 
-function resolveArgumentInputType(argument: LauncherCommandArgumentManifest): string {
-  return argument.type === "password" ? "password" : "text"
+function getArgumentValue(values: Record<string, string>, name: string): string {
+  if (!Object.hasOwn(values, name)) {
+    throw new Error(`Launcher command argument "${name}" has no draft value`)
+  }
+  return values[name]
 }
 
 function validateRequiredArguments(input: {
-  argumentsSchema: readonly LauncherCommandArgumentManifest[]
+  argumentsProjection: readonly LauncherCommandArgumentProjection[]
   values: Record<string, string>
 }): string | null {
-  for (const argument of input.argumentsSchema) {
-    if (argument.required && !input.values[argument.name]?.trim()) {
+  for (const argument of input.argumentsProjection) {
+    if (argument.required && getArgumentValue(input.values, argument.name).trim().length === 0) {
       return argument.name
     }
   }
@@ -73,7 +64,7 @@ function getCommandArgumentsCopy(locale: AppLocale): {
 }
 
 export function LauncherCommandArgumentsPage(props: {
-  argumentsSchema: readonly LauncherCommandArgumentManifest[]
+  argumentsProjection: readonly LauncherCommandArgumentProjection[]
   commandTitle: string
   locale: AppLocale
   onBack: () => void
@@ -82,7 +73,7 @@ export function LauncherCommandArgumentsPage(props: {
   shellConfig: LauncherShellConfig
 }): React.JSX.Element {
   const {
-    argumentsSchema,
+    argumentsProjection,
     commandTitle,
     locale,
     onBack,
@@ -93,7 +84,7 @@ export function LauncherCommandArgumentsPage(props: {
   const firstInputRef = useRef<ArgumentInputElement | null>(null)
   const launcherInputRef = useRef<LauncherInputElement | null>(null)
   const [values, setValues] = useState<Record<string, string>>(() =>
-    buildInitialArguments(argumentsSchema)
+    buildInitialArguments(argumentsProjection)
   )
   const [invalidArgumentName, setInvalidArgumentName] = useState<string | null>(null)
   const copy = getCommandArgumentsCopy(locale)
@@ -116,7 +107,7 @@ export function LauncherCommandArgumentsPage(props: {
   }, [])
 
   const submit = useCallback((): void => {
-    const invalidName = validateRequiredArguments({ argumentsSchema, values })
+    const invalidName = validateRequiredArguments({ argumentsProjection, values })
     if (invalidName) {
       setInvalidArgumentName(invalidName)
       return
@@ -130,7 +121,7 @@ export function LauncherCommandArgumentsPage(props: {
       },
       seedQuery: route.seedQuery
     })
-  }, [argumentsSchema, onSubmit, route.initialAction, route.launchProps, route.seedQuery, values])
+  }, [argumentsProjection, onSubmit, route.initialAction, route.launchProps, route.seedQuery, values])
   return (
     <LauncherChrome
       footer={
@@ -186,20 +177,19 @@ export function LauncherCommandArgumentsPage(props: {
           submit()
         }}
       >
-        {argumentsSchema.map((argument, index) => {
-          const label = getArgumentLabel(argument, locale)
-          const placeholder = resolveLocalizedText(argument.placeholder, locale, "")
+        {argumentsProjection.map((argument, index) => {
           const isInvalid = invalidArgumentName === argument.name
+          const value = getArgumentValue(values, argument.name)
 
           return (
             <label className="launcher-command-argument-field" key={argument.name}>
               <span className="launcher-command-argument-label">
-                <span>{label}</span>
+                <span>{argument.label}</span>
                 {argument.required ? (
                   <span className="launcher-command-argument-required">{copy.required}</span>
                 ) : null}
               </span>
-              {argument.type === "dropdown" ? (
+              {argument.control === "select" ? (
                 <select
                   ref={(element) => {
                     if (index === 0) {
@@ -207,12 +197,12 @@ export function LauncherCommandArgumentsPage(props: {
                     }
                   }}
                   className="launcher-command-argument-control"
-                  value={values[argument.name] ?? ""}
+                  value={value}
                   onChange={(event) => setValue(argument.name, event.target.value)}
                 >
-                  {(argument.data ?? []).map((item) => (
-                    <option key={item.value ?? ""} value={item.value ?? ""}>
-                      {resolveLocalizedText(item.title, locale, item.value ?? "")}
+                  {argument.options.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
                     </option>
                   ))}
                 </select>
@@ -225,9 +215,9 @@ export function LauncherCommandArgumentsPage(props: {
                   }}
                   aria-invalid={isInvalid ? true : undefined}
                   className="launcher-command-argument-control"
-                  placeholder={placeholder}
-                  type={resolveArgumentInputType(argument)}
-                  value={values[argument.name] ?? ""}
+                  placeholder={argument.placeholder}
+                  type={argument.inputType}
+                  value={value}
                   onChange={(event) => setValue(argument.name, event.target.value)}
                 />
               )}

@@ -416,12 +416,10 @@ export function buildNativeLauncherCommandOwners(
           return {
             buildIntentItems,
             Component: RuntimeExtensionCommandSurface,
-            arguments: command.arguments,
             commandName: command.name,
             getViewportHeight: getViewportHeight(command.runtime.viewport),
             loadCommandPreferences,
             mode: "view" as const,
-            requiresLauncherArguments: command.requiresLauncherArguments === true,
             requiresSearchArgument: hasSearchArguments(command),
             validateCommandPreferences
           }
@@ -429,11 +427,9 @@ export function buildNativeLauncherCommandOwners(
 
         return {
           buildIntentItems,
-          arguments: command.arguments,
           commandName: command.name,
           loadCommandPreferences,
           mode: "no-view" as const,
-          requiresLauncherArguments: command.requiresLauncherArguments === true,
           requiresSearchArgument: hasSearchArguments(command),
           validateCommandPreferences,
           run: async (context) => {
