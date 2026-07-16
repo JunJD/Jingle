@@ -57,6 +57,8 @@ import type { ComposerAreaHandle, ComposerAreaProps } from "./types"
 
 const COMPOSER_AREA_SYNC_TAG = "composer-area-sync"
 const REFERENCE_NODE_SELECTED_CLASS = "jingle-composer-reference--selected"
+const EMPTY_SOURCE_MENTIONS: ExtensionSourceMention[] = []
+const EMPTY_WORKSPACE_FILE_MENTIONS: NonNullable<ComposerAreaProps["workspaceFileMentions"]> = []
 
 function $isComposerReferenceNode(node: LexicalNode | null | undefined): boolean {
   return $isExtensionSourceReferenceNode(node) || $isFileReferenceNode(node)
@@ -499,8 +501,8 @@ export function ComposerArea(props: ComposerAreaProps): React.JSX.Element {
     onValueChange,
     placeholder,
     ref,
-    sourceMentions = [],
-    workspaceFileMentions = [],
+    sourceMentions = EMPTY_SOURCE_MENTIONS,
+    workspaceFileMentions = EMPTY_WORKSPACE_FILE_MENTIONS,
     workspaceFileSearchEnabled = false,
     workspaceFileSearchIncomplete = false,
     workspaceFileSearchInProgress = false,
