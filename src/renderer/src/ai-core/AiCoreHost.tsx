@@ -12,6 +12,7 @@ import type { LauncherSelectionContextSnapshot } from "@shared/launcher-selectio
 import type { LauncherShellConfig } from "@shared/launcher"
 import type { PermissionModeName } from "@shared/permission-mode"
 import type { ThreadWorkspaceKind } from "@shared/thread-workspace"
+import type { ThreadWorkflowCreateInput } from "@shared/thread-workflow"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 import type { LauncherInputElement } from "@launcher-shell/input-element"
 import type { ComposerAreaHandle } from "@/composer-area"
@@ -43,6 +44,7 @@ export interface AiCoreThreadCreateInput {
   source: string
   title: string
   visibility: string
+  workflow?: ThreadWorkflowCreateInput
   workspaceKind?: ThreadWorkspaceKind
   workspacePath?: string
 }

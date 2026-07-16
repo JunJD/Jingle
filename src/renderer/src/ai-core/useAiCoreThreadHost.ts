@@ -59,6 +59,7 @@ export function useAiCoreThreadHost(
           title: input.title,
           visibility: input.visibility
         },
+        workflow: input.workflow,
         workspaceKind: input.workspaceKind ?? "projectless",
         workspacePath: workspacePathResult
       })

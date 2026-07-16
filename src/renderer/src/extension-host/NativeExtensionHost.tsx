@@ -67,7 +67,10 @@ export interface NativeExtensionHostValue {
   navigation?: LauncherCommandNavigation
   seedQuery: string
   surface?: NativeExtensionSurface
-  runBotAgent?: (input: ExtensionRunBotAgentPayload) => Promise<unknown>
+  runBotAgent?: (
+    input: ExtensionRunBotAgentPayload,
+    context: { signal: AbortSignal }
+  ) => Promise<unknown>
   threads?: {
     create: (input: NativeExtensionThreadCreateInput) => Promise<NativeExtensionThreadHandle>
     submit: (input: NativeExtensionThreadSubmitInput) => Promise<void>

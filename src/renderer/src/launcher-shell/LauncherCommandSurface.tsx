@@ -10,10 +10,13 @@ import {
   AI_THREAD_SOURCE,
   AI_THREAD_VISIBILITY
 } from "@shared/launcher-ai"
-import type { ExtensionRunBotAgentPayload } from "@shared/extension-runtime-protocol"
 import type { PermissionModeName } from "@shared/permission-mode"
 import type { ThreadWorkspaceKind } from "@shared/thread-workspace"
+import type { ThreadWorkflowCreateInput } from "@shared/thread-workflow"
 import { useI18n } from "@/lib/i18n"
+import { LauncherRunBotAgentConfirmation } from "@/features/run-bot-agent/LauncherRunBotAgentConfirmation"
+import { projectRunBotAgentPrompt } from "@/features/run-bot-agent/run-bot-agent-projection"
+import { useRunBotAgentConfirmationController } from "@/features/run-bot-agent/use-run-bot-agent-confirmation-controller"
 import type { Thread } from "@/types"
 import { deriveLauncherCommandOwnerClipboardContext } from "@shared/clipboard-derivations"
 import type { LauncherClipboardState } from "./LauncherClipboardContext"
@@ -37,6 +40,7 @@ interface LauncherThreadCreateInput {
   source: string
   title: string
   visibility: string
+  workflow?: ThreadWorkflowCreateInput
   workspaceKind?: ThreadWorkspaceKind
   workspacePath?: string
 }
@@ -76,62 +80,6 @@ interface LauncherCommandSurfaceProps {
   setPluginInputStatus: (status: LauncherInputStatus) => void
   shownSequence: number
   submitPluginThread: (input: LauncherThreadSubmitInput) => Promise<void>
-}
-
-function formatRunBotAgentPrompt(input: ExtensionRunBotAgentPayload): string {
-  const lines = [
-    input.prompt.objective,
-    "",
-    "Context:",
-    `- Title: ${input.title}`
-  ]
-
-  if (input.sourceRef) {
-    lines.push(
-      `- Source: ${input.sourceRef.label}${
-        input.sourceRef.url ? ` (${input.sourceRef.url})` : ""
-      }`
-    )
-  }
-
-  const status = input.workflow?.status
-  const labels = input.workflow?.labels
-  if (status || labels?.length) {
-    lines.push(
-      `- Work classification: ${[
-        status ? `status=${status}` : null,
-        labels?.length
-          ? `labels=${labels
-              .map((label) =>
-                label.value === undefined ? label.key : `${label.key}=${label.value}`
-              )
-              .join(", ")}`
-          : null
-      ]
-        .filter(Boolean)
-        .join("; ")}`
-    )
-  }
-
-  if (input.prompt.contextRefs?.length) {
-    lines.push("", "References:")
-    for (const ref of input.prompt.contextRefs) {
-      lines.push(`- ${ref.label}${ref.url ? `: ${ref.url}` : ""}`)
-    }
-  }
-
-  if (input.prompt.skillRefs?.length) {
-    lines.push("", `Skills: ${input.prompt.skillRefs.join(", ")}`)
-  }
-
-  if (input.prompt.instructions?.length) {
-    lines.push("", "Instructions:")
-    for (const instruction of input.prompt.instructions) {
-      lines.push(`- ${instruction}`)
-    }
-  }
-
-  return lines.join("\n").trim()
 }
 
 /**
@@ -176,6 +124,7 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
     activeViewCommand,
     viewportHeight
   } = commandState
+  const runBotAgentConfirmation = useRunBotAgentConfirmationController()
   const ActivePluginComponent = activeViewCommand?.Component ?? null
   const nativeExtensionInputRef = pluginInputRef as React.RefObject<LauncherInputElement | null>
   const builtInSurfaceShellConfig =
@@ -264,16 +213,21 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
               }
             : undefined,
           seedQuery: route.seedQuery,
-          runBotAgent: async (input) => {
+          runBotAgent: async (input, context) => {
+            const prompt = projectRunBotAgentPrompt(input)
+            const selection = await runBotAgentConfirmation.confirmRunBotAgent(input, context)
+            context.signal.throwIfAborted()
             const createdThread = await createPluginThread({
               source: AI_THREAD_SOURCE,
               title: input.title,
               visibility: AI_THREAD_VISIBILITY,
-              workspaceKind: "projectless"
+              workflow: selection.workflow,
+              workspaceKind: "project",
+              workspacePath: selection.workspacePath
             })
             await activatePluginThread(createdThread.threadId)
             await submitPluginThread({
-              message: formatRunBotAgentPrompt(input),
+              message: prompt,
               threadId: createdThread.threadId
             })
             openCommand(
@@ -308,6 +262,13 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
             : undefined
         }}
       >
+        <LauncherRunBotAgentConfirmation
+          onAddProject={runBotAgentConfirmation.addProject}
+          onCancel={runBotAgentConfirmation.cancelConfirmation}
+          onConfirm={runBotAgentConfirmation.confirmSelection}
+          onSelectProject={runBotAgentConfirmation.selectProject}
+          projection={runBotAgentConfirmation.projection}
+        />
         <Suspense fallback={<div aria-busy="true" className="h-full w-full" />}>
           <ActivePluginComponent
             key={`${route.kind}:${route.extensionName}:${route.commandName}:${route.initialAction}:${JSON.stringify(route.launchProps ?? {})}`}

@@ -306,6 +306,24 @@ export interface AppCopy {
     writeLinesToFile: (count: number, fileName: string) => string
     matchesInFiles: (matchCount: number, fileCount: number) => string
   }
+  runBotAgent: {
+    addProject: string
+    cancel: string
+    cancelledError: string
+    concurrentError: string
+    confirm: string
+    defaultStatus: string
+    invalidLabelTypes: (labels: string) => string
+    labels: string
+    missingLabels: (labels: string) => string
+    missingStatus: (status: string) => string
+    noLabels: string
+    noProjects: string
+    project: string
+    source: string
+    status: string
+    title: string
+  }
 }
 
 export const appCopy: Record<AppLocale, AppCopy> = {
@@ -640,6 +658,24 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       upcomingChanges: "即将变更",
       writeLinesToFile: (count, fileName) => `向 ${fileName} 写入 ${count} 行`
     },
+    runBotAgent: {
+      addProject: "添加项目",
+      cancel: "取消",
+      cancelledError: "Agent 启动请求已取消。",
+      concurrentError: "已有一个 Agent 启动请求正在等待确认。",
+      confirm: "启动 Agent",
+      defaultStatus: "项目默认状态",
+      invalidLabelTypes: (labels) => `以下标签不是文本类型，无法由扩展设置：${labels}`,
+      labels: "标签",
+      missingLabels: (labels) => `项目中缺少以下标签：${labels}`,
+      missingStatus: (status) => `项目中没有状态「${status}」。`,
+      noLabels: "无",
+      noProjects: "还没有可用项目",
+      project: "项目",
+      source: "来源",
+      status: "状态",
+      title: "确认启动 Agent"
+    }
   },
   "en-US": {
     app: {
@@ -979,5 +1015,24 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       upcomingChanges: "Upcoming changes",
       writeLinesToFile: (count, fileName) => `Writing ${count} lines to ${fileName}`
     },
+    runBotAgent: {
+      addProject: "Add project",
+      cancel: "Cancel",
+      cancelledError: "The Agent launch request was cancelled.",
+      concurrentError: "Another Agent launch request is already awaiting confirmation.",
+      confirm: "Launch Agent",
+      defaultStatus: "Project default",
+      invalidLabelTypes: (labels) =>
+        `These labels are not text labels and cannot be set by the extension: ${labels}`,
+      labels: "Labels",
+      missingLabels: (labels) => `The project does not define these labels: ${labels}`,
+      missingStatus: (status) => `The project does not define status “${status}”.`,
+      noLabels: "None",
+      noProjects: "No projects available",
+      project: "Project",
+      source: "Source",
+      status: "Status",
+      title: "Confirm Agent launch"
+    }
   }
 }

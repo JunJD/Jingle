@@ -2,6 +2,7 @@ import {
   createElement,
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -28,6 +29,7 @@ import type {
   ExtensionFormDropdownFieldNode,
   ExtensionFormSurfaceSnapshot,
   ExtensionListSurfaceSnapshot,
+  ExtensionRuntimeRunBotAgentRequestEvent,
   ExtensionSurfaceSnapshot,
   ExtensionSvgVisualNode,
   ExtensionVisualNode
@@ -67,6 +69,7 @@ import {
 } from "./runtime-extension-controller"
 import { RuntimeToastOverlay } from "./runtime-toast-overlay"
 import { resolveRuntimeVisualImageSource } from "./runtime-visual-assets"
+import { RuntimeRunBotAgentRequestLifecycle } from "./run-bot-agent-request-lifecycle"
 
 const RUNTIME_LIST_SHORTCUT_SCOPES = ["launcher.list"] as const
 const streamdownPlugins = { cjk, code, math, mermaid }
@@ -707,6 +710,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     host,
     navigation: hostNavigation
   })
+  const [runBotAgentRequests] = useState(() => new RuntimeRunBotAgentRequestLifecycle())
   const [selectedIndex, setSelectedIndex] = useState(0)
 
   const snapshot = controller.runtimeState.snapshot
@@ -815,19 +819,26 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   )
   useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.listMoveSelectionUp, handleMoveSelectionUpShortcut)
 
-  useEffect(() => {
-    return window.api.extensionRuntime.subscribeRunBotAgentRequests((event) => {
+  const handleRunBotAgentRequest = useEffectEvent(
+    (event: ExtensionRuntimeRunBotAgentRequestEvent): void => {
       if (event.sessionId !== activeSessionIdRef.current) {
         return
       }
 
+      const request = runBotAgentRequests.begin(event.sessionId, event.request.id)
       void Promise.resolve()
         .then(async () => {
           if (!host.runBotAgent) {
             throw new Error("RunBotAgent host is not configured.")
           }
 
-          const result = await host.runBotAgent(event.request.payload)
+          const result = await host.runBotAgent(event.request.payload, {
+            signal: request.signal
+          })
+          request.signal.throwIfAborted()
+          if (!runBotAgentRequests.isCurrent(request)) {
+            return
+          }
           await completeRuntimeRunBotAgentRequest({
             ok: true,
             requestId: event.request.id,
@@ -835,19 +846,47 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
             sessionId: event.sessionId
           })
         })
-        .catch((error) => {
-          void completeRuntimeRunBotAgentRequest({
-            error: {
-              code: "run_bot_agent_failed",
-              message: getRuntimeRequestErrorMessage(error)
-            },
-            ok: false,
-            requestId: event.request.id,
-            sessionId: event.sessionId
-          })
+        .catch(async (error) => {
+          if (!runBotAgentRequests.isCurrent(request)) {
+            return
+          }
+          try {
+            await completeRuntimeRunBotAgentRequest({
+              error: {
+                code: "run_bot_agent_failed",
+                message: getRuntimeRequestErrorMessage(error)
+              },
+              ok: false,
+              requestId: event.request.id,
+              sessionId: event.sessionId
+            })
+          } catch (completionError) {
+            console.error("[ExtensionRuntime] Failed to complete RunBotAgent request.", {
+              completionError,
+              requestId: event.request.id,
+              sessionId: event.sessionId
+            })
+          }
         })
-    })
-  }, [host])
+        .finally(() => runBotAgentRequests.release(request))
+    }
+  )
+
+  useEffect(() => {
+    runBotAgentRequests.syncSession(
+      controller.runtimeState.sessionId,
+      controller.surfaceError !== null
+    )
+  }, [controller.runtimeState.sessionId, controller.surfaceError, runBotAgentRequests])
+
+  useEffect(() => {
+    const unsubscribe =
+      window.api.extensionRuntime.subscribeRunBotAgentRequests(handleRunBotAgentRequest)
+    return () => {
+      unsubscribe()
+      runBotAgentRequests.dispose()
+    }
+  }, [runBotAgentRequests])
 
   const handleInputChange = (value: string): void => {
     setSelectedIndex(0)
