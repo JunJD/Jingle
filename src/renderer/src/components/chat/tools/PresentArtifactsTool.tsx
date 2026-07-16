@@ -2,6 +2,7 @@ import { useMemo } from "react"
 import { ArrowUpRight, PackageOpen } from "lucide-react"
 import type { ArtifactRecord } from "@shared/artifacts"
 import { CodeBlock } from "@/components/ui/code-block"
+import { artifactRendererCommands } from "@/lib/artifact-renderer-commands"
 import { useThreadSelector } from "@/lib/thread-context"
 import { cn } from "@/lib/utils"
 import { defineToolComponent } from "./registry-core"
@@ -50,14 +51,6 @@ function isPresentedArtifactOpenable(artifact: ArtifactRecord): boolean {
   return artifact.source.type !== "inline-text"
 }
 
-async function openPresentedArtifact(artifact: ArtifactRecord): Promise<void> {
-  const resolution = await window.api.artifacts.open(artifact.id)
-
-  if (resolution.type === "copy-link") {
-    await navigator.clipboard.writeText(resolution.value)
-  }
-}
-
 export function PresentArtifactsDetail(
   props: Pick<ToolComponentProps, "copy" | "rawResult" | "threadId" | "toolCall">
 ): React.JSX.Element {
@@ -100,7 +93,7 @@ export function PresentArtifactsDetail(
                       return
                     }
 
-                    void openPresentedArtifact(artifact)
+                    void artifactRendererCommands.openArtifact(artifact.id)
                   }}
                   type="button"
                 >

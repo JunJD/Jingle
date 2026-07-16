@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import type { ArtifactRecord } from "@shared/artifacts"
+import { artifactRendererCommands } from "@/lib/artifact-renderer-commands"
 import type { LauncherImageArtifact } from "./launcher-ai-artifact-projection"
 
 export type LauncherArtifactImagePreviewState =
@@ -11,11 +12,7 @@ export function useLauncherAiArtifactController(): {
   openArtifact: (artifact: ArtifactRecord) => Promise<void>
 } {
   const openArtifact = useCallback(async (artifact: ArtifactRecord): Promise<void> => {
-    const resolution = await window.api.artifacts.open(artifact.id)
-
-    if (resolution.type === "copy-link") {
-      await navigator.clipboard.writeText(resolution.value)
-    }
+    await artifactRendererCommands.openArtifact(artifact.id)
   }, [])
 
   return { openArtifact }
