@@ -9,6 +9,7 @@ import {
 import type { ExtensionSourceMention } from "@shared/extension-sources"
 import {
   parseExtensionSourceTextForViewer as parseExtensionSourceTextForViewerModel,
+  projectExtensionSourceChip,
   type ExtensionSourceToken
 } from "./extension-source-text-viewer-model"
 
@@ -41,30 +42,26 @@ function getWorkspaceFileName(path: string): string {
 }
 
 function ExtensionSourceChip(props: {
-  sourceMentions: ExtensionSourceMention[]
+  sourceMentions: readonly ExtensionSourceMention[]
   token: ParsedExtensionSourceReference
 }): React.JSX.Element {
   const { sourceMentions, token } = props
-  const sourceMention = sourceMentions.find(
-    (mention) =>
-      mention.extensionName === token.extensionName && mention.sourceId === token.sourceId
-  )
-  const label = sourceMention ? `@${sourceMention.value}` : token.label
-  const title = sourceMention?.label ?? `${token.extensionName}/${token.sourceId}`
+  const projection = projectExtensionSourceChip({ sourceMentions, token })
 
   return (
     <span
       className="inline-flex h-[20px] max-w-full items-center gap-[4px] whitespace-nowrap rounded-[4px] px-[4px] align-top text-foreground"
-      title={title}
+      data-extension-source-status={projection.status}
+      title={projection.title}
     >
       <ExtensionIcon
         className="size-[14px] shrink-0 text-muted-foreground"
-        extensionName={token.extensionName}
-        icon={sourceMention?.icon}
-        iconName={sourceMention?.iconName}
+        extensionName={projection.extensionName}
+        icon={projection.icon}
+        iconName={projection.iconName}
       />
       <span className="box-border block h-[20px] min-w-0 max-w-full truncate border-b border-border-emphasis [border-bottom-width:0.5px] [font-size:14px] font-semibold leading-[20px] tracking-normal">
-        {label}
+        {projection.label}
       </span>
     </span>
   )
