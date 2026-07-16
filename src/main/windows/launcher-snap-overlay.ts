@@ -52,18 +52,32 @@ function getSnapOverlayWindow(): BrowserWindow {
     }
   })
   snapOverlayWindow.setIgnoreMouseEvents(true, { forward: true })
-  snapOverlayWindow.webContents.on("did-finish-load", () => {
+  const overlayWindow = snapOverlayWindow
+  overlayWindow.webContents.once("did-finish-load", () => {
+    if (snapOverlayWindow !== overlayWindow || overlayWindow.isDestroyed()) {
+      return
+    }
+
     snapOverlayReady = true
     applyPendingGuideLines()
   })
-  snapOverlayWindow.on("closed", () => {
-    snapOverlayWindow = null
-    snapOverlayReady = false
-    pendingGuideLines = null
+  overlayWindow.on("closed", () => {
+    if (snapOverlayWindow === overlayWindow) {
+      snapOverlayWindow = null
+      snapOverlayReady = false
+      pendingGuideLines = null
+    }
   })
-  void snapOverlayWindow.loadFile(getSnapOverlayPath())
+  void overlayWindow.loadFile(getSnapOverlayPath()).catch((error: unknown) => {
+    if (snapOverlayWindow !== overlayWindow || overlayWindow.isDestroyed()) {
+      return
+    }
 
-  return snapOverlayWindow
+    console.warn("[launcher] failed to load snap overlay", error)
+    overlayWindow.destroy()
+  })
+
+  return overlayWindow
 }
 
 export function showLauncherSnapOverlay(params: {
