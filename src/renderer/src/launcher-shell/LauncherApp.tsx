@@ -19,6 +19,7 @@ import { useActiveLauncherCommand } from "./hooks/useActiveLauncherCommand"
 import { useLauncherRouter } from "./hooks/useLauncherRouter"
 import { useLauncherSearchPage } from "./hooks/useLauncherSearchPage"
 import { useLauncherShellEffects } from "./hooks/useLauncherShellEffects"
+import { launcherShellCommands } from "./launcher-shell-commands"
 import { DEFAULT_HOME_COMMAND } from "./pages"
 import type { LauncherInputElement } from "./input-element"
 import type { ComposerAreaHandle } from "@/composer-area"
@@ -107,7 +108,7 @@ export default function LauncherApp(): React.JSX.Element {
     [focusHomeInput, focusPluginInput, route]
   )
   const hideLauncher = useCallback(() => {
-    return window.api.launcher.hide()
+    return launcherShellCommands.hide()
   }, [])
   const clearNoViewToastDismissTimer = useCallback((): void => {
     if (!noViewToastDismissTimerRef.current) {

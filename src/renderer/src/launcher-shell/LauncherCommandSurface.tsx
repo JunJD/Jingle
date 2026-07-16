@@ -24,6 +24,7 @@ import type { LauncherSelectionState } from "./LauncherSelectionContext"
 import { LauncherCommandArgumentsPage } from "./LauncherCommandArgumentsPage"
 import { commandNeedsLauncherArguments } from "./command-arguments"
 import type { LauncherInputElement } from "./input-element"
+import { launcherShellCommands } from "./launcher-shell-commands"
 import type { LauncherInputStatus } from "./launcher-input-status"
 import type { ComposerAreaHandle } from "@/composer-area"
 import type { ActiveLauncherCommandState } from "./hooks/useActiveLauncherCommand"
@@ -142,13 +143,7 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
             return
           }
 
-          void window.api.settings.openWindow({
-            tab: "extensions",
-            target: {
-              commandName: route.commandName,
-              extensionName: route.extensionName
-            }
-          })
+          void launcherShellCommands.openExtensionSettings(route.extensionName, route.commandName)
         }}
         title={activeCommandErrorTitle}
       />
