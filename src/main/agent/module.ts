@@ -8,8 +8,7 @@ import { AgentThreadRunner } from "./agent-thread-runner"
 import { AgentController } from "./controller"
 import { AgentService } from "./service"
 import { ThreadLifecycleGate } from "./thread-lifecycle-gate"
-import { isLauncherWindowWebContents } from "../windows/launcher-window"
-import { getPinnedAiSessionWindowThreadId } from "../windows/pinned-ai-session-window"
+import { getWindowIdentity } from "../windows/window-identity"
 
 export function registerAgentModule(container: DependencyContainer): void {
   container.register(ThreadLifecycleGate, {
@@ -38,8 +37,11 @@ export function registerAgentModule(container: DependencyContainer): void {
         dependencyContainer.resolve(AgentThreadRunner),
         diagnosticsLogger,
         {
-          getPinnedAiSessionThreadId: getPinnedAiSessionWindowThreadId,
-          isLauncher: isLauncherWindowWebContents
+          getMainWindowThreadId: (sender) => {
+            const identity = getWindowIdentity(sender)
+            return identity?.kind === "main" || identity?.kind === "thread-window" ? identity.threadId : null
+          },
+          isLauncher: (sender) => getWindowIdentity(sender)?.kind === "launcher"
         }
       )
     })

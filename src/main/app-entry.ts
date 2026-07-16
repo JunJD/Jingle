@@ -4,6 +4,7 @@ import { join } from "path"
 export interface AppEntryHandlers {
   openIpcNetwork?: () => void
   openLauncher: () => void
+  openMainWindow: () => void
   openSettings: () => void
   quit: () => void
 }
@@ -22,6 +23,7 @@ function createAppIcon(): Electron.NativeImage {
 
 export function createAppEntryMenu(handlers: AppEntryHandlers): MenuItemConstructorOptions[] {
   const items: MenuItemConstructorOptions[] = [
+    { label: "Open Main Window", click: handlers.openMainWindow },
     {
       label: "Open Launcher",
       click: handlers.openLauncher
@@ -69,8 +71,8 @@ export function installAppEntry(handlers: AppEntryHandlers): void {
   if (!appEntryTray) {
     appEntryTray = new Tray(createAppIcon().resize({ height: 16, width: 16 }))
     appEntryTray.setToolTip("Jingle")
-    appEntryTray.on("click", handlers.openLauncher)
-    appEntryTray.on("double-click", handlers.openLauncher)
+    appEntryTray.on("click", handlers.openMainWindow)
+    appEntryTray.on("double-click", handlers.openMainWindow)
   }
 
   appEntryTray.setContextMenu(menu)

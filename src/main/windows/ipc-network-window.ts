@@ -6,6 +6,7 @@ import { attachWindowDiagnostics } from "../diagnostics/electron-events"
 import { installExternalWindowOpenHandler } from "./external-window-open"
 import { startRendererWindowLoad } from "./load-renderer-window"
 import { installWindowPresentation, requestWindowPresentation } from "./window-presentation"
+import { registerWindowIdentity } from "./window-identity"
 
 const IPC_NETWORK_WINDOW_WIDTH = 1220
 const IPC_NETWORK_WINDOW_HEIGHT = 760
@@ -31,6 +32,7 @@ export function createIpcNetworkWindow(): BrowserWindow {
       sandbox: false
     }
   })
+  registerWindowIdentity(window.webContents, { kind: "ipc-network" })
 
   const observeRendererWindowLoadFailure = attachWindowDiagnostics(window, IPC_NETWORK_WINDOW_KIND)
   installWindowPresentation(window)

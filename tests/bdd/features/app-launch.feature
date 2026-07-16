@@ -1,11 +1,9 @@
 @smoke
 Feature: Jingle 桌面启动
-  Scenario: Launcher 窗口作为主入口启动
+  Scenario: Main 窗口作为 durable desktop 启动
     Given Jingle 桌面应用已启动
-    Then Launcher 窗口可用
-    And 渲染进程标识为 Launcher 窗口
-    And Launcher React 根节点已完成渲染
-    And 默认不会打开 Main 窗口
+    Then Main 窗口可用
+    And 默认不会打开 Launcher 窗口
 
   Scenario: Launcher 通过 Enter 打开 AI 时不会自动提交输入
     Given Jingle 桌面应用已启动
@@ -112,22 +110,22 @@ Feature: Jingle 桌面启动
     Then Settings 窗口可用
     And Launcher 窗口已隐藏
 
-  Scenario: Pinned AI session 可以直接打开指定历史线程
+  Scenario: Main 窗口可以直接打开指定历史线程
     Given Jingle 桌面应用已启动
-    And 存在标题为 "BDD Pinned Session Thread" 的 Launcher AI 历史线程
-    When 我通过 API 打开最后创建线程的 pinned AI session
-    Then Pinned AI session 窗口可用
-    And Pinned AI session 当前选中了标题为 "BDD Pinned Session Thread" 的线程
+    And 存在标题为 "BDD Main Session Thread" 的 Launcher AI 历史线程
+    When 我通过 API 打开最后创建线程的 Main 窗口
+    Then Main 窗口可用
+    And Main 窗口当前选中了标题为 "BDD Main Session Thread" 的线程
 
-  Scenario: Launcher 线程搜索可以打开 pinned AI session 并展示历史消息
+  Scenario: Launcher 线程搜索可以打开 Main 窗口 并展示历史消息
     Given Jingle 桌面应用已启动
-    And 存在标题为 "BDD Pinned Search Thread" 且包含历史消息 "BDD Pinned Search Message" 的 Launcher AI 历史线程
-    When 我在 Launcher 中搜索 "BDD Pinned Search Thread"
-    Then Launcher 首页展示了名为 "BDD Pinned Search Thread" 的结果
-    When 我打开名为 "BDD Pinned Search Thread" 的 Launcher 结果
-    Then Pinned AI session 窗口可用
-    And Pinned AI session 当前选中了标题为 "BDD Pinned Search Thread" 的线程
-    And Pinned AI session 消息区包含 "BDD Pinned Search Message"
+    And 存在标题为 "BDD Main Search Thread" 且包含历史消息 "BDD Main Search Message" 的 Launcher AI 历史线程
+    When 我在 Launcher 中搜索 "BDD Main Search Thread"
+    Then Launcher 首页展示了名为 "BDD Main Search Thread" 的结果
+    When 我打开名为 "BDD Main Search Thread" 的 Launcher 结果
+    Then Main 窗口可用
+    And Main 窗口当前选中了标题为 "BDD Main Search Thread" 的线程
+    And Main 窗口消息区包含 "BDD Main Search Message"
     And Launcher 窗口已隐藏
 
   Scenario: Launcher 线程搜索可以通过英文历史消息片段找到线程
@@ -143,17 +141,17 @@ Feature: Jingle 桌面启动
     When 我在 Launcher 中搜索 "和其他Agent的聊天记录"
     Then Launcher 首页展示了名为 "BDD CJK Message Thread" 的结果
 
-  Scenario: 从 Launcher 搜索进入 pinned AI session 后仍然可以手动切换线程
+  Scenario: 从 Launcher 搜索进入 Main 窗口 后仍然可以手动切换线程
     Given Jingle 桌面应用已启动
     And 存在标题为 "BDD Primary Thread" 且包含历史消息 "BDD Primary Message" 的 Launcher AI 历史线程
     And 存在标题为 "BDD Secondary Thread" 的 Launcher AI 历史线程
     When 我在 Launcher 中搜索 "BDD Primary Thread"
     Then Launcher 首页展示了名为 "BDD Primary Thread" 的结果
     When 我打开名为 "BDD Primary Thread" 的 Launcher 结果
-    Then Pinned AI session 窗口可用
-    And Pinned AI session 当前选中了标题为 "BDD Primary Thread" 的线程
-    When 我在 Pinned AI session 选择标题为 "BDD Secondary Thread" 的线程
-    Then Pinned AI session 持续选中了标题为 "BDD Secondary Thread" 的线程
+    Then Main 窗口可用
+    And Main 窗口当前选中了标题为 "BDD Primary Thread" 的线程
+    When 我在 Main 窗口选择标题为 "BDD Secondary Thread" 的线程
+    Then Main 窗口持续选中了标题为 "BDD Secondary Thread" 的线程
 
   Scenario: Settings 可以展示可配置快捷键
     Given Jingle 桌面应用已启动

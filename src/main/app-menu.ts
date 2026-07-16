@@ -6,7 +6,7 @@ interface InstallApplicationMenuParams {
   showIpcNetwork?: () => void
   showSettings: () => void
   showLauncher: () => void
-  showMainSubject: () => void
+  showMainWindow: () => void
 }
 
 function createEditMenu(): MenuItemConstructorOptions {
@@ -83,10 +83,10 @@ export function createApplicationMenuTemplate(
   params: InstallApplicationMenuParams
 ): MenuItemConstructorOptions[] {
   const mainSubjectItem: MenuItemConstructorOptions = {
-    label: "Open Launcher",
+    label: "Open Main Window",
     accelerator: "CommandOrControl+Alt+M",
     click: () => {
-      params.showMainSubject()
+      params.showMainWindow()
     }
   }
 

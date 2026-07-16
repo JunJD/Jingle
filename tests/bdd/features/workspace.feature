@@ -33,15 +33,15 @@
     那么 workspace:get 最新创建线程路径应为当前线程 workspace
     而且 workspace:get 全局路径应为当前线程 workspace
 
-  场景: Pinned AI session 切换线程时 workspace 信息跟随当前线程
+  场景: Main 窗口 切换线程时 workspace 信息跟随当前线程
     假如 Jingle 桌面应用已启动
     而且 我通过 API 创建标题为 "BDD Workspace First UI" 且 workspace 为测试目录 "workspace-ui-first" 的线程
     而且 我通过 API 创建标题为 "BDD Workspace Second UI" 且 workspace 为测试目录 "workspace-ui-second" 的线程
     当 我通过 API 打开最后创建线程的 pinned AI session
-    并且 我在 Pinned AI session 选择标题为 "BDD Workspace First UI" 的线程
-    那么 Pinned AI session workspace 路径应为标题 "BDD Workspace First UI" 的线程 workspace
-    当 我在 Pinned AI session 选择标题为 "BDD Workspace Second UI" 的线程
-    那么 Pinned AI session workspace 路径应为标题 "BDD Workspace Second UI" 的线程 workspace
+    并且 我在 Main 窗口 选择标题为 "BDD Workspace First UI" 的线程
+    那么 Main 窗口 workspace 路径应为标题 "BDD Workspace First UI" 的线程 workspace
+    当 我在 Main 窗口 选择标题为 "BDD Workspace Second UI" 的线程
+    那么 Main 窗口 workspace 路径应为标题 "BDD Workspace Second UI" 的线程 workspace
 
   场景: 读取线程 workspace 内的文本文件会返回内容
     假如 Jingle 桌面应用已启动

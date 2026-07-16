@@ -97,15 +97,10 @@ function getAdjacentThreadIds(
 async function canActivateThread(input: {
   nextThreadId: string
   onBeforeActivate?: (threadId: string) => Promise<boolean>
-  pinnedThreadId: string | null
 }): Promise<boolean> {
-  const { nextThreadId, onBeforeActivate, pinnedThreadId } = input
+  const { nextThreadId, onBeforeActivate } = input
   if (onBeforeActivate) {
     return onBeforeActivate(nextThreadId)
-  }
-
-  if (pinnedThreadId && nextThreadId !== pinnedThreadId) {
-    throw new Error("Pinned AI session windows cannot switch threads.")
   }
 
   return true
@@ -126,14 +121,14 @@ export function useLauncherAiThreadNavigation(
     mode,
     onBeforeActivate
   } = threadHost
-  const pinnedThreadId = mode === "pinned-thread" ? getActiveThreadId() : null
+  const initialThreadId = mode === "main" ? getActiveThreadId() : null
   const shouldStartFreshThread =
     mode === "launcher" && shouldStartFreshLauncherAiThread({ seedQuery })
   const [target, setTarget] = useState<LauncherAiActiveTarget | null>(
-    pinnedThreadId
+    initialThreadId
       ? {
           kind: "thread",
-          threadId: pinnedThreadId
+          threadId: initialThreadId
         }
       : shouldStartFreshThread
         ? {
@@ -242,8 +237,7 @@ export function useLauncherAiThreadNavigation(
     ): Promise<void> => {
       const canActivate = await canActivateThread({
         nextThreadId,
-        onBeforeActivate,
-        pinnedThreadId
+        onBeforeActivate
       })
       if (canActivate === false) {
         return
@@ -271,51 +265,37 @@ export function useLauncherAiThreadNavigation(
         if (navigationVersion !== navigationVersionRef.current) {
           return
         }
-        if (!pinnedThreadId) {
-          await refreshAdjacentThreadIds(nextThreadId, { freshDraftActive: false })
-        }
+        await refreshAdjacentThreadIds(nextThreadId, { freshDraftActive: false })
       } finally {
         finishHydration()
       }
     },
-    [activate, beginThreadHydration, onBeforeActivate, pinnedThreadId, refreshAdjacentThreadIds]
+    [activate, beginThreadHydration, onBeforeActivate, refreshAdjacentThreadIds]
   )
   const createThread = useCallback(
     async (input: AiCoreThreadCreateInput): Promise<AiCoreThreadHandle> => {
-      if (pinnedThreadId) {
-        throw new Error("Pinned AI session windows cannot create a new thread.")
-      }
-
       const expectedNavigationVersion = navigationVersionRef.current
       const createdThread = await create(input)
       await activateThread(createdThread.threadId, "opening", expectedNavigationVersion)
       return createdThread
     },
-    [activateThread, create, pinnedThreadId]
+    [activateThread, create]
   )
   const branchThread = useCallback(
     async (sourceThreadId: string): Promise<AiCoreThreadHandle> => {
-      if (pinnedThreadId) {
-        throw new Error("Pinned AI session windows cannot switch to a branched thread.")
-      }
-
       const branchedThread = await clone(sourceThreadId)
       await activateThread(branchedThread.threadId)
       return branchedThread
     },
-    [activateThread, clone, pinnedThreadId]
+    [activateThread, clone]
   )
   const branchThreadUntilMessage = useCallback(
     async (sourceThreadId: string, messageId: string): Promise<AiCoreThreadHandle> => {
-      if (pinnedThreadId) {
-        throw new Error("Pinned AI session windows cannot switch to a branched thread.")
-      }
-
       const branchedThread = await cloneUntilMessage(sourceThreadId, messageId)
       await activateThread(branchedThread.threadId)
       return branchedThread
     },
-    [activateThread, cloneUntilMessage, pinnedThreadId]
+    [activateThread, cloneUntilMessage]
   )
   const startFreshDraft = useCallback(
     async (input: {
@@ -324,10 +304,6 @@ export function useLauncherAiThreadNavigation(
       workspaceKind?: ThreadWorkspaceKind
       workspacePath?: string | null
     }): Promise<void> => {
-      if (pinnedThreadId) {
-        throw new Error("Pinned AI session windows cannot start a fresh draft.")
-      }
-
       const activeThreadId = resolveActiveThreadId()
       const navigationVersion = navigationVersionRef.current + 1
       navigationVersionRef.current = navigationVersion
@@ -359,7 +335,7 @@ export function useLauncherAiThreadNavigation(
           console.warn("[LauncherAi] Failed to refresh adjacent threads for fresh draft:", error)
         })
     },
-    [listAiThreads, pinnedThreadId, resolveActiveThreadId]
+    [listAiThreads, resolveActiveThreadId]
   )
   const updateFreshDraft = useCallback(
     (
@@ -395,10 +371,6 @@ export function useLauncherAiThreadNavigation(
   )
   const goToAdjacentThread = useCallback(
     async (direction: keyof AdjacentThreadIds): Promise<string | null> => {
-      if (pinnedThreadId) {
-        return null
-      }
-
       const threads = await listAiThreads()
       const activeThreadId = resolveActiveThreadId()
       const adjacentThreadId = getAdjacentThreadIds(threads, activeThreadId, isFreshDraftActive)[
@@ -412,7 +384,7 @@ export function useLauncherAiThreadNavigation(
       await activateThread(adjacentThreadId)
       return adjacentThreadId
     },
-    [activateThread, isFreshDraftActive, listAiThreads, pinnedThreadId, resolveActiveThreadId]
+    [activateThread, isFreshDraftActive, listAiThreads, resolveActiveThreadId]
   )
   const goToPreviousThread = useCallback(async (): Promise<string | null> => {
     return goToAdjacentThread("previous")
@@ -422,10 +394,10 @@ export function useLauncherAiThreadNavigation(
   }, [goToAdjacentThread])
 
   useEffect(() => {
-    if (pinnedThreadId) {
+    if (initialThreadId) {
       if (initialHydrationPendingRef.current) {
         initialHydrationPendingRef.current = false
-        void activateThread(pinnedThreadId, "restoring").finally(finishInitialThreadHydration)
+        void activateThread(initialThreadId, "restoring").finally(finishInitialThreadHydration)
       }
       return
     }
@@ -485,7 +457,7 @@ export function useLauncherAiThreadNavigation(
     activateThread,
     finishInitialThreadHydration,
     listAiThreads,
-    pinnedThreadId,
+    initialThreadId,
     refreshAdjacentThreadIds,
     resolveActiveThreadId,
     target,
@@ -495,8 +467,8 @@ export function useLauncherAiThreadNavigation(
   return {
     branchThread,
     branchThreadUntilMessage,
-    canGoToNextThread: !pinnedThreadId && Boolean(adjacentThreadIds.next),
-    canGoToPreviousThread: !pinnedThreadId && Boolean(adjacentThreadIds.previous),
+    canGoToNextThread: Boolean(adjacentThreadIds.next),
+    canGoToPreviousThread: Boolean(adjacentThreadIds.previous),
     createThread,
     defaultDraftPermissionMode: DEFAULT_PERMISSION_MODE,
     openThread: activateThread,

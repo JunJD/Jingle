@@ -234,10 +234,7 @@ test("launcher AI sidebar thread context menu reuses owned actions and disables 
     pageSource,
     /window\.api\.openTargets\.open\(\{ folderPath: nextWorkspacePath, targetId: "finder" \}\)/
   )
-  assert.match(
-    pageSource,
-    /window\.api\.aiSessionWindows\.openPinned\(\{ threadId: nextThreadId \}\)/
-  )
+  assert.match(pageSource, /window\.api\.durableWindow\.openPrimary\(\{ threadId: nextThreadId \}\)/)
 })
 
 test("archived chats use a first-class thread column and settings archive view", async () => {

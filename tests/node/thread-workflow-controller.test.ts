@@ -179,13 +179,13 @@ function createSenderIdentity(input: {
   pinned: ReadonlyMap<FakeWebContents, string>
 }) {
   return {
-    getPinnedThreadId: (sender: WebContents) =>
+    getMainThreadId: (sender: WebContents) =>
       input.pinned.get(sender as unknown as FakeWebContents) ?? null,
     isLauncher: (sender: WebContents) => sender === (input.launcher as unknown as WebContents)
   }
 }
 
-test("thread workflow IPC enforces strict codecs and the Launcher/Pinned sender matrix", async () => {
+test("thread workflow IPC enforces strict codecs and the Launcher/Main sender matrix", async () => {
   const calls: string[] = []
   const launcher = new FakeWebContents(1)
   const pinned = new FakeWebContents(2)
@@ -235,14 +235,14 @@ test("thread workflow IPC enforces strict codecs and the Launcher/Pinned sender 
 
   await assert.rejects(
     ipcMain.invoke("threadWorkflow:get", pinned, { threadId: "thread-other" }),
-    /bound Pinned AI session/
+    /bound Main window/
   )
   await assert.rejects(
     ipcMain.invoke("threadWorkflow:setStatus", settings, {
       statusId: "status-ready",
       threadId: "thread-bound"
     }),
-    /bound Pinned AI session/
+    /bound Main window/
   )
   await assert.rejects(
     ipcMain.invoke("threadWorkflow:listProjects", pinned),
@@ -309,10 +309,10 @@ test("thread workflow IPC enforces strict codecs and the Launcher/Pinned sender 
 test("thread workflow events expose scope and publish only to authorized windows", async () => {
   const calls: string[] = []
   const launcher = new FakeWebContents(1)
-  const matchingPinned = new FakeWebContents(2)
-  const otherPinned = new FakeWebContents(3)
+  const matchingMain = new FakeWebContents(2)
+  const otherMain = new FakeWebContents(3)
   const settings = new FakeWebContents(4)
-  const windows = [launcher, matchingPinned, otherPinned, settings].map(
+  const windows = [launcher, matchingMain, otherMain, settings].map(
     (webContents) => new FakeWindow(webContents)
   )
   const { emitChanged, service } = createServiceStub(calls)
@@ -321,8 +321,8 @@ test("thread workflow events expose scope and publish only to authorized windows
     createSenderIdentity({
       launcher,
       pinned: new Map([
-        [matchingPinned, "thread-bound"],
-        [otherPinned, "thread-other"]
+        [matchingMain, "thread-bound"],
+        [otherMain, "thread-other"]
       ])
     }),
     () => windows as unknown as BrowserWindow[]
@@ -343,7 +343,7 @@ test("thread workflow events expose scope and publish only to authorized windows
       payload: { projectId: "project-1", scope: "project" }
     }
   ])
-  assert.deepEqual(matchingPinned.sent, [
+  assert.deepEqual(matchingMain.sent, [
     {
       channel: "threadWorkflow:changed",
       payload: { scope: "thread", threadId: "thread-bound" }
@@ -353,7 +353,7 @@ test("thread workflow events expose scope and publish only to authorized windows
       payload: { projectId: "project-1", scope: "project" }
     }
   ])
-  assert.deepEqual(otherPinned.sent, [])
+  assert.deepEqual(otherMain.sent, [])
   assert.deepEqual(settings.sent, [])
 })
 

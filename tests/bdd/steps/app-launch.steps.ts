@@ -17,7 +17,11 @@ function getLauncherInput(page: Page, surface?: string) {
     ? `.launcher-chrome[data-surface="${surface}"]`
     : ".launcher-chrome"
 
-  return page.locator(`${surfaceSelector} .launcher-input input, ${surfaceSelector} .launcher-input textarea`).first()
+  return page
+    .locator(
+      `${surfaceSelector} .launcher-input input, ${surfaceSelector} .launcher-input textarea`
+    )
+    .first()
 }
 
 function getLauncherAiComposer(page: Page) {
@@ -48,7 +52,10 @@ async function countIndexedUserMessagesContaining(fragment: string): Promise<num
   return Number(row?.count ?? 0)
 }
 
-async function countLauncherAssistantMessagesContaining(page: Page, fragment: string): Promise<number> {
+async function countLauncherAssistantMessagesContaining(
+  page: Page,
+  fragment: string
+): Promise<number> {
   const aiSurface = getLauncherAiSurface(page)
   const responses = aiSurface.locator(".is-assistant")
   const count = await responses.count()
@@ -73,7 +80,9 @@ async function readLauncherAiStreamingReplyState(page: Page): Promise<{
   const streamingTurn = aiSurface
     .locator('[data-message-turn-active="true"][data-message-turn-streaming="true"]')
     .first()
-  const streamingAssistant = streamingTurn.locator('[data-assistant-message-streaming="true"]').first()
+  const streamingAssistant = streamingTurn
+    .locator('[data-assistant-message-streaming="true"]')
+    .first()
 
   if ((await streamingTurn.count()) === 0 || (await streamingAssistant.count()) === 0) {
     return {
@@ -99,9 +108,7 @@ async function readCurrentLauncherAiThreadId(page: Page): Promise<string | null>
   return threadId?.trim() || null
 }
 
-async function getLatestLauncherAiThreadData(
-  world: JingleWorld
-): Promise<AgentThreadDataSnapshot> {
+async function getLatestLauncherAiThreadData(world: JingleWorld): Promise<AgentThreadDataSnapshot> {
   const page = await world.getPageByKind("launcher")
   const currentThreadId = await readCurrentLauncherAiThreadId(page)
   if (currentThreadId) {
@@ -120,44 +127,49 @@ async function getLatestLauncherAiThreadData(
 
   const expectedWorkspacePath = world.getScenarioValue("threads.currentWorkspacePath")
 
-  return page.evaluate(async ({ source, workspacePath }) => {
-    const api = (window as typeof window & {
-      api: {
-        threadWorkspace: {
-          get: (threadId: string) => Promise<ThreadWorkspaceBindingRecord | null>
+  return page.evaluate(
+    async ({ source, workspacePath }) => {
+      const api = (
+        window as typeof window & {
+          api: {
+            threadWorkspace: {
+              get: (threadId: string) => Promise<ThreadWorkspaceBindingRecord | null>
+            }
+            threads: {
+              getAgentThreadData: (threadId: string) => Promise<AgentThreadDataSnapshot>
+              list: () => Promise<Thread[]>
+            }
+          }
         }
-        threads: {
-          getAgentThreadData: (threadId: string) => Promise<AgentThreadDataSnapshot>
-          list: () => Promise<Thread[]>
+      ).api
+
+      const threads = await api.threads.list()
+      const launcherThreads = threads
+        .filter((thread) => thread.metadata?.source === source)
+        .sort((left, right) => {
+          return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()
+        })
+      let launcherThread: Thread | undefined
+
+      for (const thread of launcherThreads) {
+        const binding = await api.threadWorkspace.get(thread.thread_id)
+        if (binding?.workspacePath === workspacePath) {
+          launcherThread = thread
+          break
         }
       }
-    }).api
 
-    const threads = await api.threads.list()
-    const launcherThreads = threads
-      .filter((thread) => thread.metadata?.source === source)
-      .sort((left, right) => {
-        return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()
-      })
-    let launcherThread: Thread | undefined
-
-    for (const thread of launcherThreads) {
-      const binding = await api.threadWorkspace.get(thread.thread_id)
-      if (binding?.workspacePath === workspacePath) {
-        launcherThread = thread
-        break
+      if (!launcherThread) {
+        throw new Error(`No launcher AI thread found for workspace: ${workspacePath}`)
       }
-    }
 
-    if (!launcherThread) {
-      throw new Error(`No launcher AI thread found for workspace: ${workspacePath}`)
+      return api.threads.getAgentThreadData(launcherThread.thread_id)
+    },
+    {
+      source: AI_THREAD_SOURCE,
+      workspacePath: expectedWorkspacePath
     }
-
-    return api.threads.getAgentThreadData(launcherThread.thread_id)
-  }, {
-    source: AI_THREAD_SOURCE,
-    workspacePath: expectedWorkspacePath
-  })
+  )
 }
 
 Given("Jingle 桌面应用已启动", async function (this: JingleWorld) {
@@ -237,10 +249,10 @@ Then("Launcher React 根节点已完成渲染", async function (this: JingleWorl
   expect(renderedChildren).toBeGreaterThan(0)
 })
 
-Then("默认不会打开 Main 窗口", async function (this: JingleWorld) {
+Then("默认不会打开 Launcher 窗口", async function (this: JingleWorld) {
   const windowKinds = await this.getWindowKinds()
 
-  expect(windowKinds).not.toContain("main")
+  expect(windowKinds).not.toContain("launcher")
 })
 
 Then("Launcher 窗口当前可见", async function (this: JingleWorld) {
@@ -264,18 +276,15 @@ Then("Launcher 首页展示了可执行结果", async function (this: JingleWorl
   expect(await rows.count()).toBeGreaterThan(0)
 })
 
-Then(
-  "Launcher 首页展示了名为 {string} 的结果",
-  async function (this: JingleWorld, title: string) {
-    const page = await this.getPageByKind("launcher")
-    const result = page
-      .locator(".launcher-result-row")
-      .filter({ has: page.getByText(title, { exact: true }) })
-      .first()
+Then("Launcher 首页展示了名为 {string} 的结果", async function (this: JingleWorld, title: string) {
+  const page = await this.getPageByKind("launcher")
+  const result = page
+    .locator(".launcher-result-row")
+    .filter({ has: page.getByText(title, { exact: true }) })
+    .first()
 
-    await expect(result).toBeVisible()
-  }
-)
+  await expect(result).toBeVisible()
+})
 
 Then(
   "数据库消息索引用 LIKE 能找到历史消息片段 {string}",
@@ -315,18 +324,16 @@ When("我直接打开 Main 历史窗口", async function (this: JingleWorld) {
     const api = (
       window as unknown as Window & {
         api: {
-          mainWindow: {
-            openWindow: () => Promise<void>
-          }
+          durableWindow: { openPrimary: () => Promise<void> }
         }
       }
     ).api
 
-    await api.mainWindow.openWindow()
+    await api.durableWindow.openPrimary()
   })
 })
 
-When("我通过 API 打开最后创建线程的 pinned AI session", async function (this: JingleWorld) {
+When("我通过 API 打开最后创建线程的 Main 窗口", async function (this: JingleWorld) {
   const page = await this.getPageByKind("launcher")
   const threadId = this.getScenarioValue("threads.lastCreatedThreadId")
 
@@ -334,17 +341,14 @@ When("我通过 API 打开最后创建线程的 pinned AI session", async functi
     const api = (
       window as unknown as Window & {
         api: {
-          aiSessionWindows: {
-            openPinned: (params: { threadId: string }) => Promise<{ ok: boolean }>
+          durableWindow: {
+            openPrimary: (params: { threadId: string }) => Promise<void>
           }
         }
       }
     ).api
 
-    const result = await api.aiSessionWindows.openPinned({ threadId: targetThreadId })
-    if (!result.ok) {
-      throw new Error("Failed to open pinned AI session window.")
-    }
+    await api.durableWindow.openPrimary({ threadId: targetThreadId })
   }, threadId)
 })
 
@@ -441,17 +445,14 @@ Then("Launcher AI 输入状态会进入 pending", async function (this: JingleWo
   })
 })
 
-Then(
-  "Launcher AI 当前 turn 显示状态 {string}",
-  async function (this: JingleWorld, status: string) {
-    const page = await this.getPageByKind("launcher")
-    const aiSurface = getLauncherAiSurface(page)
-    const statusRow = aiSurface.locator(`[data-active-turn-status="${status}"]`).first()
+Then("Launcher AI 当前 turn 显示状态 {string}", async function (this: JingleWorld, status: string) {
+  const page = await this.getPageByKind("launcher")
+  const aiSurface = getLauncherAiSurface(page)
+  const statusRow = aiSurface.locator(`[data-active-turn-status="${status}"]`).first()
 
-    await expect(statusRow).toBeVisible()
-    await expect(statusRow).toHaveAttribute("role", "status")
-  }
-)
+  await expect(statusRow).toBeVisible()
+  await expect(statusRow).toHaveAttribute("role", "status")
+})
 
 Then(
   "Launcher AI 当前回复在完成前显示流式文本 {string}",
@@ -550,7 +551,9 @@ Then(
     await expect
       .poll(async () => {
         const threadData = await getLatestLauncherAiThreadData(this)
-        const userCount = threadData.messages.messages.filter((message) => message.role === "user").length
+        const userCount = threadData.messages.messages.filter(
+          (message) => message.role === "user"
+        ).length
         const matchingAssistantCount = threadData.messages.messages.filter((message) => {
           if (message.role !== "assistant") {
             return false
@@ -594,18 +597,15 @@ Then("Launcher 首页当前选中结果为 {string}", async function (this: Jing
   await expect(selectedRow.getByText(title, { exact: true })).toBeVisible()
 })
 
-Then(
-  "Launcher 首页当前选中结果不是 {string}",
-  async function (this: JingleWorld, title: string) {
-    const page = await this.getPageByKind("launcher")
-    const selectedRow = page.locator(
-      '.launcher-chrome[data-surface="home"] .launcher-result-row.launcher-result-row--selected'
-    )
+Then("Launcher 首页当前选中结果不是 {string}", async function (this: JingleWorld, title: string) {
+  const page = await this.getPageByKind("launcher")
+  const selectedRow = page.locator(
+    '.launcher-chrome[data-surface="home"] .launcher-result-row.launcher-result-row--selected'
+  )
 
-    await expect(selectedRow).toBeVisible()
-    await expect(selectedRow.getByText(title, { exact: true })).toHaveCount(0)
-  }
-)
+  await expect(selectedRow).toBeVisible()
+  await expect(selectedRow.getByText(title, { exact: true })).toHaveCount(0)
+})
 
 Then("Launcher 翻译输入框包含 {string}", async function (this: JingleWorld, query: string) {
   const page = await this.getPageByKind("launcher")
@@ -642,10 +642,10 @@ Then("Main 窗口可用", async function (this: JingleWorld) {
   })
 })
 
-Then("Pinned AI session 窗口可用", async function (this: JingleWorld) {
-  const page = await this.getPageByKind("pinned-ai-session")
+Then("Main 窗口 窗口可用", async function (this: JingleWorld) {
+  const page = await this.getPageByKind("main")
 
-  await expect(page.locator("body")).toHaveAttribute("data-window", "pinned-ai-session")
+  await expect(page.locator("body")).toHaveAttribute("data-window", "main")
   await page.waitForFunction(() => {
     const root = document.getElementById("root")
     return Boolean(root && root.childElementCount > 0)
@@ -653,57 +653,54 @@ Then("Pinned AI session 窗口可用", async function (this: JingleWorld) {
 })
 
 Then(
-  "Pinned AI session 当前选中了标题为 {string} 的线程",
+  "Main 窗口 当前选中了标题为 {string} 的线程",
   async function (this: JingleWorld, title: string) {
-    const page = await this.getPageByKind("pinned-ai-session")
+    const page = await this.getPageByKind("main")
 
     await expect(page.locator("[data-launcher-ai-thread-title]").first()).toContainText(title)
   }
 )
 
-Then(
-  "Pinned AI session 消息区包含 {string}",
-  async function (this: JingleWorld, content: string) {
-    const page = await this.getPageByKind("pinned-ai-session")
-    const messageSurface = page.locator("[data-launcher-ai-main]").first()
+Then("Main 窗口 消息区包含 {string}", async function (this: JingleWorld, content: string) {
+  const page = await this.getPageByKind("main")
+  const messageSurface = page.locator("[data-launcher-ai-main]").first()
 
-    try {
-      await expect(messageSurface).toContainText(content)
-    } catch (error) {
-      const threadId = this.getScenarioValue("threads.lastCreatedThreadId")
-      const diagnostics = await page.evaluate(async (targetThreadId) => {
-        const api = (
-          window as typeof window & {
-            api: {
-              threads: {
-                getAgentThreadData: (threadId: string) => Promise<AgentThreadDataSnapshot>
-              }
+  try {
+    await expect(messageSurface).toContainText(content)
+  } catch (error) {
+    const threadId = this.getScenarioValue("threads.lastCreatedThreadId")
+    const diagnostics = await page.evaluate(async (targetThreadId) => {
+      const api = (
+        window as typeof window & {
+          api: {
+            threads: {
+              getAgentThreadData: (threadId: string) => Promise<AgentThreadDataSnapshot>
             }
           }
-        ).api
-        const threadData = await api.threads.getAgentThreadData(targetThreadId)
-        return {
-          bodyText: document.body.innerText.slice(0, 2_000),
-          messages: threadData.messages.messages.map((entry) => ({
-            content: entry.content,
-            id: entry.id,
-            role: entry.role
-          })),
-          threadStatus: threadData.thread.status
         }
-      }, threadId)
+      ).api
+      const threadData = await api.threads.getAgentThreadData(targetThreadId)
+      return {
+        bodyText: document.body.innerText.slice(0, 2_000),
+        messages: threadData.messages.messages.map((entry) => ({
+          content: entry.content,
+          id: entry.id,
+          role: entry.role
+        })),
+        threadStatus: threadData.thread.status
+      }
+    }, threadId)
 
-      throw new Error(
-        `Pinned AI session message "${content}" was not visible. Diagnostics: ${JSON.stringify(diagnostics)}\n${error instanceof Error ? error.message : String(error)}`
-      )
-    }
+    throw new Error(
+      `Main 窗口 message "${content}" was not visible. Diagnostics: ${JSON.stringify(diagnostics)}\n${error instanceof Error ? error.message : String(error)}`
+    )
   }
-)
+})
 
 When(
-  "我在 Pinned AI session 选择标题为 {string} 的线程",
+  "我在 Main 窗口 选择标题为 {string} 的线程",
   async function (this: JingleWorld, title: string) {
-    const page = await this.getPageByKind("pinned-ai-session")
+    const page = await this.getPageByKind("main")
     const threadItem = page
       .locator('[data-thread-active="false"], [data-thread-active="true"]')
       .filter({ has: page.getByText(title, { exact: true }) })
@@ -714,9 +711,9 @@ When(
 )
 
 Then(
-  "Pinned AI session 持续选中了标题为 {string} 的线程",
+  "Main 窗口 持续选中了标题为 {string} 的线程",
   async function (this: JingleWorld, title: string) {
-    const page = await this.getPageByKind("pinned-ai-session")
+    const page = await this.getPageByKind("main")
     const selectedThread = page.locator('[data-thread-active="true"]').first()
     const deadline = Date.now() + 1000
 
@@ -731,39 +728,31 @@ Then(
   "Main 窗口当前选中了标题为 {string} 的线程",
   async function (this: JingleWorld, title: string) {
     const page = await this.getPageByKind("main")
-
-    await expect
-      .poll(async () => {
-        return page.locator('[data-thread-selected="true"]').first().innerText()
-      })
-      .toContain(title)
+    await expect(page.locator("[data-launcher-ai-thread-title]").first()).toContainText(title)
   }
 )
 
 Then("Main 窗口消息区包含 {string}", async function (this: JingleWorld, content: string) {
   const page = await this.getPageByKind("main")
 
-  await expect(page.locator("main").getByText(content, { exact: true }).first()).toBeVisible()
+  await expect(page.getByText(content, { exact: true }).first()).toBeVisible()
 })
 
-When(
-  "我在 Main 窗口选择标题为 {string} 的线程",
-  async function (this: JingleWorld, title: string) {
-    const page = await this.getPageByKind("main")
-    const threadItem = page
-      .locator('[data-thread-selected="false"], [data-thread-selected="true"]')
-      .filter({ has: page.getByText(title, { exact: true }) })
-      .first()
+When("我在 Main 窗口选择标题为 {string} 的线程", async function (this: JingleWorld, title: string) {
+  const page = await this.getPageByKind("main")
+  const threadItem = page
+    .locator('[data-thread-active="false"], [data-thread-active="true"]')
+    .filter({ has: page.getByText(title, { exact: true }) })
+    .first()
 
-    await threadItem.click()
-  }
-)
+  await threadItem.click()
+})
 
 Then(
   "Main 窗口持续选中了标题为 {string} 的线程",
   async function (this: JingleWorld, title: string) {
     const page = await this.getPageByKind("main")
-    const selectedThread = page.locator('[data-thread-selected="true"]').first()
+    const selectedThread = page.locator('[data-thread-active="true"]').first()
     const deadline = Date.now() + 1000
 
     while (Date.now() < deadline) {
@@ -816,14 +805,11 @@ Then("Settings 展示 launcher.toggle 快捷键", async function (this: JingleWo
   await expect(page.locator('[data-command-id="launcher.toggle"]')).toBeVisible()
 })
 
-Then(
-  "Settings 展示 launcher.search.open-settings 快捷键",
-  async function (this: JingleWorld) {
-    const page = await this.getPageByKind("settings")
+Then("Settings 展示 launcher.search.open-settings 快捷键", async function (this: JingleWorld) {
+  const page = await this.getPageByKind("settings")
 
-    await expect(page.locator('[data-command-id="launcher.search.open-settings"]')).toBeVisible()
-  }
-)
+  await expect(page.locator('[data-command-id="launcher.search.open-settings"]')).toBeVisible()
+})
 
 Then("Settings 将 launcher.toggle 标记为可配置", async function (this: JingleWorld) {
   const page = await this.getPageByKind("settings")
@@ -834,17 +820,14 @@ Then("Settings 将 launcher.toggle 标记为可配置", async function (this: Ji
   )
 })
 
-Then(
-  "Settings 将 launcher.search.open-settings 标记为可配置",
-  async function (this: JingleWorld) {
-    const page = await this.getPageByKind("settings")
+Then("Settings 将 launcher.search.open-settings 标记为可配置", async function (this: JingleWorld) {
+  const page = await this.getPageByKind("settings")
 
-    await expect(page.locator('[data-command-id="launcher.search.open-settings"]')).toHaveAttribute(
-      "data-shortcut-configurable",
-      "true"
-    )
-  }
-)
+  await expect(page.locator('[data-command-id="launcher.search.open-settings"]')).toHaveAttribute(
+    "data-shortcut-configurable",
+    "true"
+  )
+})
 
 Then("Settings 将 launcher.toggle 显示为自定义快捷键", async function (this: JingleWorld) {
   const page = await this.getPageByKind("settings")
@@ -867,15 +850,12 @@ Then("Settings 为 launcher.toggle 显示可用的全局注册状态", async fun
   ).toBeVisible()
 })
 
-Then(
-  "应用菜单使用与 launcher.toggle 相同的快捷键 accelerator",
-  async function (this: JingleWorld) {
-    const page = await this.getPageByKind("settings")
-    const expectedAccelerator = await page
-      .locator('[data-shortcut-registration-accelerator="launcher.toggle"]')
-      .innerText()
-    const actualAccelerator = await this.getApplicationMenuAccelerator("Show Launcher")
+Then("应用菜单使用与 launcher.toggle 相同的快捷键 accelerator", async function (this: JingleWorld) {
+  const page = await this.getPageByKind("settings")
+  const expectedAccelerator = await page
+    .locator('[data-shortcut-registration-accelerator="launcher.toggle"]')
+    .innerText()
+  const actualAccelerator = await this.getApplicationMenuAccelerator("Show Launcher")
 
-    expect(actualAccelerator).toBe(expectedAccelerator)
-  }
-)
+  expect(actualAccelerator).toBe(expectedAccelerator)
+})

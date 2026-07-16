@@ -31,7 +31,7 @@ import { getLauncherOpenPathHistoryTitle } from "./history-title"
 const EMPTY_CLIPBOARD_CONTEXT: ClipboardContext = { kind: "none" }
 
 export interface LauncherRuntime {
-  openPinnedSessionWindow: (threadId: string) => void
+  openMainWindow: (threadId: string) => void
 }
 
 async function openLauncherPath(
@@ -160,7 +160,7 @@ const internalLauncherActionExecutor: InternalLauncherActionExecutorHandler = as
     case "none":
       return
     case "open-history-thread":
-      runtime.openPinnedSessionWindow(action.target.threadId)
+      runtime.openMainWindow(action.target.threadId)
       return
     case "open-extension-command":
       return

@@ -20,8 +20,8 @@ Given(
   }
 )
 
-When("我在 Pinned AI session 展开 present_artifacts 工具消息", async function (this: JingleWorld) {
-  const page = await this.getPageByKind("pinned-ai-session")
+When("我在 Main 窗口 展开 present_artifacts 工具消息", async function (this: JingleWorld) {
+  const page = await this.getPageByKind("main")
   const threadId = this.getScenarioValue("artifactTabs.threadId")
   const artifactTitle = this.getScenarioValue("artifactTabs.artifactTitle")
   const groupToggle = page
@@ -83,9 +83,9 @@ When("我在 Pinned AI session 展开 present_artifacts 工具消息", async fun
 })
 
 Then(
-  "Pinned AI session artifact 面板展示标题为 {string} 的 artifact",
+  "Main 窗口 artifact 面板展示标题为 {string} 的 artifact",
   async function (this: JingleWorld, artifactTitle: string) {
-    const page = await this.getPageByKind("pinned-ai-session")
+    const page = await this.getPageByKind("main")
     const artifactCard = page.locator(
       `[data-launcher-artifact-card][data-launcher-artifact-title="${artifactTitle}"]`
     )
@@ -95,9 +95,9 @@ Then(
 )
 
 Then(
-  "Pinned AI session artifact 面板中标题为 {string} 的 artifact 不可打开",
+  "Main 窗口 artifact 面板中标题为 {string} 的 artifact 不可打开",
   async function (this: JingleWorld, artifactTitle: string) {
-    const page = await this.getPageByKind("pinned-ai-session")
+    const page = await this.getPageByKind("main")
     const artifactCard = page.locator(
       `[data-launcher-artifact-card][data-launcher-artifact-title="${artifactTitle}"]`
     )
@@ -107,9 +107,9 @@ Then(
 )
 
 Then(
-  "Pinned AI session present_artifacts 消息展示标题为 {string} 的 artifact",
+  "Main 窗口 present_artifacts 消息展示标题为 {string} 的 artifact",
   async function (this: JingleWorld, artifactTitle: string) {
-    const page = await this.getPageByKind("pinned-ai-session")
+    const page = await this.getPageByKind("main")
     const artifactItem = page.locator(
       `[data-presented-artifact-item][data-artifact-title="${artifactTitle}"]`
     )
@@ -119,9 +119,9 @@ Then(
 )
 
 Then(
-  "Pinned AI session present_artifacts 消息中标题为 {string} 的 artifact 不可打开",
+  "Main 窗口 present_artifacts 消息中标题为 {string} 的 artifact 不可打开",
   async function (this: JingleWorld, artifactTitle: string) {
-    const page = await this.getPageByKind("pinned-ai-session")
+    const page = await this.getPageByKind("main")
     const artifactItem = page.locator(
       `[data-presented-artifact-item][data-artifact-title="${artifactTitle}"]`
     )
@@ -130,8 +130,8 @@ Then(
   }
 )
 
-Then("Pinned AI session 不存在 artifact tab", async function (this: JingleWorld) {
-  const page = await this.getPageByKind("pinned-ai-session")
+Then("Main 窗口 不存在 artifact tab", async function (this: JingleWorld) {
+  const page = await this.getPageByKind("main")
 
   await expect(page.locator('[data-thread-tab="artifact"]')).toHaveCount(0)
   await expect(page.locator("[data-artifact-viewer]")).toHaveCount(0)

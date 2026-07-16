@@ -195,7 +195,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const host = useAiCoreHost()
   const navigation = host.navigation
   const surface = host.surface
-  const isPinnedThreadSurface = host.threads.mode === "pinned-thread"
+  const isMainWindowSurface = host.threads.mode === "main"
   const autoOpenSidebarMinWidth = host.chrome?.autoOpenSidebarMinWidth
   const selection = host.selection
   let selectionContext: LauncherSelectionContext | null = null
@@ -953,7 +953,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const canBranchThread = Boolean(threadId && hasThreadMessages && canForkThread)
   const canUseHeaderThreadActions = !isApprovalPending
   const canOpenSidebar = canUseHeaderThreadActions
-  const canNavigateAcrossThreads = canUseHeaderThreadActions && !isPinnedThreadSurface
+  const canNavigateAcrossThreads = canUseHeaderThreadActions
   const sidebarTitle = currentThreadTitle?.trim() || copy.launcher.newQuestion
   const clearSidebarPreviewCloseTimer = useCallback((): void => {
     if (sidebarPreviewCloseTimerRef.current === null) {
@@ -1170,18 +1170,23 @@ export function LauncherAiPage(): React.JSX.Element {
     },
     [runSidebarThreadAction]
   )
+  const openThreadInWindow = useCallback(
+    async (nextThreadId: string): Promise<void> => {
+      if (isMainWindowSurface) {
+        await launcherAiCommands.pinThreadWindow(nextThreadId)
+        return
+      }
+      await launcherAiCommands.openMainThread(nextThreadId)
+    },
+    [isMainWindowSurface]
+  )
   const openSidebarThreadInNewWindow = useCallback(
     async (nextThreadId: string): Promise<void> => {
       await runSidebarThreadAction(async () => {
-        const result = await launcherAiCommands.openPinnedThread(nextThreadId)
-        if (!result.ok) {
-          console.warn("[LauncherAiPage] Pinned AI session window limit reached.", {
-            limit: result.limit
-          })
-        }
+        await openThreadInWindow(nextThreadId)
       })
     },
-    [runSidebarThreadAction]
+    [openThreadInWindow, runSidebarThreadAction]
   )
   const revealSidebarThreadInFinder = useCallback(
     async (nextWorkspacePath: string): Promise<void> => {
@@ -1275,26 +1280,16 @@ export function LauncherAiPage(): React.JSX.Element {
       return
     }
 
-    const result = await launcherAiCommands.openPinnedThread(threadId)
-    if (!result.ok) {
-      console.warn("[LauncherAiPage] Pinned AI session window limit reached.", {
-        limit: result.limit
-      })
-    }
+    await openThreadInWindow(threadId)
     await navigation.hideLauncher()
-  }, [navigation, threadId])
-  const openPinnedWindow = useCallback(async (): Promise<void> => {
+  }, [navigation, openThreadInWindow, threadId])
+  const openMainWindow = useCallback(async (): Promise<void> => {
     if (!threadId) {
       return
     }
 
-    const result = await launcherAiCommands.openPinnedThread(threadId)
-    if (!result.ok) {
-      console.warn("[LauncherAiPage] Pinned AI session window limit reached.", {
-        limit: result.limit
-      })
-    }
-  }, [threadId])
+    await openThreadInWindow(threadId)
+  }, [openThreadInWindow, threadId])
   const copyWorkingDirectory = useCallback(async (): Promise<void> => {
     if (!workspacePath) {
       return
@@ -1441,7 +1436,7 @@ export function LauncherAiPage(): React.JSX.Element {
                   {threadId ? (
                     <LauncherAiWorkflowAccessory
                       key={threadId}
-                      canManageDefinitions={!isPinnedThreadSurface}
+                      canManageDefinitions
                       threadId={threadId}
                     />
                   ) : null}
@@ -1465,9 +1460,7 @@ export function LauncherAiPage(): React.JSX.Element {
             <LauncherAiHeaderActions
               canBranchThread={canNavigateAcrossThreads && canBranchThread}
               canOpenThreadMenu={canUseHeaderThreadActions}
-              canOpenPinnedWindow={
-                canUseHeaderThreadActions && !isPinnedThreadSurface && Boolean(threadId)
-              }
+              canOpenMainWindow={canUseHeaderThreadActions && Boolean(threadId)}
               isPinned={isCurrentThreadPinned}
               environment={{
                 model: currentModelDisplay,
@@ -1508,7 +1501,7 @@ export function LauncherAiPage(): React.JSX.Element {
                 environmentThread: copy.launcher.environmentThread,
                 environmentWorkspace: copy.launcher.environmentWorkspace,
                 openFolder: copy.launcher.openFolder,
-                openPinnedWindow: copy.launcher.openPinnedWindow,
+                openMainWindow: copy.launcher.openMainWindow,
                 openSideChat: copy.launcher.openSideChat,
                 openTarget: copy.launcher.openTarget,
                 pinChat: copy.launcher.pinChat,
@@ -1525,10 +1518,10 @@ export function LauncherAiPage(): React.JSX.Element {
               onCopyWorkingDirectory={() => {
                 void copyWorkingDirectory()
               }}
-              onOpenPinnedWindow={() => {
-                void openPinnedWindow()
+              onOpenMainWindow={() => {
+                void openMainWindow()
               }}
-              showOpenPinnedWindowAction={!isPinnedThreadSurface}
+              showOpenMainWindowAction
               onTogglePinned={() => {
                 void toggleCurrentThreadPinned()
               }}

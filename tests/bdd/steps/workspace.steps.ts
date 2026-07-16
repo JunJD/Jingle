@@ -316,9 +316,9 @@ Then(
 )
 
 Then(
-  "Pinned AI session workspace 路径应为标题 {string} 的线程 workspace",
+  "Main 窗口 workspace 路径应为标题 {string} 的线程 workspace",
   async function (this: JingleWorld, title: string) {
-    const page = await this.getPageByKind("pinned-ai-session")
+    const page = await this.getPageByKind("main")
     const expectedThreadId = this.getScenarioValue(`workspace.thread.${title}.id`)
     const expectedWorkspacePath = this.getScenarioValue(`workspace.thread.${title}.path`)
     const environmentTrigger = page.locator("[data-launcher-ai-environment-trigger]")

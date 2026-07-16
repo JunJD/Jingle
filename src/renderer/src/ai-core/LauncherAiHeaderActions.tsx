@@ -8,8 +8,8 @@ import { LauncherAiThreadMenu } from "./LauncherAiThreadMenu"
 interface LauncherAiHeaderActionsProps {
   canBranchThread: boolean
   canOpenThreadMenu: boolean
-  canOpenPinnedWindow: boolean
-  showOpenPinnedWindowAction: boolean
+  canOpenMainWindow: boolean
+  showOpenMainWindowAction: boolean
   environment: LauncherAiEnvironmentInfo
   labels: {
     addAutomation: string
@@ -44,7 +44,7 @@ interface LauncherAiHeaderActionsProps {
     environmentWorkspace: string
     openSideChat: string
     openFolder: string
-    openPinnedWindow: string
+    openMainWindow: string
     openTarget: string
     pinChat: string
     renameChat: string
@@ -55,7 +55,7 @@ interface LauncherAiHeaderActionsProps {
   onBranchIntoLocal: () => void
   onCopySessionId: () => void
   onCopyWorkingDirectory: () => void
-  onOpenPinnedWindow: () => void
+  onOpenMainWindow: () => void
   onTogglePinned: () => void
 }
 
@@ -63,15 +63,15 @@ export function LauncherAiHeaderActions(props: LauncherAiHeaderActionsProps): Re
   const {
     canBranchThread,
     canOpenThreadMenu,
-    canOpenPinnedWindow,
+    canOpenMainWindow,
     environment,
     isPinned,
     labels,
     onBranchIntoLocal,
     onCopySessionId,
     onCopyWorkingDirectory,
-    onOpenPinnedWindow,
-    showOpenPinnedWindowAction,
+    onOpenMainWindow,
+    showOpenMainWindowAction,
     onTogglePinned
   } = props
 
@@ -111,7 +111,7 @@ export function LauncherAiHeaderActions(props: LauncherAiHeaderActionsProps): Re
       {canOpenThreadMenu ? (
         <LauncherAiThreadMenu
           canBranchThread={canBranchThread}
-          canOpenPinnedWindow={canOpenPinnedWindow}
+          canOpenMainWindow={canOpenMainWindow}
           isPinned={isPinned}
           labels={{
             addAutomation: labels.addAutomation,
@@ -125,7 +125,7 @@ export function LauncherAiHeaderActions(props: LauncherAiHeaderActionsProps): Re
             copySessionId: labels.copySessionId,
             copyWorkingDirectory: labels.copyWorkingDirectory,
             moreActions: labels.actions,
-            openPinnedWindow: labels.openPinnedWindow,
+            openMainWindow: labels.openMainWindow,
             openSideChat: labels.openSideChat,
             pinChat: labels.pinChat,
             renameChat: labels.renameChat,
@@ -135,9 +135,9 @@ export function LauncherAiHeaderActions(props: LauncherAiHeaderActionsProps): Re
           onBranchIntoLocal={onBranchIntoLocal}
           onCopySessionId={onCopySessionId}
           onCopyWorkingDirectory={onCopyWorkingDirectory}
-          onOpenPinnedWindow={onOpenPinnedWindow}
+          onOpenMainWindow={onOpenMainWindow}
           onTogglePinned={onTogglePinned}
-          showOpenPinnedWindowAction={showOpenPinnedWindowAction}
+          showOpenMainWindowAction={showOpenMainWindowAction}
         />
       ) : null}
     </div>

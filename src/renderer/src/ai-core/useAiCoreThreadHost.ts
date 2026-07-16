@@ -28,9 +28,7 @@ export function useAiCoreThreadHost(
   const threadContext = useThreadContext()
   const { loadThreadData } = threadContext
   const assertCanCreateThread = useCallback((): void => {
-    if (mode === "pinned-thread") {
-      throw new Error("Pinned AI session windows cannot create a new thread.")
-    }
+    if (mode !== "launcher" && mode !== "main") throw new Error("Unknown AI thread host mode.")
   }, [mode])
 
   const activateThread = useCallback(

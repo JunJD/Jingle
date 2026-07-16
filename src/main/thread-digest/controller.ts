@@ -13,7 +13,7 @@ import {
 const threadDigestRequestArgumentsSchema = z.tuple([threadDigestRequestSchema])
 
 interface ThreadDigestSenderIdentity {
-  getPinnedThreadId(sender: WebContents): string | null
+  getMainThreadId(sender: WebContents): string | null
   isLauncher(sender: WebContents): boolean
 }
 
@@ -74,18 +74,18 @@ export class ThreadDigestController {
     }
 
     const isLauncher = this.senderIdentity.isLauncher(event.sender)
-    const pinnedThreadId = this.senderIdentity.getPinnedThreadId(event.sender)
-    if (isLauncher && pinnedThreadId === null) {
+    const mainThreadId = this.senderIdentity.getMainThreadId(event.sender)
+    if (isLauncher && mainThreadId === null) {
       return
     }
-    if (pinnedThreadId === threadId && !isLauncher) {
+    if (mainThreadId === threadId && !isLauncher) {
       return
     }
 
     throw new JingleIpcError({
       channel,
       code: "PERMISSION_DENIED",
-      message: "Thread digests are only available to the Launcher or the bound Pinned AI session."
+      message: "Thread digests are only available to the Launcher or the bound Main window."
     })
   }
 
@@ -101,10 +101,10 @@ export class ThreadDigestController {
         continue
       }
       const isLauncher = this.senderIdentity.isLauncher(sender)
-      const pinnedThreadId = this.senderIdentity.getPinnedThreadId(sender)
+      const mainThreadId = this.senderIdentity.getMainThreadId(sender)
       if (
-        (isLauncher && pinnedThreadId === null) ||
-        (!isLauncher && pinnedThreadId === digest.threadId)
+        (isLauncher && mainThreadId === null) ||
+        (!isLauncher && mainThreadId === digest.threadId)
       ) {
         try {
           sender.send("threadDigest:changed", payload)
@@ -114,7 +114,7 @@ export class ThreadDigestController {
             dimensionEntries: [
               { key: "digestUpdatedAt", value: digest.updatedAt },
               { key: "projectedThroughSeq", value: digest.projectedThroughSeq },
-              { key: "surface", value: isLauncher ? "launcher" : "pinned-ai-session" },
+              { key: "surface", value: isLauncher ? "launcher" : "main" },
               { key: "webContentsId", value: sender.id },
               { key: "windowId", value: window.id }
             ],

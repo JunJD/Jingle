@@ -51,8 +51,22 @@ export interface PersistedLauncherWindowState {
   y: number
 }
 
-export interface PinnedAiSessionWindowRestoreState {
-  threadIds: string[]
+export interface MainWindowSessionState {
+  lastActiveThreadId: string | null
+  migration?: { discardedLegacyThreadCount: number; result: "discarded_unordered_legacy_state" }
+  version: 1
+}
+
+export interface ThreadWindowRestoreEntry {
+  bounds?: { height: number; width: number; x: number; y: number }
+  isMaximized: boolean
+  threadId: string | null
+  windowId: string
+}
+
+export interface ThreadWindowRestoreState {
+  version: 1
+  windows: ThreadWindowRestoreEntry[]
 }
 
 interface SettingsStoreShape {
@@ -62,10 +76,11 @@ interface SettingsStoreShape {
   launcherSettings: LauncherSettings
   launcherWindowState: PersistedLauncherWindowState | null
   mainWindowState: PersistedWindowState | null
+  mainWindowSessionState: MainWindowSessionState | null
   nativeExtensionPreferences: PersistedNativeExtensionPreferencesState
   jingleMemorySettings?: JingleMemorySettings
-  pinnedAiSessionWindowRestoreState: PinnedAiSessionWindowRestoreState
   shortcutSettings: ShortcutSettings
+  threadWindowRestoreState: ThreadWindowRestoreState
   workspaceDialogPath: string | null
   workspacePath: string | null
 }
@@ -147,10 +162,6 @@ const DEFAULT_NATIVE_EXTENSION_PREFERENCES: PersistedNativeExtensionPreferencesS
   }
 }
 
-const DEFAULT_PINNED_AI_SESSION_WINDOW_RESTORE_STATE: PinnedAiSessionWindowRestoreState = {
-  threadIds: []
-}
-
 const JINGLE_MEMORY_SETTINGS_KEY = "jingleMemorySettings"
 const DEFAULT_WORKSPACE_PATH = join(homedir(), "Documents", "Jingle")
 
@@ -169,9 +180,10 @@ const settingsStore = new Store<SettingsStoreShape>({
     launcherSettings: DEFAULT_LAUNCHER_SETTINGS,
     launcherWindowState: null,
     mainWindowState: null,
+    mainWindowSessionState: null,
     nativeExtensionPreferences: DEFAULT_NATIVE_EXTENSION_PREFERENCES,
-    pinnedAiSessionWindowRestoreState: DEFAULT_PINNED_AI_SESSION_WINDOW_RESTORE_STATE,
     shortcutSettings: DEFAULT_SHORTCUT_SETTINGS,
+    threadWindowRestoreState: { version: 1, windows: [] },
     workspaceDialogPath: null,
     workspacePath: DEFAULT_WORKSPACE_PATH
   }
@@ -193,30 +205,49 @@ function normalizePathList(value: unknown): string[] {
   return Array.from(new Set(paths))
 }
 
-function normalizePinnedAiSessionWindowRestoreState(
-  value: unknown
-): PinnedAiSessionWindowRestoreState {
-  if (!value || typeof value !== "object") {
-    return DEFAULT_PINNED_AI_SESSION_WINDOW_RESTORE_STATE
-  }
-
-  const partial = value as Partial<PinnedAiSessionWindowRestoreState>
-  if (!Array.isArray(partial.threadIds)) {
-    return DEFAULT_PINNED_AI_SESSION_WINDOW_RESTORE_STATE
-  }
-
-  const threadIds = partial.threadIds.flatMap((entry) => {
-    if (typeof entry !== "string") {
-      return []
-    }
-
-    const threadId = entry.trim()
-    return threadId ? [threadId] : []
-  })
-
+function normalizeMainWindowSessionState(value: unknown): MainWindowSessionState | null {
+  if (!value || typeof value !== "object") return null
+  const state = value as Partial<MainWindowSessionState>
+  if (state.version !== 1) return null
+  const lastActiveThreadId =
+    typeof state.lastActiveThreadId === "string" && state.lastActiveThreadId.trim()
+      ? state.lastActiveThreadId.trim()
+      : null
   return {
-    threadIds: Array.from(new Set(threadIds))
+    version: 1,
+    lastActiveThreadId,
+    ...(state.migration ? { migration: state.migration } : {})
   }
+}
+
+function normalizeThreadWindowRestoreState(value: unknown): ThreadWindowRestoreState {
+  if (!value || typeof value !== "object") return { version: 1, windows: [] }
+  const candidate = value as Partial<ThreadWindowRestoreState>
+  if (candidate.version !== 1 || !Array.isArray(candidate.windows)) {
+    return { version: 1, windows: [] }
+  }
+  const windows = candidate.windows.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return []
+    const item = entry as Partial<ThreadWindowRestoreEntry>
+    const bounds = item.bounds
+    if (
+      typeof item.windowId !== "string" ||
+      !item.windowId.trim() ||
+      !bounds ||
+      ![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite)
+    ) return []
+    return [{
+      bounds: {
+        x: Math.round(bounds.x), y: Math.round(bounds.y),
+        width: Math.max(760, Math.round(bounds.width)),
+        height: Math.max(520, Math.round(bounds.height))
+      },
+      isMaximized: item.isMaximized === true,
+      threadId: typeof item.threadId === "string" && item.threadId.trim() ? item.threadId.trim() : null,
+      windowId: item.windowId.trim()
+    }]
+  })
+  return { version: 1, windows }
 }
 
 function normalizeDesktopAutomationAllowlist(value: unknown): string[] {
@@ -1204,21 +1235,48 @@ export function setLauncherWindowState(
   return nextState
 }
 
-export function getPinnedAiSessionWindowRestoreState(): PinnedAiSessionWindowRestoreState {
-  return normalizePinnedAiSessionWindowRestoreState(
-    settingsStore.get(
-      "pinnedAiSessionWindowRestoreState",
-      DEFAULT_PINNED_AI_SESSION_WINDOW_RESTORE_STATE
-    )
+export function getMainWindowSessionState(): MainWindowSessionState {
+  const current = normalizeMainWindowSessionState(settingsStore.get("mainWindowSessionState", null))
+  if (current) return current
+
+  const legacyKey = "pinnedAiSessionWindowRestoreState" as keyof SettingsStoreShape
+  const legacy = settingsStore.get(legacyKey) as unknown
+  const discardedLegacyThreadCount =
+    legacy &&
+    typeof legacy === "object" &&
+    Array.isArray((legacy as { threadIds?: unknown }).threadIds)
+      ? (legacy as { threadIds: unknown[] }).threadIds.length
+      : 0
+  const migrated: MainWindowSessionState = {
+    version: 1,
+    lastActiveThreadId: null,
+    migration: { discardedLegacyThreadCount, result: "discarded_unordered_legacy_state" }
+  }
+  settingsStore.set("mainWindowSessionState", migrated)
+  settingsStore.delete(legacyKey)
+  console.info("[MainWindow] Legacy session state migration completed.", migrated.migration)
+  return migrated
+}
+
+export function setMainWindowSessionState(state: MainWindowSessionState): MainWindowSessionState {
+  const next = normalizeMainWindowSessionState(state)
+  if (!next) throw new Error("Invalid Main window session state.")
+  settingsStore.set("mainWindowSessionState", next)
+  return next
+}
+
+export function getThreadWindowRestoreState(): ThreadWindowRestoreState {
+  return normalizeThreadWindowRestoreState(
+    settingsStore.get("threadWindowRestoreState", { version: 1, windows: [] })
   )
 }
 
-export function setPinnedAiSessionWindowRestoreState(
-  state: PinnedAiSessionWindowRestoreState
-): PinnedAiSessionWindowRestoreState {
-  const nextState = normalizePinnedAiSessionWindowRestoreState(state)
-  settingsStore.set("pinnedAiSessionWindowRestoreState", nextState)
-  return nextState
+export function setThreadWindowRestoreState(
+  state: ThreadWindowRestoreState
+): ThreadWindowRestoreState {
+  const next = normalizeThreadWindowRestoreState(state)
+  settingsStore.set("threadWindowRestoreState", next)
+  return next
 }
 
 export function getShortcutSettings(): ShortcutSettings {

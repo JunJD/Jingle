@@ -5,10 +5,8 @@ import { closeDatabase, initializeDatabase } from "./db/lifecycle"
 import { closeRuntimeCheckpointers } from "./checkpointer/runtime-checkpointer-manager"
 import { createMainCompositionRoot, type MainCompositionRoot } from "./composition-root"
 import { createLauncherWindow, showLauncherWindow } from "./windows/launcher-window"
-import {
-  createPinnedAiSessionWindow,
-  setPinnedAiSessionWindowThreadId
-} from "./windows/pinned-ai-session-window"
+import { createMainWindow } from "./windows/main-window"
+import { createThreadWindow } from "./windows/thread-window"
 import { createSettingsWindow, showSettingsWindow } from "./windows/settings-window"
 import { registerNativeExtensionAssetProtocol } from "./native-extensions/asset-protocol"
 import { NATIVE_EXTENSION_ASSET_PROTOCOL } from "./native-extensions/assets"
@@ -36,7 +34,6 @@ import {
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 import { createIpcNetworkWindow, showIpcNetworkWindow } from "./windows/ipc-network-window"
 import { beginRendererWindowShutdown } from "./windows/load-renderer-window"
-import { requestWindowPresentation } from "./windows/window-presentation"
 
 const APP_DISPLAY_NAME = "Jingle"
 const APP_USER_MODEL_ID = "com.jingle.desktop"
@@ -63,6 +60,16 @@ let launcherWindow: BrowserWindow | null = null
 let ipcNetworkWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 let mainCompositionRoot: MainCompositionRoot | null = null
+let pendingMainWindowOpen = false
+
+function showMain(): void {
+  if (!mainCompositionRoot) {
+    pendingMainWindowOpen = true
+    return
+  }
+  pendingMainWindowOpen = false
+  mainCompositionRoot.showMainWindow()
+}
 let pendingSettingsNavigation: SettingsWindowNavigationPayload | null = null
 let settingsRendererReady = false
 let pendingOAuthCallbackUrl: string | null = null
@@ -295,7 +302,7 @@ if (hasSingleInstanceLock) {
       return
     }
 
-    showLauncher()
+    showMain()
   })
 
   app.on("open-url", (event, rawUrl) => {
@@ -347,20 +354,17 @@ if (hasSingleInstanceLock) {
         settingsRendererReady = true
         return pending
       },
-      createPinnedAiSessionWindow,
+      createMainWindow,
+      createThreadWindow,
       getLauncherWindow,
       enableDevtoolsNetwork,
       ipcMain,
       isDev,
       openIpcNetworkWindow,
       openSettingsWindow,
-      presentPinnedAiSessionWindow: requestWindowPresentation,
       quitApplication: () => app.quit(),
       showLauncherWindow: showLauncher,
-      showMainSubject: showLauncher,
-      setPinnedAiSessionWindowThreadId: (window, threadId) => {
-        setPinnedAiSessionWindowThreadId(window.webContents, threadId)
-      },
+      showMainWindow: showMain,
       toggleLauncherWindow: toggleLauncher
     })
     mainCompositionRoot.registerIpcHandlers()
@@ -376,21 +380,23 @@ if (hasSingleInstanceLock) {
     }
     startNativeMinimalIsland({
       openLauncher: showLauncher,
-      openMainWindow: showLauncher,
+      openMainWindow: showMain,
       openSettings: () => openSettingsWindow(),
       quit: () => app.quit()
     })
     installAppEntry({
       openIpcNetwork: enableDevtoolsNetwork ? openIpcNetworkWindow : undefined,
       openLauncher: showLauncher,
+      openMainWindow: showMain,
       openSettings: () => openSettingsWindow(),
       quit: () => app.quit()
     })
 
-    showLauncher()
+    showMain()
+    if (pendingMainWindowOpen) showMain()
 
     app.on("activate", () => {
-      showLauncher()
+      showMain()
     })
   })
 }
@@ -415,7 +421,5 @@ app.on("before-quit", (event) => {
 })
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit()
-  }
+  // DurableWindowLifecycleService owns platform exit semantics.
 })

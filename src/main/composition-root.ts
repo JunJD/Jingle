@@ -6,11 +6,12 @@ import { AgentThreadRunner } from "./agent/agent-thread-runner"
 import { AgentController } from "./agent/controller"
 import { registerAgentIpcHandlers, registerAgentModule } from "./agent/module"
 import { AgentService } from "./agent/service"
+import { registerMainWindowIpcHandlers, registerMainWindowModule } from "./main-window/module"
 import {
-  registerAiSessionWindowsIpcHandlers,
-  registerAiSessionWindowsModule
-} from "./ai-session-windows/module"
-import { AiSessionWindowsService, type AiSessionWindowsRuntime } from "./ai-session-windows/service"
+  PrimaryMainWindowService,
+  type PrimaryMainWindowRuntime
+} from "./main-window/service"
+import { ThreadWindowService, type ThreadWindowRuntime } from "./thread-window/service"
 import { installApplicationMenu } from "./app-menu"
 import { registerArtifactsIpcHandlers, registerArtifactsModule } from "./artifacts/module"
 import { registerDiagnosticsIpcHandlers } from "./diagnostics/controller"
@@ -104,18 +105,17 @@ import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 
 export interface MainCompositionContext {
   consumePendingSettingsNavigation: () => SettingsWindowNavigationPayload | null
-  createPinnedAiSessionWindow: AiSessionWindowsRuntime["createPinnedAiSessionWindow"]
+  createMainWindow: PrimaryMainWindowRuntime["createMainWindow"]
+  createThreadWindow: ThreadWindowRuntime["createThreadWindow"]
   enableDevtoolsNetwork: boolean
   getLauncherWindow: () => BrowserWindow | null
   ipcMain: IpcMain
   isDev: boolean
   openIpcNetworkWindow: () => void
   openSettingsWindow: (payload?: SettingsWindowNavigationPayload) => void
-  presentPinnedAiSessionWindow: AiSessionWindowsRuntime["presentPinnedAiSessionWindow"]
   quitApplication: () => void
   showLauncherWindow: () => void
-  showMainSubject: () => void
-  setPinnedAiSessionWindowThreadId: AiSessionWindowsRuntime["setPinnedAiSessionWindowThreadId"]
+  showMainWindow: () => void
   toggleLauncherWindow: () => void
 }
 
@@ -131,6 +131,10 @@ export class MainCompositionRoot {
     private readonly dependencyContainer: DependencyContainer
   ) {}
 
+  showMainWindow(threadId?: string): void {
+    this.dependencyContainer.resolve(PrimaryMainWindowService).open(threadId ? { threadId } : {})
+  }
+
   registerIpcHandlers(): void {
     const { ipcMain } = this.context
 
@@ -141,7 +145,7 @@ export class MainCompositionRoot {
     }
 
     registerAgentIpcHandlers(this.dependencyContainer, ipcMain)
-    registerAiSessionWindowsIpcHandlers(this.dependencyContainer, ipcMain)
+    registerMainWindowIpcHandlers(this.dependencyContainer, ipcMain)
     registerArtifactsIpcHandlers(this.dependencyContainer, ipcMain)
     registerDiagnosticsIpcHandlers(ipcMain)
     registerExternalLinksIpcHandlers(this.dependencyContainer, ipcMain)
@@ -199,16 +203,11 @@ export class MainCompositionRoot {
       }
     })
     void warmLauncherSearchProviders()
-    void this.dependencyContainer
-      .resolve(AiSessionWindowsService)
-      .restorePinnedWindows()
-      .catch((error) => {
-        console.warn("[MainCompositionRoot] Failed to restore pinned AI session windows.", error)
-      })
+    this.dependencyContainer.resolve(ThreadWindowService).restore()
   }
 
   async dispose(): Promise<void> {
-    this.dependencyContainer.resolve(AiSessionWindowsService).markApplicationQuitting()
+    this.dependencyContainer.resolve(ThreadWindowService).markApplicationQuitting()
     this.stopNativeIslandAgentStatus?.()
     this.stopNativeIslandAgentStatus = null
     this.stopLauncherSearchIndexRefresh?.()
@@ -262,7 +261,7 @@ export class MainCompositionRoot {
       showIpcNetwork,
       launcherShortcutAccelerator: getGlobalShortcutAccelerator(LAUNCHER_COMMAND_IDS.toggle),
       showLauncher: this.context.showLauncherWindow,
-      showMainSubject: this.context.showMainSubject,
+      showMainWindow: this.context.showMainWindow,
       showSettings: () => {
         this.context.openSettingsWindow()
       }
@@ -279,10 +278,10 @@ export function createMainCompositionRoot(
 
   childContainer.registerInstance<MainCompositionContext>(MAIN_COMPOSITION_CONTEXT_TOKEN, context)
   registerAgentModule(childContainer)
-  registerAiSessionWindowsModule(childContainer, {
-    createPinnedAiSessionWindow: context.createPinnedAiSessionWindow,
-    presentPinnedAiSessionWindow: context.presentPinnedAiSessionWindow,
-    setPinnedAiSessionWindowThreadId: context.setPinnedAiSessionWindowThreadId
+  registerMainWindowModule(childContainer, {
+    createMainWindow: context.createMainWindow,
+    createThreadWindow: context.createThreadWindow,
+    quitApplication: context.quitApplication
   })
   registerArtifactsModule(childContainer)
   registerExternalLinksModule(childContainer)
@@ -292,14 +291,8 @@ export function createMainCompositionRoot(
   registerLauncherHistoryModule(childContainer)
   registerLocalStartModule(childContainer)
   registerLauncherModule(childContainer, {
-    openPinnedSessionWindow: (threadId: string) => {
-      const result = childContainer.resolve(AiSessionWindowsService).openPinnedWindow({ threadId })
-      if (!result.ok) {
-        console.warn("[Launcher] Pinned AI session window limit reached.", {
-          limit: result.limit
-        })
-      }
-    }
+    openMainWindow: (threadId: string) =>
+      childContainer.resolve(PrimaryMainWindowService).open({ threadId })
   })
   registerModelProviderModule(childContainer)
   registerJingleMemoryModule(childContainer)

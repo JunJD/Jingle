@@ -112,13 +112,13 @@ function createSenderIdentity(input: {
   pinned: ReadonlyMap<FakeWebContents, string>
 }) {
   return {
-    getPinnedThreadId: (sender: WebContents) =>
+    getMainThreadId: (sender: WebContents) =>
       input.pinned.get(sender as unknown as FakeWebContents) ?? null,
     isLauncher: (sender: WebContents) => sender === (input.launcher as unknown as WebContents)
   }
 }
 
-test("thread digest IPC admits only Launcher and the bound Pinned AI main frame", async () => {
+test("thread digest IPC admits only Launcher and the bound Main window main frame", async () => {
   const calls: string[] = []
   const launcher = new FakeWebContents(1)
   const pinned = new FakeWebContents(2)
@@ -137,11 +137,11 @@ test("thread digest IPC admits only Launcher and the bound Pinned AI main frame"
 
   await assert.rejects(
     ipcMain.invoke("threadDigest:get", pinned, { threadId: "thread-other" }),
-    /only available to the Launcher or the bound Pinned AI session/
+    /only available to the Launcher or the bound Main window/
   )
   await assert.rejects(
     ipcMain.invoke("threadDigest:generate", settings, { threadId: "thread-bound" }),
-    /only available to the Launcher or the bound Pinned AI session/
+    /only available to the Launcher or the bound Main window/
   )
   await assert.rejects(
     ipcMain.invokeFromFrame("threadDigest:get", launcher, {}, { threadId: "thread-any" }),
@@ -151,13 +151,13 @@ test("thread digest IPC admits only Launcher and the bound Pinned AI main frame"
   assert.deepEqual(calls, ["get:thread-any", "generate:thread-bound"])
 })
 
-test("thread digest changes publish only to Launcher and the matching Pinned AI session", () => {
+test("thread digest changes publish only to Launcher and the matching Main window session", () => {
   const calls: string[] = []
   const launcher = new FakeWebContents(1)
-  const matchingPinned = new FakeWebContents(2)
-  const otherPinned = new FakeWebContents(3)
+  const matchingMain = new FakeWebContents(2)
+  const otherMain = new FakeWebContents(3)
   const settings = new FakeWebContents(4)
-  const windows = [launcher, matchingPinned, otherPinned, settings].map(
+  const windows = [launcher, matchingMain, otherMain, settings].map(
     (webContents) => new FakeWindow(webContents)
   )
   const { emitChanged, service } = createServiceStub(calls)
@@ -166,8 +166,8 @@ test("thread digest changes publish only to Launcher and the matching Pinned AI 
     createSenderIdentity({
       launcher,
       pinned: new Map([
-        [matchingPinned, "thread-bound"],
-        [otherPinned, "thread-other"]
+        [matchingMain, "thread-bound"],
+        [otherMain, "thread-other"]
       ])
     }),
     () => windows as unknown as BrowserWindow[]
@@ -178,8 +178,8 @@ test("thread digest changes publish only to Launcher and the matching Pinned AI 
 
   const expected = [{ channel: "threadDigest:changed", payload: { digest: DIGEST } }]
   assert.deepEqual(launcher.sent, expected)
-  assert.deepEqual(matchingPinned.sent, expected)
-  assert.deepEqual(otherPinned.sent, [])
+  assert.deepEqual(matchingMain.sent, expected)
+  assert.deepEqual(otherMain.sent, [])
   assert.deepEqual(settings.sent, [])
 })
 

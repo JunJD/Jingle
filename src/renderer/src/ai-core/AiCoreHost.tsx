@@ -85,7 +85,7 @@ export interface AiCoreHostValue {
     create: (input: AiCoreThreadCreateInput) => Promise<AiCoreThreadHandle>
     getActiveThreadId: () => string | null
     list: () => Promise<Thread[]>
-    mode: "launcher" | "pinned-thread"
+    mode: "launcher" | "main"
     onBeforeActivate?: (threadId: string) => Promise<boolean>
     submit: (input: AiCoreThreadSubmitInput) => Promise<void>
   }

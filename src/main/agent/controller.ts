@@ -49,13 +49,11 @@ interface AgentControllerDiagnostics {
 }
 
 interface AgentControllerSenderIdentity {
-  getPinnedAiSessionThreadId(sender: WebContents): string | null
+  getMainWindowThreadId(sender: WebContents): string | null
   isLauncher(sender: WebContents): boolean
 }
 
-type AgentControllerSender =
-  | { surface: "launcher" }
-  | { surface: "pinned-ai-session"; threadId: string }
+type AgentControllerSender = { surface: "launcher" } | { surface: "main"; threadId: string }
 
 export class AgentController {
   private readonly eventSubscriptionCleanups = new Map<string, () => void>()
@@ -198,25 +196,25 @@ export class AgentController {
     }
 
     const isLauncher = this.senderIdentity.isLauncher(event.sender)
-    const pinnedThreadId = this.senderIdentity.getPinnedAiSessionThreadId(event.sender)
+    const mainThreadId = this.senderIdentity.getMainWindowThreadId(event.sender)
     if (isLauncher) {
-      if (pinnedThreadId !== null) {
+      if (mainThreadId !== null) {
         throw new JingleIpcError({
           channel,
           code: "PERMISSION_DENIED",
-          message: "Agent commands can only be invoked by the Launcher or a Pinned AI session."
+          message: "Agent commands can only be invoked by the Launcher or a Main window."
         })
       }
       return { surface: "launcher" }
     }
-    if (pinnedThreadId === null) {
+    if (mainThreadId === null) {
       throw new JingleIpcError({
         channel,
         code: "PERMISSION_DENIED",
-        message: "Agent commands can only be invoked by the Launcher or a Pinned AI session."
+        message: "Agent commands can only be invoked by the Launcher or a Main window."
       })
     }
-    return { surface: "pinned-ai-session", threadId: pinnedThreadId }
+    return { surface: "main", threadId: mainThreadId }
   }
 
   private assertAgentThreadAccess(
@@ -224,11 +222,11 @@ export class AgentController {
     threadId: string,
     channel: string
   ): void {
-    if (sender.surface === "pinned-ai-session" && sender.threadId !== threadId) {
+    if (sender.surface === "main" && sender.threadId !== threadId) {
       throw new JingleIpcError({
         channel,
         code: "PERMISSION_DENIED",
-        message: "Pinned AI sessions can only access their bound thread."
+        message: "Main windows can only access their bound thread."
       })
     }
   }
@@ -563,10 +561,7 @@ export class AgentController {
     }
   ): Promise<AgentConnectThreadEventsResult> {
     const subscriptionKey = this.getSubscriptionKey(sender.id, threadId)
-    const generationKey =
-      options.surface === "pinned-ai-session"
-        ? this.getPinnedSubscriptionGenerationKey(sender.id)
-        : subscriptionKey
+    const generationKey = this.getMainSubscriptionGenerationKey(sender.id)
     const generation = (this.eventSubscriptionGenerations.get(generationKey) ?? 0) + 1
     this.eventSubscriptionGenerations.set(generationKey, generation)
     this.nextEventSubscriberId += 1
@@ -627,18 +622,16 @@ export class AgentController {
     sender.removeListener("destroyed", handlePendingSenderDestroyed)
 
     const isCurrentGeneration = this.eventSubscriptionGenerations.get(generationKey) === generation
-    const isCurrentPinnedThread =
-      options.surface !== "pinned-ai-session" ||
-      this.senderIdentity.getPinnedAiSessionThreadId(sender) === threadId
-    if (sender.isDestroyed() || !isCurrentGeneration || !isCurrentPinnedThread) {
+    const isCurrentMainThread =
+      options.surface !== "main" || this.senderIdentity.getMainWindowThreadId(sender) === threadId
+    if (sender.isDestroyed() || !isCurrentGeneration || !isCurrentMainThread) {
       this.agentThreadRunner.disconnectThreadEvents(threadId, subscriberId)
       restorePreviousSubscription()
       return { subscriptionToken }
     }
 
-    if (options.surface === "pinned-ai-session") {
-      this.removeOtherSubscriptionsForSender(sender.id, subscriptionKey)
-    }
+    this.removeOtherSubscriptionsForSender(sender.id, subscriptionKey)
+    if (options.surface === "main") this.removeLauncherSubscriptionsForThread(threadId)
     previousCleanup?.()
 
     const handleSenderDestroyed = (): void => {
@@ -679,17 +672,17 @@ export class AgentController {
       return false
     }
 
-    if (subscription.surface === "pinned-ai-session") {
-      return this.senderIdentity.getPinnedAiSessionThreadId(subscription.sender) === threadId
+    if (subscription.surface === "main") {
+      return this.senderIdentity.getMainWindowThreadId(subscription.sender) === threadId
     }
 
     for (const [candidateKey, candidate] of this.eventSubscriptions) {
       if (
         candidateKey !== subscriptionKey &&
         candidate.threadId === threadId &&
-        candidate.surface === "pinned-ai-session" &&
+        candidate.surface === "main" &&
         candidate.suppressesLauncher &&
-        this.senderIdentity.getPinnedAiSessionThreadId(candidate.sender) === threadId &&
+        this.senderIdentity.getMainWindowThreadId(candidate.sender) === threadId &&
         !candidate.sender.isDestroyed()
       ) {
         return false
@@ -700,7 +693,7 @@ export class AgentController {
   }
 
   private removeAllSubscriptionsForSender(senderId: number): void {
-    this.invalidateEventSubscriptionGeneration(this.getPinnedSubscriptionGenerationKey(senderId))
+    this.invalidateEventSubscriptionGeneration(this.getMainSubscriptionGenerationKey(senderId))
     const prefix = `${senderId}:`
     for (const subscriptionKey of this.eventSubscriptions.keys()) {
       if (!subscriptionKey.startsWith(prefix)) {
@@ -721,6 +714,17 @@ export class AgentController {
     }
   }
 
+  private removeLauncherSubscriptionsForThread(threadId: string): void {
+    for (const [subscriptionKey, subscription] of this.eventSubscriptions) {
+      if (subscription.surface === "launcher" && subscription.threadId === threadId) {
+        this.invalidateEventSubscriptionGeneration(
+          this.getMainSubscriptionGenerationKey(subscription.sender.id)
+        )
+        this.removeSubscriptionByKey(subscriptionKey)
+      }
+    }
+  }
+
   private removeEventSubscription(
     senderId: number,
     threadId: string,
@@ -731,7 +735,7 @@ export class AgentController {
       return
     }
     this.invalidateEventSubscriptionGeneration(subscriptionKey)
-    this.invalidateEventSubscriptionGeneration(this.getPinnedSubscriptionGenerationKey(senderId))
+    this.invalidateEventSubscriptionGeneration(this.getMainSubscriptionGenerationKey(senderId))
     this.removeSubscriptionByKey(subscriptionKey)
   }
 
@@ -746,8 +750,8 @@ export class AgentController {
     this.eventSubscriptions.delete(subscriptionKey)
   }
 
-  private getPinnedSubscriptionGenerationKey(senderId: number): string {
-    return `pinned:${senderId}`
+  private getMainSubscriptionGenerationKey(senderId: number): string {
+    return `main:${senderId}`
   }
 
   private invalidateEventSubscriptionGeneration(generationKey: string): void {

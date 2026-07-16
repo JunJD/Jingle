@@ -6,25 +6,27 @@ test("app entry menu exposes launcher, settings, ipc network, and quit actions",
   const menu = createAppEntryMenu({
     openIpcNetwork: () => {},
     openLauncher: () => {},
+    openMainWindow: () => {},
     openSettings: () => {},
     quit: () => {}
   })
 
   assert.deepEqual(
     menu.filter((item) => "label" in item).map((item) => item.label),
-    ["Open Launcher", "Settings", "IPC Network", "Quit"]
+    ["Open Main Window", "Open Launcher", "Settings", "IPC Network", "Quit"]
   )
 })
 
 test("app entry menu omits IPC Network outside development", () => {
   const menu = createAppEntryMenu({
     openLauncher: () => {},
+    openMainWindow: () => {},
     openSettings: () => {},
     quit: () => {}
   })
 
   assert.deepEqual(
     menu.filter((item) => "label" in item).map((item) => item.label),
-    ["Open Launcher", "Settings", "Quit"]
+    ["Open Main Window", "Open Launcher", "Settings", "Quit"]
   )
 })

@@ -1,6 +1,5 @@
 import { MAX_LAUNCHER_SEARCH_RESULTS } from "@shared/launcher"
 import { AI_THREAD_SOURCE } from "@shared/launcher-ai"
-import type { OpenPinnedAiSessionWindowResult } from "@shared/ai-session-window"
 import type { LauncherSearchResult } from "@shared/launcher-search"
 import { resolveShortcutPlatform, type ShortcutPlatform } from "@shared/shortcuts/model"
 
@@ -9,17 +8,21 @@ export const launcherAiCommands = {
     return resolveShortcutPlatform(window.electron.process.platform)
   },
 
-  openPinnedThread(threadId: string): Promise<OpenPinnedAiSessionWindowResult> {
-    return window.api.aiSessionWindows.openPinned({ threadId })
+  openMainThread(threadId: string): Promise<void> {
+    return window.api.durableWindow.openPrimary({ threadId })
+  },
+
+  async pinThreadWindow(threadId: string): Promise<boolean> {
+    const result = await window.api.durableWindow.pinNew({ threadId })
+    if (!result.ok) {
+      console.warn("[DurableWindow] Thread window resource limit reached.", result)
+      return false
+    }
+    return true
   },
 
   openWorkspaceInFinder(workspacePath: string): Promise<void> {
     return window.api.openTargets.open({ folderPath: workspacePath, targetId: "finder" })
-  },
-
-  async updatePinnedThread(windowId: string, threadId: string): Promise<boolean> {
-    const result = await window.api.aiSessionWindows.updatePinnedThread({ threadId, windowId })
-    return result.ok
   },
 
   async searchThreads(query: string): Promise<LauncherSearchResult[]> {

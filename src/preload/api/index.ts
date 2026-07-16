@@ -1,5 +1,5 @@
 import { agentApi } from "./agent"
-import { aiSessionWindowsApi } from "./aiSessionWindows"
+import { durableWindowApi } from "./durableWindow"
 import { artifactsApi } from "./artifacts"
 import { diagnosticsApi } from "./diagnostics"
 import { devtoolsApi } from "./devtools"
@@ -24,7 +24,7 @@ import { workspaceApi } from "./workspace"
 
 export const api = {
   agent: agentApi,
-  aiSessionWindows: aiSessionWindowsApi,
+  durableWindow: durableWindowApi,
   threads: threadsApi,
   artifacts: artifactsApi,
   diagnostics: diagnosticsApi,

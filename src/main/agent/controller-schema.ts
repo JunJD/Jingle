@@ -75,7 +75,7 @@ const agentMessageContentBlockSchema = z.discriminatedUnion("type", [
 
 const permissionModeSchema = z.enum(["explore", "ask-to-edit", "auto"])
 const followUpActionSchema = z.literal("steer")
-const agentThreadEventSubscriptionSurfaceSchema = z.enum(["launcher", "pinned-ai-session"])
+const agentThreadEventSubscriptionSurfaceSchema = z.enum(["launcher", "main"])
 
 export const agentInvokeParamsSchema = z
   .object({

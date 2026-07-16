@@ -3,11 +3,10 @@ import LauncherApp from "@launcher-shell/LauncherApp"
 import { LauncherClipboardProvider } from "@launcher-shell/LauncherClipboardContext"
 import { LauncherSelectionProvider } from "@launcher-shell/LauncherSelectionContext"
 import { DEFAULT_APP_THEME_SETTINGS, type AppThemeSettings } from "@shared/app-theme"
-import { PINNED_AI_SESSION_WINDOW_KIND } from "@shared/ai-session-window"
 import { DEFAULT_APP_LOCALE, normalizeAppLocale, type AppLocale } from "@shared/i18n"
 import { IPC_NETWORK_WINDOW_KIND } from "@jingle/devtools-network"
 import { I18nProvider } from "@/lib/i18n"
-import { PinnedAiSessionWindowApp } from "./ai-core/PinnedAiSessionWindowApp"
+import { DurableWindowApp } from "./ai-core/MainWindowApp"
 import { IpcNetworkApp } from "./devtools/IpcNetworkApp"
 import { ThreadProvider } from "./lib/thread-context"
 import { applyAppThemeSettings } from "./lib/app-theme"
@@ -53,7 +52,7 @@ function AppRendererRoot(props: {
   const { resolvedWindowKind, windowKind } = props
   const [locale, setLocale] = useState<AppLocale>(DEFAULT_APP_LOCALE)
   const shortcutWindowKind =
-    resolvedWindowKind === "launcher" || resolvedWindowKind === PINNED_AI_SESSION_WINDOW_KIND
+    resolvedWindowKind === "launcher"
       ? "launcher"
       : resolvedWindowKind === "settings"
         ? "settings"
@@ -77,9 +76,9 @@ function AppRendererRoot(props: {
                 </LauncherSelectionProvider>
               </LauncherClipboardProvider>
             </ThreadProvider>
-          ) : windowKind === PINNED_AI_SESSION_WINDOW_KIND ? (
-            <ThreadProvider eventSurface="pinned-ai-session">
-              <PinnedAiSessionWindowApp />
+          ) : windowKind === "main" || windowKind === "thread-window" ? (
+            <ThreadProvider eventSurface="main">
+              <DurableWindowApp />
             </ThreadProvider>
           ) : windowKind === "settings" ? (
             <SettingsApp />

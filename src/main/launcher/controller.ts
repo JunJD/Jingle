@@ -8,7 +8,7 @@ import {
   setLauncherWindowViewportHeight,
   showLauncherWindow
 } from "../windows/launcher-window"
-import { isPinnedAiSessionWindowWebContents } from "../windows/pinned-ai-session-window"
+import { getWindowIdentity } from "../windows/window-identity"
 import { registerIpcHandle, registerValidatedIpcHandle } from "../ipc/handle"
 import { LauncherService } from "./service"
 
@@ -109,14 +109,15 @@ export class LauncherController {
     }
 
     if (
-      isPinnedAiSessionWindowWebContents(event.sender) &&
-      this.isPinnedAiThreadSearchRequest(request)
+      (getWindowIdentity(event.sender)?.kind === "main" ||
+        getWindowIdentity(event.sender)?.kind === "thread-window") &&
+      this.isMainThreadSearchRequest(request)
     ) {
       return
     }
 
     throw new Error(
-      "Launcher search can only be invoked by the Launcher or by Pinned AI for thread-only search."
+      "Launcher search can only be invoked by the Launcher or Main window for thread-only search."
     )
   }
 
@@ -134,7 +135,7 @@ export class LauncherController {
     }
   }
 
-  private isPinnedAiThreadSearchRequest(request: unknown): boolean {
+  private isMainThreadSearchRequest(request: unknown): boolean {
     if (typeof request !== "object" || request === null) {
       return false
     }

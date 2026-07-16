@@ -2,8 +2,7 @@ import type { IpcMain } from "electron"
 import { instanceCachingFactory, type DependencyContainer } from "tsyringe"
 import { ThreadWorkflowController } from "./controller"
 import { ThreadWorkflowService } from "./service"
-import { isLauncherWindowWebContents } from "../windows/launcher-window"
-import { getPinnedAiSessionWindowThreadId } from "../windows/pinned-ai-session-window"
+import { getWindowIdentity } from "../windows/window-identity"
 
 export function registerThreadWorkflowModule(container: DependencyContainer): void {
   container.register(ThreadWorkflowService, {
@@ -12,8 +11,11 @@ export function registerThreadWorkflowModule(container: DependencyContainer): vo
   container.register(ThreadWorkflowController, {
     useFactory: instanceCachingFactory((dependencyContainer) => {
       return new ThreadWorkflowController(dependencyContainer.resolve(ThreadWorkflowService), {
-        getPinnedThreadId: getPinnedAiSessionWindowThreadId,
-        isLauncher: isLauncherWindowWebContents
+        getMainThreadId: (sender) => {
+          const identity = getWindowIdentity(sender)
+          return identity?.kind === "main" || identity?.kind === "thread-window" ? identity.threadId : null
+        },
+        isLauncher: (sender) => getWindowIdentity(sender)?.kind === "launcher"
       })
     })
   })

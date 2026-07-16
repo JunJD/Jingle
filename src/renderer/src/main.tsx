@@ -12,11 +12,25 @@ import { RendererRoot } from "./RendererRoot"
 import "./index.css"
 
 const windowKind = new URLSearchParams(window.location.search).get("window")
-const resolvedWindowKind = windowKind ?? "main"
+const supportedWindowKinds = new Set([
+  "main",
+  "thread-window",
+  "launcher",
+  "settings",
+  IPC_NETWORK_WINDOW_KIND
+])
+if (!windowKind || !supportedWindowKinds.has(windowKind)) {
+  throw new Error(`Renderer startup received an invalid window kind: ${windowKind ?? "missing"}.`)
+}
+const resolvedWindowKind = windowKind
 const platform = window.electron.process.platform
 
 document.documentElement.dataset.window = resolvedWindowKind
 document.body.dataset.window = resolvedWindowKind
+if (resolvedWindowKind === "main" || resolvedWindowKind === "thread-window") {
+  document.documentElement.dataset.windowSurface = "durable"
+  document.body.dataset.windowSurface = "durable"
+}
 document.documentElement.dataset.platform = platform
 document.body.dataset.platform = platform
 

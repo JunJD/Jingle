@@ -9,6 +9,7 @@ import {
   type SettingsWindowNavigationPayload
 } from "@shared/settings-window"
 import { installWindowPresentation, requestWindowPresentation } from "./window-presentation"
+import { registerWindowIdentity } from "./window-identity"
 
 const SETTINGS_WINDOW_WIDTH = 1220
 const SETTINGS_WINDOW_HEIGHT = 820
@@ -47,6 +48,7 @@ export function createSettingsWindow(): BrowserWindow {
       sandbox: false
     }
   })
+  registerWindowIdentity(settingsWindow.webContents, { kind: "settings" })
   settingsWindowWebContents.add(settingsWindow.webContents)
 
   const observeRendererWindowLoadFailure = attachWindowDiagnostics(settingsWindow, "settings")

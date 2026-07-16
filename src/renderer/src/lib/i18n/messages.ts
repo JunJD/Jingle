@@ -183,7 +183,7 @@ export interface AppCopy {
     openAiHistory: string
     openMainChat: string
     openFolder: string
-    openPinnedWindow: string
+    openMainWindow: string
     openThreadInNewWindow: string
     openTarget: string
     openSideChat: string
@@ -560,7 +560,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       openAiHistory: "打开 AI 页面",
       openMainChat: "在主窗口打开",
       openFolder: "打开当前文件夹",
-      openPinnedWindow: "钉出窗口",
+      openMainWindow: "钉出窗口",
       openThreadInNewWindow: "在新窗口中打开",
       openTarget: "打开方式",
       openSideChat: "打开侧边聊天",
@@ -964,7 +964,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       openAiHistory: "Open AI",
       openMainChat: "Open in Main Window",
       openFolder: "Open Current Folder",
-      openPinnedWindow: "Open in Separate Window",
+      openMainWindow: "Open in Separate Window",
       openThreadInNewWindow: "Open in New Window",
       openTarget: "Open With",
       openSideChat: "Open Side Chat",

@@ -34,7 +34,7 @@ async function readWindowKind(page: Page): Promise<string | null> {
   }
 }
 
-export type BddWindowKind = "launcher" | "main" | "pinned-ai-session" | "settings"
+export type BddWindowKind = "launcher" | "main" | "settings" | "thread-window"
 
 async function resolveWindowByKind(
   electronApp: ElectronApplication,
@@ -199,7 +199,7 @@ export class JingleWorld extends World {
       }
     })
 
-    this.page = await resolveWindowByKind(this.electronApp, "launcher")
+    this.page = await resolveWindowByKind(this.electronApp, "main")
   }
 
   getJingleHome(): string {
@@ -224,7 +224,19 @@ export class JingleWorld extends World {
     }
 
     if (windowKind === "launcher") {
-      return this.getPage()
+      await this.electronApp.evaluate(({ Menu }) => {
+        const queue = [...(Menu.getApplicationMenu()?.items ?? [])]
+        while (queue.length > 0) {
+          const item = queue.shift()
+          if (item?.label === "Show Launcher") {
+            item.click?.(undefined as never, undefined as never, undefined as never)
+            return
+          }
+          if (item?.submenu) queue.push(...item.submenu.items)
+        }
+        throw new Error("Show Launcher application menu item is unavailable.")
+      })
+      return resolveWindowByKind(this.electronApp, "launcher")
     }
 
     return resolveWindowByKind(this.electronApp, windowKind)
@@ -243,7 +255,7 @@ export class JingleWorld extends World {
       throw new Error("BDD Electron app is not available. Launch the app before using page steps.")
     }
 
-    const page = await this.getPageByKind(windowKind)
+    const page = await resolveWindowByKind(this.electronApp, windowKind)
     const browserWindow = await this.electronApp.browserWindow(page)
 
     return browserWindow.evaluate((window) => window.isVisible())

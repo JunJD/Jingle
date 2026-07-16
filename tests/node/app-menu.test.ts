@@ -24,7 +24,7 @@ function createTemplate(platform: NodeJS.Platform) {
       isDev: true,
       launcherShortcutAccelerator: null,
       showLauncher: () => {},
-      showMainSubject: () => {},
+      showMainWindow: () => {},
       showSettings: () => {}
     })
   )

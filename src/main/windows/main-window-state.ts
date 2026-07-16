@@ -4,11 +4,12 @@ import { getMainWindowState, setMainWindowState } from "../preferences"
 
 const DEFAULT_MAIN_WINDOW_WIDTH = 1440
 const DEFAULT_MAIN_WINDOW_HEIGHT = 900
-const MAIN_WINDOW_MIN_WIDTH = 1200
-const MAIN_WINDOW_MIN_HEIGHT = 700
+const MAIN_WINDOW_MIN_WIDTH = 760
+const MAIN_WINDOW_MIN_HEIGHT = 520
 
 export interface MainWindowPlacement {
   bounds: Rectangle
+  isFirstLaunch: boolean
   isMaximized: boolean
 }
 
@@ -61,6 +62,7 @@ export function getMainWindowPlacement(): MainWindowPlacement {
       width,
       height
     },
+    isFirstLaunch: storedState === null,
     isMaximized: storedState?.isMaximized === true
   }
 }

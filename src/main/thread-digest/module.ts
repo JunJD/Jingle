@@ -3,8 +3,7 @@ import { instanceCachingFactory, type DependencyContainer } from "tsyringe"
 import { diagnosticsGraph } from "../diagnostics/instance"
 import { ThreadDigestController } from "./controller"
 import { ThreadDigestService } from "./service"
-import { isLauncherWindowWebContents } from "../windows/launcher-window"
-import { getPinnedAiSessionWindowThreadId } from "../windows/pinned-ai-session-window"
+import { getWindowIdentity } from "../windows/window-identity"
 
 export function registerThreadDigestModule(container: DependencyContainer): void {
   container.register(ThreadDigestService, {
@@ -15,8 +14,11 @@ export function registerThreadDigestModule(container: DependencyContainer): void
       return new ThreadDigestController(
         dependencyContainer.resolve(ThreadDigestService),
         {
-          getPinnedThreadId: getPinnedAiSessionWindowThreadId,
-          isLauncher: isLauncherWindowWebContents
+          getMainThreadId: (sender) => {
+            const identity = getWindowIdentity(sender)
+            return identity?.kind === "main" || identity?.kind === "thread-window" ? identity.threadId : null
+          },
+          isLauncher: (sender) => getWindowIdentity(sender)?.kind === "launcher"
         },
         undefined,
         diagnosticsGraph

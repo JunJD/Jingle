@@ -51,7 +51,7 @@ function createInvokeEvent(input?: {
 }
 
 const launcherSenderIdentity: ConstructorParameters<typeof AgentController>[3] = {
-  getPinnedAiSessionThreadId: () => null,
+  getMainWindowThreadId: () => null,
   isLauncher: () => true
 }
 
@@ -468,7 +468,7 @@ test("AgentController rejects every agent IPC channel outside trusted main frame
     {} as ConstructorParameters<typeof AgentController>[1],
     { error: () => undefined, warn: () => undefined },
     {
-      getPinnedAiSessionThreadId: () => null,
+      getMainWindowThreadId: () => null,
       isLauncher: () => false
     }
   )
@@ -513,7 +513,7 @@ test("AgentController rejects every agent IPC channel outside trusted main frame
     {} as ConstructorParameters<typeof AgentController>[1],
     { error: () => undefined, warn: () => undefined },
     {
-      getPinnedAiSessionThreadId: () => "thread-ambiguous",
+      getMainWindowThreadId: () => "thread-ambiguous",
       isLauncher: () => true
     }
   )
@@ -546,7 +546,7 @@ test("AgentController derives subscription surfaces from trusted window identity
     runner as unknown as ConstructorParameters<typeof AgentController>[1],
     { error: () => undefined, warn: () => undefined },
     {
-      getPinnedAiSessionThreadId: (sender) => {
+      getMainWindowThreadId: (sender) => {
         if (sender.id === 2) {
           return "thread-pinned"
         }
@@ -562,7 +562,7 @@ test("AgentController derives subscription surfaces from trusted window identity
   controller.register(ipcMain as unknown as IpcMain)
   const launcherEvent = createInvokeEvent({ sender: createFakeSender(1) })
   const pinnedEvent = createInvokeEvent({ sender: createFakeSender(2) })
-  const derivedPinnedEvent = createInvokeEvent({ sender: createFakeSender(3) })
+  const derivedMainEvent = createInvokeEvent({ sender: createFakeSender(3) })
 
   await ipcMain.invokeFrom(launcherEvent, "agent:cancel", { threadId: "thread-launcher" })
   await ipcMain.invokeFrom(pinnedEvent, "agent:cancel", { threadId: "thread-pinned" })
@@ -571,10 +571,10 @@ test("AgentController derives subscription surfaces from trusted window identity
     threadId: "thread-launcher"
   })
   await ipcMain.invokeFrom(pinnedEvent, "agent:connectThreadEvents", {
-    surface: "pinned-ai-session",
+    surface: "main",
     threadId: "thread-pinned"
   })
-  await ipcMain.invokeFrom(derivedPinnedEvent, "agent:connectThreadEvents", {
+  await ipcMain.invokeFrom(derivedMainEvent, "agent:connectThreadEvents", {
     threadId: "thread-pinned-derived"
   })
   await assert.rejects(
@@ -595,7 +595,7 @@ test("AgentController derives subscription surfaces from trusted window identity
   )
 })
 
-test("AgentController rejects every pinned-window command targeting another thread", async () => {
+test("AgentController rejects every main-window command targeting another thread", async () => {
   const unexpectedOwnerCall = (): never => {
     throw new Error("A cross-thread pinned command must not reach a business owner.")
   }
@@ -614,7 +614,7 @@ test("AgentController rejects every pinned-window command targeting another thre
     ) as ConstructorParameters<typeof AgentController>[1],
     { error: () => undefined, warn: () => undefined },
     {
-      getPinnedAiSessionThreadId: () => "thread-bound",
+      getMainWindowThreadId: () => "thread-bound",
       isLauncher: () => false
     }
   )
@@ -697,7 +697,7 @@ test("AgentController requires a subscription token for thread event disconnect"
   )
 })
 
-test("AgentController revokes stale pinned subscriptions when a window changes thread", async () => {
+test("AgentController revokes stale Main subscriptions when a window changes thread", async () => {
   const listeners = new Map<string, (batch: never) => void>()
   const disconnected: string[] = []
   const runner = {
@@ -713,13 +713,13 @@ test("AgentController revokes stale pinned subscriptions when a window changes t
       listeners.delete(key)
     }
   }
-  let pinnedThreadId = "thread-a"
+  let mainThreadId = "thread-a"
   const controller = new AgentController(
     {} as ConstructorParameters<typeof AgentController>[0],
     runner as unknown as ConstructorParameters<typeof AgentController>[1],
     { error: () => undefined, warn: () => undefined },
     {
-      getPinnedAiSessionThreadId: (sender) => (sender.id === 2 ? pinnedThreadId : null),
+      getMainWindowThreadId: (sender) => (sender.id === 2 ? mainThreadId : null),
       isLauncher: (sender) => sender.id === 1
     }
   )
@@ -738,23 +738,22 @@ test("AgentController revokes stale pinned subscriptions when a window changes t
   })
   const launcherThreadAKey = [...listeners.keys()].find((key) => key.startsWith("1:thread-a:"))
   const pinnedThreadAKey = [...listeners.keys()].find((key) => key.startsWith("2:thread-a:"))
-  assert.ok(launcherThreadAKey)
+  assert.equal(launcherThreadAKey, undefined)
   assert.ok(pinnedThreadAKey)
-  listeners.get(launcherThreadAKey)?.({} as never)
   listeners.get(pinnedThreadAKey)?.({} as never)
   assert.equal(launcherSender.sent.length, 0)
   assert.equal(pinnedSender.sent.length, 1)
 
-  pinnedThreadId = "thread-b"
+  mainThreadId = "thread-b"
   listeners.get(pinnedThreadAKey)?.({} as never)
-  listeners.get(launcherThreadAKey)?.({} as never)
   assert.equal(pinnedSender.sent.length, 1)
-  assert.equal(launcherSender.sent.length, 1)
+  assert.equal(launcherSender.sent.length, 0)
 
   await ipcMain.invokeFrom(pinnedEvent, "agent:connectThreadEvents", {
     threadId: "thread-b"
   })
-  assert.deepEqual(disconnected, [pinnedThreadAKey])
+  assert.equal(disconnected.some((key) => key.startsWith("1:thread-a:")), true)
+  assert.equal(disconnected.includes(pinnedThreadAKey), true)
   assert.equal(listeners.has(pinnedThreadAKey), false)
   assert.equal(
     [...listeners.keys()].some((key) => key.startsWith("2:thread-b:")),
@@ -762,7 +761,7 @@ test("AgentController revokes stale pinned subscriptions when a window changes t
   )
 })
 
-test("AgentController discards a stale pinned subscription that resolves after retarget", async () => {
+test("AgentController discards a stale Main subscription that resolves after retarget", async () => {
   let releaseThreadA!: () => void
   const threadAGate = new Promise<void>((resolve) => {
     releaseThreadA = resolve
@@ -785,13 +784,13 @@ test("AgentController discards a stale pinned subscription that resolves after r
       listeners.delete(subscriberId)
     }
   }
-  let pinnedThreadId = "thread-a"
+  let mainThreadId = "thread-a"
   const controller = new AgentController(
     {} as ConstructorParameters<typeof AgentController>[0],
     runner as unknown as ConstructorParameters<typeof AgentController>[1],
     { error: () => undefined, warn: () => undefined },
     {
-      getPinnedAiSessionThreadId: () => pinnedThreadId,
+      getMainWindowThreadId: () => mainThreadId,
       isLauncher: () => false
     }
   )
@@ -804,7 +803,7 @@ test("AgentController discards a stale pinned subscription that resolves after r
     threadId: "thread-a"
   })
   await new Promise<void>((resolve) => setImmediate(resolve))
-  pinnedThreadId = "thread-b"
+  mainThreadId = "thread-b"
   await ipcMain.invoke("agent:connectThreadEvents", { threadId: "thread-b" })
   const threadBKey = [...listeners.keys()].find((key) => key.startsWith("31:thread-b:"))
   assert.ok(threadBKey)
@@ -820,7 +819,7 @@ test("AgentController discards a stale pinned subscription that resolves after r
   assert.equal(sender.sent.length, 1)
 })
 
-test("AgentController does not revive a disconnected pinned subscription after reconnect settles", async () => {
+test("AgentController does not revive Launcher ownership after Main reconnect settles", async () => {
   let reconnectStarted!: () => void
   let releaseReconnect!: () => void
   const reconnectEntered = new Promise<void>((resolve) => {
@@ -857,7 +856,7 @@ test("AgentController does not revive a disconnected pinned subscription after r
     runner as unknown as ConstructorParameters<typeof AgentController>[1],
     { error: () => undefined, warn: () => undefined },
     {
-      getPinnedAiSessionThreadId: (sender) => (sender.id === 2 ? "thread-a" : null),
+      getMainWindowThreadId: (sender) => (sender.id === 2 ? "thread-a" : null),
       isLauncher: (sender) => sender.id === 1
     }
   )
@@ -892,9 +891,8 @@ test("AgentController does not revive a disconnected pinned subscription after r
   })
 
   const launcherKey = [...listeners.keys()].find((key) => key.startsWith("1:thread-a:"))
-  assert.ok(launcherKey)
-  listeners.get(launcherKey)?.({} as never)
-  assert.equal(launcherSender.sent.length, 1)
+  assert.equal(launcherKey, undefined)
+  assert.equal(launcherSender.sent.length, 0)
   assert.equal(
     [...listeners.keys()].some((key) => key.startsWith("2:thread-a:")),
     false
@@ -976,14 +974,14 @@ test("AgentController ignores delayed cleanup for an older subscription generati
   assert.equal(listeners.has(replacementSubscriberId), false)
 })
 
-test("AgentController keeps Launcher events active until a pinned subscription connects", async () => {
+test("AgentController keeps Launcher events active until a Main subscription connects", async () => {
   let pinnedConnectStarted!: () => void
-  let releasePinnedConnect!: () => void
+  let releaseMainConnect!: () => void
   const pinnedConnectEntered = new Promise<void>((resolve) => {
     pinnedConnectStarted = resolve
   })
   const pinnedConnectGate = new Promise<void>((resolve) => {
-    releasePinnedConnect = resolve
+    releaseMainConnect = resolve
   })
   const listeners = new Map<string, (batch: never) => void>()
   const runner = {
@@ -1007,7 +1005,7 @@ test("AgentController keeps Launcher events active until a pinned subscription c
     runner as unknown as ConstructorParameters<typeof AgentController>[1],
     { error: () => undefined, warn: () => undefined },
     {
-      getPinnedAiSessionThreadId: (sender) => (sender.id === 2 ? "thread-a" : null),
+      getMainWindowThreadId: (sender) => (sender.id === 2 ? "thread-a" : null),
       isLauncher: (sender) => sender.id === 1
     }
   )
@@ -1030,7 +1028,7 @@ test("AgentController keeps Launcher events active until a pinned subscription c
   listeners.get(launcherKey)?.({} as never)
   assert.equal(launcherSender.sent.length, 1)
 
-  releasePinnedConnect()
+  releaseMainConnect()
   await pinnedConnect
   const pinnedKey = [...listeners.keys()].find((key) => key.startsWith("2:thread-a:"))
   assert.ok(pinnedKey)
@@ -1038,6 +1036,57 @@ test("AgentController keeps Launcher events active until a pinned subscription c
   listeners.get(pinnedKey)?.({} as never)
   assert.equal(launcherSender.sent.length, 1)
   assert.equal(pinnedSender.sent.length, 1)
+})
+
+test("AgentController prevents a pending Launcher subscription from reviving after Main handoff", async () => {
+  let launcherConnectStarted!: () => void
+  let releaseLauncherConnect!: () => void
+  const launcherConnectEntered = new Promise<void>((resolve) => { launcherConnectStarted = resolve })
+  const launcherConnectGate = new Promise<void>((resolve) => { releaseLauncherConnect = resolve })
+  const listeners = new Map<string, (batch: never) => void>()
+  const runner = {
+    connectThreadEvents: async (
+      _threadId: string,
+      subscriberId: string,
+      listener: (batch: never) => void
+    ) => {
+      if (subscriberId.startsWith("1:thread-a:")) {
+        launcherConnectStarted()
+        await launcherConnectGate
+      }
+      listeners.set(subscriberId, listener)
+    },
+    disconnectThreadEvents: (_threadId: string, subscriberId: string) => {
+      listeners.delete(subscriberId)
+    }
+  }
+  const controller = new AgentController(
+    {} as ConstructorParameters<typeof AgentController>[0],
+    runner as unknown as ConstructorParameters<typeof AgentController>[1],
+    { error: () => undefined, warn: () => undefined },
+    {
+      getMainWindowThreadId: (sender) => (sender.id === 2 ? "thread-a" : null),
+      isLauncher: (sender) => sender.id === 1
+    }
+  )
+  const ipcMain = new FakeIpcMain()
+  controller.register(ipcMain as unknown as IpcMain)
+  const launcherConnect = ipcMain.invokeFrom(
+    createInvokeEvent({ sender: createFakeSender(1) }),
+    "agent:connectThreadEvents",
+    { threadId: "thread-a" }
+  )
+  await launcherConnectEntered
+  await ipcMain.invokeFrom(
+    createInvokeEvent({ sender: createFakeSender(2) }),
+    "agent:connectThreadEvents",
+    { threadId: "thread-a" }
+  )
+  releaseLauncherConnect()
+  await launcherConnect
+
+  assert.equal([...listeners.keys()].some((key) => key.startsWith("1:thread-a:")), false)
+  assert.equal([...listeners.keys()].some((key) => key.startsWith("2:thread-a:")), true)
 })
 
 test("AgentController discards a pending subscription when its sender is destroyed", async () => {

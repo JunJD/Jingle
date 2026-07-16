@@ -40,7 +40,7 @@ type ThreadWorkflowChannel =
   | "threadWorkflow:setStatus"
 
 interface ThreadWorkflowSenderIdentity {
-  getPinnedThreadId(sender: WebContents): string | null
+  getMainThreadId(sender: WebContents): string | null
   isLauncher(sender: WebContents): boolean
 }
 
@@ -156,7 +156,7 @@ export class ThreadWorkflowController {
     this.assertMainFrame(event, channel)
     if (
       !this.senderIdentity.isLauncher(event.sender) ||
-      this.senderIdentity.getPinnedThreadId(event.sender) !== null
+      this.senderIdentity.getMainThreadId(event.sender) !== null
     ) {
       throw new JingleIpcError({
         channel,
@@ -173,15 +173,15 @@ export class ThreadWorkflowController {
   ): void {
     this.assertMainFrame(event, channel)
     const isLauncher = this.senderIdentity.isLauncher(event.sender)
-    const pinnedThreadId = this.senderIdentity.getPinnedThreadId(event.sender)
-    if ((isLauncher && pinnedThreadId === null) || (!isLauncher && pinnedThreadId === threadId)) {
+    const mainThreadId = this.senderIdentity.getMainThreadId(event.sender)
+    if ((isLauncher && mainThreadId === null) || (!isLauncher && mainThreadId === threadId)) {
       return
     }
 
     throw new JingleIpcError({
       channel,
       code: "PERMISSION_DENIED",
-      message: "Thread workflows are only available to the Launcher or the bound Pinned AI session."
+      message: "Thread workflows are only available to the Launcher or the bound Main window."
     })
   }
 
@@ -197,19 +197,18 @@ export class ThreadWorkflowController {
       }
 
       const isLauncher = this.senderIdentity.isLauncher(sender)
-      const pinnedThreadId = this.senderIdentity.getPinnedThreadId(sender)
+      const mainThreadId = this.senderIdentity.getMainThreadId(sender)
       let canReceive =
         event.scope === "thread" &&
-        ((isLauncher && pinnedThreadId === null) ||
-          (!isLauncher && pinnedThreadId === event.threadId))
+        ((isLauncher && mainThreadId === null) || (!isLauncher && mainThreadId === event.threadId))
       if (event.scope === "project") {
-        canReceive = isLauncher && pinnedThreadId === null
-        if (!isLauncher && pinnedThreadId !== null) {
+        canReceive = isLauncher && mainThreadId === null
+        if (!isLauncher && mainThreadId !== null) {
           try {
-            const view = await this.service.getView(pinnedThreadId)
+            const view = await this.service.getView(mainThreadId)
             canReceive = view.project?.projectId === event.projectId
           } catch (error) {
-            console.warn("[ThreadWorkflow] Failed to resolve Pinned AI project access.", {
+            console.warn("[ThreadWorkflow] Failed to resolve Main window project access.", {
               error,
               webContentsId: sender.id
             })

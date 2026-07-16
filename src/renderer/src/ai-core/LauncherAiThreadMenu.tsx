@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils"
 
 interface LauncherAiThreadMenuProps {
   canBranchThread: boolean
-  canOpenPinnedWindow: boolean
+  canOpenMainWindow: boolean
   labels: {
     addAutomation: string
     branchIntoLocal: string
@@ -31,7 +31,7 @@ interface LauncherAiThreadMenuProps {
     copySessionId: string
     copyWorkingDirectory: string
     moreActions: string
-    openPinnedWindow: string
+    openMainWindow: string
     openSideChat: string
     pinChat: string
     renameChat: string
@@ -42,9 +42,9 @@ interface LauncherAiThreadMenuProps {
   onBranchIntoLocal: () => void
   onCopySessionId: () => void
   onCopyWorkingDirectory: () => void
-  onOpenPinnedWindow: () => void
+  onOpenMainWindow: () => void
   onTogglePinned: () => void
-  showOpenPinnedWindowAction: boolean
+  showOpenMainWindowAction: boolean
 }
 
 interface ThreadMenuItemProps {
@@ -116,15 +116,15 @@ function ThreadMenuSubmenu(props: {
 export function LauncherAiThreadMenu(props: LauncherAiThreadMenuProps): React.JSX.Element {
   const {
     canBranchThread,
-    canOpenPinnedWindow,
+    canOpenMainWindow,
     isPinned,
     labels,
     onBranchIntoLocal,
     onCopySessionId,
     onCopyWorkingDirectory,
-    onOpenPinnedWindow,
+    onOpenMainWindow,
     onTogglePinned,
-    showOpenPinnedWindowAction
+    showOpenMainWindowAction
   } = props
   let pinnedWindowItem: ReactNode = null
   let pinLabel = labels.pinChat
@@ -133,14 +133,14 @@ export function LauncherAiThreadMenu(props: LauncherAiThreadMenuProps): React.JS
     pinLabel = labels.unpinChat
   }
 
-  if (showOpenPinnedWindowAction) {
+  if (showOpenMainWindowAction) {
     pinnedWindowItem = (
       <ThreadMenuItem
-        disabled={!canOpenPinnedWindow}
+        disabled={!canOpenMainWindow}
         icon={<PictureInPicture2 />}
-        onSelect={onOpenPinnedWindow}
+        onSelect={onOpenMainWindow}
       >
-        {labels.openPinnedWindow}
+        {labels.openMainWindow}
       </ThreadMenuItem>
     )
   }

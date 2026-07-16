@@ -577,7 +577,7 @@ html[data-input-modality="keyboard"] .jingle-floating-surface:not([data-jingle-f
 }
 
 body[data-window="launcher"],
-body[data-window="pinned-ai-session"],
+body[data-window-surface="durable"],
 .launcher-chrome {
   /* Launcher surfaces derive from the app theme */
   --launcher-surface: var(--background-elevated);
@@ -1771,9 +1771,9 @@ body[data-window="pinned-ai-session"],
 }
 
 body.dark[data-window="launcher"],
-body.dark[data-window="pinned-ai-session"],
+body.dark[data-window-surface="durable"],
 html.dark body[data-window="launcher"],
-html.dark body[data-window="pinned-ai-session"],
+html.dark body[data-window-surface="durable"],
 .dark .launcher-chrome {
   --launcher-surface: var(--background-elevated);
   --launcher-surface-strong: var(--background-secondary);
@@ -1812,9 +1812,9 @@ body[data-platform="darwin"] {
 }
 
 html[data-platform="darwin"] body[data-window="launcher"],
-html[data-platform="darwin"] body[data-window="pinned-ai-session"],
+html[data-platform="darwin"] body[data-window-surface="durable"],
 body[data-platform="darwin"][data-window="launcher"],
-body[data-platform="darwin"][data-window="pinned-ai-session"],
+body[data-platform="darwin"][data-window-surface="durable"],
 html[data-platform="darwin"] .launcher-chrome,
 body[data-platform="darwin"] .launcher-chrome {
   --launcher-panel-radius: 18px;
@@ -1840,9 +1840,9 @@ body[data-platform="darwin"] .launcher-chrome {
 }
 
 html[data-opaque-windows="true"][data-platform="darwin"] body[data-window="launcher"],
-html[data-opaque-windows="true"][data-platform="darwin"] body[data-window="pinned-ai-session"],
+html[data-opaque-windows="true"][data-platform="darwin"] body[data-window-surface="durable"],
 body[data-opaque-windows="true"][data-platform="darwin"][data-window="launcher"],
-body[data-opaque-windows="true"][data-platform="darwin"][data-window="pinned-ai-session"],
+body[data-opaque-windows="true"][data-platform="darwin"][data-window-surface="durable"],
 html[data-opaque-windows="true"][data-platform="darwin"] .launcher-chrome,
 body[data-opaque-windows="true"][data-platform="darwin"] .launcher-chrome {
   --launcher-shell-fill: color-mix(in srgb, var(--launcher-surface) 92%, white 8%);
@@ -1858,9 +1858,9 @@ body[data-platform="win32"] {
 }
 
 html[data-platform="win32"] body[data-window="launcher"],
-html[data-platform="win32"] body[data-window="pinned-ai-session"],
+html[data-platform="win32"] body[data-window-surface="durable"],
 body[data-platform="win32"][data-window="launcher"],
-body[data-platform="win32"][data-window="pinned-ai-session"],
+body[data-platform="win32"][data-window-surface="durable"],
 html[data-platform="win32"] .launcher-chrome,
 body[data-platform="win32"] .launcher-chrome {
   --launcher-panel-radius: var(--jingle-radius-panel);
@@ -1876,9 +1876,9 @@ body[data-platform="linux"] {
 }
 
 html[data-platform="linux"] body[data-window="launcher"],
-html[data-platform="linux"] body[data-window="pinned-ai-session"],
+html[data-platform="linux"] body[data-window-surface="durable"],
 body[data-platform="linux"][data-window="launcher"],
-body[data-platform="linux"][data-window="pinned-ai-session"],
+body[data-platform="linux"][data-window-surface="durable"],
 html[data-platform="linux"] .launcher-chrome,
 body[data-platform="linux"] .launcher-chrome {
   --launcher-panel-radius: var(--jingle-radius-panel);
@@ -1929,9 +1929,9 @@ body,
   min-height: 100%;
 }
 
-html[data-window="main"],
-body[data-window="main"],
-body[data-window="main"] #root {
+html[data-window-surface="durable"],
+body[data-window-surface="durable"],
+body[data-window-surface="durable"] #root {
   width: 100%;
   height: 100%;
   min-height: 100%;
@@ -1940,11 +1940,11 @@ body[data-window="main"] #root {
 }
 
 html[data-window="launcher"],
-html[data-window="pinned-ai-session"],
+html[data-window-surface="durable"],
 body[data-window="launcher"],
-body[data-window="pinned-ai-session"],
+body[data-window-surface="durable"],
 body[data-window="launcher"] #root,
-body[data-window="pinned-ai-session"] #root {
+body[data-window-surface="durable"] #root {
   width: 100%;
   height: 100%;
   min-height: 100%;
@@ -1953,32 +1953,32 @@ body[data-window="pinned-ai-session"] #root {
 }
 
 body[data-window="launcher"],
-body[data-window="pinned-ai-session"] {
+body[data-window-surface="durable"] {
   margin: 0;
   background: transparent;
 }
 
-body[data-window="pinned-ai-session"] .launcher-window-drag-region {
+body[data-window-surface="durable"] .launcher-window-drag-region {
   -webkit-app-region: drag;
 }
 
-html:not([data-platform="darwin"]) body[data-window="pinned-ai-session"] .launcher-chrome-header,
-body:not([data-platform="darwin"])[data-window="pinned-ai-session"] .launcher-chrome-header {
+html:not([data-platform="darwin"]) body[data-window-surface="durable"] .launcher-chrome-header,
+body:not([data-platform="darwin"])[data-window-surface="durable"] .launcher-chrome-header {
   padding-right: calc(var(--window-controls-offset-inline) + 132px);
 }
 
-body[data-window="pinned-ai-session"] .launcher-window-drag-region button,
-body[data-window="pinned-ai-session"] .launcher-window-drag-region input,
-body[data-window="pinned-ai-session"] .launcher-window-drag-region select,
-body[data-window="pinned-ai-session"] .launcher-window-drag-region textarea,
-body[data-window="pinned-ai-session"] .launcher-window-drag-region a,
-body[data-window="pinned-ai-session"] .launcher-window-drag-region [role="button"],
-body[data-window="pinned-ai-session"] .launcher-window-drag-region [tabindex]:not([tabindex="-1"]) {
+body[data-window-surface="durable"] .launcher-window-drag-region button,
+body[data-window-surface="durable"] .launcher-window-drag-region input,
+body[data-window-surface="durable"] .launcher-window-drag-region select,
+body[data-window-surface="durable"] .launcher-window-drag-region textarea,
+body[data-window-surface="durable"] .launcher-window-drag-region a,
+body[data-window-surface="durable"] .launcher-window-drag-region [role="button"],
+body[data-window-surface="durable"] .launcher-window-drag-region [tabindex]:not([tabindex="-1"]) {
   -webkit-app-region: no-drag;
 }
 
-html[data-platform="darwin"] body[data-window="pinned-ai-session"] .launcher-chrome-header,
-body[data-platform="darwin"][data-window="pinned-ai-session"] .launcher-chrome-header {
+html[data-platform="darwin"] body[data-window-surface="durable"] .launcher-chrome-header,
+body[data-platform="darwin"][data-window-surface="durable"] .launcher-chrome-header {
   padding-left: calc(var(--window-controls-offset-inline) + 6px);
 }
 
@@ -2171,22 +2171,22 @@ body[data-platform="darwin"] .launcher-window-shell {
   );
 }
 
-body[data-window="pinned-ai-session"] .launcher-window-drag-region {
+body[data-window-surface="durable"] .launcher-window-drag-region {
   -webkit-app-region: drag;
 }
 
-body[data-window="pinned-ai-session"] .launcher-window-drag-region button,
-body[data-window="pinned-ai-session"] .launcher-window-drag-region input,
-body[data-window="pinned-ai-session"] .launcher-window-drag-region select,
-body[data-window="pinned-ai-session"] .launcher-window-drag-region textarea,
-body[data-window="pinned-ai-session"] .launcher-window-drag-region a,
-body[data-window="pinned-ai-session"] .launcher-window-drag-region [role="button"],
-body[data-window="pinned-ai-session"] .launcher-window-drag-region [tabindex]:not([tabindex="-1"]) {
+body[data-window-surface="durable"] .launcher-window-drag-region button,
+body[data-window-surface="durable"] .launcher-window-drag-region input,
+body[data-window-surface="durable"] .launcher-window-drag-region select,
+body[data-window-surface="durable"] .launcher-window-drag-region textarea,
+body[data-window-surface="durable"] .launcher-window-drag-region a,
+body[data-window-surface="durable"] .launcher-window-drag-region [role="button"],
+body[data-window-surface="durable"] .launcher-window-drag-region [tabindex]:not([tabindex="-1"]) {
   -webkit-app-region: no-drag;
 }
 
-html[data-platform="darwin"] body[data-window="pinned-ai-session"] .launcher-chrome-header,
-body[data-platform="darwin"][data-window="pinned-ai-session"] .launcher-chrome-header {
+html[data-platform="darwin"] body[data-window-surface="durable"] .launcher-chrome-header,
+body[data-platform="darwin"][data-window-surface="durable"] .launcher-chrome-header {
   padding-left: calc(var(--window-controls-offset-inline) + 6px);
 }
 
@@ -3121,7 +3121,7 @@ body[data-platform="darwin"][data-window="pinned-ai-session"] .launcher-chrome-h
 }
 
 body[data-window="launcher"] .jingle-markdown,
-body[data-window="pinned-ai-session"] .jingle-markdown,
+body[data-window-surface="durable"] .jingle-markdown,
 .launcher-window-shell .jingle-markdown,
 .launcher-chrome .jingle-markdown,
 .jingle-native-detail-markdown {
@@ -3390,7 +3390,8 @@ body[data-window="pinned-ai-session"] .jingle-markdown,
   overflow: auto;
   border: 0;
   background: transparent;
-  padding: var(--jingle-markdown-code-body-padding-top) var(--jingle-markdown-code-body-padding-inline)
+  padding: var(--jingle-markdown-code-body-padding-top)
+    var(--jingle-markdown-code-body-padding-inline)
     var(--jingle-markdown-code-body-padding-block-end);
   font-size: var(--jingle-font-code);
   line-height: var(--jingle-line-code);
@@ -3399,7 +3400,8 @@ body[data-window="pinned-ai-session"] .jingle-markdown,
 }
 
 .jingle-markdown [data-streamdown="mermaid-block"] > div:last-child {
-  margin: var(--jingle-markdown-code-body-padding-top) var(--jingle-markdown-code-body-padding-inline)
+  margin: var(--jingle-markdown-code-body-padding-top)
+    var(--jingle-markdown-code-body-padding-inline)
     var(--jingle-markdown-code-body-padding-block-end);
 }
 
@@ -3587,7 +3589,8 @@ body[data-window="pinned-ai-session"] .jingle-markdown,
 }
 
 .jingle-agent-tool-content[data-state="open"] {
-  animation: jingle-agent-tool-expand var(--jingle-motion-duration-panel) var(--jingle-motion-ease-standard);
+  animation: jingle-agent-tool-expand var(--jingle-motion-duration-panel)
+    var(--jingle-motion-ease-standard);
 }
 
 .jingle-agent-tool-content[data-state="closed"] {

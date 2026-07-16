@@ -15,7 +15,7 @@ import type { AgentContextInclusion } from "./jingle-memory"
 import type { HITLDecision, HITLRequest, Message, Todo } from "./app-types"
 import type { AgentRunFailure } from "./agent-run-failure"
 
-export type AgentThreadEventSubscriptionSurface = "launcher" | "pinned-ai-session"
+export type AgentThreadEventSubscriptionSurface = "launcher" | "main"
 
 export type AgentThreadEventSubscriptionToken = string
 

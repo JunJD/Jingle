@@ -1,6 +1,6 @@
 import type { BrowserWindow, RenderProcessGoneDetails } from "electron"
 import { join } from "path"
-import { PINNED_AI_SESSION_WINDOW_KIND } from "@shared/ai-session-window"
+import type { DurableWindowKind } from "@shared/durable-window"
 import type { IpcNetworkWindowKind } from "@jingle/devtools-network"
 
 export type AppWindowKind =
@@ -8,7 +8,7 @@ export type AppWindowKind =
   | "launcher"
   | "settings"
   | IpcNetworkWindowKind
-  | typeof PINNED_AI_SESSION_WINDOW_KIND
+  | DurableWindowKind
 
 const SPLASH_WINDOW_KINDS = new Set<AppWindowKind>(["main"])
 let rendererWindowShutdownStarted = false
@@ -50,9 +50,7 @@ async function loadRendererWindow(
 
   if (process.env["ELECTRON_RENDERER_URL"]) {
     const rendererUrl = new URL(process.env["ELECTRON_RENDERER_URL"])
-    if (windowKind !== "main") {
-      rendererUrl.searchParams.set("window", windowKind)
-    }
+    rendererUrl.searchParams.set("window", windowKind)
     for (const [key, value] of Object.entries(query ?? {})) {
       rendererUrl.searchParams.set(key, value)
     }
@@ -61,7 +59,7 @@ async function loadRendererWindow(
   }
 
   const rendererQuery = {
-    ...(windowKind === "main" ? {} : { window: windowKind }),
+    window: windowKind,
     ...(query ?? {})
   }
 
