@@ -49,8 +49,10 @@ export function useLauncherShellEffects(props: UseLauncherShellEffectsProps): {
       setShownSequence((value) => value + 1)
 
       if (appliedViewportHeightRef.current > 0) {
-        void window.api.launcher.setViewportHeight(appliedViewportHeightRef.current)
+        return window.api.launcher.setViewportHeight(appliedViewportHeightRef.current)
       }
+
+      return undefined
     })
     const handleWindowFocus = (): void => {
       focusActiveInput({

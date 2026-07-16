@@ -1,5 +1,4 @@
-
-import { createContext, use, type ReactNode } from "react"
+import { createContext, use, useEffect, type ReactNode } from "react"
 import {
   useLauncherClipboardStore,
   type LauncherClipboardStoreState
@@ -14,6 +13,12 @@ export function LauncherClipboardProvider(props: { children: ReactNode }): React
   const { children } = props
 
   useLauncherClipboardRuntime()
+  useEffect(() => {
+    window.api.launcher.setPresentationReady(true)
+    return () => {
+      window.api.launcher.setPresentationReady(false)
+    }
+  }, [])
 
   return (
     <launcherClipboardProviderContext.Provider value>
@@ -28,8 +33,7 @@ export function useLauncherClipboard<T>(
   selector?: (state: LauncherClipboardState) => T
 ): LauncherClipboardState | T {
   const mounted = use(launcherClipboardProviderContext)
-  const resolvedSelector = (selector ??
-    ((state: LauncherClipboardState) => state)) as (
+  const resolvedSelector = (selector ?? ((state: LauncherClipboardState) => state)) as (
     state: LauncherClipboardState
   ) => LauncherClipboardState | T
   const selectedState = useLauncherClipboardStore(resolvedSelector)

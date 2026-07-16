@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react"
+import { useCallback, useEffect, useMemo, useRef } from "react"
 import {
   FALLBACK_SHELL_CONFIG,
   LAUNCHER_SEARCH_TRANSACTION_TIMEOUT_MS,
@@ -161,6 +161,7 @@ export function useLauncherSearchPage(props: {
     (state) => state.setUseWithDisabledCommandKeysLocal
   )
   const shellConfig: LauncherShellConfig = FALLBACK_SHELL_CONFIG
+  const idleStateRequestIdRef = useRef(0)
   const trimmedQuery = query.trim()
   const useWithCommands = useMemo(
     () =>
@@ -253,24 +254,28 @@ export function useLauncherSearchPage(props: {
     requestSelection: requestHomeInputSelection,
     setQuery
   })
-  const refreshIdleState = useCallback((): void => {
-    void Promise.all([
+  const refreshIdleState = useCallback(async (): Promise<void> => {
+    const requestId = ++idleStateRequestIdRef.current
+    const [settings, launcherHistoryItems, localStartItems] = await Promise.all([
       window.api.settings.getLauncherSettings(),
       window.api.launcherHistory.list(),
       window.api.localStart.list()
-    ]).then(([settings, launcherHistoryItems, localStartItems]) => {
-      applyIdleState({
-        historyItems: launcherHistoryItems,
-        idleItems: localStartItems,
-        useWithDisabledCommandKeys: settings.useWithDisabledCommandKeys,
-        windowMode: settings.windowMode
-      })
+    ])
+    if (requestId !== idleStateRequestIdRef.current) {
+      return
+    }
+
+    applyIdleState({
+      historyItems: launcherHistoryItems,
+      idleItems: localStartItems,
+      useWithDisabledCommandKeys: settings.useWithDisabledCommandKeys,
+      windowMode: settings.windowMode
     })
   }, [applyIdleState])
   useEffect(() => {
-    refreshIdleState()
+    void refreshIdleState()
     const cleanupShown = window.api.launcher.onShown(() => {
-      refreshIdleState()
+      return refreshIdleState()
     })
 
     return () => {

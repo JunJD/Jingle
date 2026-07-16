@@ -1,11 +1,17 @@
-import { useCallback, useEffect } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import { useLauncherClipboardStore } from "./launcher-clipboard-store"
 
 export function useLauncherClipboardRuntime(): void {
   const applyRefreshedContext = useLauncherClipboardStore((state) => state.applyRefreshedContext)
+  const refreshRequestIdRef = useRef(0)
 
   const refreshContext = useCallback(async (): Promise<void> => {
+    const requestId = ++refreshRequestIdRef.current
     const nextContext = await window.api.launcher.getClipboardContext()
+    if (requestId !== refreshRequestIdRef.current) {
+      return
+    }
+
     applyRefreshedContext(nextContext)
   }, [applyRefreshedContext])
 
@@ -15,7 +21,7 @@ export function useLauncherClipboardRuntime(): void {
     })
 
     const cleanupShown = window.api.launcher.onShown(() => {
-      void refreshContext()
+      return refreshContext()
     })
 
     return () => {

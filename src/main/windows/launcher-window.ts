@@ -11,6 +11,8 @@ import {
 } from "@shared/launcher"
 import { getLauncherWindowState, setLauncherWindowState } from "../preferences"
 import { attachLauncherWindowDragController } from "./launcher-window-drag-controller"
+import type { LauncherShownEvent } from "@shared/launcher-presentation"
+import { diagnosticsLogger } from "../diagnostics/instance"
 
 const LAUNCHER_CONTENT_WIDTH = 760
 const LAUNCHER_HORIZONTAL_MARGIN = 24
@@ -23,9 +25,16 @@ const LAUNCHER_POSITION_REFERENCE_HEIGHT = LAUNCHER_MAX_HEIGHT
 const LAUNCHER_MAX_SCREEN_HEIGHT_RATIO = 0.7
 const LAUNCHER_WINDOW_GUTTER = process.platform === "win32" ? 12 : 0
 const WINDOWS_LAUNCHER_SHAPE_RADIUS = 12
+const WINDOWS_LAUNCHER_PRESENT_TIMEOUT_MS = 500
 const launcherVisibleOrigins = new WeakMap<BrowserWindow, { x: number; y: number }>()
 const launcherWindowWebContents = new WeakSet<WebContents>()
+const launcherWindowsShownOnce = new WeakSet<BrowserWindow>()
+const launcherPresentationStates = new WeakMap<
+  BrowserWindow,
+  { id: number; timeout: NodeJS.Timeout | null }
+>()
 let launcherBlurHideSuppressionDepth = 0
+let nextLauncherPresentationId = 0
 
 export function isLauncherWindowWebContents(webContents: WebContents): boolean {
   return launcherWindowWebContents.has(webContents) && !webContents.isDestroyed()
@@ -215,26 +224,110 @@ function syncLauncherWindowShape(launcherWindow: BrowserWindow): void {
 
 function setLauncherWindowContentBounds(launcherWindow: BrowserWindow, bounds: Rectangle): void {
   const currentBounds = launcherWindow.getContentBounds()
+  if (
+    currentBounds.x === bounds.x &&
+    currentBounds.y === bounds.y &&
+    currentBounds.width === bounds.width &&
+    currentBounds.height === bounds.height
+  ) {
+    return
+  }
+
   launcherWindow.setContentBounds(bounds, false)
   if (currentBounds.width !== bounds.width || currentBounds.height !== bounds.height) {
     syncLauncherWindowShape(launcherWindow)
   }
 }
 
-function emitLauncherShown(launcherWindow: BrowserWindow): void {
+function cancelLauncherPresentation(launcherWindow: BrowserWindow): void {
+  const presentation = launcherPresentationStates.get(launcherWindow)
+  if (presentation?.timeout) {
+    clearTimeout(presentation.timeout)
+  }
+  launcherPresentationStates.delete(launcherWindow)
+}
+
+export function presentLauncherWindow(launcherWindow: BrowserWindow, presentationId: number): void {
+  const presentation = launcherPresentationStates.get(launcherWindow)
+  if (!presentation || presentation.id !== presentationId) {
+    return
+  }
+
+  cancelLauncherPresentation(launcherWindow)
+  if (launcherWindow.isDestroyed() || !launcherWindow.isVisible()) {
+    return
+  }
+
+  if (process.platform === "win32") {
+    launcherWindow.setOpacity(1)
+  }
+}
+
+function beginLauncherPresentation(launcherWindow: BrowserWindow): LauncherShownEvent {
+  cancelLauncherPresentation(launcherWindow)
+  const presentationId = ++nextLauncherPresentationId
+  const gatePresentation =
+    process.platform === "win32" && launcherWindowsShownOnce.has(launcherWindow)
+  let timeout: NodeJS.Timeout | null = null
+
+  if (gatePresentation) {
+    launcherWindow.setOpacity(0)
+    timeout = setTimeout(() => {
+      const presentation = launcherPresentationStates.get(launcherWindow)
+      if (!presentation || presentation.id !== presentationId) {
+        return
+      }
+
+      diagnosticsLogger.warn("Launcher presentation readiness timed out", {
+        presentationId,
+        windowId: launcherWindow.id
+      })
+      presentLauncherWindow(launcherWindow, presentationId)
+    }, WINDOWS_LAUNCHER_PRESENT_TIMEOUT_MS)
+    timeout.unref()
+  }
+
+  launcherPresentationStates.set(launcherWindow, { id: presentationId, timeout })
+  return { presentationId }
+}
+
+function sendLauncherShownIfCurrent(
+  launcherWindow: BrowserWindow,
+  event: LauncherShownEvent
+): void {
+  const presentation = launcherPresentationStates.get(launcherWindow)
+  if (
+    launcherWindow.isDestroyed() ||
+    !launcherWindow.isVisible() ||
+    presentation?.id !== event.presentationId
+  ) {
+    return
+  }
+
+  launcherWindow.webContents.send("launcher:shown", event)
+}
+
+function emitLauncherShown(launcherWindow: BrowserWindow, event: LauncherShownEvent): void {
   if (launcherWindow.webContents.isLoadingMainFrame()) {
     launcherWindow.webContents.once("did-finish-load", () => {
-      if (!launcherWindow.isDestroyed()) {
-        launcherWindow.webContents.send("launcher:shown")
-      }
+      sendLauncherShownIfCurrent(launcherWindow, event)
     })
     return
   }
 
-  launcherWindow.webContents.send("launcher:shown")
+  sendLauncherShownIfCurrent(launcherWindow, event)
 }
 
 export function showLauncherWindow(launcherWindow: BrowserWindow): void {
+  if (launcherWindow.isVisible()) {
+    if (!launcherWindow.isFocused()) {
+      launcherWindow.focus()
+      launcherWindow.moveTop()
+    }
+    return
+  }
+
+  const shownEvent = beginLauncherPresentation(launcherWindow)
   const nextHeight = getLauncherContentHeight(
     launcherWindow.getContentBounds().height || LAUNCHER_BASE_HEIGHT
   )
@@ -249,9 +342,12 @@ export function showLauncherWindow(launcherWindow: BrowserWindow): void {
   }
 
   launcherWindow.show()
-  launcherWindow.focus()
-  launcherWindow.moveTop()
-  emitLauncherShown(launcherWindow)
+  if (process.platform === "darwin") {
+    launcherWindow.focus()
+    launcherWindow.moveTop()
+  }
+  launcherWindowsShownOnce.add(launcherWindow)
+  emitLauncherShown(launcherWindow, shownEvent)
 }
 
 function hideLauncherWindow(launcherWindow: BrowserWindow): void {
@@ -370,6 +466,10 @@ export function createLauncherWindow(): BrowserWindow {
   })
 
   launcherWindow.on("hide", () => {
+    cancelLauncherPresentation(launcherWindow)
+    if (process.platform === "win32" && !launcherWindow.isDestroyed()) {
+      launcherWindow.setOpacity(1)
+    }
     launcherDragController.cancel()
     launcherVisibleOrigins.delete(launcherWindow)
     if (process.platform === "darwin") {
@@ -407,6 +507,7 @@ export function createLauncherWindow(): BrowserWindow {
   screen.on("display-removed", repositionIfVisible)
 
   launcherWindow.on("closed", () => {
+    cancelLauncherPresentation(launcherWindow)
     launcherDragController.dispose()
     screen.removeListener("display-metrics-changed", repositionIfVisible)
     screen.removeListener("display-added", repositionIfVisible)

@@ -1,4 +1,3 @@
-
 import {
   createContext,
   use,
@@ -28,6 +27,7 @@ function createLauncherSelectionStore() {
   let data: LauncherSelectionStoreData = {
     context: null
   }
+  let contextRequestGeneration = 0
   let snapshot: LauncherSelectionStoreState
 
   const emit = (): void => {
@@ -48,12 +48,20 @@ function createLauncherSelectionStore() {
 
   const actions = {
     clearContext: async (id?: string): Promise<void> => {
+      const generation = ++contextRequestGeneration
       await window.api.launcher.clearSelectionContext(id)
+      if (generation !== contextRequestGeneration) {
+        return
+      }
+
       setContext(null)
     },
     refreshContext: async (): Promise<LauncherSelectionContextSnapshot> => {
+      const generation = ++contextRequestGeneration
       const context = await window.api.launcher.getSelectionContext()
-      setContext(context)
+      if (generation === contextRequestGeneration) {
+        setContext(context)
+      }
       return context
     }
   }
@@ -85,8 +93,8 @@ export function LauncherSelectionProvider(props: { children: ReactNode }): React
     const frameId = window.requestAnimationFrame(() => {
       void launcherSelectionStore.getState().refreshContext()
     })
-    const cleanupShown = window.api.launcher.onShown(() => {
-      void launcherSelectionStore.getState().refreshContext()
+    const cleanupShown = window.api.launcher.onShown(async () => {
+      await launcherSelectionStore.getState().refreshContext()
     })
     const cleanupUpdated = window.api.launcher.onSelectionContextUpdated(() => {
       void launcherSelectionStore.getState().refreshContext()

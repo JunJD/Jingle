@@ -1,27 +1,25 @@
 import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent } from "electron"
 import { AI_THREAD_SOURCE } from "@shared/launcher-ai"
 import type { LauncherSearchAction, LauncherSearchRequest } from "@shared/launcher-search"
+import { launcherPresentArgsSchema } from "@shared/launcher-presentation"
 import {
   isLauncherWindowWebContents,
+  presentLauncherWindow,
   setLauncherWindowViewportHeight,
   showLauncherWindow
 } from "../windows/launcher-window"
 import { isPinnedAiSessionWindowWebContents } from "../windows/pinned-ai-session-window"
-import { registerIpcHandle } from "../ipc/handle"
+import { registerIpcHandle, registerValidatedIpcHandle } from "../ipc/handle"
 import { LauncherService } from "./service"
 
 export class LauncherController {
   constructor(private readonly launcherService: LauncherService) {}
 
   register(ipcMain: IpcMain): void {
-    registerIpcHandle(
-      ipcMain,
-      "launcher:search",
-      async (event, request: LauncherSearchRequest) => {
-        this.assertSearchSender(event, request)
-        return this.launcherService.search(request)
-      }
-    )
+    registerIpcHandle(ipcMain, "launcher:search", async (event, request: LauncherSearchRequest) => {
+      this.assertSearchSender(event, request)
+      return this.launcherService.search(request)
+    })
 
     registerIpcHandle(ipcMain, "launcher:getClipboardContext", (event) => {
       this.assertLauncherSender(event)
@@ -86,6 +84,21 @@ export class LauncherController {
 
       setLauncherWindowViewportHeight(currentWindow, height)
     })
+
+    registerValidatedIpcHandle(
+      ipcMain,
+      "launcher:present",
+      launcherPresentArgsSchema,
+      (event, presentationId) => {
+        this.assertLauncherSender(event)
+        const currentWindow = BrowserWindow.fromWebContents(event.sender)
+        if (!currentWindow) {
+          return
+        }
+
+        presentLauncherWindow(currentWindow, presentationId)
+      }
+    )
   }
 
   private assertSearchSender(event: IpcMainInvokeEvent, request: unknown): void {
