@@ -3,6 +3,7 @@ import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import { LauncherIntelligenceGlow } from "@launcher-components/LauncherIntelligenceGlow"
 import { LauncherPageTransition } from "@launcher-components/LauncherPageTransition"
+import { sendRuntimeExtensionEvent } from "@/extension-runtime/runtime-extension-controller"
 import { LauncherSearchPage } from "@launcher-components/LauncherSearchPage"
 import type { ExtensionRuntimeToastRequestEvent } from "@shared/extension-runtime-protocol"
 import {
@@ -145,7 +146,7 @@ export default function LauncherApp(): React.JSX.Element {
         return
       }
 
-      void window.api.extensionRuntime.sendEvent(sessionId, {
+      sendRuntimeExtensionEvent(sessionId, {
         actionId,
         type: "toast.action.execute"
       })
