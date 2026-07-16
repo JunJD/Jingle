@@ -1,13 +1,11 @@
 "use client"
 
-import { AnimatePresence } from "motion/react"
-import { p as MotionParagraph } from "motion/react-m"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react"
 import { cn } from "@/lib/utils"
 
 type PlaceholderInputElement = HTMLInputElement | HTMLTextAreaElement
 
-export interface PlaceholdersAndVanishInputProps extends Omit<
+export interface LauncherTextInputProps extends Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
   | "defaultValue"
   | "onChange"
@@ -73,9 +71,7 @@ function getTextareaHeight(scrollHeight: number, maxHeight: number): number {
   return Math.min(scrollHeight, maxHeight)
 }
 
-export function PlaceholdersAndVanishInput(
-  props: PlaceholdersAndVanishInputProps
-): React.JSX.Element {
+export function LauncherTextInput(props: LauncherTextInputProps): React.JSX.Element {
   const {
     className,
     defaultValue,
@@ -187,6 +183,7 @@ export function PlaceholdersAndVanishInput(
           ref={setInputRef as React.Ref<HTMLTextAreaElement>}
           rows={1}
           value={resolvedValue}
+          placeholder={resolvedPlaceholders[0]}
           onChange={(event) => {
             if (value === undefined) {
               setUncontrolledValue(event.target.value)
@@ -201,6 +198,7 @@ export function PlaceholdersAndVanishInput(
           {...inputProps}
           ref={setInputRef as React.Ref<HTMLInputElement>}
           value={resolvedValue}
+          placeholder={resolvedPlaceholders[0]}
           onChange={(event) => {
             if (value === undefined) {
               setUncontrolledValue(event.target.value)
@@ -212,24 +210,23 @@ export function PlaceholdersAndVanishInput(
         />
       )}
 
-      <div className={cn("pointer-events-none absolute inset-0 flex items-center overflow-hidden")}>
-        <AnimatePresence initial={false} mode="wait">
-          {shouldShowPlaceholder && resolvedPlaceholders.length > 0 ? (
-            <MotionParagraph
-              key={`${placeholderKey}-${activePlaceholderIndex}`}
-              initial={{ y: 6, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: -12, opacity: 0 }}
-              transition={{ duration: 0.22, ease: "easeOut" }}
-              className={cn(
-                "w-full truncate px-[var(--jingle-space-1-5)] text-left [font-size:var(--jingle-font-title)] font-medium leading-[var(--jingle-line-control-md)] text-muted-foreground/55",
-                placeholderClassName
-              )}
-            >
-              {resolvedPlaceholders[activePlaceholderIndex]}
-            </MotionParagraph>
-          ) : null}
-        </AnimatePresence>
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 overflow-hidden"
+        hidden={!shouldShowPlaceholder || resolvedPlaceholders.length === 0}
+      >
+        {resolvedPlaceholders.map((placeholder, index) => (
+          <p
+            key={`${placeholderKey}-${index}`}
+            className={cn(
+              "absolute inset-0 flex w-full items-center truncate px-[var(--jingle-space-1-5)] text-left [font-size:var(--jingle-font-title)] font-medium leading-[var(--jingle-line-control-md)] text-muted-foreground/55 transition-opacity duration-[var(--jingle-motion-duration-enter)] ease-[var(--jingle-motion-ease-out)] motion-reduce:duration-[var(--jingle-motion-duration-reduced)]",
+              index === activePlaceholderIndex ? "opacity-100" : "opacity-0",
+              placeholderClassName
+            )}
+          >
+            {placeholder}
+          </p>
+        ))}
       </div>
     </div>
   )

@@ -106,7 +106,6 @@
     "langchain": "^1.2.12",
     "lexical": "^0.44.0",
     "lucide-react": "^0.469.0",
-    "motion": "^12.38.0",
     "partial-json": "^0.1.7",
     "pinyin-match": "1.2.4",
     "react-syntax-highlighter": "^16.1.1",

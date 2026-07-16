@@ -1,14 +1,11 @@
 import { Loader2 } from "lucide-react"
 import { useRef, type ReactNode, type Ref } from "react"
-import {
-  PlaceholdersAndVanishInput,
-  type PlaceholdersAndVanishInputProps
-} from "@/components/ui/PlaceholdersAndVanishInput"
+import { LauncherTextInput, type LauncherTextInputProps } from "./LauncherTextInput"
 import { cn } from "@/lib/utils"
 import type { LauncherInputElement } from "@launcher-shell/input-element"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 
-export interface LauncherInputProps extends PlaceholdersAndVanishInputProps {
+export interface LauncherInputProps extends LauncherTextInputProps {
   readonly expanded?: boolean
   readonly multiline?: boolean
   readonly ref?: Ref<LauncherInputElement>
@@ -131,7 +128,7 @@ export function LauncherInput(props: LauncherInputProps): React.JSX.Element {
       )}
       data-status={status}
     >
-      <PlaceholdersAndVanishInput
+      <LauncherTextInput
         ref={ref as React.Ref<LauncherInputElement>}
         aria-busy={status === "idle" ? undefined : true}
         multiline={multiline}
