@@ -1,6 +1,7 @@
 import { contextBridge } from "electron"
 import { hasIpcNetworkPreloadCapability } from "@shared/preload-capability"
 import { api } from "./api"
+import { assertContextIsolation } from "./context-isolation"
 import { electronAPI } from "./electron-api"
 
 declare global {
@@ -36,16 +37,10 @@ const worldProjection = hasIpcNetworkPreloadCapability(process.argv)
       electron: electronAPI
     }
 
-// Use `contextBridge` APIs to expose Electron APIs to renderer
-if (process.contextIsolated) {
-  try {
-    contextBridge.exposeInMainWorld("electron", worldProjection.electron)
-    contextBridge.exposeInMainWorld("api", worldProjection.api)
-  } catch (error) {
-    console.error(error)
-  }
-} else {
-  const rendererWindow = window as unknown as Record<"api" | "electron", unknown>
-  rendererWindow.electron = worldProjection.electron
-  rendererWindow.api = worldProjection.api
+assertContextIsolation(process.contextIsolated)
+try {
+  contextBridge.exposeInMainWorld("electron", worldProjection.electron)
+  contextBridge.exposeInMainWorld("api", worldProjection.api)
+} catch (error) {
+  console.error(error)
 }
