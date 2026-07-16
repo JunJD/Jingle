@@ -20,6 +20,7 @@ import {
   type SetAppleReminderCompletedRequest,
   type ShowAppleReminderRequest
 } from "../contracts"
+import { resolveAppleRemindersNativeBinaryPath } from "./native-binary-path"
 
 const execFileAsync = promisify(execFile)
 const APPLE_REMINDERS_COMMAND_TIMEOUT_MS = 10_000
@@ -59,23 +60,15 @@ function assertAppleRemindersAvailable(): void {
   }
 }
 
-function resolvePackagedUnpackedPath(candidatePath: string): string {
-  if (!app.isPackaged || !candidatePath.includes("app.asar")) {
-    return candidatePath
-  }
-
-  const unpackedPath = candidatePath.replace("app.asar", "app.asar.unpacked")
-  return existsSync(unpackedPath) ? unpackedPath : candidatePath
-}
-
 function resolveAppleRemindersBinaryPath(): string | null {
-  const candidates = [
-    join(app.getAppPath(), "out/native", APPLE_REMINDERS_HELPER_NAME),
-    join(process.cwd(), "out/native", APPLE_REMINDERS_HELPER_NAME),
-    join(appleRemindersMainModuleDir, "..", "native", APPLE_REMINDERS_HELPER_NAME)
-  ].map(resolvePackagedUnpackedPath)
-
-  return candidates.find((candidate) => existsSync(candidate)) ?? null
+  return resolveAppleRemindersNativeBinaryPath({
+    candidates: {
+      appPath: join(app.getAppPath(), "out/native", APPLE_REMINDERS_HELPER_NAME),
+      compiledPath: join(appleRemindersMainModuleDir, "..", "native", APPLE_REMINDERS_HELPER_NAME),
+      cwdPath: join(process.cwd(), "out/native", APPLE_REMINDERS_HELPER_NAME)
+    },
+    isPackaged: app.isPackaged
+  })
 }
 
 function resolveAppleRemindersSwiftSourcePath(): string | null {
