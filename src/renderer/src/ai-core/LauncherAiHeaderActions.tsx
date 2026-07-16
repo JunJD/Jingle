@@ -23,6 +23,15 @@ interface LauncherAiHeaderActionsProps {
     copyDeeplink: string
     copySessionId: string
     copyWorkingDirectory: string
+    environmentDigest: string
+    environmentDigestCollapse: string
+    environmentDigestEmpty: string
+    environmentDigestError: string
+    environmentDigestExpand: string
+    environmentDigestGenerate: string
+    environmentDigestGenerating: string
+    environmentDigestRegenerate: string
+    environmentDigestUpdated: string
     environmentInfo: string
     environmentModel: string
     environmentNoModel: string
@@ -78,6 +87,15 @@ export function LauncherAiHeaderActions(props: LauncherAiHeaderActionsProps): Re
       <LauncherAiEnvironmentMenu
         environment={environment}
         labels={{
+          environmentDigest: labels.environmentDigest,
+          environmentDigestCollapse: labels.environmentDigestCollapse,
+          environmentDigestEmpty: labels.environmentDigestEmpty,
+          environmentDigestError: labels.environmentDigestError,
+          environmentDigestExpand: labels.environmentDigestExpand,
+          environmentDigestGenerate: labels.environmentDigestGenerate,
+          environmentDigestGenerating: labels.environmentDigestGenerating,
+          environmentDigestRegenerate: labels.environmentDigestRegenerate,
+          environmentDigestUpdated: labels.environmentDigestUpdated,
           environmentInfo: labels.environmentInfo,
           environmentModel: labels.environmentModel,
           environmentNoModel: labels.environmentNoModel,

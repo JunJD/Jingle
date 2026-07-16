@@ -1,8 +1,11 @@
 import * as DropdownMenu from "@/components/ui/dropdown-menu"
-import { Info } from "lucide-react"
+import { ChevronDown, Info, RefreshCw, Sparkles } from "lucide-react"
+import { useId, useMemo, useState } from "react"
 import type { Todo } from "@/types"
+import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { LauncherAiProgressList } from "./LauncherAiProgressList"
+import { useLauncherAiThreadDigestController } from "./use-launcher-ai-thread-digest-controller"
 import type { LauncherAiModelDisplayProjection } from "./use-launcher-ai-model-display-controller"
 
 export interface LauncherAiEnvironmentInfo {
@@ -16,6 +19,15 @@ export interface LauncherAiEnvironmentInfo {
 interface LauncherAiEnvironmentMenuProps {
   environment: LauncherAiEnvironmentInfo
   labels: {
+    environmentDigest: string
+    environmentDigestCollapse: string
+    environmentDigestEmpty: string
+    environmentDigestError: string
+    environmentDigestExpand: string
+    environmentDigestGenerate: string
+    environmentDigestGenerating: string
+    environmentDigestRegenerate: string
+    environmentDigestUpdated: string
     environmentInfo: string
     environmentModel: string
     environmentNoModel: string
@@ -27,6 +39,106 @@ interface LauncherAiEnvironmentMenuProps {
     environmentThread: string
     environmentWorkspace: string
   }
+}
+
+function ThreadDigestSection(props: {
+  labels: LauncherAiEnvironmentMenuProps["labels"]
+  threadId: string
+}): React.JSX.Element {
+  const { labels, threadId } = props
+  const { locale } = useI18n()
+  const summaryId = useId()
+  const [expanded, setExpanded] = useState(false)
+  const { digest, error, generate, isGenerating } = useLauncherAiThreadDigestController({
+    errorFallback: labels.environmentDigestError,
+    threadId
+  })
+  const updatedAtFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        dateStyle: "medium",
+        timeStyle: "short"
+      }),
+    [locale]
+  )
+  const summary = digest?.summary ?? null
+  const updatedAt =
+    digest && digest.generatedAt !== null ? updatedAtFormatter.format(digest.generatedAt) : null
+
+  return (
+    <DropdownMenu.Group className="mt-2 border-t border-[color-mix(in_srgb,var(--launcher-border)_72%,transparent)] px-1 pb-0.5 pt-2.5">
+      <div className="flex min-h-7 items-center justify-between gap-3">
+        <DropdownMenu.Label className="p-0 text-xs font-semibold leading-4 text-[color-mix(in_srgb,var(--muted-foreground)_82%,var(--foreground))]">
+          {labels.environmentDigest}
+        </DropdownMenu.Label>
+        <DropdownMenu.Item
+          className="flex min-h-7 cursor-default select-none items-center gap-1.5 rounded-[var(--jingle-radius-sm)] px-2 text-xs outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-background-interactive data-[highlighted]:text-foreground"
+          disabled={isGenerating}
+          onSelect={(event) => {
+            event.preventDefault()
+            void generate()
+          }}
+        >
+          {summary ? <RefreshCw className="size-3.5" /> : <Sparkles className="size-3.5" />}
+          <span aria-live="polite">
+            {isGenerating
+              ? labels.environmentDigestGenerating
+              : summary
+                ? labels.environmentDigestRegenerate
+                : labels.environmentDigestGenerate}
+          </span>
+        </DropdownMenu.Item>
+      </div>
+
+      {summary ? (
+        <DropdownMenu.Item
+          aria-describedby={summaryId}
+          aria-expanded={expanded}
+          aria-label={expanded ? labels.environmentDigestCollapse : labels.environmentDigestExpand}
+          className="mt-1 flex w-full cursor-default select-none items-start gap-2 rounded-[var(--jingle-radius-sm)] px-0 py-1 text-left text-xs font-normal leading-[18px] text-[color-mix(in_srgb,var(--foreground)_88%,var(--muted-foreground))] outline-none data-[highlighted]:bg-background-interactive"
+          onSelect={(event) => {
+            event.preventDefault()
+            setExpanded((value) => !value)
+          }}
+        >
+          <span
+            id={summaryId}
+            className={cn(
+              "min-w-0 flex-1 [overflow-wrap:anywhere]",
+              !expanded &&
+                "[display:-webkit-box] overflow-hidden [-webkit-box-orient:vertical] [-webkit-line-clamp:3]"
+            )}
+          >
+            {summary}
+          </span>
+          <ChevronDown
+            className={cn(
+              "mt-0.5 size-3.5 shrink-0 text-muted-foreground",
+              expanded && "rotate-180"
+            )}
+          />
+        </DropdownMenu.Item>
+      ) : (
+        <p className="pt-1 text-xs leading-4 text-muted-foreground">
+          {labels.environmentDigestEmpty}
+        </p>
+      )}
+
+      {updatedAt ? (
+        <p className="pt-1 text-xs leading-4 text-muted-foreground">
+          {labels.environmentDigestUpdated} {updatedAt}
+        </p>
+      ) : null}
+      {error ? (
+        <p
+          className="pt-1 text-xs leading-4 text-destructive [overflow-wrap:anywhere]"
+          role="alert"
+        >
+          {error}
+        </p>
+      ) : null}
+    </DropdownMenu.Group>
+  )
 }
 
 function EnvironmentRow(props: {
@@ -100,6 +212,10 @@ export function LauncherAiEnvironmentMenu(
           className="launcher-ai-menu launcher-ai-environment-menu"
           side="bottom"
           sideOffset={6}
+          style={{
+            maxHeight: "var(--radix-dropdown-menu-content-available-height)",
+            overflowY: "auto"
+          }}
         >
           <div className="launcher-ai-environment-menu__heading">{labels.environmentInfo}</div>
           <EnvironmentRow
@@ -113,6 +229,13 @@ export function LauncherAiEnvironmentMenu(
             value={environment.permissionLabel}
           />
           <EnvironmentRow label={labels.environmentThread} value={threadLabel} />
+          {environment.threadId ? (
+            <ThreadDigestSection
+              key={environment.threadId}
+              labels={labels}
+              threadId={environment.threadId}
+            />
+          ) : null}
           <LauncherAiProgressList
             className="launcher-ai-environment-menu__progress"
             label={labels.environmentProgress}

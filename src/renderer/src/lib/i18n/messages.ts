@@ -149,6 +149,15 @@ export interface AppCopy {
     copySessionId: string
     copyWorkingDirectory: string
     enter: string
+    environmentDigest: string
+    environmentDigestCollapse: string
+    environmentDigestEmpty: string
+    environmentDigestError: string
+    environmentDigestExpand: string
+    environmentDigestGenerate: string
+    environmentDigestGenerating: string
+    environmentDigestRegenerate: string
+    environmentDigestUpdated: string
     environmentInfo: string
     environmentModel: string
     environmentNoModel: string
@@ -487,6 +496,15 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       copySessionId: "复制会话 ID",
       copyWorkingDirectory: "复制工作目录",
       enter: "回车",
+      environmentDigest: "对话摘要",
+      environmentDigestCollapse: "收起摘要",
+      environmentDigestEmpty: "尚未生成摘要",
+      environmentDigestError: "摘要暂不可用",
+      environmentDigestExpand: "展开摘要",
+      environmentDigestGenerate: "生成",
+      environmentDigestGenerating: "生成中",
+      environmentDigestRegenerate: "重新生成",
+      environmentDigestUpdated: "更新于",
       environmentInfo: "环境信息",
       environmentModel: "模型",
       environmentNoModel: "暂无模型",
@@ -846,6 +864,15 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       copySessionId: "Copy Session ID",
       copyWorkingDirectory: "Copy Working Directory",
       enter: "Enter",
+      environmentDigest: "Conversation Summary",
+      environmentDigestCollapse: "Collapse summary",
+      environmentDigestEmpty: "No summary generated",
+      environmentDigestError: "Summary unavailable",
+      environmentDigestExpand: "Expand summary",
+      environmentDigestGenerate: "Generate",
+      environmentDigestGenerating: "Generating",
+      environmentDigestRegenerate: "Regenerate",
+      environmentDigestUpdated: "Updated",
       environmentInfo: "Environment Info",
       environmentModel: "Model",
       environmentNoModel: "No model",
