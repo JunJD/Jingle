@@ -132,6 +132,7 @@ export function attachLauncherWindowDragController(params: {
     const session = dragSession
     pendingDragStartToken += 1
     clearPendingDragActivation()
+    hideLauncherSnapOverlay()
     if (!session) {
       return
     }
@@ -139,7 +140,6 @@ export function attachLauncherWindowDragController(params: {
     updateDragPosition()
     clearInterval(session.interval)
     dragSession = null
-    hideLauncherSnapOverlay()
 
     if (shouldPersist && !launcherWindow.isDestroyed()) {
       persistOrigin()
