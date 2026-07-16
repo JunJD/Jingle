@@ -1984,7 +1984,6 @@ body[data-platform="darwin"][data-window="pinned-ai-session"] .launcher-chrome-h
   z-index: 2;
   pointer-events: none;
   border-radius: inherit;
-  animation: launcher-intelligence-glow-breathe 6.8s ease-in-out infinite;
   transition:
     opacity 240ms ease,
     filter 280ms ease;
@@ -2614,17 +2613,6 @@ body[data-platform="darwin"][data-window="pinned-ai-session"] .launcher-chrome-h
   to {
     opacity: 1;
     transform: translate3d(0, 0, 0);
-  }
-}
-
-@keyframes launcher-intelligence-glow-breathe {
-  0%,
-  100% {
-    opacity: 0.92;
-  }
-
-  50% {
-    opacity: 1;
   }
 }
 
