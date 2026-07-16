@@ -8,6 +8,7 @@ import {
   type LauncherCommandOwnerManifest,
   validateLauncherCommandOwnerManifest
 } from "../../src/shared/launcher-command-owner"
+import { validateLauncherCommandOwnerManifest as validatePackagedLauncherCommandOwnerManifest } from "../../packages/extension-api/src/shared/launcher-command-owner"
 import { toNativeExtensionLauncherCatalogProjection } from "../../src/shared/native-extensions"
 
 function createRoute(launchProps?: LauncherCommandRoute["launchProps"]): LauncherCommandRoute {
@@ -112,6 +113,22 @@ test("launcher command owner rejects malformed argument contracts at registratio
   omittedArgumentsManifest.commands[0].arguments = undefined
   omittedArgumentsManifest.commands[0].requiresLauncherArguments = false
   assert.doesNotThrow(() => validateLauncherCommandOwnerManifest(omittedArgumentsManifest))
+})
+
+test("app and package launcher command owners reject non-boolean launcher argument flags", () => {
+  const manifest = createOwnerManifest({ name: "text", title: "Text", type: "text" })
+  const command = manifest.commands[0] as unknown as { requiresLauncherArguments: unknown }
+  command.requiresLauncherArguments = "true"
+
+  for (const validate of [
+    validateLauncherCommandOwnerManifest,
+    validatePackagedLauncherCommandOwnerManifest
+  ]) {
+    assert.throws(
+      () => validate(manifest),
+      /requiresLauncherArguments must be a boolean when declared/
+    )
+  }
 })
 
 test("launcher argument page requires an explicit command contract", () => {

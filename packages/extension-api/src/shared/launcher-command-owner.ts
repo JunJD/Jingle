@@ -89,6 +89,17 @@ export function validateLauncherCommandOwnerManifest(manifest: LauncherCommandOw
 
     commandNameSet.add(command.name)
 
+    const requiresLauncherArguments = (command as { requiresLauncherArguments?: unknown })
+      .requiresLauncherArguments
+    if (
+      requiresLauncherArguments !== undefined &&
+      typeof requiresLauncherArguments !== "boolean"
+    ) {
+      throw new Error(
+        `Launcher command owner "${manifest.id}" command "${command.name}" requiresLauncherArguments must be a boolean when declared`
+      )
+    }
+
     const commandArguments = (command as { arguments?: unknown }).arguments
     const commandArgumentsField = `Launcher command owner "${manifest.id}" command "${command.name}" arguments`
     if (commandArguments !== undefined && !Array.isArray(commandArguments)) {
@@ -148,7 +159,7 @@ export function validateLauncherCommandOwnerManifest(manifest: LauncherCommandOw
       }
     }
 
-    if (command.requiresLauncherArguments && !commandArguments?.length) {
+    if (requiresLauncherArguments === true && !commandArguments?.length) {
       throw new Error(
         `Launcher command owner "${manifest.id}" command "${command.name}" requires launcher arguments without declaring any argument schema`
       )
