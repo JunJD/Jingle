@@ -1,6 +1,6 @@
 import { BrowserWindow, type WebContents } from "electron"
 import { join } from "path"
-import { loadRendererWindow } from "./load-renderer-window"
+import { startRendererWindowLoad } from "./load-renderer-window"
 import { installExternalWindowOpenHandler } from "./external-window-open"
 import { lockFixedWindowZoom } from "./window-zoom"
 import { attachWindowDiagnostics } from "../diagnostics/electron-events"
@@ -8,6 +8,7 @@ import {
   SETTINGS_NAVIGATION_CHANGED_CHANNEL,
   type SettingsWindowNavigationPayload
 } from "@shared/settings-window"
+import { installWindowPresentation, requestWindowPresentation } from "./window-presentation"
 
 const SETTINGS_WINDOW_WIDTH = 1220
 const SETTINGS_WINDOW_HEIGHT = 820
@@ -48,17 +49,15 @@ export function createSettingsWindow(): BrowserWindow {
   })
   settingsWindowWebContents.add(settingsWindow.webContents)
 
-  attachWindowDiagnostics(settingsWindow, "settings")
+  const observeRendererWindowLoadFailure = attachWindowDiagnostics(settingsWindow, "settings")
   lockFixedWindowZoom(settingsWindow)
-
-  settingsWindow.on("ready-to-show", () => {
-    settingsWindow.show()
-    settingsWindow.focus()
-  })
+  installWindowPresentation(settingsWindow)
 
   installExternalWindowOpenHandler(settingsWindow.webContents)
 
-  void loadRendererWindow(settingsWindow, "settings")
+  startRendererWindowLoad(settingsWindow, "settings", {
+    onFailure: observeRendererWindowLoadFailure
+  })
   return settingsWindow
 }
 
@@ -66,14 +65,9 @@ export function showSettingsWindow(
   settingsWindow: BrowserWindow,
   payload?: SettingsWindowNavigationPayload
 ): void {
-  if (settingsWindow.isMinimized()) {
-    settingsWindow.restore()
-  }
-
   if (payload) {
     settingsWindow.webContents.send(SETTINGS_NAVIGATION_CHANGED_CHANNEL, payload)
   }
 
-  settingsWindow.show()
-  settingsWindow.focus()
+  requestWindowPresentation(settingsWindow)
 }

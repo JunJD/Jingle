@@ -4,7 +4,8 @@ import { IPC_NETWORK_WINDOW_KIND } from "@jingle/devtools-network"
 import { IPC_NETWORK_PRELOAD_CAPABILITY_ARGUMENT } from "@shared/preload-capability"
 import { attachWindowDiagnostics } from "../diagnostics/electron-events"
 import { installExternalWindowOpenHandler } from "./external-window-open"
-import { loadRendererWindow } from "./load-renderer-window"
+import { startRendererWindowLoad } from "./load-renderer-window"
+import { installWindowPresentation, requestWindowPresentation } from "./window-presentation"
 
 const IPC_NETWORK_WINDOW_WIDTH = 1220
 const IPC_NETWORK_WINDOW_HEIGHT = 760
@@ -31,24 +32,17 @@ export function createIpcNetworkWindow(): BrowserWindow {
     }
   })
 
-  attachWindowDiagnostics(window, IPC_NETWORK_WINDOW_KIND)
-
-  window.on("ready-to-show", () => {
-    window.show()
-    window.focus()
-  })
+  const observeRendererWindowLoadFailure = attachWindowDiagnostics(window, IPC_NETWORK_WINDOW_KIND)
+  installWindowPresentation(window)
 
   installExternalWindowOpenHandler(window.webContents)
 
-  void loadRendererWindow(window, IPC_NETWORK_WINDOW_KIND)
+  startRendererWindowLoad(window, IPC_NETWORK_WINDOW_KIND, {
+    onFailure: observeRendererWindowLoadFailure
+  })
   return window
 }
 
 export function showIpcNetworkWindow(window: BrowserWindow): void {
-  if (window.isMinimized()) {
-    window.restore()
-  }
-
-  window.show()
-  window.focus()
+  requestWindowPresentation(window)
 }

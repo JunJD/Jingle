@@ -1,7 +1,7 @@
 import { BrowserWindow, type Rectangle, screen, type WebContents } from "electron"
 import { join } from "path"
 import { installExternalWindowOpenHandler } from "./external-window-open"
-import { loadRendererWindow } from "./load-renderer-window"
+import { startRendererWindowLoad } from "./load-renderer-window"
 import { lockFixedWindowZoom } from "./window-zoom"
 import { attachWindowDiagnostics } from "../diagnostics/electron-events"
 import {
@@ -432,7 +432,7 @@ export function createLauncherWindow(): BrowserWindow {
     }
   })
   launcherWindowWebContents.add(launcherWindow.webContents)
-  attachWindowDiagnostics(launcherWindow, "launcher")
+  const observeRendererWindowLoadFailure = attachWindowDiagnostics(launcherWindow, "launcher")
   lockFixedWindowZoom(launcherWindow)
 
   const launcherDragController = attachLauncherWindowDragController({
@@ -515,7 +515,9 @@ export function createLauncherWindow(): BrowserWindow {
   })
 
   syncLauncherWindowShape(launcherWindow)
-  void loadRendererWindow(launcherWindow, "launcher")
+  startRendererWindowLoad(launcherWindow, "launcher", {
+    onFailure: observeRendererWindowLoadFailure
+  })
 
   return launcherWindow
 }

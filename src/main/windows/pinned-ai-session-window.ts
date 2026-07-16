@@ -2,9 +2,10 @@ import { BrowserWindow, type WebContents } from "electron"
 import { join } from "path"
 import { PINNED_AI_SESSION_WINDOW_KIND } from "@shared/ai-session-window"
 import { installExternalWindowOpenHandler } from "./external-window-open"
-import { loadRendererWindow } from "./load-renderer-window"
+import { startRendererWindowLoad } from "./load-renderer-window"
 import { lockFixedWindowZoom } from "./window-zoom"
 import { attachWindowDiagnostics } from "../diagnostics/electron-events"
+import { installWindowPresentation, requestWindowPresentation } from "./window-presentation"
 
 const PINNED_AI_SESSION_WINDOW_WIDTH = 1040
 const PINNED_AI_SESSION_WINDOW_HEIGHT = 640
@@ -69,20 +70,23 @@ export function createPinnedAiSessionWindow(
   })
   pinnedAiSessionWindowThreads.set(window.webContents, input.threadId)
 
-  attachWindowDiagnostics(window, PINNED_AI_SESSION_WINDOW_KIND)
+  const observeRendererWindowLoadFailure = attachWindowDiagnostics(
+    window,
+    PINNED_AI_SESSION_WINDOW_KIND
+  )
   lockFixedWindowZoom(window)
-
-  window.on("ready-to-show", () => {
-    window.show()
-    window.focus()
-  })
+  installWindowPresentation(window)
 
   installExternalWindowOpenHandler(window.webContents)
 
-  void loadRendererWindow(window, PINNED_AI_SESSION_WINDOW_KIND, {
-    pinnedWindowId: input.windowId,
-    threadId: input.threadId
+  startRendererWindowLoad(window, PINNED_AI_SESSION_WINDOW_KIND, {
+    onFailure: observeRendererWindowLoadFailure,
+    query: {
+      pinnedWindowId: input.windowId,
+      threadId: input.threadId
+    }
   })
+  requestWindowPresentation(window)
 
   return window
 }

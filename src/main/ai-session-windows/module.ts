@@ -12,7 +12,9 @@ const AI_SESSION_WINDOWS_RUNTIME_TOKEN = Symbol("AiSessionWindowsRuntime")
 
 type AiSessionWindowsModuleRuntime = Pick<
   AiSessionWindowsRuntime,
-  "createPinnedAiSessionWindow" | "setPinnedAiSessionWindowThreadId"
+  | "createPinnedAiSessionWindow"
+  | "presentPinnedAiSessionWindow"
+  | "setPinnedAiSessionWindowThreadId"
 >
 
 export function registerAiSessionWindowsModule(
@@ -35,6 +37,7 @@ export function registerAiSessionWindowsModule(
         },
         createPinnedAiSessionWindow: runtime.createPinnedAiSessionWindow,
         getPinnedAiSessionWindowRestoreState,
+        presentPinnedAiSessionWindow: runtime.presentPinnedAiSessionWindow,
         setPinnedAiSessionWindowRestoreState,
         setPinnedAiSessionWindowThreadId: runtime.setPinnedAiSessionWindowThreadId
       })

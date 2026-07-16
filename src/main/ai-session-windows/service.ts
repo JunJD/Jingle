@@ -13,6 +13,7 @@ export interface AiSessionWindowsRuntime {
   canRestorePinnedAiSessionWindow: (threadId: string) => Promise<boolean>
   createPinnedAiSessionWindow: (input: { threadId: string; windowId: string }) => BrowserWindow
   getPinnedAiSessionWindowRestoreState: () => PinnedAiSessionWindowRestoreState
+  presentPinnedAiSessionWindow: (window: BrowserWindow) => void
   setPinnedAiSessionWindowRestoreState: (
     state: PinnedAiSessionWindowRestoreState
   ) => PinnedAiSessionWindowRestoreState
@@ -172,15 +173,7 @@ export class AiSessionWindowsService {
   }
 
   private focusPinnedWindow(window: BrowserWindow): void {
-    if (window.isMinimized()) {
-      window.restore()
-    }
-
-    if (!window.isVisible()) {
-      window.show()
-    }
-
-    window.focus()
+    this.runtime.presentPinnedAiSessionWindow(window)
   }
 
   private recordPinnedThread(threadId: string): void {

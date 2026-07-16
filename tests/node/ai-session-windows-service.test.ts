@@ -92,6 +92,7 @@ function createService(options?: {
       return window as never
     },
     getPinnedAiSessionWindowRestoreState: () => ({ threadIds: restoreThreadIds }),
+    presentPinnedAiSessionWindow: (window) => window.focus(),
     setPinnedAiSessionWindowRestoreState: (state) => {
       restoreThreadIds = (options?.setRestoreState?.(state) ?? state).threadIds
       return { threadIds: restoreThreadIds }

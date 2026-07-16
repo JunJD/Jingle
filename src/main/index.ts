@@ -35,6 +35,8 @@ import {
 } from "./protocol-client-registration"
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 import { createIpcNetworkWindow, showIpcNetworkWindow } from "./windows/ipc-network-window"
+import { beginRendererWindowShutdown } from "./windows/load-renderer-window"
+import { requestWindowPresentation } from "./windows/window-presentation"
 
 const APP_DISPLAY_NAME = "Jingle"
 const APP_USER_MODEL_ID = "com.jingle.desktop"
@@ -116,11 +118,6 @@ function getOrCreateSettingsWindow(): BrowserWindow {
     settingsWindow = createSettingsWindow()
     const createdWindow = settingsWindow
     createdWindow.webContents.on("did-start-loading", () => {
-      if (settingsWindow === createdWindow) {
-        settingsRendererReady = false
-      }
-    })
-    createdWindow.webContents.on("render-process-gone", () => {
       if (settingsWindow === createdWindow) {
         settingsRendererReady = false
       }
@@ -357,6 +354,7 @@ if (hasSingleInstanceLock) {
       isDev,
       openIpcNetworkWindow,
       openSettingsWindow,
+      presentPinnedAiSessionWindow: requestWindowPresentation,
       quitApplication: () => app.quit(),
       showLauncherWindow: showLauncher,
       showMainSubject: showLauncher,
@@ -398,6 +396,7 @@ if (hasSingleInstanceLock) {
 }
 
 app.on("before-quit", (event) => {
+  beginRendererWindowShutdown()
   diagnosticsLogger.info("Application before quit")
 
   if (shutdownComplete) {

@@ -111,6 +111,7 @@ export interface MainCompositionContext {
   isDev: boolean
   openIpcNetworkWindow: () => void
   openSettingsWindow: (payload?: SettingsWindowNavigationPayload) => void
+  presentPinnedAiSessionWindow: AiSessionWindowsRuntime["presentPinnedAiSessionWindow"]
   quitApplication: () => void
   showLauncherWindow: () => void
   showMainSubject: () => void
@@ -280,6 +281,7 @@ export function createMainCompositionRoot(
   registerAgentModule(childContainer)
   registerAiSessionWindowsModule(childContainer, {
     createPinnedAiSessionWindow: context.createPinnedAiSessionWindow,
+    presentPinnedAiSessionWindow: context.presentPinnedAiSessionWindow,
     setPinnedAiSessionWindowThreadId: context.setPinnedAiSessionWindowThreadId
   })
   registerArtifactsModule(childContainer)
