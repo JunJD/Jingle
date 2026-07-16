@@ -4,15 +4,24 @@ import type { VariantProps } from "class-variance-authority"
 import { CheckIcon, CopyIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "./button-variants"
+import { Spinner } from "./spinner"
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
   asChild?: boolean
+  loading?: boolean
+  loadingLabel?: string
+  pressEffect?: "none" | "scale"
   ref?: React.Ref<HTMLButtonElement>
 }
 
 function Button({
   className,
+  children,
+  disabled,
+  loading = false,
+  loadingLabel,
+  pressEffect = "none",
   variant,
   size,
   asChild = false,
@@ -20,7 +29,33 @@ function Button({
   ...props
 }: ButtonProps): React.JSX.Element {
   const Comp = asChild ? Slot : "button"
-  return <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
+  if (asChild) {
+    return (
+      <Comp
+        aria-busy={loading || undefined}
+        className={cn(buttonVariants({ variant, size, className }))}
+        data-press-effect={pressEffect}
+        ref={ref}
+        {...props}
+      >
+        {children}
+      </Comp>
+    )
+  }
+
+  return (
+    <Comp
+      aria-busy={loading || undefined}
+      className={cn(buttonVariants({ variant, size, className }))}
+      data-press-effect={pressEffect}
+      disabled={disabled || loading}
+      ref={ref}
+      {...props}
+    >
+      <span className={cn("contents", loading && "opacity-0")}>{children}</span>
+      {loading ? <Spinner className="absolute" label={loadingLabel} size="sm" /> : null}
+    </Comp>
+  )
 }
 
 export interface CopyButtonProps extends Omit<ButtonProps, "children" | "onClick"> {

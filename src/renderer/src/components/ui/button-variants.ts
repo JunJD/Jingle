@@ -1,7 +1,7 @@
 import { cva } from "class-variance-authority"
 
 export const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-[var(--jingle-space-1-5)] whitespace-nowrap rounded-[var(--jingle-radius-md)] [font-size:var(--jingle-font-control)] font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-[var(--jingle-icon-action)] shrink-0 [&_svg]:shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+  "jingle-pressable relative inline-flex shrink-0 items-center justify-center gap-[var(--jingle-space-1-5)] whitespace-nowrap rounded-[var(--jingle-radius-md)] [font-size:var(--jingle-font-control)] font-medium outline-none disabled:pointer-events-none disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-[var(--jingle-icon-action)]",
   {
     variants: {
       variant: {
@@ -17,7 +17,8 @@ export const buttonVariants = cva(
         info: "bg-status-info text-white hover:bg-status-info/90"
       },
       size: {
-        default: "h-[var(--jingle-control-h-md)] px-[var(--jingle-space-3)] py-[var(--jingle-space-1-5)]",
+        default:
+          "h-[var(--jingle-control-h-md)] px-[var(--jingle-space-3)] py-[var(--jingle-space-1-5)]",
         sm: "h-[var(--jingle-control-h-compact)] px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-meta)]",
         lg: "h-[var(--jingle-control-h-lg)] px-[var(--jingle-space-4)]",
         icon: "size-[var(--jingle-control-h-md)]",

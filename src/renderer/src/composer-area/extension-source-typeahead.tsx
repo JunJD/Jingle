@@ -16,6 +16,7 @@ import {
 import { createPortal } from "react-dom"
 import { ExtensionIcon } from "@/extensions/ExtensionIcon"
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
 import { WorkspaceFileIcon } from "@/components/workspace-file-icon"
 import type { ExtensionSourceMention } from "@shared/extension-sources"
 import { $createExtensionSourceReferenceNode } from "./extension-source-node"
@@ -175,10 +176,10 @@ function useMenuRenderFn(
         const isWorkspaceFile = option.kind === "workspace-file"
         return (
           <li key={option.key}>
-            <button
+            <Button
               ref={option.setRefElement}
               className={cn(
-                "flex w-full cursor-default select-none items-center gap-[var(--jingle-space-1-5)] rounded-[var(--jingle-radius-xs)] border-0 bg-transparent px-[var(--jingle-space-2)] text-left text-foreground outline-none transition-colors duration-100",
+                "flex w-full cursor-default select-none items-center gap-[var(--jingle-space-1-5)] rounded-[var(--jingle-radius-xs)] border-0 bg-transparent px-[var(--jingle-space-2)] text-left text-foreground outline-none",
                 isWorkspaceFile
                   ? "h-[26px] [font-size:var(--jingle-font-meta)]"
                   : "h-[34px] [font-size:var(--jingle-font-label)]",
@@ -191,6 +192,7 @@ function useMenuRenderFn(
               onMouseEnter={() => itemProps.setHighlightedIndex(index)}
               tabIndex={-1}
               type="button"
+              variant="ghost"
             >
               {option.kind === "extension-source" ? (
                 <>
@@ -209,7 +211,7 @@ function useMenuRenderFn(
               ) : (
                 <WorkspaceFileOptionContent file={option.file} />
               )}
-            </button>
+            </Button>
           </li>
         )
       }
@@ -223,7 +225,10 @@ function useMenuRenderFn(
             width: `${menuLayout.width}px`
           }}
         >
-          <ul className="relative z-[9999] m-0 max-h-[320px] w-full list-none overflow-y-auto rounded-[var(--jingle-radius-sm)] border border-border bg-popover p-[var(--jingle-space-0-5)] text-popover-foreground shadow-[0_10px_28px_rgba(15,23,42,0.14)] outline-none">
+          <ul
+            className="relative z-[9999] m-0 max-h-[320px] w-full list-none overflow-y-auto rounded-[var(--jingle-radius-sm)] border border-border bg-popover p-[var(--jingle-space-0-5)] text-popover-foreground shadow-[0_10px_28px_rgba(15,23,42,0.14)] outline-none"
+            data-press-surface="instant"
+          >
             {pluginOptions.length > 0 && showSectionLabels ? (
               <li className={SECTION_LABEL_CLASS}>插件</li>
             ) : null}

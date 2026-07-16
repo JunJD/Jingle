@@ -1,5 +1,6 @@
 import { ExtensionIcon } from "@/extensions/ExtensionIcon"
 import { WorkspaceFileIcon } from "@/components/workspace-file-icon"
+import { Button } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n"
 import { useNativeSourceMentionsProjection } from "@extension-host/use-native-source-mentions-projection"
 import {
@@ -88,15 +89,16 @@ function WorkspaceFileChip(props: {
 
   if (onOpenWorkspaceFile) {
     return (
-      <button
+      <Button
         aria-label={token.path}
         className={`${className} cursor-pointer border-0 bg-transparent p-0 text-inherit hover:bg-background-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
         onClick={() => onOpenWorkspaceFile(token.path)}
         title={token.path}
         type="button"
+        variant="ghost"
       >
         {content}
-      </button>
+      </Button>
     )
   }
 

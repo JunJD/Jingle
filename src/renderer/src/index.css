@@ -346,6 +346,8 @@
   --jingle-gap-md: var(--jingle-space-3);
   --jingle-gap-lg: var(--jingle-space-4);
 
+  --jingle-motion-duration-press: 120ms;
+  --jingle-motion-duration-fast: 140ms;
   --jingle-motion-duration-enter: 180ms;
   --jingle-motion-duration-exit: 140ms;
   --jingle-motion-duration-reduced: 90ms;
@@ -429,6 +431,43 @@
   --window-controls-gap: 18px;
 }
 
+.jingle-pressable {
+  transition-property: background-color, border-color, color, box-shadow, opacity, transform;
+  transition-duration: var(--jingle-motion-duration-fast);
+  transition-timing-function: var(--jingle-motion-ease-out);
+}
+
+:is([data-press-surface="instant"], [data-press-surface="navigation"]) .jingle-pressable,
+html[data-input-modality="keyboard"] .jingle-pressable {
+  transition-duration: 0ms;
+}
+
+html[data-input-modality="pointer"]
+  .jingle-pressable[data-press-effect="scale"]:active:not(:disabled, [aria-disabled="true"]) {
+  transform: scale(0.98);
+  transition-duration: var(--jingle-motion-duration-press);
+}
+
+html[data-input-modality="pointer"]
+  :is([data-press-surface="instant"], [data-press-surface="navigation"])
+  .jingle-pressable:active:not(:disabled, [aria-disabled="true"]) {
+  transform: none;
+}
+
+html[data-input-modality="pointer"] .jingle-switch__thumb {
+  transition: transform var(--jingle-motion-duration-fast) var(--jingle-motion-ease-out);
+}
+
+.jingle-spinner {
+  animation: jingle-spinner-rotate 760ms linear infinite;
+}
+
+@keyframes jingle-spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .jingle-floating-surface {
   opacity: 1;
   transform: scale(1);
@@ -484,6 +523,22 @@ html[data-input-modality="keyboard"] .jingle-floating-surface:not([data-jingle-f
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .jingle-pressable {
+    transition-duration: 0ms;
+  }
+
+  .jingle-pressable:active:not(:disabled, [aria-disabled="true"]) {
+    transform: none;
+  }
+
+  .jingle-switch__thumb {
+    transition: none;
+  }
+
+  .jingle-spinner {
+    animation: none;
+  }
+
   .jingle-floating-surface {
     transform: none;
     transition: opacity var(--jingle-motion-duration-reduced) var(--jingle-motion-ease-out);

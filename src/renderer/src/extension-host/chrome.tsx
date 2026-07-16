@@ -1,6 +1,7 @@
 import { ArrowLeft } from "lucide-react"
 import { type ReactNode } from "react"
 import { LauncherChromeFrame } from "@launcher-components/LauncherChromeFrame"
+import { IconButton } from "@/components/ui/icon-button"
 import { useNativeExtensionNavigation, useNativeExtensionSurface } from "./sdk"
 
 export function NativeSurfaceChrome(props: {
@@ -48,15 +49,16 @@ export function NativeSurfaceBackButton(): React.JSX.Element {
   const navigation = useNativeExtensionNavigation()
 
   return (
-    <button
-      type="button"
+    <IconButton
+      label={navigation.canPop ? "Go Back" : "Go Home"}
       onClick={navigation.canPop ? navigation.pop : navigation.goHome}
       onMouseDown={(event) => event.preventDefault()}
       className="launcher-icon-button flex h-[var(--launcher-icon-button-size)] w-[var(--launcher-icon-button-size)] shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
-      aria-label={navigation.canPop ? "Go Back" : "Go Home"}
+      size="icon-sm"
+      variant="ghost"
     >
       <ArrowLeft className="size-[var(--jingle-icon-sm)]" />
-    </button>
+    </IconButton>
   )
 }
 

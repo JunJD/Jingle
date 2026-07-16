@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { Button } from "@/components/ui/button"
 import { LauncherActionOverlay } from "@/features/launcher-actions/LauncherActionOverlay"
 import type { NativeSurfaceActionController } from "./surface-action-controller"
 
@@ -15,11 +16,12 @@ export function NativeSurfaceActionsFooter(props: {
 
       <div className="flex items-center gap-[var(--jingle-gap-sm)]">
         {controller.canOpenActions ? (
-          <button
+          <Button
             type="button"
             onClick={controller.openActions}
             onMouseDown={(event) => event.preventDefault()}
             className="launcher-action-link flex h-[var(--launcher-action-control-h)] items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-meta)] font-medium text-foreground"
+            variant="ghost"
           >
             <span>Actions</span>
             {controller.actionPanelShortcut ? (
@@ -27,15 +29,17 @@ export function NativeSurfaceActionsFooter(props: {
                 {controller.actionPanelShortcut}
               </span>
             ) : null}
-          </button>
+          </Button>
         ) : null}
 
-        <button
+        <Button
           type="button"
+          pressEffect={primaryAction.kind === "ready" ? "scale" : "none"}
           onClick={primaryAction.kind === "ready" ? primaryAction.execute : undefined}
           onMouseDown={(event) => event.preventDefault()}
           disabled={primaryAction.kind === "invalid"}
           className="launcher-action-link flex h-[var(--launcher-action-control-h)] items-center gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-meta)] font-medium text-foreground disabled:opacity-40"
+          variant="ghost"
         >
           <span>{primaryAction.title}</span>
           {primaryAction.kind === "ready" && primaryAction.shortcut ? (
@@ -43,7 +47,7 @@ export function NativeSurfaceActionsFooter(props: {
               {primaryAction.shortcut}
             </span>
           ) : null}
-        </button>
+        </Button>
       </div>
     </>
   )

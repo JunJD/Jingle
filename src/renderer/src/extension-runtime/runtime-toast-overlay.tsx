@@ -1,5 +1,7 @@
 import { useEffect, useMemo } from "react"
 import { AlertCircle, CheckCircle2, X } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { IconButton } from "@/components/ui/icon-button"
 import { matchesLauncherActionShortcut } from "@/features/launcher-actions/controller-core"
 import { cn } from "@/lib/utils"
 import type {
@@ -89,10 +91,12 @@ export function RuntimeToastOverlay(props: {
           {actions.length > 0 ? (
             <div className="mt-[var(--jingle-space-1-5)] flex flex-wrap gap-[var(--jingle-gap-xs)]">
               {actions.map((action) => (
-                <button
+                <Button
                   key={`${toast.id}:${action.title}:${action.id ?? ""}`}
                   type="button"
                   className="rounded-[var(--jingle-radius-sm)] border border-border/80 bg-background px-[var(--jingle-space-2)] py-[var(--jingle-space-0-5)] [font-size:var(--jingle-font-caption)] font-medium text-foreground transition hover:bg-muted"
+                  size="sm"
+                  variant="outline"
                   onClick={() => {
                     onAction(action.id)
                   }}
@@ -103,19 +107,21 @@ export function RuntimeToastOverlay(props: {
                       {formatRuntimeActionShortcut(action.shortcut)}
                     </span>
                   ) : null}
-                </button>
+                </Button>
               ))}
             </div>
           ) : null}
         </div>
-        <button
-          type="button"
-          aria-label="Dismiss toast"
+        <IconButton
+          label="Dismiss toast"
           className="flex size-[var(--jingle-icon-action)] shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
           onClick={onDismiss}
+          size="icon-sm"
+          tooltip={false}
+          variant="ghost"
         >
           <X className="size-[var(--jingle-icon-xs)]" />
-        </button>
+        </IconButton>
       </div>
     </div>
   )

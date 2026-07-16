@@ -14,9 +14,16 @@ import { cjk } from "@streamdown/cjk"
 import { code } from "@streamdown/code"
 import { math } from "@streamdown/math"
 import { mermaid } from "@streamdown/mermaid"
-import { ArrowLeft, Loader2, LoaderCircle } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 import { Streamdown } from "streamdown"
+import { Button } from "@/components/ui/button"
+import { IconButton } from "@/components/ui/icon-button"
+import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select } from "@/components/ui/select"
+import { Spinner } from "@/components/ui/spinner"
+import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
 import type { LauncherActionDescriptor } from "@/features/launcher-actions/model"
 import { cn } from "@/lib/utils"
 import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
@@ -49,10 +56,7 @@ import {
   nativeSurfaceListDropdownClassName,
   type NativeSurfaceListSectionPresentation
 } from "../extension-host/list-presentation"
-import {
-  type RuntimeFormLocalValues,
-  type RuntimeFormValue
-} from "./form-local-values"
+import { type RuntimeFormLocalValues, type RuntimeFormValue } from "./form-local-values"
 import { formatRuntimeActionShortcut, toLauncherActionShortcut } from "./runtime-action-shortcuts"
 import {
   openRuntimeExternalTarget,
@@ -184,6 +188,7 @@ function RuntimeListDropdown(props: {
     <NativeExtensionSelect
       className={nativeSurfaceListDropdownClassName}
       value={dropdown.value}
+      wrapperClassName="max-w-[var(--launcher-dropdown-max-width)]"
       onChange={onChange}
     >
       {dropdown.sections.map((section) =>
@@ -218,16 +223,18 @@ function RuntimeSurfaceHeaderLeading(props: {
 
   return (
     <div className="flex min-w-0 items-center gap-[var(--jingle-gap-sm)]">
-      <button
+      <IconButton
+        label={buttonLabel}
+        size="icon"
+        tooltip={buttonLabel}
         type="button"
+        variant="ghost"
         onClick={canPop ? onPop : onGoHome}
         onMouseDown={(event) => event.preventDefault()}
-        className="launcher-icon-button flex h-[var(--launcher-icon-button-size)] w-[var(--launcher-icon-button-size)] shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
-        aria-label={buttonLabel}
-        title={buttonLabel}
+        className="launcher-icon-button h-[var(--launcher-icon-button-size)] w-[var(--launcher-icon-button-size)] rounded-full border-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
       >
         <ArrowLeft className="size-[var(--jingle-icon-sm)]" />
-      </button>
+      </IconButton>
       {label ? (
         <span className="truncate [font-size:var(--jingle-font-body)] font-medium text-muted-foreground">
           {label}
@@ -275,8 +282,12 @@ function RuntimeDetailSurface(props: {
       >
         <ScrollArea className="flex-1">
           {snapshot.isLoading ? (
-            <div className="flex h-full items-center justify-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-body)] text-muted-foreground">
-              <LoaderCircle className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] animate-spin" />
+            <div
+              aria-live="polite"
+              className="flex h-full items-center justify-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-body)] text-muted-foreground"
+              role="status"
+            >
+              <Spinner />
               <span>Loading...</span>
             </div>
           ) : (
@@ -363,9 +374,14 @@ function RuntimeDetailMetadataEntry(props: {
         {entry.title}
       </div>
       {canOpenTarget ? (
-        <button className={`${textClassName} text-left`} type="button" onClick={handleOpen}>
+        <Button
+          className={`${textClassName} h-auto min-w-0 justify-start whitespace-normal p-0 text-left font-normal`}
+          type="button"
+          variant="link"
+          onClick={handleOpen}
+        >
           {entry.text}
-        </button>
+        </Button>
       ) : (
         <div className={textClassName}>{entry.text}</div>
       )}
@@ -420,10 +436,17 @@ function RuntimeFormSurface(props: {
         title={snapshot.navigationTitle}
       >
         <ScrollArea className="flex-1">
-          <div className="space-y-[var(--jingle-space-3)] px-[var(--jingle-space-4)] py-[var(--jingle-space-3)]">
+          <div
+            aria-busy={snapshot.isLoading || undefined}
+            className="space-y-[var(--jingle-space-3)] px-[var(--jingle-space-4)] py-[var(--jingle-space-3)]"
+          >
             {snapshot.isLoading ? (
-              <div className="flex items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-body)] text-muted-foreground">
-                <Loader2 className="size-[var(--jingle-icon-sm)] animate-spin" />
+              <div
+                aria-live="polite"
+                className="flex items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-body)] text-muted-foreground"
+                role="status"
+              >
+                <Spinner size="sm" />
                 <span>Loading...</span>
               </div>
             ) : null}
@@ -514,12 +537,12 @@ function RuntimeFormField(props: {
       <label className="block space-y-[var(--jingle-space-1-5)]" data-runtime-form-field={field.id}>
         {label}
         <span className="inline-flex items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-control)] text-foreground">
-          <input
-            type="checkbox"
+          <Switch
             autoFocus={autoFocus}
             checked={value}
-            ref={inputRef as Ref<HTMLInputElement>}
-            onChange={(event) => onChange(event.target.checked)}
+            label={field.label}
+            ref={inputRef as Ref<HTMLButtonElement>}
+            onCheckedChange={onChange}
           />
           <span>{field.label}</span>
         </span>
@@ -551,9 +574,10 @@ function RuntimeFormField(props: {
     return (
       <label className="block space-y-[var(--jingle-space-1-5)]" data-runtime-form-field={field.id}>
         {label}
-        <select
-          className="min-h-[calc(var(--jingle-control-h-sm)*2)] w-full rounded-[var(--jingle-radius-sm)] border border-input bg-background-elevated px-[var(--jingle-space-2-5)] py-[var(--jingle-space-1-5)] [font-size:var(--jingle-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
+        <Select
+          className="min-h-[calc(var(--jingle-control-h-sm)*2)] rounded-[var(--jingle-radius-sm)] px-[var(--jingle-space-2-5)] py-[var(--jingle-space-1-5)]"
           autoFocus={autoFocus}
+          indicator={false}
           multiple
           ref={inputRef as Ref<HTMLSelectElement>}
           value={value}
@@ -566,7 +590,7 @@ function RuntimeFormField(props: {
               {item.title}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
     )
   }
@@ -577,8 +601,8 @@ function RuntimeFormField(props: {
     return (
       <label className="block space-y-[var(--jingle-space-1-5)]" data-runtime-form-field={field.id}>
         {label}
-        <textarea
-          className="min-h-[var(--jingle-textarea-min-h)] w-full rounded-[var(--jingle-radius-sm)] border border-input bg-background-elevated px-[var(--jingle-space-2-5)] py-[var(--jingle-space-1-5)] [font-size:var(--jingle-font-control)] leading-[var(--jingle-line-chat)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
+        <Textarea
+          className="rounded-[var(--jingle-radius-sm)] px-[var(--jingle-space-2-5)] py-[var(--jingle-space-1-5)] leading-[var(--jingle-line-chat)]"
           autoFocus={autoFocus}
           data-markdown={field.enableMarkdown === true ? "true" : undefined}
           ref={inputRef as Ref<HTMLTextAreaElement>}
@@ -597,8 +621,8 @@ function RuntimeFormField(props: {
   return (
     <label className="block space-y-[var(--jingle-space-1-5)]" data-runtime-form-field={field.id}>
       {label}
-      <input
-        className="flex h-[var(--jingle-control-h-sm)] w-full rounded-[var(--jingle-radius-sm)] border border-input bg-background-elevated px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-control)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
+      <Input
+        className="h-[var(--jingle-control-h-sm)] rounded-[var(--jingle-radius-sm)] px-[var(--jingle-space-2-5)]"
         autoFocus={autoFocus}
         type={inputType}
         ref={inputRef as Ref<HTMLInputElement>}
@@ -642,9 +666,12 @@ function RuntimeFormDropdownControl(props: {
     <NativeExtensionSearchableSelect
       className="flex h-[var(--jingle-control-h-sm)] w-full items-center justify-between rounded-[var(--jingle-radius-sm)] border border-input bg-background-elevated px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
       autoFocus={autoFocus}
+      emptyTitle="Select"
+      invalidTitle="Selection unavailable"
       isLoading={field.isLoading === true}
       items={field.items}
       ref={controlRef as Ref<HTMLButtonElement>}
+      searchPlaceholder="Search"
       value={value}
       onChange={onChange}
       onSearch={onSearch}
