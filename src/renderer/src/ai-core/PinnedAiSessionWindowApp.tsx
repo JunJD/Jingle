@@ -10,6 +10,7 @@ import type { ComposerAreaHandle } from "@/composer-area"
 import { AI_CHAT_COMMAND_NAME, AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
 import { FALLBACK_SHELL_CONFIG } from "@shared/launcher"
 import type { ClipboardContext } from "@shared/clipboard"
+import { launcherAiCommands } from "./launcher-ai-commands"
 
 const PINNED_SESSION_VIEWPORT_HEIGHT = 640
 const EMPTY_CLIPBOARD_CONTEXT: ClipboardContext = {
@@ -46,11 +47,7 @@ export function PinnedAiSessionWindowApp(): React.JSX.Element {
           throw new Error("Pinned AI session window id is missing.")
         }
 
-        const result = await window.api.aiSessionWindows.updatePinnedThread({
-          threadId,
-          windowId: pinnedWindowId
-        })
-        return result.ok
+        return launcherAiCommands.updatePinnedThread(pinnedWindowId, threadId)
       },
       initialThreadId,
       pinnedWindowId

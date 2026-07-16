@@ -14,10 +14,8 @@ import { ComposerApprovalPrompt } from "@/components/chat/ComposerApprovalPrompt
 import { ComposerFollowUpQueue } from "@/components/chat/ComposerFollowUpQueue"
 import { useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { formatShortcutChord } from "@/shortcuts/format-shortcut"
-import { AI_LAUNCHER_PLUGIN_ID, AI_THREAD_SOURCE } from "@shared/launcher-ai"
+import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
 import { AI_ATTACHMENT_IMAGE_EXTENSIONS } from "@shared/launcher-attachments"
-import { MAX_LAUNCHER_SEARCH_RESULTS } from "@shared/launcher"
-import { resolveShortcutPlatform } from "@shared/shortcuts/model"
 import { LauncherChrome } from "@launcher-components/LauncherChrome"
 import { ClipboardChip } from "@launcher-components/ClipboardChip"
 import { SelectionContextChip } from "@launcher-components/SelectionContextChip"
@@ -47,6 +45,7 @@ import { useAiAttachments } from "./useAiAttachments"
 import { useAssistantSelectionRefs } from "@/components/chat/useAssistantSelectionRefs"
 import { useLauncherAiActions } from "./useLauncherAiActions"
 import { useLauncherAiThreadNavigation } from "./useLauncherAiThreadNavigation"
+import { launcherAiCommands } from "./launcher-ai-commands"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
 import { useAgent } from "@/lib/use-agent"
@@ -900,23 +899,16 @@ export function LauncherAiPage(): React.JSX.Element {
     let cancelled = false
     const searchTimer = window.setTimeout(() => {
       dispatchThreadSearch({ type: "search-start" })
-      void window.api.launcher
-        .search({
-          limit: MAX_LAUNCHER_SEARCH_RESULTS,
-          query: trimmedThreadSearchQuery,
-          sources: ["threads"],
-          threadMetadataSource: AI_THREAD_SOURCE
-        })
-        .then((response) => {
+      void launcherAiCommands
+        .searchThreads(trimmedThreadSearchQuery)
+        .then((results) => {
           if (cancelled) {
             return
           }
 
           dispatchThreadSearch({
             type: "search-success",
-            results: response.results.filter(
-              (result) => result.action.type === "open-history-thread"
-            )
+            results
           })
         })
         .catch((error: unknown) => {
@@ -1043,7 +1035,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const copySidebarThreadSessionId = useCallback(
     async (nextThreadId: string): Promise<void> => {
       await runSidebarThreadAction(async () => {
-        await navigator.clipboard.writeText(nextThreadId)
+        await launcherAiCommands.writeClipboardText(nextThreadId)
       })
     },
     [runSidebarThreadAction]
@@ -1051,7 +1043,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const copySidebarThreadWorkingDirectory = useCallback(
     async (nextWorkspacePath: string): Promise<void> => {
       await runSidebarThreadAction(async () => {
-        await navigator.clipboard.writeText(nextWorkspacePath)
+        await launcherAiCommands.writeClipboardText(nextWorkspacePath)
       })
     },
     [runSidebarThreadAction]
@@ -1059,7 +1051,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const openSidebarThreadInNewWindow = useCallback(
     async (nextThreadId: string): Promise<void> => {
       await runSidebarThreadAction(async () => {
-        const result = await window.api.aiSessionWindows.openPinned({ threadId: nextThreadId })
+        const result = await launcherAiCommands.openPinnedThread(nextThreadId)
         if (!result.ok) {
           console.warn("[LauncherAiPage] Pinned AI session window limit reached.", {
             limit: result.limit
@@ -1072,7 +1064,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const revealSidebarThreadInFinder = useCallback(
     async (nextWorkspacePath: string): Promise<void> => {
       await runSidebarThreadAction(async () => {
-        await window.api.openTargets.open({ folderPath: nextWorkspacePath, targetId: "finder" })
+        await launcherAiCommands.openWorkspaceInFinder(nextWorkspacePath)
       })
     },
     [runSidebarThreadAction]
@@ -1161,7 +1153,7 @@ export function LauncherAiPage(): React.JSX.Element {
       return
     }
 
-    const result = await window.api.aiSessionWindows.openPinned({ threadId })
+    const result = await launcherAiCommands.openPinnedThread(threadId)
     if (!result.ok) {
       console.warn("[LauncherAiPage] Pinned AI session window limit reached.", {
         limit: result.limit
@@ -1174,7 +1166,7 @@ export function LauncherAiPage(): React.JSX.Element {
       return
     }
 
-    const result = await window.api.aiSessionWindows.openPinned({ threadId })
+    const result = await launcherAiCommands.openPinnedThread(threadId)
     if (!result.ok) {
       console.warn("[LauncherAiPage] Pinned AI session window limit reached.", {
         limit: result.limit
@@ -1186,14 +1178,14 @@ export function LauncherAiPage(): React.JSX.Element {
       return
     }
 
-    await navigator.clipboard.writeText(workspacePath)
+    await launcherAiCommands.writeClipboardText(workspacePath)
   }, [workspacePath])
   const copySessionId = useCallback(async (): Promise<void> => {
     if (!threadId) {
       return
     }
 
-    await navigator.clipboard.writeText(threadId)
+    await launcherAiCommands.writeClipboardText(threadId)
   }, [threadId])
   const toggleCurrentThreadPinned = useCallback(async (): Promise<void> => {
     if (!threadId) {
@@ -1231,7 +1223,7 @@ export function LauncherAiPage(): React.JSX.Element {
         modifiers: [],
         key: "Enter"
       },
-      resolveShortcutPlatform(window.electron.process.platform)
+      launcherAiCommands.getShortcutPlatform()
     )
 
   useShortcutScopeLayer(AI_SHORTCUT_SCOPES)
