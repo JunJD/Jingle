@@ -3,9 +3,10 @@ import { Info } from "lucide-react"
 import type { Todo } from "@/types"
 import { cn } from "@/lib/utils"
 import { LauncherAiProgressList } from "./LauncherAiProgressList"
+import type { LauncherAiModelDisplayProjection } from "./use-launcher-ai-model-display-controller"
 
 export interface LauncherAiEnvironmentInfo {
-  modelLabel: string | null
+  model: LauncherAiModelDisplayProjection
   permissionLabel: string
   threadId: string | null
   todos: readonly Todo[]
@@ -65,8 +66,10 @@ export function LauncherAiEnvironmentMenu(
     workspaceDataAttributes["data-launcher-ai-workspace-path"] = environment.workspacePath
   }
 
-  if (environment.modelLabel !== null) {
-    modelLabel = environment.modelLabel
+  if (environment.model.kind === "configured") {
+    modelLabel = environment.model.label
+  } else if (environment.model.kind === "unavailable") {
+    modelLabel = environment.model.modelId
   }
 
   if (environment.threadId !== null) {

@@ -46,6 +46,7 @@ import { useAssistantSelectionRefs } from "@/components/chat/useAssistantSelecti
 import { useLauncherAiActions } from "./useLauncherAiActions"
 import { useLauncherAiThreadNavigation } from "./useLauncherAiThreadNavigation"
 import { launcherAiCommands } from "./launcher-ai-commands"
+import { useLauncherAiModelDisplayProjection } from "./use-launcher-ai-model-display-controller"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
 import { useAgent } from "@/lib/use-agent"
@@ -338,6 +339,7 @@ export function LauncherAiPage(): React.JSX.Element {
     useThreadSelector(threadId, (state) => state?.agent.currentModel ?? null) ??
     draftTarget?.modelId ??
     null
+  const currentModelDisplay = useLauncherAiModelDisplayProjection(currentModelId)
   const currentPermissionMode =
     useThreadSelector(threadId, (state) => state?.agent.permissionMode ?? null) ??
     draftTarget?.permissionMode ??
@@ -475,14 +477,6 @@ export function LauncherAiPage(): React.JSX.Element {
     }
 
     return isThreadPinned(state.threads.find((thread) => thread.thread_id === threadId)?.metadata)
-  })
-  const currentModelLabel = useHistoryShellStore((state) => {
-    if (!currentModelId) {
-      return null
-    }
-
-    const model = state.models.find((model) => model.id === currentModelId)
-    return model?.name ?? model?.model ?? currentModelId
   })
   const currentPermissionLabel =
     currentPermissionMode === "auto"
@@ -1333,7 +1327,7 @@ export function LauncherAiPage(): React.JSX.Element {
               }
               isPinned={isCurrentThreadPinned}
               environment={{
-                modelLabel: currentModelLabel,
+                model: currentModelDisplay,
                 permissionLabel: currentPermissionLabel,
                 threadId,
                 todos,
