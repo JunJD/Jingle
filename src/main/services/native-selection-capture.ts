@@ -3,6 +3,7 @@ import { existsSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { app } from "electron"
 import type { LauncherSelectionCapturePayload } from "@shared/launcher-selection"
+import { resolveNativeBinaryPath } from "./native-binary-path"
 
 export interface NativeSelectionCaptureHandlers {
   activateSelection: (payload: LauncherSelectionCapturePayload) => void
@@ -12,23 +13,15 @@ let nativeSelectionProcess: ChildProcess | null = null
 let nativeSelectionStdoutBuffer = ""
 let nativeSelectionHandlers: NativeSelectionCaptureHandlers | null = null
 
-function resolvePackagedUnpackedPath(candidatePath: string): string {
-  if (!app.isPackaged || !candidatePath.includes("app.asar")) {
-    return candidatePath
-  }
-
-  const unpackedPath = candidatePath.replace("app.asar", "app.asar.unpacked")
-  return existsSync(unpackedPath) ? unpackedPath : candidatePath
-}
-
 function resolveSelectionCaptureBinaryPath(): string | null {
-  const candidates = [
-    join(app.getAppPath(), "out/native/jingle-selection-capture"),
-    join(process.cwd(), "out/native/jingle-selection-capture"),
-    join(__dirname, "..", "native", "jingle-selection-capture")
-  ].map(resolvePackagedUnpackedPath)
-
-  return candidates.find((candidate) => existsSync(candidate)) ?? null
+  return resolveNativeBinaryPath({
+    candidates: {
+      appPath: join(app.getAppPath(), "out/native/jingle-selection-capture"),
+      compiledPath: join(__dirname, "..", "native", "jingle-selection-capture"),
+      cwdPath: join(process.cwd(), "out/native/jingle-selection-capture")
+    },
+    isPackaged: app.isPackaged
+  })
 }
 
 function resolveSwiftSourcePath(): string | null {

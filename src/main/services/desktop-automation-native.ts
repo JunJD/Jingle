@@ -8,6 +8,7 @@ import type {
   NativeDesktopAutomationRequest,
   NativeDesktopAutomationResponse
 } from "./desktop-automation"
+import { resolveNativeBinaryPath } from "./native-binary-path"
 
 const execFileAsync = promisify(execFile)
 
@@ -19,23 +20,15 @@ interface DesktopAutomationExecError extends NodeJS.ErrnoException {
   stderr?: string
 }
 
-function resolvePackagedUnpackedPath(candidatePath: string): string {
-  if (!app.isPackaged || !candidatePath.includes("app.asar")) {
-    return candidatePath
-  }
-
-  const unpackedPath = candidatePath.replace("app.asar", "app.asar.unpacked")
-  return existsSync(unpackedPath) ? unpackedPath : candidatePath
-}
-
 function resolveDesktopAutomationBinaryPath(): string | null {
-  const candidates = [
-    join(app.getAppPath(), "out/native/jingle-desktop-automation"),
-    join(process.cwd(), "out/native/jingle-desktop-automation"),
-    join(__dirname, "..", "native", "jingle-desktop-automation")
-  ].map(resolvePackagedUnpackedPath)
-
-  return candidates.find((candidate) => existsSync(candidate)) ?? null
+  return resolveNativeBinaryPath({
+    candidates: {
+      appPath: join(app.getAppPath(), "out/native/jingle-desktop-automation"),
+      compiledPath: join(__dirname, "..", "native", "jingle-desktop-automation"),
+      cwdPath: join(process.cwd(), "out/native/jingle-desktop-automation")
+    },
+    isPackaged: app.isPackaged
+  })
 }
 
 function resolveDesktopAutomationSwiftSourcePath(): string | null {

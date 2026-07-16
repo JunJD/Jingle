@@ -2,6 +2,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import { existsSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { app } from "electron"
+import { resolveNativeBinaryPath } from "./native-binary-path"
 
 export type NativeMinimalIslandState = "idle" | "working" | "approval"
 export type NativeMinimalIslandAction = "openLauncher" | "openMainWindow" | "openSettings" | "quit"
@@ -17,23 +18,15 @@ let nativeIslandProcess: ChildProcess | null = null
 let nativeIslandStdoutBuffer = ""
 let nativeIslandActionHandlers: NativeMinimalIslandActionHandlers | null = null
 
-function resolvePackagedUnpackedPath(candidatePath: string): string {
-  if (!app.isPackaged || !candidatePath.includes("app.asar")) {
-    return candidatePath
-  }
-
-  const unpackedPath = candidatePath.replace("app.asar", "app.asar.unpacked")
-  return existsSync(unpackedPath) ? unpackedPath : candidatePath
-}
-
 function resolveNativeIslandBinaryPath(): string | null {
-  const candidates = [
-    join(app.getAppPath(), "out/native/jingle-minimal-island"),
-    join(process.cwd(), "out/native/jingle-minimal-island"),
-    join(__dirname, "..", "native", "jingle-minimal-island")
-  ].map(resolvePackagedUnpackedPath)
-
-  return candidates.find((candidate) => existsSync(candidate)) ?? null
+  return resolveNativeBinaryPath({
+    candidates: {
+      appPath: join(app.getAppPath(), "out/native/jingle-minimal-island"),
+      compiledPath: join(__dirname, "..", "native", "jingle-minimal-island"),
+      cwdPath: join(process.cwd(), "out/native/jingle-minimal-island")
+    },
+    isPackaged: app.isPackaged
+  })
 }
 
 function resolveSwiftSourcePath(): string | null {
