@@ -288,6 +288,8 @@ export interface AppCopy {
     approvalApplyTitle: string
     approvalConfirmTitle: string
     approvalImpact: string
+    approvalInvalidDescription: string
+    approvalInvalidTitle: string
     approvalItem: string
     approvalParameters: string
     approvalPrediction: string
@@ -667,6 +669,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       approvalApplyTitle: "是否应用这些变更？",
       approvalConfirmTitle: "是否继续执行？",
       approvalImpact: "预期影响",
+      approvalInvalidDescription: "审批展示数据无效，无法执行此工具调用。",
+      approvalInvalidTitle: "审批信息不可用",
       approvalItem: "审批事项",
       approvalParameters: "参数",
       approvalPrediction: "预测状态",
@@ -1073,6 +1077,9 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       approvalApplyTitle: "Apply these changes?",
       approvalConfirmTitle: "Continue with this action?",
       approvalImpact: "Expected impact",
+      approvalInvalidDescription:
+        "The approval presentation is invalid, so this tool call cannot run.",
+      approvalInvalidTitle: "Approval unavailable",
       approvalItem: "Approval Item",
       approvalParameters: "Parameters",
       approvalPrediction: "Prediction",

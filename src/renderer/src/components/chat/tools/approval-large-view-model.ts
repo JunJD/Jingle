@@ -1,6 +1,5 @@
 import type { AppCopy } from "@/lib/i18n/messages"
 import type { ToolApprovalItem } from "@shared/tool-approval"
-import { stringifyToolValue } from "./shared"
 import {
   buildApprovalFileMutationViewModel,
   buildChangeListFileMutationViewModel,
@@ -42,11 +41,15 @@ export interface LargeApprovalViewModel {
 }
 
 function getActionTitle(copy: AppCopy, approvalItem: ToolApprovalItem): string {
-  return (
-    copy.toolCall.labels[approvalItem.toolName] ||
-    (approvalItem.kind === "extension_tool" ? approvalItem.toolTitle : null) ||
-    approvalItem.toolName
-  )
+  const title =
+    approvalItem.kind === "extension_tool"
+      ? approvalItem.toolTitle
+      : copy.toolCall.labels[approvalItem.toolName]
+  if (!title) {
+    throw new Error(`Missing approval presentation label for tool "${approvalItem.toolName}".`)
+  }
+
+  return title
 }
 
 function buildExecuteLargeApprovalViewModel(
@@ -140,32 +143,11 @@ function buildExtensionLargeApprovalViewModel(
         tone: approvalItem.confirmation.tone
       }
     : null
-  const parameters: LargeApprovalFact[] = []
-
-  if (!confirmation) {
-    for (const [key, value] of Object.entries(approvalItem.args)) {
-      if (key.startsWith("__")) {
-        continue
-      }
-
-      const normalized = stringifyToolValue(value).trim()
-      if (!normalized) {
-        continue
-      }
-
-      parameters.push({
-        label: key,
-        presentation: normalized.includes("\n") || normalized.length > 48 ? "mono" : "text",
-        value: normalized
-      })
-    }
-  }
-
   return {
     action: confirmation
       ? null
       : {
-          detail: approvalItem.toolName,
+          detail: approvalItem.extensionName,
           presentation: "text",
           title: getActionTitle(copy, approvalItem)
         },
@@ -181,7 +163,7 @@ function buildExtensionLargeApprovalViewModel(
               tone: "warning" as const
             }
           ],
-    parameters,
+    parameters: [],
     target:
       confirmation || !approvalItem.capabilityDisplayName
         ? []
@@ -196,29 +178,9 @@ function buildExtensionLargeApprovalViewModel(
 
 export function buildLargeApprovalViewModel(
   copy: AppCopy,
-  approvalItem: ToolApprovalItem | null,
-  rawArgs: string,
+  approvalItem: ToolApprovalItem,
   toolCallId: string
 ): LargeApprovalViewModel {
-  if (!approvalItem) {
-    return {
-      action: null,
-      confirmation: null,
-      fileMutation: null,
-      impact: [],
-      parameters: rawArgs
-        ? [
-            {
-              label: copy.common.rawArguments,
-              presentation: "mono",
-              value: rawArgs
-            }
-          ]
-        : [],
-      target: []
-    }
-  }
-
   if (approvalItem.kind === "execute_command") {
     return buildExecuteLargeApprovalViewModel(copy, approvalItem, toolCallId)
   }

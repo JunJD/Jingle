@@ -4,9 +4,15 @@ import {
   createLauncherAiController,
   createLauncherComposerRevisionLedger,
   createLauncherCommandSubmissionGate,
+  canSubmitLauncherApprovalDecision,
+  clearLauncherApprovalCorrectionDraft,
+  createLauncherApprovalCorrectionKey,
   isLauncherCommandTargetCurrent,
+  getLauncherApprovalCorrectionDraft,
+  projectLauncherApprovalActions,
   projectLauncherAiForkCapability,
-  projectLauncherAiTargetConfiguration
+  projectLauncherAiTargetConfiguration,
+  setLauncherApprovalCorrectionDraft
 } from "../../src/renderer/src/ai-core/launcher-ai-controller"
 import type { AgentControl } from "../../src/renderer/src/lib/use-agent"
 import type { AiCoreThreadCreateInput } from "../../src/renderer/src/ai-core/AiCoreHost"
@@ -14,6 +20,102 @@ import type { ComposerMessageInput } from "../../src/shared/message-content"
 import type { PermissionModeName } from "../../src/shared/permission-mode"
 import type { ThreadWorkspaceKind } from "../../src/shared/thread-workspace"
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "../../src/shared/launcher-ai"
+import type { HITLRequest } from "../../src/shared/hitl"
+
+function createApprovalRequest(review: HITLRequest["review"]): HITLRequest {
+  return {
+    allowed_decisions: ["approve", "user_declined", "corrected"],
+    id: "approval-1",
+    review,
+    tool_call: {
+      args: { command: "echo ready" },
+      id: "tool-call-1",
+      name: "execute"
+    }
+  }
+}
+
+test("launcher approval actions fail closed without a typed review", () => {
+  const request = createApprovalRequest(null)
+
+  assert.deepEqual(projectLauncherApprovalActions(request), {
+    canApprove: false,
+    canCorrect: false,
+    canDeclineRun: true,
+    hasValidReview: false
+  })
+  assert.equal(canSubmitLauncherApprovalDecision(request, { type: "approve" }), false)
+  assert.equal(
+    canSubmitLauncherApprovalDecision(request, {
+      correction: "use a safer command",
+      type: "corrected"
+    }),
+    false
+  )
+  assert.equal(canSubmitLauncherApprovalDecision(request, { type: "user_declined" }), true)
+})
+
+test("launcher approval actions follow typed review and allowed decisions", () => {
+  const request = createApprovalRequest({
+    changes: [],
+    command: "echo ready",
+    kind: "execute_command",
+    predictionStatus: null,
+    profile: "read_only",
+    reason: null,
+    toolName: "execute"
+  })
+  request.allowed_decisions = ["approve", "corrected"]
+
+  assert.deepEqual(projectLauncherApprovalActions(request), {
+    canApprove: true,
+    canCorrect: true,
+    canDeclineRun: false,
+    hasValidReview: true
+  })
+  assert.equal(canSubmitLauncherApprovalDecision(request, { type: "approve" }), true)
+  assert.equal(
+    canSubmitLauncherApprovalDecision(request, { correction: "  ", type: "corrected" }),
+    false
+  )
+  assert.equal(
+    canSubmitLauncherApprovalDecision(request, {
+      correction: "use a safer command",
+      type: "corrected"
+    }),
+    true
+  )
+  assert.equal(canSubmitLauncherApprovalDecision(request, { type: "user_declined" }), false)
+})
+
+test("launcher approval correction drafts stay isolated by thread and request identity", () => {
+  const threadARequestA = createLauncherApprovalCorrectionKey("thread-a", "approval-a")
+  const threadARequestB = createLauncherApprovalCorrectionKey("thread-a", "approval-b")
+  const threadBRequestA = createLauncherApprovalCorrectionKey("thread-b", "approval-a")
+  let drafts: ReadonlyMap<string, string> = new Map()
+
+  drafts = setLauncherApprovalCorrectionDraft(drafts, threadARequestA, "correction A")
+  drafts = setLauncherApprovalCorrectionDraft(drafts, threadARequestB, "correction B")
+  drafts = setLauncherApprovalCorrectionDraft(drafts, threadBRequestA, "correction C")
+
+  assert.equal(getLauncherApprovalCorrectionDraft(drafts, threadARequestA), "correction A")
+  assert.equal(getLauncherApprovalCorrectionDraft(drafts, threadARequestB), "correction B")
+  assert.equal(getLauncherApprovalCorrectionDraft(drafts, threadBRequestA), "correction C")
+  assert.equal(getLauncherApprovalCorrectionDraft(drafts, null), "")
+})
+
+test("launcher clears only the submitted approval correction draft", () => {
+  const submittedKey = createLauncherApprovalCorrectionKey("thread-a", "approval-a")
+  const currentKey = createLauncherApprovalCorrectionKey("thread-b", "approval-b")
+  let drafts: ReadonlyMap<string, string> = new Map()
+  drafts = setLauncherApprovalCorrectionDraft(drafts, submittedKey, "submitted correction")
+  drafts = setLauncherApprovalCorrectionDraft(drafts, currentKey, "current correction")
+
+  const cleared = clearLauncherApprovalCorrectionDraft(drafts, submittedKey)
+  assert.equal(getLauncherApprovalCorrectionDraft(cleared, submittedKey), "")
+  assert.equal(getLauncherApprovalCorrectionDraft(cleared, currentKey), "current correction")
+  assert.equal(clearLauncherApprovalCorrectionDraft(cleared, submittedKey), cleared)
+})
 
 test("launcher command acceptance stays bound to its submitted navigation target", () => {
   const submittedThread = { kind: "thread", threadId: "thread-1" } as const

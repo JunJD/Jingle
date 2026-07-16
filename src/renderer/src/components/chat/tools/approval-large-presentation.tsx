@@ -230,14 +230,13 @@ function renderLargeApprovalViewModel(
 }
 
 export function LargeApprovalBody(input: {
-  approvalItem: ToolApprovalItem | null
+  approvalItem: ToolApprovalItem
   copy: AppCopy
-  rawArgs: string
   toolCallId: string
 }): React.JSX.Element | null {
-  const { approvalItem, copy, rawArgs, toolCallId } = input
+  const { approvalItem, copy, toolCallId } = input
   return renderLargeApprovalViewModel(
     copy,
-    buildLargeApprovalViewModel(copy, approvalItem, rawArgs, toolCallId)
+    buildLargeApprovalViewModel(copy, approvalItem, toolCallId)
   )
 }

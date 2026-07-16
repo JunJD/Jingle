@@ -17,23 +17,14 @@ export interface CompactToolApprovalPresentation {
 
 export function getToolApprovalPresentationMeta(
   copy: AppCopy,
-  approvalItem: ToolApprovalItem | null,
-  fallbackToolName?: string
+  approvalItem: ToolApprovalItem
 ): ToolApprovalPresentationMeta {
-  const title = approvalItem
-    ? copy.toolCall.labels[approvalItem.toolName] ||
-      (approvalItem.kind === "extension_tool" ? approvalItem.toolTitle : null) ||
-      fallbackToolName ||
-      approvalItem.toolName
-    : fallbackToolName
-      ? copy.toolCall.labels[fallbackToolName] || fallbackToolName
-      : copy.toolCall.approvalItem
-
-  if (!approvalItem) {
-    return {
-      subtitle: null,
-      title
-    }
+  const title =
+    approvalItem.kind === "extension_tool"
+      ? approvalItem.toolTitle
+      : copy.toolCall.labels[approvalItem.toolName]
+  if (!title) {
+    throw new Error(`Missing approval presentation label for tool "${approvalItem.toolName}".`)
   }
 
   if (approvalItem.kind === "execute_command") {
@@ -56,8 +47,8 @@ export function getToolApprovalPresentationMeta(
   }
 }
 
-function getChangeSummary(copy: AppCopy, approvalItem: ToolApprovalItem | null): string | null {
-  if (!approvalItem || approvalItem.kind === "extension_tool") {
+function getChangeSummary(copy: AppCopy, approvalItem: ToolApprovalItem): string | null {
+  if (approvalItem.kind === "extension_tool") {
     return null
   }
 
@@ -80,34 +71,29 @@ function getChangeSummary(copy: AppCopy, approvalItem: ToolApprovalItem | null):
     : copy.toolCall.compactChangeSummary(changes.length)
 }
 
-function getTargetLabel(approvalItem: ToolApprovalItem | null, fallback: string | null): string | null {
-  if (approvalItem?.kind === "execute_command") {
+function getTargetLabel(approvalItem: ToolApprovalItem): string | null {
+  if (approvalItem.kind === "execute_command") {
     return approvalItem.command
   }
 
-  if (approvalItem?.kind === "file_mutation") {
+  if (approvalItem.kind === "file_mutation") {
     return approvalItem.path
   }
 
-  if (approvalItem?.kind === "extension_tool") {
-    return approvalItem.capabilityDisplayName || approvalItem.extensionName || approvalItem.toolTitle
-  }
-
-  return fallback
+  return approvalItem.capabilityDisplayName
 }
 
 export function getCompactToolApprovalPresentation(
   copy: AppCopy,
-  approvalItem: ToolApprovalItem | null,
-  fallbackSubtitle: string | null,
+  approvalItem: ToolApprovalItem,
   toolCallId: string
 ): CompactToolApprovalPresentation {
   const summary = getChangeSummary(copy, approvalItem)
-  const target = getTargetLabel(approvalItem, fallbackSubtitle)
+  const target = getTargetLabel(approvalItem)
 
   return {
     detail: renderCompactToolApprovalDetail(approvalItem, toolCallId, {
-      hideSingleTarget: approvalItem?.kind === "file_mutation" && Boolean(target)
+      hideSingleTarget: approvalItem.kind === "file_mutation" && Boolean(target)
     }),
     summary,
     target
@@ -115,25 +101,25 @@ export function getCompactToolApprovalPresentation(
 }
 
 export function renderCompactToolApprovalDetail(
-  approvalItem: ToolApprovalItem | null,
+  approvalItem: ToolApprovalItem,
   toolCallId: string,
   options?: {
     hideSingleTarget?: boolean
   }
 ): React.JSX.Element | null {
-  if (!approvalItem) {
-    return null
-  }
-
   if (approvalItem.kind === "extension_tool") {
     return (
       <div className="rounded-[var(--jingle-radius-md)] bg-background-secondary/42 px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)] [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-body)] text-muted-foreground">
-        {approvalItem.reason || approvalItem.toolTitle}
+        {approvalItem.reason}
       </div>
     )
   }
 
-  if (approvalItem.kind === "execute_command" && approvalItem.command && approvalItem.changes.length === 0) {
+  if (
+    approvalItem.kind === "execute_command" &&
+    approvalItem.command &&
+    approvalItem.changes.length === 0
+  ) {
     return (
       <pre className="min-w-0 overflow-hidden rounded-[var(--jingle-radius-md)] bg-background-secondary/42 px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)] font-mono [font-size:var(--jingle-font-code)] leading-[var(--jingle-line-code)] text-foreground/80">
         {`$ ${approvalItem.command}`}
@@ -152,7 +138,5 @@ export function renderCompactToolApprovalDetail(
     toolCallId
   })
 
-  return changesViewModel ? (
-    <PierreFileMutationView compact viewModel={changesViewModel} />
-  ) : null
+  return changesViewModel ? <PierreFileMutationView compact viewModel={changesViewModel} /> : null
 }

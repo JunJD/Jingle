@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ArrowUpRight, FileDiff, Terminal } from "lucide-react"
+import { AlertTriangle, ArrowUpRight, FileDiff, Terminal } from "lucide-react"
 import { getHitlRequestDisplaySize } from "@shared/hitl"
 import type { AppCopy } from "@/lib/i18n/messages"
 import { useI18n } from "@/lib/i18n"
@@ -11,7 +11,6 @@ import {
   getToolApprovalPresentationMeta
 } from "./tools/tool-approval-presentation"
 import { LargeApprovalBody } from "./tools/approval-large-presentation"
-import { stringifyToolValue } from "./tools/shared"
 
 function getApprovalTitle(metaTitle: string): string {
   return metaTitle
@@ -48,13 +47,32 @@ export function ComposerApprovalPrompt(props: {
   const usesExternalActions = actionsPlacement === "external"
   const usesExternalCorrection = correctionPlacement === "external"
   const approvalItem = request.review
-  const meta = getToolApprovalPresentationMeta(copy, approvalItem, request.tool_call.name)
-  const compact = getCompactToolApprovalPresentation(
-    copy,
-    approvalItem,
-    meta.subtitle,
-    request.tool_call.id
-  )
+
+  if (!approvalItem) {
+    return (
+      <ComposerInterruptShell
+        actions={null}
+        body={
+          <div className="[font-size:var(--jingle-font-body)] leading-[var(--jingle-line-body)] text-muted-foreground">
+            {copy.toolCall.approvalInvalidDescription}
+          </div>
+        }
+        className={className}
+        density={density}
+        header={
+          <div className="flex min-w-0 items-center gap-[var(--jingle-gap-sm)]">
+            <AlertTriangle className="size-[var(--jingle-icon-sm)] shrink-0 text-destructive" />
+            <div className="[font-size:var(--jingle-font-body)] font-semibold leading-[var(--jingle-line-body)] text-foreground">
+              {copy.toolCall.approvalInvalidTitle}
+            </div>
+          </div>
+        }
+      />
+    )
+  }
+
+  const meta = getToolApprovalPresentationMeta(copy, approvalItem)
+  const compact = getCompactToolApprovalPresentation(copy, approvalItem, request.tool_call.id)
   const Icon =
     request.review?.kind === "execute_command"
       ? Terminal
@@ -62,19 +80,11 @@ export function ComposerApprovalPrompt(props: {
         ? ArrowUpRight
         : FileDiff
   const approveLabel = getApproveLabel(copy, request)
-  const trimmedFeedback = usesExternalCorrection
-    ? (correction ?? "").trim()
-    : feedback.trim()
+  const trimmedFeedback = usesExternalCorrection ? (correction ?? "").trim() : feedback.trim()
   const displaySize = getHitlRequestDisplaySize(request)
   const isLarge = displaySize === "large"
-  const rawArgs = stringifyToolValue(request.tool_call.args)
   const largeBody = isLarge ? (
-    <LargeApprovalBody
-      approvalItem={approvalItem}
-      copy={copy}
-      rawArgs={rawArgs}
-      toolCallId={request.tool_call.id}
-    />
+    <LargeApprovalBody approvalItem={approvalItem} copy={copy} toolCallId={request.tool_call.id} />
   ) : null
   const actions = usesExternalActions ? null : (
     <div className="grid gap-[var(--jingle-space-2)]">

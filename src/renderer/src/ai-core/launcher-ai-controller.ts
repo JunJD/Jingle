@@ -8,7 +8,7 @@ import type {
   EditLastUserMessageAndInvokeInput,
   UpdateAgentThreadRecord
 } from "@/lib/agent-control"
-import type { HITLDecision, ThreadForkBlockReason, ThreadForkState } from "@/types"
+import type { HITLDecision, HITLRequest, ThreadForkBlockReason, ThreadForkState } from "@/types"
 import type { AiCoreThreadCreateInput, AiCoreThreadHandle } from "./AiCoreHost"
 import type { LauncherAiActiveTarget } from "./useLauncherAiThreadNavigation"
 
@@ -17,6 +17,96 @@ interface LauncherAiThreadConfiguration {
   permissionMode: PermissionModeName
   threadId: string
   workspacePath: string | null
+}
+
+export interface LauncherApprovalActionsProjection {
+  canApprove: boolean
+  canCorrect: boolean
+  canDeclineRun: boolean
+  hasValidReview: boolean
+}
+
+export type LauncherApprovalCorrectionDrafts = ReadonlyMap<string, string>
+
+export function createLauncherApprovalCorrectionKey(
+  threadId: string,
+  approvalRequestId: string
+): string {
+  return JSON.stringify([threadId, approvalRequestId])
+}
+
+export function getLauncherApprovalCorrectionDraft(
+  drafts: LauncherApprovalCorrectionDrafts,
+  key: string | null
+): string {
+  return key === null ? "" : (drafts.get(key) ?? "")
+}
+
+export function setLauncherApprovalCorrectionDraft(
+  drafts: LauncherApprovalCorrectionDrafts,
+  key: string,
+  value: string
+): LauncherApprovalCorrectionDrafts {
+  if (drafts.get(key) === value) {
+    return drafts
+  }
+
+  const nextDrafts = new Map(drafts)
+  if (value.length === 0) {
+    nextDrafts.delete(key)
+  } else {
+    nextDrafts.set(key, value)
+  }
+  return nextDrafts
+}
+
+export function clearLauncherApprovalCorrectionDraft(
+  drafts: LauncherApprovalCorrectionDrafts,
+  key: string
+): LauncherApprovalCorrectionDrafts {
+  if (!drafts.has(key)) {
+    return drafts
+  }
+
+  const nextDrafts = new Map(drafts)
+  nextDrafts.delete(key)
+  return nextDrafts
+}
+
+export function projectLauncherApprovalActions(
+  request: HITLRequest | null
+): LauncherApprovalActionsProjection {
+  if (!request) {
+    return {
+      canApprove: false,
+      canCorrect: false,
+      canDeclineRun: false,
+      hasValidReview: false
+    }
+  }
+
+  const hasValidReview = request.review !== null
+  return {
+    canApprove: hasValidReview && request.allowed_decisions.includes("approve"),
+    canCorrect: hasValidReview && request.allowed_decisions.includes("corrected"),
+    canDeclineRun: request.allowed_decisions.includes("user_declined"),
+    hasValidReview
+  }
+}
+
+export function canSubmitLauncherApprovalDecision(
+  request: HITLRequest | null,
+  decision: HITLDecision
+): boolean {
+  const actions = projectLauncherApprovalActions(request)
+  switch (decision.type) {
+    case "approve":
+      return actions.canApprove
+    case "corrected":
+      return actions.canCorrect && decision.correction.trim().length > 0
+    case "user_declined":
+      return actions.canDeclineRun
+  }
 }
 
 export type LauncherAiTargetConfigurationProjection =

@@ -40,9 +40,15 @@ import {
   createLauncherAiController,
   createLauncherComposerRevisionLedger,
   createLauncherCommandSubmissionGate,
+  canSubmitLauncherApprovalDecision,
+  clearLauncherApprovalCorrectionDraft,
+  createLauncherApprovalCorrectionKey,
   isLauncherCommandTargetCurrent,
+  getLauncherApprovalCorrectionDraft,
+  projectLauncherApprovalActions,
   projectLauncherAiForkCapability,
-  projectLauncherAiTargetConfiguration
+  projectLauncherAiTargetConfiguration,
+  setLauncherApprovalCorrectionDraft
 } from "./launcher-ai-controller"
 import { useAiAttachments } from "./useAiAttachments"
 import { useAssistantSelectionRefs } from "@/components/chat/useAssistantSelectionRefs"
@@ -89,10 +95,6 @@ import type { LauncherSearchResult } from "@shared/launcher-search"
 const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
 const EMPTY_MESSAGES: readonly Message[] = []
 const EMPTY_TODOS: readonly Todo[] = []
-
-function getApprovalSubmissionKey(threadId: string, approvalId: string): string {
-  return JSON.stringify([threadId, approvalId])
-}
 
 function useLatestCallback<TResult>(callback: () => TResult): () => TResult {
   const callbackRef = useRef(callback)
@@ -219,12 +221,10 @@ export function LauncherAiPage(): React.JSX.Element {
     },
     [markComposerChanged]
   )
-  const [approvalCorrection, setApprovalCorrection] = useState("")
-  const approvalCorrectionRevisionRef = useRef(0)
-  const setApprovalCorrectionText = useCallback((value: string): void => {
-    approvalCorrectionRevisionRef.current += 1
-    setApprovalCorrection(value)
-  }, [])
+  const [approvalCorrectionDrafts, setApprovalCorrectionDrafts] = useState<
+    ReadonlyMap<string, string>
+  >(() => new Map())
+  const approvalCorrectionRevisionsRef = useRef(new Map<string, number>())
   const [pendingCommands, setPendingCommands] = useState<ReadonlyMap<string, AgentCommandActivity>>(
     () => new Map()
   )
@@ -345,12 +345,38 @@ export function LauncherAiPage(): React.JSX.Element {
   )
   const projectedApprovalKey =
     threadId && projectedPendingApproval
-      ? getApprovalSubmissionKey(threadId, projectedPendingApproval.id)
+      ? createLauncherApprovalCorrectionKey(threadId, projectedPendingApproval.id)
       : null
   const pendingApproval =
     projectedApprovalKey && settledApprovalKeys.has(projectedApprovalKey)
       ? null
       : projectedPendingApproval
+  const approvalActions = projectLauncherApprovalActions(pendingApproval)
+  const approvalIdentityKey =
+    threadId && pendingApproval
+      ? createLauncherApprovalCorrectionKey(threadId, pendingApproval.id)
+      : null
+  const approvalCorrectionKey = approvalActions.hasValidReview ? approvalIdentityKey : null
+  const approvalCorrection = getLauncherApprovalCorrectionDraft(
+    approvalCorrectionDrafts,
+    approvalCorrectionKey
+  )
+  const setApprovalCorrectionText = useCallback(
+    (value: string): void => {
+      if (approvalCorrectionKey === null) {
+        return
+      }
+
+      approvalCorrectionRevisionsRef.current.set(
+        approvalCorrectionKey,
+        (approvalCorrectionRevisionsRef.current.get(approvalCorrectionKey) ?? 0) + 1
+      )
+      setApprovalCorrectionDrafts((currentDrafts) =>
+        setLauncherApprovalCorrectionDraft(currentDrafts, approvalCorrectionKey, value)
+      )
+    },
+    [approvalCorrectionKey]
+  )
   const followUpQueue = useThreadSelector(threadId, (state) => state?.agent.followUpQueue ?? null)
   const activeRun = useThreadSelector(threadId, (state) => state?.agent.activeRun ?? null)
   const durableMessages = useThreadSelector(
@@ -839,19 +865,23 @@ export function LauncherAiPage(): React.JSX.Element {
     },
     [activeRun, threadControl]
   )
-  const getLatestPendingApprovalId = useLatestCallback(() => pendingApproval?.id ?? null)
   const submitApprovalDecision = useCallback(
     (decision: Parameters<typeof handleApprovalDecision>[0]): void => {
-      const submittedApprovalId = pendingApproval?.id ?? null
+      if (
+        pendingApproval === null ||
+        approvalIdentityKey === null ||
+        !canSubmitLauncherApprovalDecision(pendingApproval, decision) ||
+        (decision.type === "corrected" && approvalCorrectionKey === null)
+      ) {
+        return
+      }
+
       const submittedThreadId = threadId
-      const submittedCorrection = approvalCorrection
-      const submittedCorrectionRevision = approvalCorrectionRevisionRef.current
+      const submittedApprovalKey = approvalIdentityKey
+      const submittedCorrectionRevision =
+        approvalCorrectionRevisionsRef.current.get(submittedApprovalKey) ?? 0
       void handleApprovalDecision(decision).then((accepted) => {
-        if (accepted && submittedApprovalId !== null && submittedThreadId !== null) {
-          const submittedApprovalKey = getApprovalSubmissionKey(
-            submittedThreadId,
-            submittedApprovalId
-          )
+        if (accepted && submittedThreadId !== null) {
           setSettledApprovalKeys((currentKeys) => {
             if (currentKeys.has(submittedApprovalKey)) {
               return currentKeys
@@ -861,49 +891,42 @@ export function LauncherAiPage(): React.JSX.Element {
             return nextKeys
           })
         }
-        const currentApprovalId = getLatestPendingApprovalId()
+        if (!accepted) {
+          return
+        }
         if (
-          (currentApprovalId !== null && currentApprovalId !== submittedApprovalId) ||
-          approvalCorrectionRevisionRef.current !== submittedCorrectionRevision
+          (approvalCorrectionRevisionsRef.current.get(submittedApprovalKey) ?? 0) !==
+          submittedCorrectionRevision
         ) {
           return
         }
-        if (!accepted && currentApprovalId !== null) {
-          return
-        }
-        setApprovalCorrection((currentCorrection) =>
-          currentCorrection === submittedCorrection ? "" : currentCorrection
+        setApprovalCorrectionDrafts((currentDrafts) =>
+          clearLauncherApprovalCorrectionDraft(currentDrafts, submittedApprovalKey)
         )
       })
     },
-    [
-      approvalCorrection,
-      getLatestPendingApprovalId,
-      handleApprovalDecision,
-      pendingApproval?.id,
-      threadId
-    ]
+    [approvalCorrectionKey, approvalIdentityKey, handleApprovalDecision, pendingApproval, threadId]
   )
   const submitApprovalCorrection = useCallback((): void => {
-    if (!pendingApproval) {
+    if (!approvalActions.canCorrect) {
       return
     }
 
     const correction = approvalCorrection.trim()
     if (!correction) return
     submitApprovalDecision({ correction, type: "corrected" })
-  }, [approvalCorrection, pendingApproval, submitApprovalDecision])
+  }, [approvalActions.canCorrect, approvalCorrection, submitApprovalDecision])
   const submitApprovalAccept = useCallback((): void => {
-    if (!pendingApproval) {
+    if (!approvalActions.canApprove) {
       return
     }
 
     submitApprovalDecision({ type: "approve" })
-  }, [pendingApproval, submitApprovalDecision])
+  }, [approvalActions.canApprove, submitApprovalDecision])
   const submitApprovalDecline = useCallback((): void => {
-    if (!pendingApproval) return
+    if (!approvalActions.canDeclineRun) return
     submitApprovalDecision({ type: "user_declined" })
-  }, [pendingApproval, submitApprovalDecision])
+  }, [approvalActions.canDeclineRun, submitApprovalDecision])
   const handleComposerKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLElement>): void => {
       const isHistoryKey = event.key === "ArrowUp" || event.key === "ArrowDown"
@@ -1688,14 +1711,25 @@ export function LauncherAiPage(): React.JSX.Element {
                       (isApprovalPending || showFollowUpQueue) && "rounded-t-none border-t-0"
                     )}
                     style={{ backgroundColor: "var(--background-elevated)" }}
+                    disabled={isApprovalPending && !approvalActions.canCorrect}
                     isLoading={isBusy}
                     maxHeight="var(--launcher-ai-composer-input-max-h)"
                     minHeight="var(--launcher-ai-composer-input-min-h)"
                     onSubmit={isApprovalPending ? undefined : submitCurrentInput}
                     onValueChange={
-                      isApprovalPending ? setApprovalCorrectionText : handleComposerValueChange
+                      isApprovalPending
+                        ? approvalActions.canCorrect
+                          ? setApprovalCorrectionText
+                          : undefined
+                        : handleComposerValueChange
                     }
-                    value={isApprovalPending ? approvalCorrection : query}
+                    value={
+                      isApprovalPending
+                        ? approvalActions.canCorrect
+                          ? approvalCorrection
+                          : ""
+                        : query
+                    }
                   >
                     <input
                       ref={fileInputRef}
@@ -1806,32 +1840,38 @@ export function LauncherAiPage(): React.JSX.Element {
                         <div className="ml-auto flex shrink-0 items-center gap-[var(--jingle-gap-sm)]">
                           {isApprovalPending ? (
                             <>
-                              <button
-                                type="button"
-                                className="min-h-8 rounded-full px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                disabled={hasPendingCommand}
-                                onClick={submitApprovalDecline}
-                              >
-                                {copy.toolCall.decline}
-                              </button>
-                              <button
-                                type="button"
-                                className="min-h-8 rounded-full px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-body)] font-medium text-foreground transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-40"
-                                disabled={
-                                  hasPendingCommand || approvalCorrection.trim().length === 0
-                                }
-                                onClick={submitApprovalCorrection}
-                              >
-                                {copy.toolCall.sendCorrection}
-                              </button>
-                              <button
-                                type="button"
-                                className="min-h-8 rounded-full bg-foreground px-[var(--jingle-space-3)] [font-size:var(--jingle-font-body)] font-semibold text-background shadow-[0_6px_16px_rgba(32,38,45,0.14)] transition-transform hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
-                                disabled={hasPendingCommand}
-                                onClick={submitApprovalAccept}
-                              >
-                                {copy.toolCall.accept}
-                              </button>
+                              {approvalActions.canDeclineRun ? (
+                                <button
+                                  type="button"
+                                  className="min-h-8 rounded-full px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  disabled={hasPendingCommand}
+                                  onClick={submitApprovalDecline}
+                                >
+                                  {copy.toolCall.decline}
+                                </button>
+                              ) : null}
+                              {approvalActions.canCorrect ? (
+                                <button
+                                  type="button"
+                                  className="min-h-8 rounded-full px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-body)] font-medium text-foreground transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-40"
+                                  disabled={
+                                    hasPendingCommand || approvalCorrection.trim().length === 0
+                                  }
+                                  onClick={submitApprovalCorrection}
+                                >
+                                  {copy.toolCall.sendCorrection}
+                                </button>
+                              ) : null}
+                              {approvalActions.canApprove ? (
+                                <button
+                                  type="button"
+                                  className="min-h-8 rounded-full bg-foreground px-[var(--jingle-space-3)] [font-size:var(--jingle-font-body)] font-semibold text-background shadow-[0_6px_16px_rgba(32,38,45,0.14)] transition-transform hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
+                                  disabled={hasPendingCommand}
+                                  onClick={submitApprovalAccept}
+                                >
+                                  {copy.toolCall.accept}
+                                </button>
+                              ) : null}
                               {hasPendingCurrentCommand ? (
                                 <PromptInputAction
                                   onClick={() => {
