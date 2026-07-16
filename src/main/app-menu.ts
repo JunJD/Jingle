@@ -95,6 +95,8 @@ export function createApplicationMenuTemplate(
     ...(params.launcherShortcutAccelerator
       ? { accelerator: params.launcherShortcutAccelerator }
       : {}),
+    // The global shortcut service owns execution; the menu only displays the binding.
+    registerAccelerator: false,
     click: () => {
       params.showLauncher()
     }
