@@ -40,6 +40,7 @@ export function ActionSetOrderProperties(props: {
       shortcut={{
         macOS: { modifiers: ["cmd", "opt", "shift"], key: "o" },
         Windows: { modifiers: ["ctrl", "opt", "shift"], key: "o" },
+        Linux: { modifiers: ["ctrl", "opt", "shift"], key: "o" },
       }}
     >
       {propertiesOrder.map((propertyId, index) => {

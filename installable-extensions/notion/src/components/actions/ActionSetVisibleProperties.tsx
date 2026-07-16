@@ -22,6 +22,7 @@ export function ActionSetVisibleProperties(props: {
       shortcut={{
         macOS: { modifiers: ["cmd", "opt", "shift"], key: "p" },
         Windows: { modifiers: ["ctrl", "opt", "shift"], key: "p" },
+        Linux: { modifiers: ["ctrl", "opt", "shift"], key: "p" },
       }}
     >
       <ActionPanel.Section>

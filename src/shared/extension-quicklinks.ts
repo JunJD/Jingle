@@ -1,6 +1,7 @@
 import type { LauncherSearchAction } from "./launcher-search"
 import {
   normalizeExtensionRuntimeJsonFact,
+  type ExtensionShortcutPlatform,
   type ExtensionRuntimeJsonObject,
   type ExtensionRuntimeLaunchProps
 } from "./extension-runtime-protocol"
@@ -8,7 +9,7 @@ import {
 export interface ExtensionQuicklinkShortcut {
   key: string
   modifiers: string[]
-  platform: "macOS" | "Windows"
+  platform: ExtensionShortcutPlatform
 }
 
 export interface ExtensionQuicklinkRecord {

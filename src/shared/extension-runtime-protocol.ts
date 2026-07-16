@@ -6,7 +6,8 @@ export {
   normalizeExtensionRuntimeLaunchProps,
   normalizeExtensionRuntimeNavigationHostRequest,
   normalizeExtensionRuntimeNavigationRequestEvent,
-  normalizeExtensionRuntimeStartRequest
+  normalizeExtensionRuntimeStartRequest,
+  resolveExtensionShortcutPlatform
 } from "../../packages/extension-api/src/shared/extension-runtime-protocol"
 
 export type ExtensionRuntimeCommandMode = CommonProtocol.ExtensionRuntimeCommandMode
@@ -79,6 +80,7 @@ export type ExtensionErrorSurfaceSnapshot = CommonProtocol.ExtensionErrorSurface
 export type ExtensionActionNode = CommonProtocol.ExtensionActionNode
 export type ExtensionActionStyle = CommonProtocol.ExtensionActionStyle
 export type ExtensionActionShortcutNode = CommonProtocol.ExtensionActionShortcutNode
+export type ExtensionShortcutPlatform = CommonProtocol.ExtensionShortcutPlatform
 
 export type ExtensionRunBotAgentSourceRef = CommonProtocol.ExtensionRunBotAgentSourceRef
 export type ExtensionRunBotAgentPromptPlan = CommonProtocol.ExtensionRunBotAgentPromptPlan

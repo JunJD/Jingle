@@ -92,7 +92,8 @@ function CreatePageSubmitAction({
     type === "second"
       ? {
           macOS: { modifiers: ["cmd", "shift"], key: "enter" },
-          Windows: { modifiers: ["ctrl", "shift"], key: "enter" }
+          Windows: { modifiers: ["ctrl", "shift"], key: "enter" },
+          Linux: { modifiers: ["ctrl", "shift"], key: "enter" }
         }
       : undefined
 
@@ -193,7 +194,8 @@ export function CreatePageForm({ mutate, launchContext, defaults }: CreatePageFo
               title: "Open Page",
               shortcut: {
                 macOS: { modifiers: ["cmd"], key: "o" },
-                Windows: { modifiers: ["ctrl"], key: "o" }
+                Windows: { modifiers: ["ctrl"], key: "o" },
+                Linux: { modifiers: ["ctrl"], key: "o" }
               },
               onAction: () => handleOnOpenPage(page, setRecentPage)
             },
@@ -202,7 +204,8 @@ export function CreatePageForm({ mutate, launchContext, defaults }: CreatePageFo
                   title: "Copy URL",
                   shortcut: {
                     macOS: { modifiers: ["cmd", "shift"], key: "c" },
-                    Windows: { modifiers: ["ctrl", "shift"], key: "c" }
+                    Windows: { modifiers: ["ctrl", "shift"], key: "c" },
+                    Linux: { modifiers: ["ctrl", "shift"], key: "c" }
                   },
                   onAction: () => {
                     Clipboard.copy(page.url as string)

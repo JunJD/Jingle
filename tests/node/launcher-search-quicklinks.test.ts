@@ -43,7 +43,7 @@ function createIpcMainMock(): {
   }
 }
 
-test("extension quicklink service can rename and remove registered command quicklinks", async () => {
+test("extension quicklink service persists Linux shortcuts and can rename and remove quicklinks", async () => {
   const originalJingleHome = process.env.JINGLE_HOME
   const jingleHome = await mkdtemp(join(tmpdir(), "jingle-extension-quicklinks-"))
 
@@ -60,12 +60,22 @@ test("extension quicklink service can rename and remove registered command quick
     const quicklink = service.registerQuicklink({
       extensionName: "notion",
       link: "jingle://extensions/notion/create-database-page?launchContext=%7B%22defaults%22%3A%7B%22title%22%3A%22Spec%22%7D%7D",
-      name: "Create Notion page"
+      name: "Create Notion page",
+      shortcut: {
+        key: "l",
+        modifiers: ["ctrl"],
+        platform: "Linux"
+      }
     })
     assert.equal(
       quicklink.link,
       "jingle://extensions/notion/create-database-page?launchContext=%7B%22defaults%22%3A%7B%22title%22%3A%22Spec%22%7D%7D"
     )
+    assert.deepEqual(new ExtensionQuicklinkRepository().list()[0]?.shortcut, {
+      key: "l",
+      modifiers: ["ctrl"],
+      platform: "Linux"
+    })
 
     configureQuicklinksLauncherSearchProvider({
       listQuicklinks: () => service.listQuicklinks()

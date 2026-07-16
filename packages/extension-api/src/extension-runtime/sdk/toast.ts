@@ -1,11 +1,19 @@
-import { getActiveExtensionRuntimeSdk, type ExtensionRuntimeSdkContextValue } from "./runtime-context"
-import type { RuntimeKeyboardShortcut } from "./keyboard"
+import {
+  getActiveExtensionRuntimeSdk,
+  type ExtensionRuntimeSdkContextValue
+} from "./runtime-context"
+import type {
+  RuntimeKeyboardModifier,
+  RuntimeKeyboardShortcut,
+  RuntimeKeyboardShortcutPlatform
+} from "./keyboard"
 import type {
   ExtensionActionShortcutNode,
   ExtensionToastActionPayload,
   ExtensionToastPayload,
   ExtensionToastStyle
 } from "../../shared/extension-runtime-protocol"
+import { resolveExtensionShortcutPlatform } from "../../shared/extension-runtime-protocol"
 
 export type RuntimeToastStyle = ExtensionToastStyle
 
@@ -83,7 +91,7 @@ function toToastActionPayload(
 function toToastShortcutPayload(
   shortcut: RuntimeKeyboardShortcut | undefined
 ): ExtensionActionShortcutNode | undefined {
-  const platformShortcut = shortcut?.macOS ?? shortcut?.Windows
+  const platformShortcut = getCurrentPlatformShortcut(shortcut)
   if (!platformShortcut) {
     return undefined
   }
@@ -92,4 +100,47 @@ function toToastShortcutPayload(
     key: platformShortcut.key,
     modifiers: platformShortcut.modifiers
   }
+}
+
+function getCurrentPlatformShortcut(
+  shortcut: RuntimeKeyboardShortcut | undefined
+): RuntimeKeyboardShortcutPlatform | undefined {
+  if (!shortcut) {
+    return undefined
+  }
+
+  const platform = resolveExtensionShortcutPlatform(process.platform)
+  if (!platform) {
+    return undefined
+  }
+
+  const value = shortcut[platform] as unknown
+  if (value === undefined) {
+    return undefined
+  }
+
+  if (!value || typeof value !== "object") {
+    throw new TypeError(`Toast shortcut.${platform} must be an object.`)
+  }
+
+  const record = value as Record<string, unknown>
+  if (
+    typeof record.key !== "string" ||
+    record.key.trim().length === 0 ||
+    !Array.isArray(record.modifiers) ||
+    !record.modifiers.every(isRuntimeKeyboardModifier)
+  ) {
+    throw new TypeError(
+      `Toast shortcut.${platform} requires a non-empty key and valid keyboard modifiers.`
+    )
+  }
+
+  return {
+    key: record.key,
+    modifiers: record.modifiers
+  }
+}
+
+function isRuntimeKeyboardModifier(value: unknown): value is RuntimeKeyboardModifier {
+  return value === "cmd" || value === "ctrl" || value === "opt" || value === "shift"
 }

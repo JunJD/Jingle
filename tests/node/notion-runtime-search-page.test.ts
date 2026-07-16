@@ -15,6 +15,7 @@ import type {
   ExtensionDetailSurfaceSnapshot,
   ExtensionFormSurfaceSnapshot,
   ExtensionListSurfaceSnapshot,
+  ExtensionShortcutPlatform,
   ExtensionVisualNode
 } from "../../src/shared/extension-runtime-protocol"
 
@@ -39,6 +40,26 @@ const NOTION_VIEW_COMMAND_NAMES = [
   "add-text-to-page",
   "quick-capture"
 ] as const
+
+interface ShortcutPlatformExpectation {
+  modifier: "cmd" | "ctrl"
+  platform: ExtensionShortcutPlatform
+}
+
+function getShortcutPlatformExpectation(
+  platform: NodeJS.Platform = process.platform
+): ShortcutPlatformExpectation {
+  if (platform === "darwin") {
+    return { modifier: "cmd", platform: "macOS" }
+  }
+  if (platform === "win32") {
+    return { modifier: "ctrl", platform: "Windows" }
+  }
+  if (platform === "linux") {
+    return { modifier: "ctrl", platform: "Linux" }
+  }
+  throw new Error(`Unsupported shortcut test platform: ${platform}`)
+}
 
 test("Notion search-page renders search results from the migrated Notion client", async () => {
   const fetchRequests: NotionFetchRequest[] = []
@@ -198,6 +219,7 @@ test("Notion search-page opens page detail and records the recent page", async (
 })
 
 test("Notion page action registers a quicklink through the runtime host", async () => {
+  const shortcutExpectation = getShortcutPlatformExpectation()
   const fetchRequests: NotionFetchRequest[] = []
   const hostRequests: ExtensionRuntimeHostRequestInput[] = []
   const storage = new Map<string, unknown>()
@@ -243,7 +265,7 @@ test("Notion page action registers a quicklink through the runtime host", async 
     assert.ok(quicklinkAction)
     assert.deepEqual(quicklinkAction.shortcut, {
       key: "l",
-      modifiers: ["cmd"]
+      modifiers: [shortcutExpectation.modifier]
     })
 
     assert.equal(
@@ -267,8 +289,8 @@ test("Notion page action registers a quicklink through the runtime host", async 
         name: "Runtime Notes",
         shortcut: {
           key: "l",
-          modifiers: ["cmd"],
-          platform: "macOS"
+          modifiers: [shortcutExpectation.modifier],
+          platform: shortcutExpectation.platform
         }
       }
     ]
@@ -2010,6 +2032,7 @@ test("Notion add-text-to-page prepends content using the current Notion position
 })
 
 test("Notion create-database-page loads schema, reads clipboard, creates a page, and closes the launcher", async () => {
+  const shortcutExpectation = getShortcutPlatformExpectation()
   const fetchRequests: NotionFetchRequest[] = []
   const hostRequests: ExtensionRuntimeHostRequestInput[] = []
   const storage = new Map<string, unknown>()
@@ -2213,7 +2236,7 @@ test("Notion create-database-page loads schema, reads clipboard, creates a page,
     id: "toast-action-0",
     shortcut: {
       key: "o",
-      modifiers: ["cmd"]
+      modifiers: [shortcutExpectation.modifier]
     },
     title: "Open Page"
   })
@@ -2221,7 +2244,7 @@ test("Notion create-database-page loads schema, reads clipboard, creates a page,
     id: "toast-action-1",
     shortcut: {
       key: "c",
-      modifiers: ["cmd", "shift"]
+      modifiers: [shortcutExpectation.modifier, "shift"]
     },
     title: "Copy URL"
   })

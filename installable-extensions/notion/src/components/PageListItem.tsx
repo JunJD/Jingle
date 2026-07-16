@@ -298,7 +298,8 @@ function PageListItemActions({
             icon={Icon.BulletPoints}
             shortcut={{
               macOS: { modifiers: ["cmd", "shift"], key: "p" },
-              Windows: { modifiers: ["ctrl", "shift"], key: "p" }
+              Windows: { modifiers: ["ctrl", "shift"], key: "p" },
+              Linux: { modifiers: ["ctrl", "shift"], key: "p" }
             }}
           >
             {quickEditProperties?.map((dp: DatabaseProperty) => (
@@ -393,7 +394,8 @@ function PageListItemActions({
               }
               shortcut={{
                 macOS: { modifiers: ["cmd", "opt", "shift"], key: "v" },
-                Windows: { modifiers: ["ctrl", "opt", "shift"], key: "v" }
+                Windows: { modifiers: ["ctrl", "opt", "shift"], key: "v" },
+                Linux: { modifiers: ["ctrl", "opt", "shift"], key: "v" }
               }}
               target={databaseViewTarget}
             />
@@ -440,7 +442,8 @@ function PageListItemActions({
             content={page.url}
             shortcut={{
               macOS: { modifiers: ["cmd", "shift"], key: "v" },
-              Windows: { modifiers: ["ctrl", "shift"], key: "v" }
+              Windows: { modifiers: ["ctrl", "shift"], key: "v" },
+              Linux: { modifiers: ["ctrl", "shift"], key: "v" }
             }}
           />
           <Action.CopyToClipboard

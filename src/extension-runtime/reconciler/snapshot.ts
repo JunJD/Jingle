@@ -18,10 +18,12 @@ import type {
   ExtensionMenuBarSectionNode,
   ExtensionMenuBarSurfaceSnapshot,
   ExtensionImageVisualNode,
+  ExtensionShortcutPlatform,
   ExtensionSurfaceSnapshot,
   ExtensionSvgVisualNode,
   ExtensionVisualNode
 } from "../../shared/extension-runtime-protocol"
+import { resolveExtensionShortcutPlatform } from "../../shared/extension-runtime-protocol"
 import {
   ExtensionHostActionKind,
   ExtensionHostElement,
@@ -1005,23 +1007,23 @@ function readQuicklinkProp(
 
 function readQuicklinkShortcutProp(
   props: RuntimeHostProps
-): { key: string; modifiers: string[]; platform: "macOS" | "Windows" } | undefined {
+): { key: string; modifiers: string[]; platform: ExtensionShortcutPlatform } | undefined {
   const shortcut = props.shortcut
   if (!shortcut || typeof shortcut !== "object") {
     return undefined
   }
 
-  const shortcutRecord = shortcut as {
-    macOS?: { key?: unknown; modifiers?: unknown }
-    Windows?: { key?: unknown; modifiers?: unknown }
+  const platform = resolveExtensionShortcutPlatform(process.platform)
+  if (!platform) {
+    return undefined
   }
-  const platformShortcut = shortcutRecord.macOS ?? shortcutRecord.Windows
-  const platform = shortcutRecord.macOS ? "macOS" : "Windows"
-  if (
-    !platformShortcut ||
-    typeof platformShortcut.key !== "string" ||
-    !Array.isArray(platformShortcut.modifiers)
-  ) {
+
+  const shortcutRecord = shortcut as Record<string, unknown>
+  const platformShortcut = readShortcutPlatform(
+    shortcutRecord[platform],
+    `Quicklink shortcut.${platform}`
+  )
+  if (!platformShortcut) {
     return undefined
   }
 
@@ -1058,7 +1060,7 @@ async function requestRegisterQuicklink(
   quicklink: {
     link: string
     name?: string
-    shortcut?: { key: string; modifiers: string[]; platform: "macOS" | "Windows" }
+    shortcut?: { key: string; modifiers: string[]; platform: ExtensionShortcutPlatform }
   }
 ): Promise<unknown> {
   if (!container.requestHost) {
@@ -1192,8 +1194,15 @@ function readActionShortcutProp(props: RuntimeHostProps): ExtensionActionNode["s
   }
 
   const shortcutRecord = shortcut as Record<string, unknown>
-  const platformShortcut =
-    readShortcutPlatform(shortcutRecord.macOS) ?? readShortcutPlatform(shortcutRecord.Windows)
+  const platform = resolveExtensionShortcutPlatform(process.platform)
+  if (!platform) {
+    return undefined
+  }
+
+  const platformShortcut = readShortcutPlatform(
+    shortcutRecord[platform],
+    `Action shortcut.${platform}`
+  )
   if (!platformShortcut) {
     return undefined
   }
@@ -1206,20 +1215,38 @@ function readActionShortcutProp(props: RuntimeHostProps): ExtensionActionNode["s
   }
 }
 
-function readShortcutPlatform(value: unknown): { key: string; modifiers: unknown[] } | undefined {
-  if (!value || typeof value !== "object") {
+function readShortcutPlatform(
+  value: unknown,
+  owner: string
+): { key: string; modifiers: unknown[] } | undefined {
+  if (value === undefined) {
     return undefined
   }
 
+  if (!value || typeof value !== "object") {
+    throw new ExtensionSurfaceContractError(`${owner} must be an object.`)
+  }
+
   const record = value as Record<string, unknown>
-  if (typeof record.key !== "string" || !Array.isArray(record.modifiers)) {
-    return undefined
+  if (
+    typeof record.key !== "string" ||
+    record.key.trim().length === 0 ||
+    !Array.isArray(record.modifiers) ||
+    !record.modifiers.every(isRuntimeKeyboardModifier)
+  ) {
+    throw new ExtensionSurfaceContractError(
+      `${owner} requires a non-empty key and valid keyboard modifiers.`
+    )
   }
 
   return {
     key: record.key,
     modifiers: record.modifiers
   }
+}
+
+function isRuntimeKeyboardModifier(value: unknown): value is string {
+  return value === "cmd" || value === "ctrl" || value === "opt" || value === "shift"
 }
 
 function readBooleanProp(props: RuntimeHostProps, name: string, fallback: boolean): boolean {
@@ -1258,11 +1285,7 @@ function readStringProp(props: RuntimeHostProps, name: string): string | undefin
   return typeof props[name] === "string" ? props[name] : undefined
 }
 
-function readRequiredStringProp(
-  props: RuntimeHostProps,
-  name: string,
-  owner: string
-): string {
+function readRequiredStringProp(props: RuntimeHostProps, name: string, owner: string): string {
   const value = readStringProp(props, name)
   if (value === undefined) {
     throw new ExtensionSurfaceContractError(`${owner} requires a string ${name} prop.`)

@@ -15,6 +15,7 @@ export default function ActionCreateQuicklink({ page }: { page: Page }) {
       shortcut={{
         macOS: { modifiers: ["cmd"], key: "l" },
         Windows: { modifiers: ["ctrl"], key: "l" },
+        Linux: { modifiers: ["ctrl"], key: "l" },
       }}
       quicklink={{
         link,

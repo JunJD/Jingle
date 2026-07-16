@@ -221,7 +221,8 @@ export function DatabaseView(props: DatabaseViewProps) {
                   users={users}
                   shortcut={{
                     macOS: { modifiers: ["cmd", "shift"], key: "s" },
-                    Windows: { modifiers: ["ctrl", "shift"], key: "s" }
+                    Windows: { modifiers: ["ctrl", "shift"], key: "s" },
+                    Linux: { modifiers: ["ctrl", "shift"], key: "s" }
                   }}
                   mutate={mutate}
                 />

@@ -92,16 +92,7 @@ export interface RuntimeCreateQuicklinkActionQuicklink {
   name?: string
 }
 
-export interface RuntimeCreateQuicklinkActionShortcut {
-  macOS?: {
-    key: string
-    modifiers: string[]
-  }
-  Windows?: {
-    key: string
-    modifiers: string[]
-  }
-}
+export type RuntimeCreateQuicklinkActionShortcut = RuntimeKeyboardShortcut
 
 export interface RuntimeCreateQuicklinkActionProps {
   disabled?: boolean

@@ -44,7 +44,8 @@ import type {
   ExtensionDetailSurfaceSnapshot,
   ExtensionFormSurfaceSnapshot,
   ExtensionHostRequest,
-  ExtensionListSurfaceSnapshot
+  ExtensionListSurfaceSnapshot,
+  ExtensionShortcutPlatform
 } from "../../src/shared/extension-runtime-protocol"
 import type { PaginationLoader } from "../../packages/extension-utils/src"
 import { resolveRuntimeVisualImageSource } from "../../src/renderer/src/extension-runtime/runtime-visual-assets"
@@ -100,6 +101,26 @@ const runtimeFixtureTypeContract: {
 }
 
 void runtimeFixtureTypeContract
+
+interface ShortcutPlatformExpectation {
+  modifier: "cmd" | "ctrl"
+  platform: ExtensionShortcutPlatform
+}
+
+function getShortcutPlatformExpectation(
+  platform: NodeJS.Platform = process.platform
+): ShortcutPlatformExpectation {
+  if (platform === "darwin") {
+    return { modifier: "cmd", platform: "macOS" }
+  }
+  if (platform === "win32") {
+    return { modifier: "ctrl", platform: "Windows" }
+  }
+  if (platform === "linux") {
+    return { modifier: "ctrl", platform: "Linux" }
+  }
+  throw new Error(`Unsupported shortcut test platform: ${platform}`)
+}
 
 function createTestRenderer(params?: TestRendererParams) {
   return createExtensionRuntimeRenderer(
@@ -287,6 +308,7 @@ test("runtime reconciler waits for asynchronous action handlers", async () => {
 })
 
 test("runtime reconciler executes registered toast actions", async () => {
+  const shortcutExpectation = getShortcutPlatformExpectation()
   const requests: ExtensionRuntimeHostRequestInput[] = []
   const renderer = createTestRenderer()
 
@@ -368,7 +390,7 @@ test("runtime reconciler executes registered toast actions", async () => {
   assert.equal(toastRequest.payload.primaryAction?.id, "toast-action-0")
   assert.deepEqual(toastRequest.payload.primaryAction?.shortcut, {
     key: "n",
-    modifiers: ["cmd"]
+    modifiers: [shortcutExpectation.modifier]
   })
   assert.equal(
     await renderer.dispatchEvent({
@@ -381,6 +403,86 @@ test("runtime reconciler executes registered toast actions", async () => {
   const nextSnapshot = renderer.getSnapshot()
   assertListSnapshot(nextSnapshot)
   assert.equal(nextSnapshot.sections[0]?.items[0]?.title, "Opened")
+})
+
+test("runtime toast actions fail closed for an invalid current-platform shortcut", async () => {
+  const shortcutExpectation = getShortcutPlatformExpectation()
+  const shortcut: Keyboard.Shortcut = {}
+  shortcut[shortcutExpectation.platform] = {
+    key: "",
+    modifiers: [shortcutExpectation.modifier]
+  }
+  const requests: ExtensionRuntimeHostRequestInput[] = []
+  const renderer = createTestRenderer()
+
+  renderer.render(
+    createElement(
+      ExtensionRuntimeNavigationProvider,
+      {
+        value: {
+          commandName: "counter",
+          commandPreferences: {},
+          extensionName: "runtime-fixture",
+          extensionPreferences: {},
+          initialAction: "open",
+          locale: "zh-CN",
+          mode: "view",
+          registerToastAction: renderer.registerToastAction,
+          requestHost: async (request) => {
+            requests.push(request)
+            return {
+              id: "host-response",
+              ok: true,
+              result: null
+            }
+          },
+          seedQuery: ""
+        }
+      },
+      createElement(
+        List,
+        { navigationTitle: "Test List" },
+        createElement(List.Item, {
+          actions: createElement(
+            ActionPanel,
+            null,
+            createElement(Action, {
+              onAction: () =>
+                showToast({
+                  primaryAction: {
+                    onAction: () => {},
+                    shortcut,
+                    title: "Open Page"
+                  },
+                  title: "Page created"
+                }),
+              title: "Create Page"
+            })
+          ),
+          id: "page",
+          title: "Ready"
+        })
+      )
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const actionId = snapshot.sections[0]?.items[0]?.actions[0]?.id
+  assert.ok(actionId)
+  await assert.rejects(
+    renderer.dispatchEvent({
+      actionId,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    {
+      message: `Toast shortcut.${shortcutExpectation.platform} requires a non-empty key and valid keyboard modifiers.`,
+      name: "TypeError"
+    }
+  )
+  assert.deepEqual(requests, [])
 })
 
 test("runtime SDK client is available to first passive effects", async () => {
@@ -668,6 +770,8 @@ test("runtime SDK open delegates URL targets to shell host capability", async ()
 })
 
 test("runtime actions preserve keyboard shortcuts", async () => {
+  const shortcutExpectation = getShortcutPlatformExpectation()
+
   function ShortcutList() {
     return createElement(
       List,
@@ -681,7 +785,8 @@ test("runtime actions preserve keyboard shortcuts", async () => {
             {
               shortcut: {
                 macOS: { key: "p", modifiers: ["cmd", "shift"] },
-                Windows: { key: "p", modifiers: ["ctrl", "shift"] }
+                Windows: { key: "p", modifiers: ["ctrl", "shift"] },
+                Linux: { key: "p", modifiers: ["ctrl", "shift"] }
               },
               title: "Edit Property"
             },
@@ -706,12 +811,112 @@ test("runtime actions preserve keyboard shortcuts", async () => {
   assertListSnapshot(snapshot)
   assert.deepEqual(snapshot.sections[0]?.items[0]?.actions[0]?.shortcut, {
     key: "p",
-    modifiers: ["cmd", "shift"]
+    modifiers: [shortcutExpectation.modifier, "shift"]
   })
   assert.deepEqual(snapshot.sections[0]?.items[0]?.actions[0]?.children?.[0]?.shortcut, {
     key: "n",
-    modifiers: ["cmd"]
+    modifiers: [shortcutExpectation.modifier]
   })
+})
+
+test("runtime quicklinks omit a missing current-platform shortcut without invalidating the surface", async () => {
+  const { platform } = getShortcutPlatformExpectation()
+  const shortcut: Keyboard.Shortcut = {
+    macOS: { key: "p", modifiers: ["cmd"] },
+    Windows: { key: "p", modifiers: ["ctrl"] },
+    Linux: { key: "p", modifiers: ["ctrl"] }
+  }
+  delete shortcut[platform]
+
+  const hostRequests: ExtensionHostRequest[] = []
+  const renderer = createTestRenderer({
+    onHostRequest: (request) => {
+      hostRequests.push(request)
+      return {
+        id: request.id,
+        ok: true,
+        result: null
+      }
+    }
+  })
+  renderer.render(
+    createElement(
+      List,
+      { navigationTitle: "Test List" },
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action.CreateQuicklink, {
+            quicklink: {
+              link: "jingle://extensions/notion/create-database-page",
+              name: "Create Notion page"
+            },
+            shortcut
+          })
+        ),
+        id: "page",
+        title: "Page"
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const action = snapshot.sections[0]?.items[0]?.actions[0]
+  assert.ok(action)
+  assert.equal(action.shortcut, undefined)
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: action.id,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+  assert.equal(hostRequests[0]?.capability, "quicklinks")
+  assert.equal(hostRequests[0]?.payload.shortcut, undefined)
+})
+
+test("runtime surfaces fail closed for an invalid current-platform shortcut", async () => {
+  const shortcutExpectation = getShortcutPlatformExpectation()
+  const shortcut: Keyboard.Shortcut = {}
+  shortcut[shortcutExpectation.platform] = {
+    key: "",
+    modifiers: [shortcutExpectation.modifier]
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(
+      List,
+      { navigationTitle: "Test List" },
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action.CreateQuicklink, {
+            quicklink: {
+              link: "jingle://extensions/notion/create-database-page",
+              name: "Create Notion page"
+            },
+            shortcut
+          })
+        ),
+        id: "page",
+        title: "Page"
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assert.ok(snapshot?.kind === "error")
+  assert.equal(
+    snapshot.description,
+    `Action shortcut.${shortcutExpectation.platform} requires a non-empty key and valid keyboard modifiers.`
+  )
 })
 
 test("runtime reconciler preserves action panel submenu hierarchy", async () => {
@@ -1246,6 +1451,7 @@ test("runtime reconciler preserves formatted CopyToClipboard content", async () 
 })
 
 test("runtime Action.CreateQuicklink registers a launcher quicklink", async () => {
+  const shortcutExpectation = getShortcutPlatformExpectation()
   const hostRequests: ExtensionHostRequest[] = []
   const renderer = createTestRenderer({
     onHostRequest: (request) => {
@@ -1273,7 +1479,8 @@ test("runtime Action.CreateQuicklink registers a launcher quicklink", async () =
             },
             shortcut: {
               macOS: { key: "l", modifiers: ["cmd"] },
-              Windows: { key: "l", modifiers: ["ctrl"] }
+              Windows: { key: "l", modifiers: ["ctrl"] },
+              Linux: { key: "l", modifiers: ["ctrl"] }
             }
           })
         ),
@@ -1291,7 +1498,7 @@ test("runtime Action.CreateQuicklink registers a launcher quicklink", async () =
   assert.equal(action.title, "Create Quicklink")
   assert.deepEqual(action.shortcut, {
     key: "l",
-    modifiers: ["cmd"]
+    modifiers: [shortcutExpectation.modifier]
   })
 
   assert.equal(
@@ -1314,8 +1521,8 @@ test("runtime Action.CreateQuicklink registers a launcher quicklink", async () =
         name: "Create Notion page",
         shortcut: {
           key: "l",
-          modifiers: ["cmd"],
-          platform: "macOS"
+          modifiers: [shortcutExpectation.modifier],
+          platform: shortcutExpectation.platform
         }
       }
     }
@@ -1467,6 +1674,7 @@ test("runtime Action.RunBotAgent rejects legacy labels and missing source labels
 })
 
 test("runtime reconciler dispatches Paste actions through host requests", async () => {
+  const shortcutExpectation = getShortcutPlatformExpectation()
   const hostRequests: ExtensionHostRequest[] = []
   const renderer = createTestRenderer({
     onHostRequest: async (request) => {
@@ -1507,7 +1715,7 @@ test("runtime reconciler dispatches Paste actions through host requests", async 
   assert.equal(action.title, "Paste Page URL")
   assert.deepEqual(action.shortcut, {
     key: "c",
-    modifiers: ["cmd", "opt"]
+    modifiers: [shortcutExpectation.modifier, "opt"]
   })
 
   assert.equal(

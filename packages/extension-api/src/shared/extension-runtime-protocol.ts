@@ -316,6 +316,23 @@ export interface ExtensionActionShortcutNode {
   modifiers: string[]
 }
 
+export type ExtensionShortcutPlatform = "macOS" | "Windows" | "Linux"
+
+export function resolveExtensionShortcutPlatform(
+  platform: string
+): ExtensionShortcutPlatform | undefined {
+  if (platform === "darwin") {
+    return "macOS"
+  }
+  if (platform === "win32") {
+    return "Windows"
+  }
+  if (platform === "linux") {
+    return "Linux"
+  }
+  return undefined
+}
+
 export interface ExtensionRunBotAgentSourceRef {
   id?: string
   label: string
@@ -563,7 +580,7 @@ export interface ExtensionQuicklinksHostRequest extends ExtensionHostRequestBase
     shortcut?: {
       key: string
       modifiers: string[]
-      platform: "macOS" | "Windows"
+      platform: ExtensionShortcutPlatform
     }
   }
 }

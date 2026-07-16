@@ -167,6 +167,7 @@ export function PageDetail({ page, setRecentPage, users }: PageDetailProps) {
                 shortcut={{
                   macOS: { modifiers: ["cmd", "shift"], key: "n" },
                   Windows: { modifiers: ["ctrl", "shift"], key: "n" },
+                  Linux: { modifiers: ["ctrl", "shift"], key: "n" },
                 }}
                 target={appendContentTarget}
               />
@@ -178,6 +179,7 @@ export function PageDetail({ page, setRecentPage, users }: PageDetailProps) {
                 shortcut={{
                   macOS: { modifiers: ["cmd", "shift"], key: "c" },
                   Windows: { modifiers: ["ctrl", "shift"], key: "c" },
+                  Linux: { modifiers: ["ctrl", "shift"], key: "c" },
                 }}
               />
               <Action.Paste
@@ -186,6 +188,7 @@ export function PageDetail({ page, setRecentPage, users }: PageDetailProps) {
                 shortcut={{
                   macOS: { modifiers: ["cmd", "shift"], key: "v" },
                   Windows: { modifiers: ["ctrl", "shift"], key: "v" },
+                  Linux: { modifiers: ["ctrl", "shift"], key: "v" },
                 }}
               />
             </ActionPanel.Section>
