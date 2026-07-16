@@ -248,12 +248,18 @@ export interface AppCopy {
   }
   modelSwitcher: {
     apiKeyRequired: (providerName: string) => string
+    catalogError: string
     configureApiKey: string
     editApiKey: string
+    loadError: string
+    loading: string
     model: string
+    modelDiscoveryPending: string
     noModelsAvailable: string
+    openProviderSettings: string
     provider: string
     providerError: (providerName: string) => string
+    retry: string
     searchModels: string
     selectModel: string
   }
@@ -580,12 +586,18 @@ export const appCopy: Record<AppLocale, AppCopy> = {
     },
     modelSwitcher: {
       apiKeyRequired: (providerName) => `${providerName} 需要 API Key`,
+      catalogError: "模型目录数据不完整，请检查提供商配置",
       configureApiKey: "配置 API Key",
       editApiKey: "编辑 API Key",
+      loadError: "模型列表加载失败",
+      loading: "正在加载模型...",
       model: "模型",
+      modelDiscoveryPending: "模型列表尚未就绪，请在提供商设置中完成模型发现。",
       noModelsAvailable: "没有可用模型",
+      openProviderSettings: "打开提供商设置",
       provider: "提供商",
       providerError: (providerName) => `${providerName} 模型列表读取失败`,
+      retry: "重试",
       searchModels: "搜索模型...",
       selectModel: "选择模型"
     },
@@ -933,12 +945,18 @@ export const appCopy: Record<AppLocale, AppCopy> = {
     },
     modelSwitcher: {
       apiKeyRequired: (providerName) => `API key required for ${providerName}`,
+      catalogError: "The model catalog is incomplete. Check the provider configuration.",
       configureApiKey: "Configure API Key",
       editApiKey: "Edit API Key",
+      loadError: "Failed to load models",
+      loading: "Loading models...",
       model: "Model",
+      modelDiscoveryPending: "Models are not ready. Complete model discovery in provider settings.",
       noModelsAvailable: "No models available",
+      openProviderSettings: "Open Provider Settings",
       provider: "Provider",
       providerError: (providerName) => `Failed to load ${providerName} models`,
+      retry: "Retry",
       searchModels: "Search models...",
       selectModel: "Select model"
     },

@@ -1,5 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ModelSelectionContent } from "@/features/model-selection/ModelSelectionContent"
+import { resolveModelSelectionModelId } from "@/features/model-selection/model-selection-projection"
+import { useModelSelectionController } from "@/features/model-selection/use-model-selection-controller"
 import { useI18n } from "@/lib/i18n"
 
 export function LauncherAiModelPicker(props: {
@@ -9,6 +11,8 @@ export function LauncherAiModelPicker(props: {
 }): React.JSX.Element {
   const { currentModelId, onClose, onSelectModel } = props
   const { copy } = useI18n()
+  const { catalog, loadState, openProviderSettings, reload } = useModelSelectionController()
+  const effectiveModelId = resolveModelSelectionModelId(catalog, currentModelId)
 
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
@@ -22,8 +26,12 @@ export function LauncherAiModelPicker(props: {
           </DialogTitle>
         </DialogHeader>
         <ModelSelectionContent
-          currentModelId={currentModelId}
+          catalog={catalog}
+          currentModelId={effectiveModelId}
+          loadState={loadState}
           onDone={onClose}
+          onOpenProviderSettings={openProviderSettings}
+          onRetry={reload}
           onSelectModel={onSelectModel}
         />
       </DialogContent>

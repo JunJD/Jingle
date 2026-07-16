@@ -1,11 +1,16 @@
 import { ChevronDown } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+  projectSelectedModelSummary,
+  resolveModelSelectionModelId
+} from "@/features/model-selection/model-selection-projection"
 import { ProviderIcon } from "@/features/model-selection/provider-icon"
-import { getModelQuickDisplayName } from "@/features/model-selection/model-quick-display"
 import { ModelQuickPickerContent } from "@/features/model-selection/ModelQuickPickerContent"
-import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
+import type { ProviderId } from "@/types"
+import { useLauncherAiModelPickerController } from "./use-launcher-ai-model-picker-controller"
 
 interface LauncherAiHeaderModelPickerProps {
   currentModelId: string | null
@@ -19,21 +24,17 @@ export function LauncherAiHeaderModelPicker(
   const { currentModelId, fallbackLabel, onSelectModel } = props
   const { copy } = useI18n()
   const [open, setOpen] = useState(false)
-  const [defaultModelId, setDefaultModelId] = useState<string | null>(null)
-  const loadModelProviderState = useHistoryShellStore((state) => state.loadModelProviderState)
-  const models = useHistoryShellStore((state) => state.models)
-  const providers = useHistoryShellStore((state) => state.providers)
-  const effectiveModelId = currentModelId ?? defaultModelId
-  const selectedModel = models.find((model) => model.id === effectiveModelId) ?? null
-  const selectedProvider = selectedModel
-    ? providers.find((provider) => provider.id === selectedModel.provider)
-    : null
-  const displayName = getModelQuickDisplayName(effectiveModelId, selectedModel) ?? fallbackLabel
-
-  useEffect(() => {
-    void loadModelProviderState()
-    void window.api.models.getDefault("llm").then(setDefaultModelId)
-  }, [loadModelProviderState])
+  const { catalog, loadState, openProviderSettings, reload } = useLauncherAiModelPickerController()
+  const effectiveModelId = resolveModelSelectionModelId(catalog, currentModelId)
+  const selectedModel = projectSelectedModelSummary(catalog, effectiveModelId)
+  const displayName =
+    loadState === "loading"
+      ? copy.modelSwitcher.loading
+      : loadState === "error"
+        ? copy.modelSwitcher.loadError
+        : selectedModel.kind === "configured"
+          ? selectedModel.name
+          : fallbackLabel
 
   function handleSelectModel(modelId: string): void {
     void onSelectModel(modelId).then((didSelect) => {
@@ -43,26 +44,35 @@ export function LauncherAiHeaderModelPicker(
     })
   }
 
+  function handleOpenProviderSettings(providerId: ProviderId): void {
+    setOpen(false)
+    openProviderSettings(providerId)
+  }
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type="button"
           aria-label={copy.launcher.changeModel}
-          title={copy.launcher.changeModel}
-          className="group -ml-[var(--jingle-space-0-5)] mt-px flex max-w-[var(--launcher-chip-max-width)] items-center gap-[var(--jingle-gap-xs)] rounded-[var(--jingle-radius-xs)] px-[var(--jingle-space-0-5)] py-px text-muted-foreground transition hover:bg-background-secondary/62 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="group flex h-5 max-w-[var(--launcher-chip-max-width)] items-center gap-[var(--jingle-space-1)] rounded-[var(--jingle-radius-xs)] px-[var(--jingle-space-1)] py-0 font-normal text-muted-foreground transition hover:bg-background-secondary/72 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          data-model-selection={loadState === "ready" ? selectedModel.kind : loadState}
+          variant="ghost"
         >
-          {selectedProvider ? (
+          {loadState === "ready" && selectedModel.kind === "configured" ? (
             <ProviderIcon
-              className="size-[var(--jingle-icon-xs)] shrink-0 text-muted-foreground/72 group-hover:text-foreground"
-              providerId={selectedProvider.id}
+              className="size-[var(--jingle-icon-xs)] shrink-0 text-muted-foreground/64 transition-colors group-hover:text-foreground"
+              providerId={selectedModel.providerId}
             />
           ) : null}
           <span className="min-w-0 truncate [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-tight)]">
             {displayName}
           </span>
-          <ChevronDown className="size-[var(--jingle-icon-xs)] shrink-0 opacity-0 transition group-hover:opacity-70 group-data-[state=open]:opacity-70" />
-        </button>
+          <ChevronDown
+            className="size-3 shrink-0 opacity-40 transition group-hover:opacity-75 group-data-[state=open]:opacity-75"
+            strokeWidth={1.8}
+          />
+        </Button>
       </PopoverTrigger>
       <PopoverContent
         align="start"
@@ -70,10 +80,12 @@ export function LauncherAiHeaderModelPicker(
         sideOffset={6}
       >
         <ModelQuickPickerContent
+          catalog={catalog}
           currentModelId={effectiveModelId}
-          models={models}
+          loadState={loadState}
+          onOpenProviderSettings={handleOpenProviderSettings}
+          onRetry={reload}
           onSelectModel={handleSelectModel}
-          providers={providers}
         />
       </PopoverContent>
     </Popover>
