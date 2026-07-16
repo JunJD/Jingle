@@ -10,6 +10,7 @@ import {
   AttachmentRemove,
   Attachments
 } from "@/components/attachments"
+import { Button } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n"
 
 function getClipboardLabel(
@@ -97,46 +98,38 @@ export function ClipboardChip(props: {
       type: "file" as const,
       url: context.image.previewDataUrl
     }
-    const handleImageKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
-      if (event.key !== "Enter" && event.key !== " ") {
-        return
-      }
-
-      event.preventDefault()
-      onAccept()
-    }
-
     return (
       <Attachments variant="inline" className="shrink-0">
-        <AttachmentHoverCard>
-          <AttachmentHoverCardTrigger asChild>
-            <Attachment
-              data={imageAttachment}
-              onClick={onAccept}
-              onKeyDown={handleImageKeyDown}
-              onMouseDown={(event) => event.preventDefault()}
-              onRemove={onClear}
-              role="button"
-              tabIndex={0}
-              title={copy.launcher.clipboardImage}
-              className="launcher-clipboard-chip launcher-clipboard-chip--candidate h-[var(--launcher-action-control-h)] w-[var(--launcher-action-control-h)] overflow-hidden rounded-[var(--jingle-radius-lg)] border border-dashed border-border/70 bg-muted/45 p-0 opacity-75 shadow-sm ring-1 ring-black/5 hover:opacity-100"
-            >
-              <div className="relative h-full w-full">
+        <Attachment
+          className="launcher-clipboard-chip launcher-clipboard-chip--candidate h-[var(--launcher-action-control-h)] w-[var(--launcher-action-control-h)] overflow-hidden rounded-[var(--jingle-radius-lg)] border border-dashed border-border/70 bg-muted/45 p-0 opacity-75 shadow-sm ring-1 ring-black/5 hover:opacity-100"
+          data={imageAttachment}
+          onRemove={onClear}
+        >
+          <AttachmentHoverCard>
+            <AttachmentHoverCardTrigger asChild>
+              <Button
+                aria-label={copy.launcher.addClipboardContext}
+                className="relative h-full w-full rounded-[inherit] bg-transparent p-0 hover:bg-transparent"
+                onClick={onAccept}
+                onMouseDown={(event) => event.preventDefault()}
+                type="button"
+                variant="ghost"
+              >
                 <AttachmentPreview className="h-full w-full rounded-[inherit] bg-transparent grayscale" />
-                <div className="absolute inset-0 flex items-center justify-center bg-background/55 opacity-0 transition-opacity group-hover:opacity-100">
+                <span className="absolute inset-0 flex items-center justify-center bg-background/55 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                   <Plus className="size-[var(--jingle-icon-sm)] text-foreground" />
-                </div>
-                <AttachmentRemove
-                  label={copy.launcher.clearClipboardContext}
-                  className="absolute right-[var(--jingle-leading-nudge)] top-[var(--jingle-leading-nudge)] size-[var(--jingle-icon-action)] rounded-full border-0 bg-black/42 p-0 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/55 [&>svg]:size-[var(--jingle-icon-xs)]"
-                />
-              </div>
-            </Attachment>
-          </AttachmentHoverCardTrigger>
-          <AttachmentHoverCardContent>
-            <AttachmentHoverPreview data={imageAttachment} showMediaType={false} />
-          </AttachmentHoverCardContent>
-        </AttachmentHoverCard>
+                </span>
+              </Button>
+            </AttachmentHoverCardTrigger>
+            <AttachmentHoverCardContent>
+              <AttachmentHoverPreview data={imageAttachment} showMediaType={false} />
+            </AttachmentHoverCardContent>
+          </AttachmentHoverCard>
+          <AttachmentRemove
+            className="absolute right-[var(--jingle-leading-nudge)] top-[var(--jingle-leading-nudge)] size-[var(--jingle-icon-action)] rounded-full border-0 bg-black/42 p-0 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-black/55 [&>svg]:size-[var(--jingle-icon-xs)]"
+            label={copy.launcher.clearClipboardContext}
+          />
+        </Attachment>
       </Attachments>
     )
   }

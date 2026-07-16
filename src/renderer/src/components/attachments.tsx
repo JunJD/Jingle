@@ -1,12 +1,7 @@
 "use client"
 
 import { Button } from "./ui/button"
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardPortal,
-  HoverCardTrigger
-} from "./ui/hover-card"
+import { HoverCard, HoverCardContent, HoverCardPortal, HoverCardTrigger } from "./ui/hover-card"
 import { cn } from "@/lib/utils"
 
 import {
@@ -244,7 +239,7 @@ export const Attachment = ({ data, onRemove, className, children, ...props }: At
           variant === "grid" &&
             "size-[var(--jingle-chat-attachment-image-size)] overflow-hidden rounded-lg",
           variant === "inline" && [
-            "flex h-[var(--jingle-control-h-md)] cursor-pointer select-none items-center gap-[var(--jingle-space-1-5)]",
+            "flex h-[var(--jingle-control-h-md)] select-none items-center gap-[var(--jingle-space-1-5)]",
             "rounded-md border border-border px-[var(--jingle-space-1-5)]",
             "[font-size:var(--jingle-font-body)] font-medium transition-all",
             "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50"
@@ -267,7 +262,7 @@ export const Attachment = ({ data, onRemove, className, children, ...props }: At
 // AttachmentPreview - Media preview
 // ============================================================================
 
-export type AttachmentPreviewProps = HTMLAttributes<HTMLDivElement> & {
+export type AttachmentPreviewProps = HTMLAttributes<HTMLSpanElement> & {
   fallbackIcon?: ReactNode
 }
 
@@ -281,7 +276,9 @@ export const AttachmentPreview = ({
   const iconSize = variant === "inline" ? "size-3" : "size-4"
   let preview: ReactNode
   if (mediaCategory === "image" && data.type === "file" && data.url) {
-    preview = <AttachmentImage filename={data.filename} isGrid={variant === "grid"} url={data.url} />
+    preview = (
+      <AttachmentImage filename={data.filename} isGrid={variant === "grid"} url={data.url} />
+    )
   } else if (mediaCategory === "video" && data.type === "file" && data.url) {
     preview = (
       <video
@@ -299,7 +296,7 @@ export const AttachmentPreview = ({
   }
 
   return (
-    <div
+    <span
       className={cn(
         "flex shrink-0 items-center justify-center overflow-hidden",
         variant === "grid" && "size-full bg-muted",
@@ -310,7 +307,7 @@ export const AttachmentPreview = ({
       {...props}
     >
       {preview}
-    </div>
+    </span>
   )
 }
 
@@ -318,7 +315,7 @@ export const AttachmentPreview = ({
 // AttachmentInfo - Name and type display
 // ============================================================================
 
-export type AttachmentInfoProps = HTMLAttributes<HTMLDivElement> & {
+export type AttachmentInfoProps = HTMLAttributes<HTMLSpanElement> & {
   showMediaType?: boolean
 }
 
@@ -335,14 +332,14 @@ export const AttachmentInfo = ({
   }
 
   return (
-    <div className={cn("min-w-0 flex-1", className)} {...props}>
+    <span className={cn("min-w-0 flex-1", className)} {...props}>
       <span className="block truncate">{label}</span>
       {showMediaType && data.mediaType && (
         <span className="block truncate [font-size:var(--jingle-font-meta)] text-muted-foreground">
           {data.mediaType}
         </span>
       )}
-    </div>
+    </span>
   )
 }
 
@@ -350,12 +347,15 @@ export const AttachmentInfo = ({
 // AttachmentRemove - Remove button
 // ============================================================================
 
-export type AttachmentRemoveProps = ComponentProps<typeof Button> & {
-  label?: string
+export type AttachmentRemoveProps = Omit<
+  ComponentProps<typeof Button>,
+  "aria-label" | "onClick" | "onMouseDown" | "type"
+> & {
+  label: string
 }
 
 export const AttachmentRemove = ({
-  label = "Remove",
+  label,
   className,
   children,
   ...props
@@ -381,18 +381,19 @@ export const AttachmentRemove = ({
 
   return (
     <Button
+      {...props}
       aria-label={label}
       className={cn(
         variant === "grid" && [
           "absolute top-2 right-2 size-6 rounded-full p-0",
           "bg-background/80 backdrop-blur-sm",
-          "opacity-0 transition-opacity group-hover:opacity-100",
+          "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100",
           "hover:bg-background",
           "[&>svg]:size-3"
         ],
         variant === "inline" && [
           "size-5 rounded p-0",
-          "opacity-0 transition-opacity group-hover:opacity-100",
+          "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100",
           "[&>svg]:size-2.5"
         ],
         variant === "list" && ["size-8 shrink-0 rounded p-0", "[&>svg]:size-4"],
@@ -402,10 +403,8 @@ export const AttachmentRemove = ({
       onMouseDown={handleMouseDown}
       type="button"
       variant="ghost"
-      {...props}
     >
       {children ?? <XIcon />}
-      <span className="sr-only">{label}</span>
     </Button>
   )
 }
@@ -506,21 +505,3 @@ export const AttachmentHoverPreview = ({
     </div>
   )
 }
-
-// ============================================================================
-// AttachmentEmpty - Empty state
-// ============================================================================
-
-export type AttachmentEmptyProps = HTMLAttributes<HTMLDivElement>
-
-export const AttachmentEmpty = ({ className, children, ...props }: AttachmentEmptyProps) => (
-  <div
-    className={cn(
-      "flex items-center justify-center p-[var(--jingle-space-4)] [font-size:var(--jingle-font-body)] text-muted-foreground",
-      className
-    )}
-    {...props}
-  >
-    {children ?? "No attachments"}
-  </div>
-)

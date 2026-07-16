@@ -11,7 +11,9 @@ import {
   Attachments,
   type AttachmentData
 } from "@/components/attachments"
+import { Button } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n"
+import { cn } from "@/lib/utils"
 import type { LauncherAiAttachmentDraft } from "./useAiAttachments"
 
 type LauncherAttachmentStripIntent = "accepted" | "candidate"
@@ -48,14 +50,6 @@ function LauncherAttachmentItem(props: {
   const { attachment, clipboardImageLabel, intent, onAccept, onRemove, removeLabel } = props
   const data = toAttachmentData(attachment, clipboardImageLabel)
   const isCandidate = intent === "candidate"
-  const handleCandidateKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
-    if (!isCandidate || !onAccept || (event.key !== "Enter" && event.key !== " ")) {
-      return
-    }
-
-    event.preventDefault()
-    onAccept()
-  }
   const fallbackIcon =
     attachment.kind === "file" ? (
       attachment.isDirectory ? (
@@ -65,70 +59,97 @@ function LauncherAttachmentItem(props: {
       )
     ) : undefined
 
+  const attachmentClassName =
+    attachment.kind === "image"
+      ? isCandidate
+        ? "h-[var(--jingle-icon-lg)] w-[var(--jingle-icon-lg)] overflow-hidden rounded-[var(--jingle-radius-md)] border border-dashed border-border/70 bg-muted/45 p-0 opacity-75 shadow-sm ring-1 ring-black/5 hover:opacity-100"
+        : "h-[var(--jingle-icon-lg)] w-[var(--jingle-icon-lg)] overflow-hidden rounded-[var(--jingle-radius-md)] border border-white/10 bg-black/[0.035] p-0 shadow-sm ring-1 ring-black/5"
+      : isCandidate
+        ? "max-w-[var(--launcher-attachment-max-width)] rounded-[var(--jingle-radius-lg)] border border-dashed border-border/80 bg-background/60 px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)] [font-size:var(--jingle-font-control)] text-muted-foreground shadow-sm ring-1 ring-black/5"
+        : "max-w-[var(--launcher-attachment-max-width)] rounded-[var(--jingle-radius-lg)] border border-white/10 bg-black/[0.035] px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)] [font-size:var(--jingle-font-control)] shadow-sm ring-1 ring-black/5"
+  const itemContent = (
+    <>
+      <AttachmentPreview
+        fallbackIcon={fallbackIcon}
+        className={cn(
+          attachment.kind === "image"
+            ? "h-full w-full rounded-[inherit] bg-transparent"
+            : "size-[var(--jingle-control-h-md)] rounded-lg bg-black/[0.04]",
+          isCandidate && attachment.kind === "image" && "grayscale"
+        )}
+      />
+      {attachment.kind === "image" ? (
+        isCandidate ? (
+          <span className="absolute inset-0 flex items-center justify-center bg-background/55 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            <Plus className="size-[var(--jingle-icon-sm)] text-foreground" />
+          </span>
+        ) : null
+      ) : (
+        <>
+          <AttachmentInfo
+            className={cn(
+              "max-w-[var(--launcher-attachment-name-max-width)] [font-size:var(--jingle-font-control)] font-medium",
+              isCandidate ? "text-muted-foreground" : "text-foreground"
+            )}
+          />
+          {isCandidate ? (
+            <Plus className="size-[var(--jingle-icon-compact)] shrink-0 text-muted-foreground" />
+          ) : null}
+        </>
+      )}
+    </>
+  )
+  const removeControl = (
+    <AttachmentRemove
+      className={
+        attachment.kind === "image"
+          ? "absolute right-[var(--jingle-leading-nudge)] top-[var(--jingle-leading-nudge)] size-[var(--jingle-icon-compact)] rounded-full border-0 bg-zinc-500/95 p-0 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-zinc-600 [&>svg]:size-[var(--jingle-icon-close-glyph)]"
+          : "absolute right-[var(--jingle-space-1)] top-[var(--jingle-space-1)] size-[var(--jingle-icon-sm)] rounded-full border-0 bg-zinc-500/95 p-0 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-zinc-600 [&>svg]:size-[var(--jingle-icon-micro)]"
+      }
+      label={removeLabel}
+    />
+  )
+
   return (
     <AttachmentHoverCard>
-      <AttachmentHoverCardTrigger asChild>
+      {isCandidate && onAccept ? (
         <Attachment
+          className={attachmentClassName}
           data={data}
-          role={isCandidate ? "button" : undefined}
-          onClick={isCandidate && onAccept ? () => onAccept() : undefined}
-          onKeyDown={handleCandidateKeyDown}
           onRemove={() => onRemove(attachment.id)}
-          tabIndex={isCandidate ? 0 : undefined}
           title={attachment.kind === "image" ? clipboardImageLabel : attachment.name}
-          className={
-            attachment.kind === "image"
-              ? isCandidate
-                ? "h-[var(--jingle-icon-lg)] w-[var(--jingle-icon-lg)] overflow-hidden rounded-[var(--jingle-radius-md)] border border-dashed border-border/70 bg-muted/45 p-0 opacity-75 shadow-sm ring-1 ring-black/5 hover:opacity-100"
-                : "h-[var(--jingle-icon-lg)] w-[var(--jingle-icon-lg)] overflow-hidden rounded-[var(--jingle-radius-md)] border border-white/10 bg-black/[0.035] p-0 shadow-sm ring-1 ring-black/5"
-              : isCandidate
-                ? "max-w-[var(--launcher-attachment-max-width)] rounded-[var(--jingle-radius-lg)] border border-dashed border-border/80 bg-background/60 px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)] [font-size:var(--jingle-font-control)] text-muted-foreground shadow-sm ring-1 ring-black/5"
-                : "max-w-[var(--launcher-attachment-max-width)] rounded-[var(--jingle-radius-lg)] border border-white/10 bg-black/[0.035] px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)] [font-size:var(--jingle-font-control)] shadow-sm ring-1 ring-black/5"
-          }
         >
-          {attachment.kind === "image" ? (
-            <>
-              <AttachmentPreview
-                className={
-                  isCandidate
-                    ? "h-full w-full rounded-[inherit] bg-transparent grayscale"
-                    : "h-full w-full rounded-[inherit] bg-transparent"
-                }
-              />
-              {isCandidate ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/55 opacity-0 transition-opacity group-hover:opacity-100">
-                  <Plus className="size-[var(--jingle-icon-sm)] text-foreground" />
-                </div>
-              ) : null}
-              <AttachmentRemove
-                className="absolute right-[var(--jingle-leading-nudge)] top-[var(--jingle-leading-nudge)] size-[var(--jingle-icon-compact)] rounded-full border-0 bg-zinc-500/95 p-0 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-zinc-600 [&>svg]:size-[var(--jingle-icon-close-glyph)]"
-                label={removeLabel}
-              />
-            </>
-          ) : (
-            <>
-              <AttachmentPreview
-                fallbackIcon={fallbackIcon}
-                className="size-[var(--jingle-control-h-md)] rounded-lg bg-black/[0.04]"
-              />
-              <AttachmentInfo
-                className={
-                  isCandidate
-                    ? "max-w-[var(--launcher-attachment-name-max-width)] [font-size:var(--jingle-font-control)] font-medium text-muted-foreground"
-                    : "max-w-[var(--launcher-attachment-name-max-width)] [font-size:var(--jingle-font-control)] font-medium text-foreground"
-                }
-              />
-              {isCandidate ? (
-                <Plus className="size-[var(--jingle-icon-compact)] shrink-0 text-muted-foreground" />
-              ) : null}
-              <AttachmentRemove
-                className="absolute right-[var(--jingle-space-1)] top-[var(--jingle-space-1)] size-[var(--jingle-icon-sm)] rounded-full border-0 bg-zinc-500/95 p-0 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-zinc-600 [&>svg]:size-[var(--jingle-icon-micro)]"
-                label={removeLabel}
-              />
-            </>
-          )}
+          <AttachmentHoverCardTrigger asChild>
+            <Button
+              aria-label={attachment.kind === "image" ? clipboardImageLabel : attachment.name}
+              className={cn(
+                "relative min-w-0 bg-transparent p-0 text-inherit hover:bg-transparent",
+                attachment.kind === "image"
+                  ? "h-full w-full rounded-[inherit]"
+                  : "h-full flex-1 justify-start gap-[var(--jingle-space-1-5)] rounded-none"
+              )}
+              onClick={onAccept}
+              type="button"
+              variant="ghost"
+            >
+              {itemContent}
+            </Button>
+          </AttachmentHoverCardTrigger>
+          {removeControl}
         </Attachment>
-      </AttachmentHoverCardTrigger>
+      ) : (
+        <AttachmentHoverCardTrigger asChild>
+          <Attachment
+            className={attachmentClassName}
+            data={data}
+            onRemove={() => onRemove(attachment.id)}
+            title={attachment.kind === "image" ? clipboardImageLabel : attachment.name}
+          >
+            {itemContent}
+            {removeControl}
+          </Attachment>
+        </AttachmentHoverCardTrigger>
+      )}
       <AttachmentHoverCardContent>
         <AttachmentHoverPreview data={data} fallbackIcon={fallbackIcon} showMediaType={false} />
       </AttachmentHoverCardContent>
@@ -136,13 +157,24 @@ function LauncherAttachmentItem(props: {
   )
 }
 
-export function LauncherAttachmentStrip(props: {
+type LauncherAttachmentStripProps = {
   attachments: LauncherAiAttachmentDraft[]
-  intent?: LauncherAttachmentStripIntent
-  onAccept?: () => void
   onRemove: (attachmentId: string) => void
   removeLabel?: string
-}): React.JSX.Element | null {
+} & (
+  | {
+      intent: "candidate"
+      onAccept: () => void
+    }
+  | {
+      intent?: "accepted"
+      onAccept?: never
+    }
+)
+
+export function LauncherAttachmentStrip(
+  props: LauncherAttachmentStripProps
+): React.JSX.Element | null {
   const { copy } = useI18n()
   const {
     attachments,
