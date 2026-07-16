@@ -3,6 +3,7 @@
 import { Button } from "../ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip"
 import { cn } from "@/lib/utils"
+import { chatRendererCommands } from "./chat-renderer-commands"
 import { cjk } from "@streamdown/cjk"
 import { code } from "@streamdown/code"
 import { math } from "@streamdown/math"
@@ -140,7 +141,7 @@ function ExternalMarkdownLink(props: ExternalMarkdownLinkProps): React.JSX.Eleme
       }
 
       event.preventDefault()
-      void window.electron.openExternal(externalHref).catch((error) => {
+      void chatRendererCommands.openExternal(externalHref).catch((error) => {
         console.error("[MessageResponse] Failed to open external link.", error)
       })
     },
