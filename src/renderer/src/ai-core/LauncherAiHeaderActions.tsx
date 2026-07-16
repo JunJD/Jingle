@@ -79,7 +79,6 @@ export function LauncherAiHeaderActions(props: LauncherAiHeaderActionsProps): Re
   return (
     <div className="flex shrink-0 items-center gap-[var(--jingle-gap-xs)]">
       <LauncherAiOpenTargetMenu
-        folderPath={environment.workspacePath}
         labels={{
           openFolder: labels.openFolder,
           openTarget: labels.openTarget
