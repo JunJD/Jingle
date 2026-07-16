@@ -38,6 +38,19 @@ export function DurableWindowApp(): React.JSX.Element {
     [threads]
   )
 
+  useEffect(
+    () =>
+      window.api.threadWorkflow.onChanged(() => {
+        void historyShellStore
+          .getState()
+          .loadSidebarView()
+          .catch((error: unknown) => {
+            console.error("[ThreadWorkflow] Failed to refresh the main sidebar.", error)
+          })
+      }),
+    []
+  )
+
   useEffect(() => {
     const previousThreadId = previousActiveThreadIdRef.current
     previousActiveThreadIdRef.current = activeThreadId
