@@ -1,5 +1,5 @@
-import type { DiagnosticsLogger } from "../diagnostics/logger"
 import { getThreadDigest, type UpsertReadyThreadDigestInput } from "../db/thread-digests"
+import type { DiagnosticEventRef, DiagnosticGraphSink } from "../diagnostics/schema"
 import { JingleIpcError } from "../ipc/error"
 import {
   commitThreadDigestProjection,
@@ -18,17 +18,28 @@ export interface ThreadDigestProjectionPort {
   prepare(threadId: string, signal: AbortSignal): Promise<UpsertReadyThreadDigestInput>
 }
 
-type ThreadDigestChangedListener = (digest: ThreadDigestRecord) => void
-type ThreadDigestDiagnostics = Pick<DiagnosticsLogger, "error" | "info">
+type ThreadDigestChangedListener = (digest: ThreadDigestRecord, cause: DiagnosticEventRef) => void
 
-const NOOP_DIAGNOSTICS: ThreadDigestDiagnostics = {
-  error: () => {},
-  info: () => {}
+const NOOP_EVENT_REF: DiagnosticEventRef = {
+  eventId: "diag:noop:0",
+  sequence: 0,
+  sessionId: "noop"
+}
+
+const NOOP_DIAGNOSTICS: DiagnosticGraphSink = {
+  capture: () => NOOP_EVENT_REF
 }
 
 const DEFAULT_PROJECTION: ThreadDigestProjectionPort = {
   commit: commitThreadDigestProjection,
   prepare: prepareThreadDigestProjection
+}
+
+function isAbortFailure(error: unknown, signal: AbortSignal): boolean {
+  return (
+    signal.aborted &&
+    (error === signal.reason || (error instanceof Error && error.name === "AbortError"))
+  )
 }
 
 export class ThreadDigestService {
@@ -39,7 +50,7 @@ export class ThreadDigestService {
   private shuttingDown = false
 
   constructor(
-    private readonly diagnostics: ThreadDigestDiagnostics = NOOP_DIAGNOSTICS,
+    private readonly diagnostics: DiagnosticGraphSink = NOOP_DIAGNOSTICS,
     private readonly projection: ThreadDigestProjectionPort = DEFAULT_PROJECTION
   ) {}
 
@@ -179,7 +190,16 @@ export class ThreadDigestService {
     signal: AbortSignal,
     admitCommit: () => void
   ): Promise<ThreadDigestRecord> {
-    this.diagnostics.info("Thread digest generation started", { threadId })
+    const started = this.diagnostics.capture({
+      component: "thread-digest",
+      eventCode: "thread_digest.generation_started",
+      level: "info",
+      operation: "generate",
+      recoverable: true,
+      refs: [{ id: threadId, kind: "thread" }],
+      stateImpact: "none",
+      summary: "Thread digest generation started"
+    })
     try {
       const projection = await this.projection.prepare(threadId, signal)
       signal.throwIfAborted()
@@ -192,37 +212,69 @@ export class ThreadDigestService {
         )
       }
 
-      this.diagnostics.info("Thread digest generation completed", {
-        digestUpdatedAt: digest.updatedAt,
-        messageCount: digest.messageCount,
-        projectedThroughSeq: digest.projectedThroughSeq,
-        threadId
+      const ready = this.diagnostics.capture({
+        component: "thread-digest",
+        dimensionEntries: [
+          { key: "digestUpdatedAt", value: digest.updatedAt },
+          { key: "messageCount", value: digest.messageCount },
+          { key: "projectedThroughSeq", value: digest.projectedThroughSeq }
+        ],
+        eventCode: "thread_digest.generation_completed",
+        level: "info",
+        operation: "generate",
+        parentEvents: [started],
+        recoverable: true,
+        refs: [
+          { id: threadId, kind: "thread" },
+          { id: `${threadId}:${digest.updatedAt}`, kind: "thread-digest" }
+        ],
+        stateImpact: "digest_saved",
+        summary: "Thread digest generation completed"
       })
       if (!this.shuttingDown && !this.deletions.has(threadId)) {
         for (const listener of this.changedListeners) {
           try {
-            listener(digest)
+            listener(digest, ready)
           } catch (error) {
-            this.diagnostics.error("Thread digest change listener failed", {
-              digestUpdatedAt: digest.updatedAt,
-              error: error instanceof Error ? error.message : String(error),
-              projectedThroughSeq: digest.projectedThroughSeq,
-              threadId
+            this.diagnostics.capture({
+              component: "thread-digest",
+              dimensionEntries: [
+                { key: "digestUpdatedAt", value: digest.updatedAt },
+                { key: "projectedThroughSeq", value: digest.projectedThroughSeq }
+              ],
+              eventCode: "thread_digest.change_listener_failed",
+              evidence: [{ kind: "error", value: error }],
+              level: "error",
+              operation: "notify-change-listener",
+              parentEvents: [ready],
+              recoverable: true,
+              refs: [
+                { id: threadId, kind: "thread" },
+                { id: `${threadId}:${digest.updatedAt}`, kind: "thread-digest" }
+              ],
+              stateImpact: "digest_saved_listener_missed",
+              summary: "Thread digest change listener failed"
             })
           }
         }
       }
       return digest
     } catch (error) {
-      const fields = {
-        error: error instanceof Error ? error.message : String(error),
-        threadId
-      }
-      if (signal.aborted) {
-        this.diagnostics.info("Thread digest generation canceled", fields)
-      } else {
-        this.diagnostics.error("Thread digest generation failed", fields)
-      }
+      const canceled = isAbortFailure(error, signal)
+      this.diagnostics.capture({
+        component: "thread-digest",
+        eventCode: canceled
+          ? "thread_digest.generation_canceled"
+          : "thread_digest.generation_failed",
+        evidence: canceled ? [] : [{ kind: "error", value: error }],
+        level: canceled ? "info" : "error",
+        operation: "generate",
+        parentEvents: [started],
+        recoverable: true,
+        refs: [{ id: threadId, kind: "thread" }],
+        stateImpact: canceled ? "last_saved_digest_preserved" : "completion_not_confirmed",
+        summary: canceled ? "Thread digest generation canceled" : "Thread digest generation failed"
+      })
       throw error
     }
   }

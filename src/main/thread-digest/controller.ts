@@ -1,6 +1,6 @@
 import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent, type WebContents } from "electron"
 import { z } from "zod/v4"
-import type { DiagnosticsLogger } from "../diagnostics/logger"
+import type { DiagnosticEventRef, DiagnosticGraphSink } from "../diagnostics/schema"
 import { JingleIpcError } from "../ipc/error"
 import { registerValidatedIpcHandle } from "../ipc/handle"
 import { ThreadDigestService } from "./service"
@@ -17,10 +17,14 @@ interface ThreadDigestSenderIdentity {
   isLauncher(sender: WebContents): boolean
 }
 
-type ThreadDigestDiagnostics = Pick<DiagnosticsLogger, "warn">
+const NOOP_EVENT_REF: DiagnosticEventRef = {
+  eventId: "diag:noop:0",
+  sequence: 0,
+  sessionId: "noop"
+}
 
-const NOOP_DIAGNOSTICS: ThreadDigestDiagnostics = {
-  warn: () => {}
+const NOOP_DIAGNOSTICS: DiagnosticGraphSink = {
+  capture: () => NOOP_EVENT_REF
 }
 
 export class ThreadDigestController {
@@ -28,7 +32,7 @@ export class ThreadDigestController {
     private readonly service: ThreadDigestService,
     private readonly senderIdentity: ThreadDigestSenderIdentity,
     private readonly listWindows: () => BrowserWindow[] = () => BrowserWindow.getAllWindows(),
-    private readonly diagnostics: ThreadDigestDiagnostics = NOOP_DIAGNOSTICS
+    private readonly diagnostics: DiagnosticGraphSink = NOOP_DIAGNOSTICS
   ) {}
 
   register(ipcMain: IpcMain): void {
@@ -51,8 +55,8 @@ export class ThreadDigestController {
       }
     )
 
-    this.service.onChanged((digest) => {
-      this.publishChanged(digest)
+    this.service.onChanged((digest, cause) => {
+      this.publishChanged(digest, cause)
     })
   }
 
@@ -85,7 +89,7 @@ export class ThreadDigestController {
     })
   }
 
-  private publishChanged(digest: ThreadDigestRecord): void {
+  private publishChanged(digest: ThreadDigestRecord, cause?: DiagnosticEventRef): void {
     const payload = { digest } satisfies ThreadDigestChangedEvent
     for (const window of this.listWindows()) {
       if (window.isDestroyed()) {
@@ -105,14 +109,29 @@ export class ThreadDigestController {
         try {
           sender.send("threadDigest:changed", payload)
         } catch (error) {
-          this.diagnostics.warn("Thread digest change delivery failed", {
-            digestUpdatedAt: digest.updatedAt,
-            error: error instanceof Error ? error.message : String(error),
-            projectedThroughSeq: digest.projectedThroughSeq,
-            surface: isLauncher ? "launcher" : "pinned-ai-session",
-            threadId: digest.threadId,
-            webContentsId: sender.id,
-            windowId: window.id
+          this.diagnostics.capture({
+            component: "thread-digest",
+            dimensionEntries: [
+              { key: "digestUpdatedAt", value: digest.updatedAt },
+              { key: "projectedThroughSeq", value: digest.projectedThroughSeq },
+              { key: "surface", value: isLauncher ? "launcher" : "pinned-ai-session" },
+              { key: "webContentsId", value: sender.id },
+              { key: "windowId", value: window.id }
+            ],
+            eventCode: "thread_digest.change_delivery_failed",
+            evidence: [{ kind: "error", value: error }],
+            level: "warn",
+            operation: "publish-change",
+            parentEvents: cause ? [cause] : [],
+            recoverable: true,
+            refs: [
+              { id: digest.threadId, kind: "thread" },
+              { id: `${digest.threadId}:${digest.updatedAt}`, kind: "thread-digest" },
+              { id: String(window.id), kind: "window" },
+              { id: String(sender.id), kind: "web-contents" }
+            ],
+            stateImpact: "digest_saved_notification_missed",
+            summary: "Thread digest change delivery failed"
           })
         }
       }

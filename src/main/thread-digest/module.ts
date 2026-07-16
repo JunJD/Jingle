@@ -1,6 +1,6 @@
 import type { IpcMain } from "electron"
 import { instanceCachingFactory, type DependencyContainer } from "tsyringe"
-import { diagnosticsLogger } from "../diagnostics/instance"
+import { diagnosticsGraph } from "../diagnostics/instance"
 import { ThreadDigestController } from "./controller"
 import { ThreadDigestService } from "./service"
 import { isLauncherWindowWebContents } from "../windows/launcher-window"
@@ -8,7 +8,7 @@ import { getPinnedAiSessionWindowThreadId } from "../windows/pinned-ai-session-w
 
 export function registerThreadDigestModule(container: DependencyContainer): void {
   container.register(ThreadDigestService, {
-    useFactory: instanceCachingFactory(() => new ThreadDigestService(diagnosticsLogger))
+    useFactory: instanceCachingFactory(() => new ThreadDigestService(diagnosticsGraph))
   })
   container.register(ThreadDigestController, {
     useFactory: instanceCachingFactory((dependencyContainer) => {
@@ -19,7 +19,7 @@ export function registerThreadDigestModule(container: DependencyContainer): void
           isLauncher: isLauncherWindowWebContents
         },
         undefined,
-        diagnosticsLogger
+        diagnosticsGraph
       )
     })
   })
