@@ -1,7 +1,9 @@
-import { Loader2, MessageSquare, Search } from "lucide-react"
+import { MessageSquare, Search } from "lucide-react"
 import { useEffect, useMemo, useRef } from "react"
 import type { LauncherSearchResult } from "@shared/launcher-search"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Spinner } from "@/components/ui/spinner"
 
 interface LauncherAiThreadSearchOverlayProps {
   activeIndex: number
@@ -78,7 +80,7 @@ export function LauncherAiThreadSearchOverlay(
       <div className="launcher-ai-thread-search__panel">
         <div className="launcher-ai-thread-search__input-row">
           <Search className="launcher-ai-thread-search__input-icon" aria-hidden="true" />
-          <input
+          <Input
             ref={inputRef}
             aria-label={labels.search}
             className="launcher-ai-thread-search__input"
@@ -122,10 +124,7 @@ export function LauncherAiThreadSearchOverlay(
         <div className="launcher-ai-thread-search__body">
           {visibleState === "loading" ? (
             <div className="launcher-ai-thread-search__status">
-              <Loader2
-                className="launcher-ai-thread-search__spinner animate-spin"
-                aria-hidden="true"
-              />
+              <Spinner className="launcher-ai-thread-search__spinner" size="sm" />
               <span>{labels.searchLoading}</span>
             </div>
           ) : null}

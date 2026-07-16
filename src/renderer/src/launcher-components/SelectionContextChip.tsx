@@ -1,4 +1,5 @@
 import { FileText, X } from "lucide-react"
+import { IconButton } from "@/components/ui/icon-button"
 import type { LauncherSelectionContext } from "@shared/launcher-selection"
 
 export function SelectionContextChip(props: {
@@ -25,15 +26,16 @@ export function SelectionContextChip(props: {
       <span className="max-w-[var(--launcher-chip-max-width)] truncate [font-size:var(--jingle-font-control)] font-medium">
         {sourceLabel}: {context.text}
       </span>
-      <button
+      <IconButton
+        label="Clear selected text"
         type="button"
         onClick={onClear}
         onMouseDown={(event) => event.preventDefault()}
-        aria-label="Clear selected text"
-        className="flex h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] shrink-0 appearance-none items-center justify-center rounded-full border-0 bg-transparent p-0 text-current opacity-70 transition hover:opacity-100"
+        variant="ghost"
+        className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] rounded-full border-0 bg-transparent p-0 text-current opacity-70 hover:bg-transparent hover:opacity-100"
       >
         <X className="size-[var(--jingle-icon-compact)]" />
-      </button>
+      </IconButton>
     </div>
   )
 }
