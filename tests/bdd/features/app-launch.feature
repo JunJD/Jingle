@@ -100,6 +100,7 @@ Feature: Jingle 桌面启动
 
   Scenario: Launcher 首页可以被关闭
     Given Jingle 桌面应用已启动
+    When 我显示 Launcher 窗口
     Then Launcher 窗口当前可见
     When 我在 Launcher 首页按下 Escape
     Then Launcher 窗口已隐藏

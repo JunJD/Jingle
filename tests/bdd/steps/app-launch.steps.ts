@@ -80,9 +80,7 @@ async function readLauncherAiStreamingReplyState(page: Page): Promise<{
   const streamingTurn = aiSurface
     .locator('[data-message-turn-active="true"][data-message-turn-streaming="true"]')
     .first()
-  const streamingAssistant = streamingTurn
-    .locator('[data-assistant-message-streaming="true"]')
-    .first()
+  const streamingAssistant = streamingTurn.locator(".is-assistant").last()
 
   if ((await streamingTurn.count()) === 0 || (await streamingAssistant.count()) === 0) {
     return {
@@ -257,6 +255,10 @@ Then("默认不会打开 Launcher 窗口", async function (this: JingleWorld) {
 
 Then("Launcher 窗口当前可见", async function (this: JingleWorld) {
   await expect.poll(() => this.isWindowVisible("launcher")).toBe(true)
+})
+
+When("我显示 Launcher 窗口", async function (this: JingleWorld) {
+  await this.getPageByKind("launcher")
 })
 
 When("我在 Launcher 中搜索 {string}", async function (this: JingleWorld, query: string) {
