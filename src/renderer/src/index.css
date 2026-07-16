@@ -388,7 +388,7 @@
   --jingle-dialog-mobile-w: calc(100% - 2rem);
   --jingle-dialog-w-sm: 400px;
   --jingle-font-ui-family:
-    "OW Sans CN", "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI",
+    "Jingle Sans CN", "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI",
     "Segoe UI", sans-serif;
   --jingle-font-code-family: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, monospace;
   --jingle-semantic-skill: #5f6ac2;
