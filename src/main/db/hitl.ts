@@ -12,12 +12,15 @@ export interface HitlRequestRow {
   review_kind: string | null
   review_payload: string | null
   allowed_decisions: string
-  status: string
+  status: HitlRequestStatus
   decision: string | null
   created_at: number
   updated_at: number
   resolved_at: number | null
 }
+
+export type HitlRequestStatus = "pending" | HitlRequestTerminalStatus
+export type HitlRequestTerminalStatus = "approved" | "rejected"
 
 export interface UpsertHitlRequestInput {
   request_id: string
@@ -29,11 +32,9 @@ export interface UpsertHitlRequestInput {
   review_kind?: string | null
   review_payload?: unknown
   allowed_decisions: string[] | string
-  status?: string
-  decision?: Record<string, unknown> | string | null
+  status?: "pending"
   created_at?: number
   updated_at?: number
-  resolved_at?: number | null
 }
 
 function mapHitlRequestRow(row: HitlRequest): HitlRequestRow {
@@ -47,7 +48,7 @@ function mapHitlRequestRow(row: HitlRequest): HitlRequestRow {
     review_kind: row.reviewKind,
     review_payload: row.reviewPayload,
     allowed_decisions: row.allowedDecisions,
-    status: row.status,
+    status: row.status as HitlRequestStatus,
     decision: row.decision,
     created_at: toNumber(row.createdAt),
     updated_at: toNumber(row.updatedAt),
@@ -59,59 +60,79 @@ export async function upsertHitlRequest(input: UpsertHitlRequestInput): Promise<
   const prisma = getPrismaClient()
   const now = BigInt(input.updated_at ?? input.created_at ?? Date.now())
   const createdAt = BigInt(input.created_at ?? Number(now))
-  const resolvedAt =
-    input.resolved_at === undefined
-      ? undefined
-      : input.resolved_at === null
-        ? null
-        : BigInt(input.resolved_at)
+  const toolArgs =
+    typeof input.tool_args === "string" ? input.tool_args : JSON.stringify(input.tool_args)
+  const allowedDecisions =
+    typeof input.allowed_decisions === "string"
+      ? input.allowed_decisions
+      : JSON.stringify(input.allowed_decisions)
 
-  const row = await prisma.hitlRequest.upsert({
-    where: {
-      requestId: input.request_id
-    },
-    create: {
-      requestId: input.request_id,
-      threadId: input.thread_id,
-      runId: input.run_id ?? null,
-      toolCallId: input.tool_call_id,
-      toolName: input.tool_name,
-      toolArgs:
-        typeof input.tool_args === "string" ? input.tool_args : JSON.stringify(input.tool_args),
-      reviewKind: input.review_kind ?? null,
-      reviewPayload: serializeJsonValue(input.review_payload) ?? null,
-      allowedDecisions:
-        typeof input.allowed_decisions === "string"
-          ? input.allowed_decisions
-          : JSON.stringify(input.allowed_decisions),
-      status: input.status ?? "pending",
-      decision: serializeJsonValue(input.decision) ?? null,
-      createdAt,
-      updatedAt: now,
-      resolvedAt: resolvedAt ?? null
-    },
-    update: {
-      runId: input.run_id ?? undefined,
-      toolCallId: input.tool_call_id,
-      toolName: input.tool_name,
-      toolArgs:
-        typeof input.tool_args === "string" ? input.tool_args : JSON.stringify(input.tool_args),
-      reviewKind: input.review_kind === undefined ? undefined : input.review_kind,
-      reviewPayload:
-        input.review_payload === undefined
-          ? undefined
-          : (serializeJsonValue(input.review_payload) ?? null),
-      allowedDecisions:
-        typeof input.allowed_decisions === "string"
-          ? input.allowed_decisions
-          : JSON.stringify(input.allowed_decisions),
-      status: input.status ?? "pending",
-      decision:
-        input.decision === undefined ? undefined : (serializeJsonValue(input.decision) ?? null),
-      updatedAt: now,
-      resolvedAt
+  const { row, staleReplay } = await prisma.$transaction(async (tx) => {
+    const current = await tx.hitlRequest.upsert({
+      where: {
+        requestId: input.request_id
+      },
+      create: {
+        requestId: input.request_id,
+        threadId: input.thread_id,
+        runId: input.run_id ?? null,
+        toolCallId: input.tool_call_id,
+        toolName: input.tool_name,
+        toolArgs,
+        reviewKind: input.review_kind ?? null,
+        reviewPayload: serializeJsonValue(input.review_payload) ?? null,
+        allowedDecisions,
+        status: "pending",
+        decision: null,
+        createdAt,
+        updatedAt: now,
+        resolvedAt: null
+      },
+      update: {}
+    })
+
+    if (current.status !== "pending") {
+      return { row: current, staleReplay: true }
     }
+
+    await tx.hitlRequest.updateMany({
+      where: {
+        requestId: input.request_id,
+        status: "pending"
+      },
+      data: {
+        runId: input.run_id ?? undefined,
+        toolCallId: input.tool_call_id,
+        toolName: input.tool_name,
+        toolArgs,
+        reviewKind: input.review_kind === undefined ? undefined : input.review_kind,
+        reviewPayload:
+          input.review_payload === undefined
+            ? undefined
+            : (serializeJsonValue(input.review_payload) ?? null),
+        allowedDecisions,
+        decision: null,
+        updatedAt: now,
+        resolvedAt: null
+      }
+    })
+
+    const refreshed = await tx.hitlRequest.findUniqueOrThrow({
+      where: {
+        requestId: input.request_id
+      }
+    })
+    return { row: refreshed, staleReplay: refreshed.status !== "pending" }
   })
+
+  if (staleReplay) {
+    console.warn("[HITL] Ignored stale pending request replay.", {
+      requestId: input.request_id,
+      runId: input.run_id ?? null,
+      status: row.status,
+      threadId: input.thread_id
+    })
+  }
 
   return mapHitlRequestRow(row)
 }
@@ -145,7 +166,10 @@ export async function hasPendingHitlRequest(threadId: string): Promise<boolean> 
   return row !== null
 }
 
-export async function hasPendingHitlRequestForRun(threadId: string, runId: string): Promise<boolean> {
+export async function hasPendingHitlRequestForRun(
+  threadId: string,
+  runId: string
+): Promise<boolean> {
   const prisma = getPrismaClient()
   const row = await prisma.hitlRequest.findFirst({
     select: {
@@ -174,30 +198,31 @@ export async function getHitlRequest(requestId: string): Promise<HitlRequestRow 
 
 export async function resolveHitlRequest(
   requestId: string,
-  status: string,
-  decision?: Record<string, unknown> | string | null
+  status: HitlRequestTerminalStatus,
+  decision: Record<string, unknown> | string
 ): Promise<HitlRequestRow | null> {
   const prisma = getPrismaClient()
-  const existing = await prisma.hitlRequest.findUnique({
-    where: {
-      requestId
-    }
-  })
-
-  if (!existing) {
-    return null
-  }
-
   const now = BigInt(Date.now())
-  const row = await prisma.hitlRequest.update({
+  const result = await prisma.hitlRequest.updateMany({
     where: {
-      requestId
+      requestId,
+      status: "pending"
     },
     data: {
       status,
-      decision: decision === undefined ? undefined : (serializeJsonValue(decision) ?? null),
+      decision: serializeJsonValue(decision),
       updatedAt: now,
       resolvedAt: now
+    }
+  })
+
+  if (result.count === 0) {
+    return null
+  }
+
+  const row = await prisma.hitlRequest.findUniqueOrThrow({
+    where: {
+      requestId
     }
   })
 
@@ -206,8 +231,8 @@ export async function resolveHitlRequest(
 
 export async function resolvePendingHitlRequests(
   threadId: string,
-  status: string,
-  decision?: Record<string, unknown> | string | null
+  status: HitlRequestTerminalStatus,
+  decision: Record<string, unknown> | string
 ): Promise<number> {
   const prisma = getPrismaClient()
   const now = BigInt(Date.now())
@@ -218,7 +243,7 @@ export async function resolvePendingHitlRequests(
     },
     data: {
       status,
-      decision: decision === undefined ? undefined : (serializeJsonValue(decision) ?? null),
+      decision: serializeJsonValue(decision),
       updatedAt: now,
       resolvedAt: now
     }

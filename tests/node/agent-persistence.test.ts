@@ -307,6 +307,158 @@ test("resume primitives target the request's run instead of the latest active ru
   assert.equal(untouchedRequest?.status, "pending")
 })
 
+test("terminal HITL requests ignore stale pending request replay", async () => {
+  const { createRun, createThread, getHitlRequest, resolveHitlRequest, upsertHitlRequest } =
+    await loadDbModules()
+  const consoleWarn = mock.method(console, "warn", () => {})
+  const threadId = "thread-hitl-terminal-replay"
+  const runId = "run-hitl-terminal-replay"
+  const requestId = "request-hitl-terminal-replay"
+
+  try {
+    await createThread(threadId)
+    await createRun(runId, threadId, { status: "interrupted" })
+    await upsertHitlRequest({
+      allowed_decisions: ["approve", "reject"],
+      request_id: requestId,
+      run_id: runId,
+      status: "pending",
+      thread_id: threadId,
+      tool_args: { path: "/tmp/original.txt" },
+      tool_call_id: "tool-call-hitl-terminal-replay",
+      tool_name: "write_file"
+    })
+    await resolveHitlRequest(requestId, "approved", {
+      request_id: requestId,
+      tool_call_id: "tool-call-hitl-terminal-replay",
+      type: "approve"
+    })
+
+    await upsertHitlRequest({
+      allowed_decisions: ["approve", "reject"],
+      request_id: requestId,
+      run_id: "run-stale-replay",
+      status: "pending",
+      thread_id: "thread-stale-replay",
+      tool_args: { path: "/tmp/stale.txt" },
+      tool_call_id: "tool-call-stale-replay",
+      tool_name: "delete_file"
+    })
+
+    const request = await getHitlRequest(requestId)
+    assert.equal(request?.status, "approved")
+    assert.equal(request?.run_id, runId)
+    assert.equal(request?.thread_id, threadId)
+    assert.equal(request?.tool_call_id, "tool-call-hitl-terminal-replay")
+    assert.deepEqual(JSON.parse(request?.tool_args ?? "{}"), { path: "/tmp/original.txt" })
+    assert.equal(JSON.parse(request?.decision ?? "{}").type, "approve")
+    assert.equal(consoleWarn.mock.callCount(), 1)
+  } finally {
+    consoleWarn.mock.restore()
+  }
+})
+
+test("concurrent HITL resolution accepts exactly one terminal decision", async () => {
+  const { createRun, createThread, getHitlRequest, resolveHitlRequest, upsertHitlRequest } =
+    await loadDbModules()
+  const threadId = "thread-hitl-concurrent-cas"
+  const runId = "run-hitl-concurrent-cas"
+  const requestId = "request-hitl-concurrent-cas"
+
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "interrupted" })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve", "reject"],
+    request_id: requestId,
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: { path: "/tmp/concurrent.txt" },
+    tool_call_id: "tool-call-hitl-concurrent-cas",
+    tool_name: "write_file"
+  })
+
+  const decisions = await Promise.all([
+    resolveHitlRequest(requestId, "approved", {
+      request_id: requestId,
+      tool_call_id: "tool-call-hitl-concurrent-cas",
+      type: "approve"
+    }),
+    resolveHitlRequest(requestId, "rejected", {
+      request_id: requestId,
+      tool_call_id: "tool-call-hitl-concurrent-cas",
+      type: "reject"
+    })
+  ])
+  const winner = decisions.filter((decision) => decision !== null)
+  const stored = await getHitlRequest(requestId)
+
+  assert.equal(winner.length, 1)
+  assert.equal(decisions.filter((decision) => decision === null).length, 1)
+  assert.equal(stored?.status, winner[0]?.status)
+  assert.equal(
+    JSON.parse(stored?.decision ?? "{}").type,
+    winner[0]?.status === "approved" ? "approve" : "reject"
+  )
+})
+
+test("HITL CAS loser does not record approval.resolved", async () => {
+  const { createRun, createThread, getPrismaClient, upsertHitlRequest } = await loadDbModules()
+  const { createRuntimeRunLifecycleController } =
+    await import("../../src/main/agent/run-lifecycle-controller")
+  const threadId = "thread-hitl-cas-loser-event"
+  const runId = "run-hitl-cas-loser-event"
+  const requestId = "request-hitl-cas-loser-event"
+  const toolCallId = "tool-call-hitl-cas-loser-event"
+
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "interrupted" })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve", "reject"],
+    request_id: requestId,
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: { path: "/tmp/cas-loser.txt" },
+    tool_call_id: toolCallId,
+    tool_name: "write_file"
+  })
+
+  const controller = createRuntimeRunLifecycleController({})
+  const createStart = (type: "approve" | "reject") =>
+    controller.beginResumeRun({
+      resume: {
+        decision: { request_id: requestId, tool_call_id: toolCallId, type },
+        modelId: "bdd",
+        runId,
+        source: "resume"
+      } as never,
+      threadId
+    })
+  const [firstStart, secondStart] = await Promise.all([
+    createStart("approve"),
+    createStart("reject")
+  ])
+
+  const resolutions = await Promise.allSettled([
+    firstStart.beforePendingHitlPersistence(),
+    secondStart.beforePendingHitlPersistence()
+  ])
+  const rejected = resolutions.filter(
+    (result): result is PromiseRejectedResult => result.status === "rejected"
+  )
+
+  assert.equal(resolutions.filter((result) => result.status === "fulfilled").length, 1)
+  assert.equal(rejected.length, 1)
+  assert.equal((rejected[0]?.reason as { code?: string }).code, "CONFLICT")
+  assert.equal(
+    await getPrismaClient().agentEvent.count({
+      where: { runId, threadId, type: "approval.resolved" }
+    }),
+    1
+  )
+})
+
 test("beginAgentRun rolls back the run row when marking the thread busy fails", async () => {
   const { createThread, getPrismaClient, getThread } = await loadDbModules()
   const { beginAgentRun } = await import("../../src/main/agent/persistence")

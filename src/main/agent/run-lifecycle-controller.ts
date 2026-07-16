@@ -12,6 +12,7 @@ import type {
 } from "@shared/jingle-memory"
 import { runtimeUsesCheckpointPersistence } from "../checkpointer/runtime-checkpointer-manager"
 import { resolveHitlRequest } from "../db/hitl"
+import { JingleIpcError } from "../ipc/error"
 import type { JingleMemoryService } from "../jingle-memory/service"
 import type { createExtensionAiRuntime } from "./extension-ai-runtime"
 import { recordApprovalResolved, recordRunFinished, recordRunInterrupted } from "./event-recorder"
@@ -107,7 +108,7 @@ export function createRuntimeRunLifecycleController(input: {
       )
       return {
         beforePendingHitlPersistence: async () => {
-          await resolveHitlRequest(
+          const resolvedRequest = await resolveHitlRequest(
             resume.decision.request_id,
             resolveHitlRequestStatus(resume.decision.type),
             {
@@ -117,6 +118,13 @@ export function createRuntimeRunLifecycleController(input: {
               type: resume.decision.type
             }
           )
+          if (!resolvedRequest) {
+            throw new JingleIpcError({
+              channel: "agent:resume",
+              code: "CONFLICT",
+              message: `[Agent] HITL request "${resume.decision.request_id}" was resolved by another resume request.`
+            })
+          }
           await recordApprovalResolved({
             decision: resume.decision,
             requestId: resume.decision.request_id,
