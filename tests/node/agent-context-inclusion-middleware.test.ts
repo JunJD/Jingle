@@ -2,8 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { ToolMessage } from "@langchain/core/messages"
 import { GraphInterrupt } from "@langchain/langgraph"
-import { createJingleContextRetrievalToolsHook } from "@jingle/langchain-agent-harness/transitional"
-import { compileRuntimeHookToMiddleware } from "../../packages/langchain-agent-harness/src/harness-runtime"
+import { createContextRetrievalToolsMiddleware } from "@jingle/langchain-agent-harness/transitional"
 import { contextRetrievalToolHandlersInternals } from "../../src/main/agent/context-retrieval-tool-handlers"
 import { createAgentContextInclusionToolHandlers } from "../../src/main/agent/context-retrieval-tool-handlers"
 import type { AgentTraceBlobRow, AgentTraceStepRow, AgentTraceSummaryRow } from "../../src/main/db"
@@ -13,14 +12,12 @@ import type { ThreadDigestSearchMatch } from "../../src/shared/thread-digest"
 import { parseContextRetrievalToolResult } from "../../src/shared/context-retrieval-results"
 
 function createContextMiddleware() {
-  return compileRuntimeHookToMiddleware(
-    createJingleContextRetrievalToolsHook({
-      runId: "run-1",
-      ...createAgentContextInclusionToolHandlers({
-        threadId: "thread-1"
-      })
+  return createContextRetrievalToolsMiddleware({
+    runId: "run-1",
+    ...createAgentContextInclusionToolHandlers({
+      threadId: "thread-1"
     })
-  )
+  })
 }
 
 function createToolCallRequest(input: {
@@ -41,10 +38,11 @@ function createToolCallRequest(input: {
 test("context inclusion middleware exposes only history and evidence retrieval tools", () => {
   const middleware = createContextMiddleware()
 
-  assert.deepEqual(
-    (middleware.tools ?? []).map((tool) => tool.name).sort(),
-    ["get_message_context", "get_trace_evidence", "search_history"]
-  )
+  assert.deepEqual((middleware.tools ?? []).map((tool) => tool.name).sort(), [
+    "get_message_context",
+    "get_trace_evidence",
+    "search_history"
+  ])
 })
 
 test("search_history tool content includes retrieved message bodies for the model", () => {
@@ -150,7 +148,9 @@ test("context retrieval tool schema errors are returned as error tool messages",
       id: "tool-call-search-history"
     }) as never,
     async () => {
-      throw new Error("Received tool input did not match expected schema\n\n✖ Invalid input\n  → at limit")
+      throw new Error(
+        "Received tool input did not match expected schema\n\n✖ Invalid input\n  → at limit"
+      )
     }
   )) as ToolMessage
 
@@ -167,9 +167,12 @@ test("context retrieval tool error middleware preserves graph interrupts", async
 
   await assert.rejects(
     async () =>
-      middleware.wrapToolCall!(createToolCallRequest({ name: "search_history" }) as never, async () => {
-        throw interrupt
-      }),
+      middleware.wrapToolCall!(
+        createToolCallRequest({ name: "search_history" }) as never,
+        async () => {
+          throw interrupt
+        }
+      ),
     (error) => error === interrupt
   )
 })

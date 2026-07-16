@@ -5,9 +5,11 @@ export const RUNTIME_TARGET_NODE_ORDER = [
   "ContextActivationNode",
   "WorkingSetNode",
   "ModelStepNode",
+  "TitleProjectionNode",
   "PermissionGateNode",
   "ToolStepNode",
-  "StepResultNode"
+  "StepResultNode",
+  "MemoryRecordingProjectionNode"
 ] as const satisfies readonly RuntimeTargetNodeKind[]
 
 export const RUNTIME_COMPACT_NODE_ORDER = [
@@ -55,7 +57,27 @@ export const RUNTIME_TARGET_NODE_DESCRIPTORS = {
     privateWrites: ["modelOutput"],
     responsibility:
       "Own one model call and return assistant messages or tool intents as state updates.",
-    stateWrites: ["messages", "title"]
+    stateWrites: ["messages"]
+  },
+  TitleProjectionNode: {
+    boundary: "projection",
+    cannot: ["route graph execution", "write product database"],
+    consumes: ["RuntimeState.messages", "RuntimeState.title", "RuntimeCapabilities.prompt"],
+    engineStatus: "wired",
+    kind: "TitleProjectionNode",
+    privateWrites: [],
+    responsibility: "Generate the first stable thread title after a complete assistant response.",
+    stateWrites: ["title"]
+  },
+  MemoryRecordingProjectionNode: {
+    boundary: "projection",
+    cannot: ["route graph execution", "write product database"],
+    consumes: ["RuntimeState.contextInclusions"],
+    engineStatus: "wired",
+    kind: "MemoryRecordingProjectionNode",
+    privateWrites: [],
+    responsibility: "Project provided memory inclusions into checkpoint recording references.",
+    stateWrites: ["recordingRefs"]
   },
   PermissionGateNode: {
     boundary: "permission",

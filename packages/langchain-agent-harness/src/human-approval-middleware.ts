@@ -1,9 +1,7 @@
 import { ToolMessage } from "@langchain/core/messages"
-import { Command, END, interrupt, isGraphInterrupt, StateSchema } from "@langchain/langgraph"
+import { Command, interrupt, isGraphInterrupt, StateSchema } from "@langchain/langgraph"
 import { createMiddleware } from "langchain"
 import type { ActionRequest, ReviewConfig } from "langchain"
-import type { RuntimeMiddlewareHook } from "./harness-runtime"
-import { defineJingleHarnessHook } from "./harness-hooks"
 import { runtimeApprovalsValue, runtimeToolDecisionsValue } from "./runtime-state"
 
 export type HumanApprovalDisposition = "allow" | "deny" | "require_approval"
@@ -57,6 +55,12 @@ interface HumanApprovalInterruptValue<TReview = unknown> {
   kind: "tool-approval"
   actionRequests: HumanApprovalActionRequest<TReview>[]
   reviewConfigs: ReviewConfig[]
+}
+
+const HUMAN_APPROVAL_RESULT_KEY = "jingle_human_approval"
+
+interface HumanApprovalToolResult {
+  outcome: "user_declined"
 }
 
 const humanApprovalStateSchema = new StateSchema({
@@ -118,6 +122,32 @@ function buildCorrectionToolMessage(input: {
     tool_call_id: toolCallId,
     status: "error"
   })
+}
+
+function buildUserDeclinedToolMessage(input: {
+  toolCallId: string
+  toolName: string
+}): ToolMessage {
+  return new ToolMessage({
+    additional_kwargs: {
+      [HUMAN_APPROVAL_RESULT_KEY]: {
+        outcome: "user_declined"
+      } satisfies HumanApprovalToolResult
+    },
+    content: "The user declined this action.",
+    name: input.toolName,
+    tool_call_id: input.toolCallId,
+    status: "error"
+  })
+}
+
+export function isUserDeclinedToolMessage(message: unknown): message is ToolMessage {
+  if (!ToolMessage.isInstance(message)) return false
+
+  const result = message.additional_kwargs[HUMAN_APPROVAL_RESULT_KEY] as
+    | HumanApprovalToolResult
+    | undefined
+  return result?.outcome === "user_declined"
 }
 
 function buildPolicyBlockedCommand(input: {
@@ -289,7 +319,10 @@ function createHumanApprovalRuntimeMiddleware<TReview = unknown>(
           toolName: request.toolCall.name
         })
         if (approvalDecision.type === "user_declined") {
-          return new Command({ goto: END, update: { messages: [] } })
+          return buildUserDeclinedToolMessage({
+            toolCallId,
+            toolName: request.toolCall.name
+          })
         }
         if (approvalDecision.type === "corrected") {
           if (!approvalDecision.correction) {
@@ -308,19 +341,8 @@ function createHumanApprovalRuntimeMiddleware<TReview = unknown>(
   })
 }
 
-export function createJingleHumanApprovalHook<TReview = unknown>(
+export function createHumanApprovalMiddleware<TReview = unknown>(
   options: CreateHumanApprovalMiddlewareOptions<TReview>
-): RuntimeMiddlewareHook {
-  return defineJingleHarnessHook({
-    name: "approvals",
-    phase: "agent_loop",
-    adapterStateKeys: ["__interrupt__"],
-    reads: [],
-    runtimeStateKeys: [],
-    writes: ["approvals"],
-    writePolicy: "host-port",
-    failureSemantics: "core",
-    observableSignals: ["state", "stream", "recording"],
-    createMiddleware: () => createHumanApprovalRuntimeMiddleware(options)
-  })
+) {
+  return createHumanApprovalRuntimeMiddleware(options)
 }

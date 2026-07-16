@@ -17,7 +17,8 @@ Current runtime owner:
 - Jingle skill source ordering, with canonical workspace lookup at `.jingle/skills`
 - generic guardrail middleware
 - LangChain message text/tool-call-signal/HumanMessage refs and cloning readers used by host middleware adapters, plus trace callback lifecycle, skipped run-name handling, input summary hashing/preview, usage extraction, and error capture for observability callbacks
-- title middleware, title state schema, and title policy helpers for generated-title parsing, first-exchange eligibility, tool-call pending suppression, and title prompt construction from LangChain messages; the host injects model-provider selection, timeout, and logging through a title generator port, not a title middleware instance
+- explicit `TitleProjectionNode`, title state schema, and title policy helpers for generated-title parsing, first-exchange eligibility, tool-call pending suppression, and title prompt construction from LangChain messages; the host injects model-provider selection, timeout, and logging through a title generator port
+- explicit `MemoryRecordingProjectionNode` on the normal run terminal path, projecting provided memory inclusions into checkpoint recording refs after remaining `afterAgent` behavior; compact operations bypass this projection because `RuntimeThread.compact` is the sole durable owner
 - Jingle-owned LangGraph state contract for `title`, `contextInclusions`, and `artifacts` schemas/reducers; artifact state stores manifests and presentation receipts only, while durable artifact content stays in the host artifact service
 - web search LangChain tool shell for the `web_search` name, JSON schema, description, query validation, and middleware registration, with search execution injected by the host
 - desktop automation LangChain tool shell for tool names, JSON schemas, descriptions, and middleware registration, with native parser/runner handlers injected by the host

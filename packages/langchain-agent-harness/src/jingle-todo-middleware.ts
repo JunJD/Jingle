@@ -1,5 +1,3 @@
-import { defineJingleHarnessHook } from "./harness-hooks"
-import type { RuntimeMiddlewareHook } from "./harness-runtime"
 import {
   createJingleTodoListMiddleware,
   type JingleTodoListMiddleware
@@ -42,17 +40,6 @@ function createJingleTodoRuntimeMiddleware(): JingleTodoListMiddleware {
   })
 }
 
-export function createJingleTodoHook(): RuntimeMiddlewareHook<JingleTodoListMiddleware> {
-  return defineJingleHarnessHook({
-    name: "todo",
-    phase: "agent_loop",
-    adapterStateKeys: [],
-    reads: [],
-    runtimeStateKeys: [],
-    writes: ["todos"],
-    writePolicy: "command-update",
-    failureSemantics: "core",
-    observableSignals: ["state", "stream"],
-    createMiddleware: createJingleTodoRuntimeMiddleware
-  })
+export function createTodoMiddleware(): JingleTodoListMiddleware {
+  return createJingleTodoRuntimeMiddleware()
 }

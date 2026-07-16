@@ -14,14 +14,11 @@ export {
   jingleAgentArtifactsStateSchema,
   reduceJingleAgentStateArtifacts
 } from "./artifact-state"
-export type {
-  CreateJingleArtifactToolsHookOptions,
-  JingleArtifactPresentationContext
-} from "./artifact-tools-middleware"
-export { createJingleArtifactToolsHook } from "./artifact-tools-middleware"
-export type { CreateJingleExtensionAiToolsHookOptions } from "./extension-ai-tools-middleware"
+export type { CreateArtifactToolsMiddlewareOptions } from "./artifact-tools-middleware"
+export { createArtifactToolsMiddleware } from "./artifact-tools-middleware"
+export type { CreateExtensionAiToolsMiddlewareOptions } from "./extension-ai-tools-middleware"
 export {
-  createJingleExtensionAiToolsHook,
+  createExtensionAiToolsMiddleware,
   JINGLE_CALL_EXTENSION_TOOL_NAME
 } from "./extension-ai-tools-middleware"
 export {
@@ -29,13 +26,13 @@ export {
   jingleAgentContextInclusionsStateSchema,
   upsertJingleContextInclusions
 } from "./context-inclusion-state"
-export type { CreateJingleContextRetrievalToolsMiddlewareOptions } from "./context-retrieval-tools-middleware"
+export type { CreateContextRetrievalToolsMiddlewareOptions } from "./context-retrieval-tools-middleware"
 export {
-  createJingleContextRetrievalToolsHook,
+  createContextRetrievalToolsMiddleware,
   jingleSearchHistoryInputSchema
 } from "./context-retrieval-tools-middleware"
-export type { CreateJingleMemoryHookOptions } from "./memory-middleware"
-export { createJingleMemoryHook, createJingleMemoryRecordingRefsHook } from "./memory-middleware"
+export type { CreateMemoryMiddlewareOptions } from "./memory-middleware"
+export { createMemoryMiddleware } from "./memory-middleware"
 export { jingleAgentTitleStateSchema, jingleAgentTitleValue } from "./title-state"
 export { JingleNodeFilesystemBackend } from "./harness-runtime/node-filesystem-backend"
 export type { JingleNodeFilesystemBackendOptions } from "./harness-runtime/node-filesystem-backend"
@@ -86,7 +83,7 @@ export { createJingleWorkspaceFileContextMiddleware } from "./workspace-file-con
 export type { GuardrailDecision, GuardrailProvider, GuardrailRequest } from "./guardrail-middleware"
 export { createGuardrailMiddleware } from "./guardrail-middleware"
 export type { HumanApprovalRequester } from "./human-approval-middleware"
-export { createJingleHumanApprovalHook } from "./human-approval-middleware"
+export { createHumanApprovalMiddleware } from "./human-approval-middleware"
 export type {
   JingleApprovalDecision,
   JingleApprovalDecisionType,
@@ -143,7 +140,7 @@ export {
 } from "./langgraph-values-projection"
 export { JingleStreamingToolCallAccumulator } from "./streaming-tool-call-accumulator"
 export {
-  createJingleTodoHook,
+  createTodoMiddleware,
   JINGLE_TODO_SYSTEM_PROMPT,
   JINGLE_TODO_TOOL_DESCRIPTION
 } from "./jingle-todo-middleware"
@@ -154,7 +151,6 @@ export {
 } from "./title-policy"
 export type { JingleTitleGenerationModel } from "./title-generator"
 export { createJingleTitleGenerator } from "./title-generator"
-export { createJingleTitleHook } from "./title-middleware"
 export { createJingleAgentTraceRecordingRef } from "./recording-ref-state"
 export { createRuntimeCompactionSummarizationController } from "./agent-loop"
 export type {

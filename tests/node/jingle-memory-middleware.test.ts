@@ -1,7 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { createJingleMemoryHook, createJingleMemoryRecordingRefsHook } from "@jingle/langchain-agent-harness/transitional"
-import { compileRuntimeHookToMiddleware } from "../../packages/langchain-agent-harness/src/harness-runtime"
+import { createMemoryMiddleware } from "@jingle/langchain-agent-harness/transitional"
 import type { AgentContextInclusion, JingleWorkspaceIdentity } from "../../src/shared/jingle-memory"
 import {
   createJingleMemoryHarnessPortOptions,
@@ -20,16 +19,10 @@ type InvokableTool = {
   name: string
 }
 
-function compileJingleMemoryHookForTest(
-  options: CreateJingleMemoryHarnessPortOptions,
-  fallbackRunId = "fallback-run"
-) {
-  return compileRuntimeHookToMiddleware(
-    createJingleMemoryHook<AgentContextInclusion>({
-      ...createJingleMemoryHarnessPortOptions(options),
-      fallbackRunId
-    })
-  )
+function createMemoryMiddlewareForTest(options: CreateJingleMemoryHarnessPortOptions) {
+  return createMemoryMiddleware<AgentContextInclusion>({
+    ...createJingleMemoryHarnessPortOptions(options)
+  })
 }
 
 function createContextInclusion(
@@ -60,7 +53,7 @@ test("jingle memory middleware binds retrieved evidence refs to pending suggesti
       return {}
     }
   } as unknown as JingleMemoryService
-  const middleware = compileJingleMemoryHookForTest({
+  const middleware = createMemoryMiddlewareForTest({
     allowSuggestions: true,
     contextPack: null,
     service,
@@ -149,8 +142,43 @@ test("jingle memory middleware binds retrieved evidence refs to pending suggesti
   })
 })
 
+test("jingle memory suggestion requires the runtime run id", async () => {
+  const middleware = createMemoryMiddlewareForTest({
+    allowSuggestions: true,
+    contextPack: null,
+    service: {} as JingleMemoryService,
+    temporaryMode: false,
+    threadId: "thread-1",
+    workspaceIdentity
+  })
+  const suggestTool = middleware.tools?.find(
+    (tool) =>
+      typeof tool === "object" &&
+      tool !== null &&
+      "name" in tool &&
+      tool.name === "suggest_personal_memory" &&
+      "invoke" in tool &&
+      typeof tool.invoke === "function"
+  ) as InvokableTool | undefined
+  assert.ok(suggestTool)
+
+  await assert.rejects(
+    suggestTool.invoke(
+      {
+        content: "Remember this",
+        scope: "global",
+        type: "about_me"
+      },
+      {
+        state: { contextInclusions: [] }
+      }
+    ),
+    /Tool runtime config is missing run_id/
+  )
+})
+
 test("jingle memory middleware does not expose suggestion tool in temporary mode", () => {
-  const middleware = compileJingleMemoryHookForTest({
+  const middleware = createMemoryMiddlewareForTest({
     allowSuggestions: true,
     contextPack: null,
     service: {} as JingleMemoryService,
@@ -160,32 +188,24 @@ test("jingle memory middleware does not expose suggestion tool in temporary mode
   })
 
   const tools = middleware.tools ?? []
-  assert.equal(tools.some((tool) => tool.name === "suggest_personal_memory"), false)
+  assert.equal(
+    tools.some((tool) => tool.name === "suggest_personal_memory"),
+    false
+  )
 })
 
-test("jingle memory hook keeps suggestion tool and recording projection as separate contracts", () => {
-  const memoryHook = createJingleMemoryHook<AgentContextInclusion>(
-    {
-      ...createJingleMemoryHarnessPortOptions({
-        allowSuggestions: true,
-        contextPack: null,
-        service: {} as JingleMemoryService,
-        temporaryMode: false,
-        threadId: "thread-1",
-        workspaceIdentity
-      }),
-      fallbackRunId: "run-1"
-    }
-  )
-  const recordingHook = createJingleMemoryRecordingRefsHook()
-
-  assert.deepEqual(memoryHook.reads, ["contextInclusions"])
-  assert.deepEqual(memoryHook.writes, [])
-  assert.equal(memoryHook.failureSemantics, "tool")
-  assert.equal(memoryHook.writePolicy, "none")
-
-  assert.deepEqual(recordingHook.reads, ["contextInclusions"])
-  assert.deepEqual(recordingHook.writes, ["recordingRefs"])
-  assert.equal(recordingHook.failureSemantics, "projection")
-  assert.equal(recordingHook.writePolicy, "derived-projection")
+test("jingle memory middleware only owns suggestion tools and model context", () => {
+  const memoryMiddleware = createMemoryMiddleware<AgentContextInclusion>({
+    ...createJingleMemoryHarnessPortOptions({
+      allowSuggestions: true,
+      contextPack: null,
+      service: {} as JingleMemoryService,
+      temporaryMode: false,
+      threadId: "thread-1",
+      workspaceIdentity
+    })
+  })
+  assert.equal(memoryMiddleware.name, "jingleMemory")
+  assert.ok(memoryMiddleware.stateSchema)
+  assert.ok(memoryMiddleware.wrapModelCall)
 })

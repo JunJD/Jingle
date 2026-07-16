@@ -65,7 +65,7 @@ export function createRuntimeExecutionFactory<
       thread: input.thread
     })
     operationInput.signal.throwIfAborted()
-    const { checkpoint, control, execution: executionHost, observation } = resolvedHost
+    const { checkpoint, context, control, execution: executionHost, observation } = resolvedHost
     const observationExecution = createRuntimeObservationExecution({
       modelId: operationInput.modelId,
       observation,
@@ -82,9 +82,12 @@ export function createRuntimeExecutionFactory<
       approvalController: control.approvalController,
       callbacks: [...observationExecution.callbacks, ...(operationInput.callbacks ?? [])],
       checkpointer: checkpoint.checkpointer,
+      memoryRecordingProjectionEnabled: runtimeExecution.memoryRecordingProjectionEnabled,
       middleware: runtimeExecution.middleware,
       model: executionHost.model,
+      observeProjectionFailure: observationExecution.observeProjectionFailure,
       systemPrompt: executionHost.systemPrompt,
+      titleGenerator: context.titleGenerator,
       traceConfig: observationExecution.runtimeTraceConfig
     })
     return {

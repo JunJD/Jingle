@@ -57,6 +57,7 @@ import type { ToolApprovalItem } from "@shared/tool-approval"
 import { getCheckpointer } from "../checkpointer/runtime-checkpointer-manager"
 import { createCheckpointCompactionStore } from "../checkpointer/checkpoint-compaction-store"
 import { LocalSandbox } from "./local-sandbox"
+import { diagnosticsGraph } from "../diagnostics/instance"
 
 const TITLE_GENERATION_TIMEOUT_MS = 2_500
 const desktopAutomationRunner = createDesktopAutomationRunner()
@@ -235,6 +236,26 @@ function createAgentExecutionCapabilities(
       })
     },
     observation: {
+      projection: {
+        recordFailure: ({ error, projection, runId, threadId }) => {
+          diagnosticsGraph.capture({
+            component: "agent-runtime",
+            dimensionEntries: [{ key: "projection", value: projection }],
+            eventCode: "agent.runtime_projection_failed",
+            evidence: [{ kind: "projection-error", value: error }],
+            fingerprint: `agent.runtime_projection_failed:${projection}`,
+            level: "warn",
+            operation: "project-runtime-state",
+            recoverable: true,
+            refs: [
+              { id: threadId, kind: "agent-thread" },
+              { id: runId, kind: "agent-run" }
+            ],
+            stateImpact: "projection-stale",
+            summary: `Runtime ${projection} projection failed`
+          })
+        }
+      },
       trace: {
         createRunConfig: ({ runId, source, threadId }) =>
           buildAgentRunTraceConfig({
@@ -269,9 +290,6 @@ function createAgentExecutionCapabilities(
       filesystemSystemPrompt: (thread) => buildJingleFilesystemSystemPrompt(thread.workspacePath),
       titleGenerator: createJingleTitleGenerator({
         createModel: createThreadTitleModel,
-        onError: (error) => {
-          console.warn("[TitleMiddleware] Failed to generate title.", error)
-        },
         timeoutMs: TITLE_GENERATION_TIMEOUT_MS
       })
     }

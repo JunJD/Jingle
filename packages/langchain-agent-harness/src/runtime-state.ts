@@ -11,22 +11,12 @@ import {
   type JingleContextInclusionStateItem
 } from "./context-inclusion-state"
 import { jingleAgentTitleValue } from "./title-state"
-import type { RuntimeStoreBoundaryId } from "./runtime-store"
 
 export type RuntimeArtifacts = JingleAgentStateArtifacts
 export type RuntimeArtifactsUpdate = JingleAgentStateArtifactsUpdate
 
 export const RUNTIME_TODO_STATUSES = ["pending", "in_progress", "completed"] as const
 export type RuntimeTodoStatus = (typeof RUNTIME_TODO_STATUSES)[number]
-
-export const RUNTIME_TASK_STATUSES = [
-  "pending",
-  "running",
-  "completed",
-  "failed",
-  "cancelled"
-] as const
-export type RuntimeTaskStatus = (typeof RUNTIME_TASK_STATUSES)[number]
 
 export const RUNTIME_COMPACTION_STATUSES = ["pending", "completed", "failed"] as const
 export type RuntimeCompactionStatus = (typeof RUNTIME_COMPACTION_STATUSES)[number]
@@ -60,16 +50,6 @@ export interface RuntimeTodo {
   content: string
   id?: string
   status: RuntimeTodoStatus
-}
-
-export interface RuntimeTask {
-  createdAt: string
-  parentTaskId: string | null
-  runId: string | null
-  status: RuntimeTaskStatus
-  taskId: string
-  title: string
-  updatedAt: string
 }
 
 export interface RuntimeCompaction {
@@ -126,45 +106,9 @@ export interface RuntimeState<TContextInclusion = JingleContextInclusionStateIte
   compactions: RuntimeCompaction[]
   contextInclusions: TContextInclusion[]
   recordingRefs: RuntimeRecordingRef[]
-  tasks: RuntimeTask[]
   title?: string | null
   todos: RuntimeTodo[]
   toolDecisions: RuntimeToolDecision[]
-}
-
-export interface RuntimeCapabilityContract {
-  failureSemantics: "core" | "projection" | "tool"
-  projection: "checkpoint" | "checkpoint-and-stream" | "projection-only"
-  stateRole: RuntimeStateFactRole
-  stateKey: keyof RuntimeState
-  writePolicy: "command-update" | "derived-projection" | "host-port" | "none"
-}
-
-export type RuntimeStateFactRole =
-  | "canonical"
-  | "projection-seed"
-  | "audit-ref"
-  | "child-work-skeleton"
-
-export type RuntimeStateFactOwner =
-  | "RuntimeApproval"
-  | "RuntimeArtifact"
-  | "RuntimeChildWork"
-  | "RuntimeCompaction"
-  | "RuntimeContext"
-  | "RuntimeObservation"
-  | "RuntimeProjection"
-  | "RuntimeTodo"
-  | "RuntimeToolDecision"
-
-export interface RuntimeStateFactContract {
-  bodyStore: RuntimeStoreBoundaryId | "checkpoint-inline" | "none"
-  canonicalStore: RuntimeStoreBoundaryId
-  owner: RuntimeStateFactOwner
-  productStore: RuntimeStoreBoundaryId | "none"
-  projectionStore: RuntimeStoreBoundaryId
-  role: RuntimeStateFactRole
-  stateKey: RuntimeStateKey
 }
 
 const runtimeTodoSchema = z
@@ -174,18 +118,6 @@ const runtimeTodoSchema = z
     status: z.enum(RUNTIME_TODO_STATUSES)
   })
   .strict()
-
-const runtimeTaskSchema = z
-  .object({
-    createdAt: z.string(),
-    parentTaskId: z.string().nullable(),
-    runId: z.string().nullable(),
-    status: z.enum(RUNTIME_TASK_STATUSES),
-    taskId: z.string(),
-    title: z.string(),
-    updatedAt: z.string()
-  })
-  .passthrough()
 
 const runtimeCompactionSchema = z
   .object({
@@ -253,9 +185,6 @@ const runtimeRecordingRefSchema = z
 const runtimeTodosSchema = z.array(runtimeTodoSchema).default(() => [])
 const runtimeTodosUpdateSchema = z.array(runtimeTodoSchema).optional()
 
-const runtimeTasksSchema = z.array(runtimeTaskSchema).default(() => [])
-const runtimeTasksUpdateSchema = z.array(runtimeTaskSchema).optional()
-
 const runtimeCompactionsSchema = z.array(runtimeCompactionSchema).default(() => [])
 const runtimeCompactionsUpdateSchema = z.array(runtimeCompactionSchema).optional()
 
@@ -288,12 +217,6 @@ function upsertById<TItem>(
 export const runtimeTodosValue = new ReducedValue(runtimeTodosSchema, {
   inputSchema: runtimeTodosUpdateSchema,
   reducer: (_existing, update) => update ?? []
-})
-
-export const runtimeTasksValue = new ReducedValue(runtimeTasksSchema, {
-  inputSchema: runtimeTasksUpdateSchema,
-  reducer: (existing, update) =>
-    update ? upsertById(existing, update, (item) => item.taskId) : existing
 })
 
 export const runtimeCompactionsValue = new ReducedValue(runtimeCompactionsSchema, {
@@ -332,178 +255,11 @@ export const runtimeStateSchema = new StateSchema({
   compactions: runtimeCompactionsValue,
   contextInclusions: jingleAgentContextInclusionsValue,
   recordingRefs: runtimeRecordingRefsValue,
-  tasks: runtimeTasksValue,
   title: jingleAgentTitleValue,
   todos: runtimeTodosValue
 })
 
 export type RuntimeSchema = typeof runtimeStateSchema
-
-export const RUNTIME_CAPABILITY_CONTRACTS = {
-  approvals: {
-    failureSemantics: "core",
-    projection: "checkpoint-and-stream",
-    stateRole: "canonical",
-    stateKey: "approvals",
-    writePolicy: "host-port"
-  },
-  toolDecisions: {
-    failureSemantics: "core",
-    projection: "checkpoint-and-stream",
-    stateRole: "canonical",
-    stateKey: "toolDecisions",
-    writePolicy: "command-update"
-  },
-  artifacts: {
-    failureSemantics: "tool",
-    projection: "checkpoint-and-stream",
-    stateRole: "canonical",
-    stateKey: "artifacts",
-    writePolicy: "command-update"
-  },
-  compactions: {
-    failureSemantics: "core",
-    projection: "checkpoint-and-stream",
-    stateRole: "canonical",
-    stateKey: "compactions",
-    writePolicy: "command-update"
-  },
-  contextInclusions: {
-    failureSemantics: "tool",
-    projection: "checkpoint-and-stream",
-    stateRole: "canonical",
-    stateKey: "contextInclusions",
-    writePolicy: "command-update"
-  },
-  memoryRecordingRefs: {
-    failureSemantics: "projection",
-    projection: "projection-only",
-    stateRole: "audit-ref",
-    stateKey: "recordingRefs",
-    writePolicy: "derived-projection"
-  },
-  recordingRefs: {
-    failureSemantics: "projection",
-    projection: "checkpoint-and-stream",
-    stateRole: "audit-ref",
-    stateKey: "recordingRefs",
-    writePolicy: "command-update"
-  },
-  toolRecordingRefs: {
-    failureSemantics: "tool",
-    projection: "checkpoint-and-stream",
-    stateRole: "audit-ref",
-    stateKey: "recordingRefs",
-    writePolicy: "command-update"
-  },
-  tasks: {
-    failureSemantics: "core",
-    projection: "checkpoint-and-stream",
-    stateRole: "child-work-skeleton",
-    stateKey: "tasks",
-    writePolicy: "command-update"
-  },
-  title: {
-    failureSemantics: "projection",
-    projection: "checkpoint-and-stream",
-    stateRole: "projection-seed",
-    stateKey: "title",
-    writePolicy: "command-update"
-  },
-  todos: {
-    failureSemantics: "core",
-    projection: "checkpoint-and-stream",
-    stateRole: "canonical",
-    stateKey: "todos",
-    writePolicy: "command-update"
-  }
-} as const satisfies Record<string, RuntimeCapabilityContract>
-
-export type RuntimeStateKey = keyof RuntimeState
-
-export const RUNTIME_STATE_FACT_CONTRACTS = {
-  approvals: {
-    bodyStore: "checkpoint-inline",
-    canonicalStore: "checkpoint",
-    owner: "RuntimeApproval",
-    productStore: "productDb",
-    projectionStore: "projection",
-    role: "canonical",
-    stateKey: "approvals"
-  },
-  artifacts: {
-    bodyStore: "checkpoint-inline",
-    canonicalStore: "checkpoint",
-    owner: "RuntimeArtifact",
-    productStore: "productDb",
-    projectionStore: "projection",
-    role: "canonical",
-    stateKey: "artifacts"
-  },
-  compactions: {
-    bodyStore: "checkpoint-inline",
-    canonicalStore: "checkpoint",
-    owner: "RuntimeCompaction",
-    productStore: "productDb",
-    projectionStore: "projection",
-    role: "canonical",
-    stateKey: "compactions"
-  },
-  contextInclusions: {
-    bodyStore: "checkpoint-inline",
-    canonicalStore: "checkpoint",
-    owner: "RuntimeContext",
-    productStore: "none",
-    projectionStore: "projection",
-    role: "canonical",
-    stateKey: "contextInclusions"
-  },
-  recordingRefs: {
-    bodyStore: "productDb",
-    canonicalStore: "checkpoint",
-    owner: "RuntimeObservation",
-    productStore: "productDb",
-    projectionStore: "projection",
-    role: "audit-ref",
-    stateKey: "recordingRefs"
-  },
-  tasks: {
-    bodyStore: "none",
-    canonicalStore: "checkpoint",
-    owner: "RuntimeChildWork",
-    productStore: "productDb",
-    projectionStore: "projection",
-    role: "child-work-skeleton",
-    stateKey: "tasks"
-  },
-  title: {
-    bodyStore: "none",
-    canonicalStore: "checkpoint",
-    owner: "RuntimeProjection",
-    productStore: "productDb",
-    projectionStore: "projection",
-    role: "projection-seed",
-    stateKey: "title"
-  },
-  todos: {
-    bodyStore: "checkpoint-inline",
-    canonicalStore: "checkpoint",
-    owner: "RuntimeTodo",
-    productStore: "none",
-    projectionStore: "projection",
-    role: "canonical",
-    stateKey: "todos"
-  },
-  toolDecisions: {
-    bodyStore: "checkpoint-inline",
-    canonicalStore: "checkpoint",
-    owner: "RuntimeToolDecision",
-    productStore: "none",
-    projectionStore: "projection",
-    role: "canonical",
-    stateKey: "toolDecisions"
-  }
-} as const satisfies Record<RuntimeStateKey, RuntimeStateFactContract>
 
 export interface RuntimeCheckpointState<
   TContextInclusion = JingleContextInclusionStateItem

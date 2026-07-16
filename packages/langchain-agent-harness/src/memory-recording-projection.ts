@@ -13,7 +13,7 @@ type JingleMemoryContextInclusion = JingleContextInclusionStateItem & {
   threadId?: unknown
 }
 
-export function projectJingleMemoryRecordingRefs(input: {
+export function projectMemoryRecordingRefs(input: {
   contextInclusions: readonly JingleContextInclusionStateItem[]
 }): RuntimeRecordingRef[] {
   const recordingRefs: RuntimeRecordingRef[] = []

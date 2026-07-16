@@ -13,10 +13,12 @@ import { readRuntimeOperation } from "./runtime-operation-reader.js"
 import { createRuntimeModelExecutor, createRuntimeToolExecutor } from "./runtime-executors/index.js"
 import {
   ContextActivationNode,
+  MemoryRecordingProjectionNode,
   ModelStepNode,
   OperationFrameNode,
   PermissionGateNode,
   StepResultNode,
+  TitleProjectionNode,
   ToolStepNode,
   WorkingSetNode,
   type RuntimeNodeContext,
@@ -27,6 +29,9 @@ import {
   type RuntimeTargetNode,
   createRuntimeOperationFrame
 } from "./nodes/index.js"
+import type { RuntimeTitleGeneratorContract } from "../../runtime-contract"
+import type { RuntimeProjectionFailureObserver } from "../../runtime-observation"
+import { isUserDeclinedToolMessage } from "../../human-approval-middleware"
 import { AIMessage, ToolMessage } from "@langchain/core/messages"
 import { mergeConfigs, type RunnableConfig } from "@langchain/core/runnables"
 import { END, START, StateGraph } from "@langchain/langgraph"
@@ -38,20 +43,25 @@ export interface RuntimeGraphOptions {
   contextSchema?: unknown
   description?: string
   includeAgentName?: "inline"
+  memoryRecordingProjectionEnabled: boolean
   middleware?: readonly AgentMiddleware[]
   model: unknown
   name?: string
+  observeProjectionFailure?: RuntimeProjectionFailureObserver
   permissionPolicy: RuntimePermissionPolicy
   responseFormat?: never
   signal?: AbortSignal
   stateSchema?: unknown
   store?: BaseStore
   systemPrompt?: string
+  titleGenerator: RuntimeTitleGeneratorContract
   tools?: readonly unknown[]
 }
 
 const CONTEXT_ACTIVATION_NODE_NAME = "__runtime_context_activation__"
+const MEMORY_RECORDING_PROJECTION_NODE_NAME = "__runtime_memory_recording_projection__"
 const MODEL_STEP_NODE_NAME = "__runtime_model_step__"
+const TITLE_PROJECTION_NODE_NAME = "__runtime_title_projection__"
 const OPERATION_FRAME_NODE_NAME = "__runtime_operation_frame__"
 const WORKING_SET_NODE_NAME = "__runtime_working_set__"
 const PERMISSION_GATE_NODE_NAME = "__runtime_permission_gate__"
@@ -149,6 +159,7 @@ function readRuntimeStepRoute(state: unknown): RuntimeStepRoute {
 
   const messages = readRuntimeStateArray(state, "messages")
   const lastMessage = messages.at(-1)
+  if (isUserDeclinedToolMessage(lastMessage)) return "finish"
   if (ToolMessage.isInstance(lastMessage)) return "continue"
   if (AIMessage.isInstance(lastMessage)) {
     const regularToolCalls = (lastMessage.tool_calls ?? []).filter(
@@ -293,6 +304,32 @@ export class RuntimeGraph {
         toOutput: readTargetNodeGraphOutput
       })
     )
+    allNodeWorkflows.addNode(
+      TITLE_PROJECTION_NODE_NAME,
+      new RuntimeGraphTargetNodeRunnable({
+        getInput: (state: any) => ({
+          messages: readRuntimeStateArray(state, "messages"),
+          title: state.title
+        }),
+        node: new TitleProjectionNode(
+          this.options.titleGenerator,
+          this.options.observeProjectionFailure
+        ),
+        toOutput: readTargetNodeUpdate
+      })
+    )
+    if (this.options.memoryRecordingProjectionEnabled) {
+      allNodeWorkflows.addNode(
+        MEMORY_RECORDING_PROJECTION_NODE_NAME,
+        new RuntimeGraphTargetNodeRunnable({
+          getInput: (state: any) => ({
+            contextInclusions: readRuntimeStateArray(state, "contextInclusions")
+          }),
+          node: new MemoryRecordingProjectionNode(this.options.observeProjectionFailure),
+          toOutput: readTargetNodeUpdate
+        })
+      )
+    }
     const clientTools = toolClasses.filter(isClientTool)
     const hasToolsAvailable = clientTools.length > 0 || middlewareExecution.usesToolCallWrapper
     /**
@@ -387,20 +424,27 @@ export class RuntimeGraph {
      * Add Edges
      */
     const modelEntryNode = WORKING_SET_NODE_NAME
+    const runTerminalNode = this.options.memoryRecordingProjectionEnabled
+      ? MEMORY_RECORDING_PROJECTION_NODE_NAME
+      : END
     const internalMiddlewareNodes = legacyMiddlewareSegment.mountInternalNodes({
-      exitNode: END,
+      afterModelEntryNode: TITLE_PROJECTION_NODE_NAME,
       graph: allNodeWorkflows,
       hasToolsAvailable,
       modelEntryNode,
-      modelStepNode: MODEL_STEP_NODE_NAME,
       modelStepResultNode: MODEL_STEP_RESULT_NODE_NAME,
-      permissionGateNode: PERMISSION_GATE_NODE_NAME
+      permissionGateNode: PERMISSION_GATE_NODE_NAME,
+      terminalNode: runTerminalNode
     })
     const exitNode = internalMiddlewareNodes.exitNode
     allNodeWorkflows.addEdge(START, OPERATION_FRAME_NODE_NAME)
     allNodeWorkflows.addEdge(OPERATION_FRAME_NODE_NAME, CONTEXT_ACTIVATION_NODE_NAME)
     allNodeWorkflows.addEdge(CONTEXT_ACTIVATION_NODE_NAME, internalMiddlewareNodes.runEntryNode)
     allNodeWorkflows.addEdge(WORKING_SET_NODE_NAME, MODEL_STEP_NODE_NAME)
+    allNodeWorkflows.addEdge(MODEL_STEP_NODE_NAME, TITLE_PROJECTION_NODE_NAME)
+    if (this.options.memoryRecordingProjectionEnabled) {
+      allNodeWorkflows.addEdge(MEMORY_RECORDING_PROJECTION_NODE_NAME, END)
+    }
     /**
      * Add tool-step edges for registered tools and internal middleware execution.
      */

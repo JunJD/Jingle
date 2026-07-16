@@ -1,7 +1,6 @@
 import { ToolMessage } from "@langchain/core/messages"
 import { createMiddleware, tool, type ToolRuntime } from "langchain"
 import { z } from "zod/v4"
-import type { RuntimeMiddlewareHook } from "./harness-runtime"
 import {
   jingleAgentContextInclusionsStateSchema,
   upsertJingleContextInclusions,
@@ -21,7 +20,6 @@ import {
   getToolCallIdFromToolRuntime,
   isJingleGraphInterrupt
 } from "./tool-runtime"
-import { defineJingleHarnessHook } from "./harness-hooks"
 
 export const JINGLE_SEARCH_HISTORY_TOOL_NAME = "search_history"
 export const JINGLE_GET_MESSAGE_CONTEXT_TOOL_NAME = "get_message_context"
@@ -79,7 +77,7 @@ export type JingleContextRetrievalToolResult<
   TInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem
 > = RuntimeContextRetrievalResult<TInclusion>
 
-export interface CreateJingleContextRetrievalToolsMiddlewareOptions<
+export interface CreateContextRetrievalToolsMiddlewareOptions<
   TInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem
 > extends RuntimeContextRetrievalConfig<TInclusion> {
   runId: string
@@ -158,7 +156,7 @@ function buildContextRetrievalToolOutput<
 
 function createJingleContextRetrievalToolsRuntimeMiddleware<
   TInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem
->(options: CreateJingleContextRetrievalToolsMiddlewareOptions<TInclusion>) {
+>(options: CreateContextRetrievalToolsMiddlewareOptions<TInclusion>) {
   const getMessageContextTool = tool(
     async (
       input: JingleGetMessageContextInput,
@@ -249,21 +247,8 @@ function createJingleContextRetrievalToolsRuntimeMiddleware<
   })
 }
 
-export function createJingleContextRetrievalToolsHook<
+export function createContextRetrievalToolsMiddleware<
   TInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem
->(
-  options: CreateJingleContextRetrievalToolsMiddlewareOptions<TInclusion>
-): RuntimeMiddlewareHook {
-  return defineJingleHarnessHook({
-    name: "contextInclusions",
-    phase: "agent_loop",
-    adapterStateKeys: [],
-    reads: ["contextInclusions"],
-    runtimeStateKeys: ["contextInclusions"],
-    writes: ["contextInclusions"],
-    writePolicy: "command-update",
-    failureSemantics: "tool",
-    observableSignals: ["state", "stream"],
-    createMiddleware: () => createJingleContextRetrievalToolsRuntimeMiddleware(options)
-  })
+>(options: CreateContextRetrievalToolsMiddlewareOptions<TInclusion>) {
+  return createJingleContextRetrievalToolsRuntimeMiddleware(options)
 }

@@ -1,7 +1,7 @@
-import { createJingleContextRetrievalToolsHook } from "./context-retrieval-tools-middleware"
+import { createContextRetrievalToolsMiddleware } from "./context-retrieval-tools-middleware"
 import type { JingleContextInclusionStateItem } from "./context-inclusion-state"
 import type { RuntimeExecutionMiddleware } from "./harness-runtime"
-import { createJingleMemoryHook, createJingleMemoryRecordingRefsHook } from "./memory-middleware"
+import { createMemoryMiddleware } from "./memory-middleware"
 import type { RuntimeContextHostContract } from "./runtime-contract"
 import type { RuntimeRunContextScope, RuntimeThreadScope } from "./runtime-scope"
 import { createJingleWorkspaceFileContextMiddleware } from "./workspace-file-context-middleware"
@@ -15,36 +15,40 @@ export interface CreateRuntimeContextEntriesInput<
   thread: RuntimeThreadScope
 }
 
+export interface RuntimeContextEntries {
+  memoryRecordingProjectionEnabled: boolean
+  middleware: readonly RuntimeExecutionMiddleware[]
+}
+
 export function createRuntimeContextEntries<
   TContextInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem,
   TGuardrailMetadata = Record<string, unknown>
 >(
   input: CreateRuntimeContextEntriesInput<TContextInclusion, TGuardrailMetadata>
-): readonly RuntimeExecutionMiddleware[] {
+): RuntimeContextEntries {
   const { context, runContext, thread } = input
   const memoryOptions = context.memory?.(runContext)
   const workspaceFileContextOptions = context.workspaceFileContext?.(thread)
 
-  return compactRuntimeEntries([
-    createJingleContextRetrievalToolsHook<TContextInclusion>({
-      runId: runContext.runId,
-      ...context.contextRetrieval(runContext)
-    }),
-    memoryOptions
-      ? createJingleMemoryHook({
-          ...memoryOptions,
-          fallbackRunId: runContext.runId
-        })
-      : undefined,
-    memoryOptions ? createJingleMemoryRecordingRefsHook() : undefined,
-    workspaceFileContextOptions
-      ? createJingleWorkspaceFileContextMiddleware(workspaceFileContextOptions)
-      : undefined
-  ])
+  return {
+    memoryRecordingProjectionEnabled: memoryOptions !== undefined,
+    middleware: compactRuntimeEntries([
+      createContextRetrievalToolsMiddleware<TContextInclusion>({
+        runId: runContext.runId,
+        ...context.contextRetrieval(runContext)
+      }),
+      memoryOptions
+        ? createMemoryMiddleware({
+            ...memoryOptions
+          })
+        : undefined,
+      workspaceFileContextOptions
+        ? createJingleWorkspaceFileContextMiddleware(workspaceFileContextOptions)
+        : undefined
+    ])
+  }
 }
 
-function compactRuntimeEntries<TEntry>(
-  entries: readonly (TEntry | null | undefined)[]
-): TEntry[] {
+function compactRuntimeEntries<TEntry>(entries: readonly (TEntry | null | undefined)[]): TEntry[] {
   return entries.filter((candidate): candidate is TEntry => candidate != null)
 }

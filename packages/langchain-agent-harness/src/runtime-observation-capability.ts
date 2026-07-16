@@ -5,7 +5,12 @@ import {
 } from "./langchain-trace-callback"
 import type { JingleAgentRunTraceConfig } from "./run-config"
 import type { RuntimeObservationHostContract } from "./runtime-contract"
-import type { RuntimeTraceSinkContract } from "./runtime-observation"
+import type {
+  RuntimeProjectionFailure,
+  RuntimeProjectionFailureObserver,
+  RuntimeProjectionSinkContract,
+  RuntimeTraceSinkContract
+} from "./runtime-observation"
 import type { RuntimeRunContextScope } from "./runtime-scope"
 
 export interface RuntimeObservationRunConfigInput {
@@ -15,6 +20,7 @@ export interface RuntimeObservationRunConfigInput {
 export interface RuntimeObservationExecution {
   callbacks: BaseCallbackHandler[]
   createRunTraceConfig(input: RuntimeObservationRunConfigInput): JingleAgentRunTraceConfig
+  observeProjectionFailure: RuntimeProjectionFailureObserver
   runtimeTraceConfig: JingleAgentRunTraceConfig
 }
 
@@ -27,6 +33,7 @@ export interface CreateRuntimeObservationExecutionInput {
 export function createRuntimeObservationExecution(
   input: CreateRuntimeObservationExecutionInput
 ): RuntimeObservationExecution {
+  const projection = input.observation.sink?.projection
   const trace = input.observation.sink?.trace
 
   return {
@@ -42,11 +49,43 @@ export function createRuntimeObservationExecution(
         source,
         trace
       }),
+    observeProjectionFailure: (failure) =>
+      recordRuntimeProjectionFailure({
+        failure,
+        projection,
+        runContext: input.runContext
+      }),
     runtimeTraceConfig: createRuntimeTraceConfig({
       modelId: input.modelId,
       runContext: input.runContext,
       trace
     })
+  }
+}
+
+function recordRuntimeProjectionFailure(input: {
+  failure: RuntimeProjectionFailure
+  projection?: RuntimeProjectionSinkContract
+  runContext: RuntimeRunContextScope
+}): void {
+  if (!input.projection) return
+
+  try {
+    const observation = input.projection.recordFailure({
+      ...input.runContext,
+      ...input.failure
+    })
+    void Promise.resolve(observation).catch((error) => {
+      console.warn(
+        `[RuntimeObservation] Projection failure sink failed for thread ${input.runContext.threadId}:`,
+        error
+      )
+    })
+  } catch (error) {
+    console.warn(
+      `[RuntimeObservation] Projection failure sink failed for thread ${input.runContext.threadId}:`,
+      error
+    )
   }
 }
 

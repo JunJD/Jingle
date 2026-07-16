@@ -1,10 +1,10 @@
-import { createJingleArtifactToolsHook } from "./artifact-tools-middleware"
+import { createArtifactToolsMiddleware } from "./artifact-tools-middleware"
 import { createJingleDesktopAutomationToolsMiddleware } from "./desktop-automation-tools"
-import { createJingleExtensionAiToolsHook } from "./extension-ai-tools-middleware"
+import { createExtensionAiToolsMiddleware } from "./extension-ai-tools-middleware"
 import { createFilesystemToolErrorMiddleware } from "./filesystem-tool-error-middleware"
 import { createJinglePatchToolCallsMiddleware } from "./harness-runtime/patch-tool-calls"
-import type { RuntimeExecutionMiddleware, RuntimeMiddlewareHook } from "./harness-runtime"
-import { createJingleTodoHook } from "./jingle-todo-middleware"
+import type { RuntimeExecutionMiddleware } from "./harness-runtime"
+import { createTodoMiddleware } from "./jingle-todo-middleware"
 import type { RuntimeResolvedEnvironmentHostContract } from "./runtime-contract"
 import type { RuntimeRunContextScope, RuntimeThreadScope } from "./runtime-scope"
 import {
@@ -18,7 +18,7 @@ import { createJingleWebToolsMiddleware } from "./web-tools"
 export type CreateRuntimeCoreToolCapabilityInput = CreateRuntimeSandboxCapabilityInput
 
 export interface RuntimeCoreToolCapability extends RuntimeSandboxCapability {
-  todosEntry: RuntimeMiddlewareHook
+  todosEntry: RuntimeExecutionMiddleware
 }
 
 export interface CreateRuntimeToolEntriesInput {
@@ -35,7 +35,7 @@ export function createRuntimeCoreToolCapability(
 
   return {
     ...sandbox,
-    todosEntry: createJingleTodoHook()
+    todosEntry: createTodoMiddleware()
   }
 }
 
@@ -49,10 +49,10 @@ export function createRuntimeToolEntries(
     input.core.todosEntry,
     createFilesystemToolErrorMiddleware(),
     input.core.filesystemEntry,
-    createJingleArtifactToolsHook(environment.artifactPresentation(input.thread)),
+    createArtifactToolsMiddleware(environment.artifactPresentation(input.thread)),
     createJingleWebToolsMiddleware(environment.webTools),
     createJingleDesktopAutomationToolsMiddleware(environment.desktopAutomationTools),
-    createJingleExtensionAiToolsHook(environment.extensionAiTools(input.runContext)),
+    createExtensionAiToolsMiddleware(environment.extensionAiTools(input.runContext)),
     createJinglePatchToolCallsMiddleware(),
     input.core.skillsEntry
   ]

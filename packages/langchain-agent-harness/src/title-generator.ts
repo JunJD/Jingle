@@ -65,7 +65,7 @@ export function createJingleTitleGenerator(
       if (!isJingleTitleGenerationAbort(error)) {
         input.onError?.(error)
       }
-      return null
+      throw error
     }
   }
 }

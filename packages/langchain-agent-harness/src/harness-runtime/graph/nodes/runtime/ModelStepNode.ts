@@ -9,7 +9,6 @@ export interface RuntimeModelStepInput {
 export interface RuntimeModelStepOutput {
   readonly graphOutput?: unknown
   readonly messages?: BaseMessage[]
-  readonly title?: string | null
 }
 
 export interface RuntimeModelStepExecutor {
@@ -20,17 +19,23 @@ export interface RuntimeModelStepExecutor {
 }
 
 export type ModelStepNodeResult = RuntimeNodeResult<
-  Pick<RuntimeCheckpointState, "messages"> & Partial<Pick<RuntimeCheckpointState, "title">>,
+  Pick<RuntimeCheckpointState, "messages">,
   { modelOutput: RuntimeModelStepOutput }
 >
 
-export class ModelStepNode implements RuntimeTargetNode<RuntimeModelStepInput, ModelStepNodeResult> {
+export class ModelStepNode implements RuntimeTargetNode<
+  RuntimeModelStepInput,
+  ModelStepNodeResult
+> {
   readonly boundary = "model"
   readonly kind = "ModelStepNode"
 
   constructor(private readonly executor: RuntimeModelStepExecutor) {}
 
-  async invoke(input: RuntimeModelStepInput, context: RuntimeNodeContext): Promise<ModelStepNodeResult> {
+  async invoke(
+    input: RuntimeModelStepInput,
+    context: RuntimeNodeContext
+  ): Promise<ModelStepNodeResult> {
     const modelOutput = await this.executor.invoke(input, context)
     let stateUpdate: ModelStepNodeResult["stateUpdate"]
     if (modelOutput.graphOutput === undefined) {
@@ -38,10 +43,7 @@ export class ModelStepNode implements RuntimeTargetNode<RuntimeModelStepInput, M
         throw new Error("[ModelStepNode] Model output must include messages.")
       }
 
-      stateUpdate = {
-        messages: modelOutput.messages,
-        ...(modelOutput.title !== undefined ? { title: modelOutput.title } : {})
-      }
+      stateUpdate = { messages: modelOutput.messages }
     }
 
     return {

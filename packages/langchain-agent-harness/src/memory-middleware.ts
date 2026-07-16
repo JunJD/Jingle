@@ -1,15 +1,7 @@
 import { createMiddleware, tool, type ToolRuntime } from "langchain"
 import { z } from "zod/v4"
-import type { RuntimeMiddlewareHook } from "./harness-runtime"
-import { defineJingleHarnessHook } from "./harness-hooks"
 import { getRunIdFromToolRuntime } from "./tool-runtime"
-import {
-  jingleAgentContextInclusionsStateSchema,
-  type JingleContextInclusionStateItem
-} from "./context-inclusion-state"
-import { runtimeRecordingRefsValue } from "./runtime-state"
-import { StateSchema } from "@langchain/langgraph"
-import { projectJingleMemoryRecordingRefs } from "./memory-recording-projection"
+import { jingleAgentContextInclusionsStateSchema } from "./context-inclusion-state"
 import type {
   RuntimeMemoryConfig,
   RuntimeSuggestPersonalMemoryContext,
@@ -32,17 +24,11 @@ export type JingleSuggestPersonalMemoryInput = RuntimeSuggestPersonalMemoryInput
 export type JingleSuggestPersonalMemoryContext<TContextInclusion = unknown> =
   RuntimeSuggestPersonalMemoryContext<TContextInclusion>
 
-export interface CreateJingleMemoryHookOptions<TContextInclusion = unknown>
-  extends RuntimeMemoryConfig<TContextInclusion> {
-  fallbackRunId: string
-}
+export type CreateMemoryMiddlewareOptions<TContextInclusion = unknown> =
+  RuntimeMemoryConfig<TContextInclusion>
 
 type JingleMemoryToolState<TContextInclusion = unknown> = {
   contextInclusions: TContextInclusion[]
-}
-
-type JingleMemoryHarnessState = {
-  contextInclusions: JingleContextInclusionStateItem[]
 }
 
 function readMemoryContextInclusions<TContextInclusion>(
@@ -55,8 +41,17 @@ function readMemoryContextInclusions<TContextInclusion>(
   return runtime.state.contextInclusions
 }
 
+function readMemoryRunId(runtime: ToolRuntime<unknown>): string {
+  const runId = getRunIdFromToolRuntime(runtime)
+  if (!runId) {
+    throw new Error("[JingleMemory] Tool runtime config is missing run_id.")
+  }
+
+  return runId
+}
+
 function createJingleMemoryRuntimeMiddleware<TContextInclusion = unknown>(
-  options: CreateJingleMemoryHookOptions<TContextInclusion>
+  options: CreateMemoryMiddlewareOptions<TContextInclusion>
 ) {
   const suggestPersonalMemoryTool = options.enableSuggestionTool
     ? tool(
@@ -66,7 +61,7 @@ function createJingleMemoryRuntimeMiddleware<TContextInclusion = unknown>(
         ) =>
           options.suggestPersonalMemory(input, {
             contextInclusions: readMemoryContextInclusions(runtime),
-            runId: getRunIdFromToolRuntime(runtime) ?? options.fallbackRunId
+            runId: readMemoryRunId(runtime)
           }),
         {
           description:
@@ -94,50 +89,8 @@ function createJingleMemoryRuntimeMiddleware<TContextInclusion = unknown>(
   })
 }
 
-export function createJingleMemoryHook<TContextInclusion = unknown>(
-  options: CreateJingleMemoryHookOptions<TContextInclusion>
-): RuntimeMiddlewareHook {
-  return defineJingleHarnessHook({
-    name: "memory",
-    phase: "model_call",
-    adapterStateKeys: [],
-    runtimeStateKeys: ["contextInclusions"],
-    reads: ["contextInclusions"],
-    writes: [],
-    failureSemantics: "tool",
-    observableSignals: ["state"],
-    writePolicy: "none",
-    createMiddleware: () => createJingleMemoryRuntimeMiddleware(options)
-  })
-}
-
-function createJingleMemoryRecordingRefsRuntimeMiddleware() {
-  return createMiddleware({
-    name: "jingleMemoryRecordingRefs",
-    stateSchema: new StateSchema({
-      ...jingleAgentContextInclusionsStateSchema.fields,
-      recordingRefs: runtimeRecordingRefsValue
-    }),
-    afterAgent: (state: JingleMemoryHarnessState) => {
-      const recordingRefs = projectJingleMemoryRecordingRefs({
-        contextInclusions: state.contextInclusions
-      })
-      return recordingRefs.length > 0 ? { recordingRefs } : undefined
-    }
-  })
-}
-
-export function createJingleMemoryRecordingRefsHook(): RuntimeMiddlewareHook {
-  return defineJingleHarnessHook({
-    name: "memoryRecordingRefs",
-    phase: "agent_loop",
-    adapterStateKeys: [],
-    runtimeStateKeys: ["contextInclusions"],
-    reads: ["contextInclusions"],
-    writes: ["recordingRefs"],
-    failureSemantics: "projection",
-    observableSignals: ["state", "stream", "recording"],
-    writePolicy: "derived-projection",
-    createMiddleware: createJingleMemoryRecordingRefsRuntimeMiddleware
-  })
+export function createMemoryMiddleware<TContextInclusion = unknown>(
+  options: CreateMemoryMiddlewareOptions<TContextInclusion>
+) {
+  return createJingleMemoryRuntimeMiddleware(options)
 }

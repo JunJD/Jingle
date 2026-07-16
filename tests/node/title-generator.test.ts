@@ -26,12 +26,14 @@ test("title generator treats model aborts as expected title-generation cancellat
     timeoutMs: 1
   })
 
-  const result = await generateTitle({
-    messages: [new HumanMessage("Fix login"), new AIMessage("Got it")],
-    title: null
-  })
+  await assert.rejects(
+    generateTitle({
+      messages: [new HumanMessage("Fix login"), new AIMessage("Got it")],
+      title: null
+    }),
+    abortError
+  )
 
-  assert.equal(result, null)
   assert.equal(isJingleTitleGenerationAbort(abortError), true)
   assert.deepEqual(loggedErrors, [])
 })
@@ -53,11 +55,13 @@ test("title generator still reports non-abort failures", async () => {
     timeoutMs: 1
   })
 
-  const result = await generateTitle({
-    messages: [new HumanMessage("Fix login"), new AIMessage("Got it")],
-    title: null
-  })
+  await assert.rejects(
+    generateTitle({
+      messages: [new HumanMessage("Fix login"), new AIMessage("Got it")],
+      title: null
+    }),
+    failure
+  )
 
-  assert.equal(result, null)
   assert.deepEqual(loggedErrors, [failure])
 })

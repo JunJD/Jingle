@@ -3,13 +3,14 @@ import { mkdtemp, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import test from "node:test"
-import { ToolMessage } from "@langchain/core/messages"
-import { GraphInterrupt } from "@langchain/langgraph"
+import { HumanMessage, ToolMessage } from "@langchain/core/messages"
+import { Command, GraphInterrupt, MemorySaver } from "@langchain/langgraph"
+import { createMiddleware, FakeToolCallingModel, tool } from "langchain"
 import {
-  createJingleHumanApprovalHook,
+  createHumanApprovalMiddleware,
   type HumanApprovalRequester
 } from "@jingle/langchain-agent-harness/transitional"
-import { compileRuntimeHookToMiddleware } from "../../packages/langchain-agent-harness/src/harness-runtime"
+import { createRuntimeGraphEngine } from "../../packages/langchain-agent-harness/src/harness-runtime"
 import { resolveFileMutationChangeType } from "../../src/main/agent/tool-permission-runtime"
 import {
   createToolPermissionRuntime,
@@ -37,20 +38,18 @@ function createToolApprovalHarnessMiddleware(
     requestToolApproval?: HumanApprovalRequester<ToolApprovalItem>
   } = {}
 ) {
-  return compileRuntimeHookToMiddleware(
-    createJingleHumanApprovalHook<ToolApprovalItem>({
-      allowedDecisions: getDefaultHitlAllowedDecisions(),
-      middlewareName: "ToolApprovalMiddleware",
-      policyRuntime:
-        options.permissionRuntime ??
-        createToolPermissionRuntime({
-          extensionToolPolicyProvider: options.extensionToolPolicyProvider,
-          getAgentConfig: options.getAgentConfig,
-          permissionMode: options.permissionMode
-        }),
-      requestApproval: options.requestToolApproval
-    })
-  )
+  return createHumanApprovalMiddleware<ToolApprovalItem>({
+    allowedDecisions: getDefaultHitlAllowedDecisions(),
+    middlewareName: "ToolApprovalMiddleware",
+    policyRuntime:
+      options.permissionRuntime ??
+      createToolPermissionRuntime({
+        extensionToolPolicyProvider: options.extensionToolPolicyProvider,
+        getAgentConfig: options.getAgentConfig,
+        permissionMode: options.permissionMode
+      }),
+    requestApproval: options.requestToolApproval
+  })
 }
 
 const middleware = createToolApprovalHarnessMiddleware()
@@ -360,7 +359,96 @@ test("user_declined terminates the graph without executing the tool", async () =
   )
 
   assert.equal(handlerCalls, 0)
-  assert.ok("goto" in (result as object))
+  assert.ok(ToolMessage.isInstance(result))
+  assert.equal(result.tool_call_id, "tool-call-declined")
+})
+
+test("user_declined resume exits the runtime graph without another model call", async () => {
+  const checkpointer = new MemorySaver()
+  let modelCalls = 0
+  let titleCalls = 0
+  let toolCalls = 0
+  const model = new FakeToolCallingModel({
+    toolCalls: [[{ args: {}, id: "tool-call-declined", name: "approval_test_tool" }], []]
+  })
+  const approvalTestTool = tool(
+    async () => {
+      toolCalls += 1
+      return "executed"
+    },
+    {
+      description: "Approval regression tool",
+      name: "approval_test_tool",
+      schema: z.object({})
+    }
+  )
+  const createGraph = () =>
+    createRuntimeGraphEngine({
+      approvalController: {
+        allowedDecisions: getDefaultHitlAllowedDecisions(),
+        policyRuntime: {
+          evaluate: () => ({ args: {}, disposition: "allow" })
+        }
+      },
+      callbacks: [],
+      checkpointer,
+      memoryRecordingProjectionEnabled: false,
+      middleware: [
+        createMiddleware({
+          name: "ApprovalTestToolMiddleware",
+          tools: [approvalTestTool]
+        }),
+        createMiddleware({
+          name: "ObserveModelCalls",
+          wrapModelCall: async (request, handler) => {
+            modelCalls += 1
+            return handler(request)
+          }
+        }),
+        createToolApprovalHarnessMiddleware({
+          permissionRuntime: createApprovalRequiredRuntime()
+        })
+      ],
+      model,
+      systemPrompt: "",
+      titleGenerator: async () => {
+        titleCalls += 1
+        return "unexpected title"
+      },
+      traceConfig: {}
+    })
+  const configurable = {
+    run_id: "user-declined-graph-regression",
+    thread_id: "user-declined-graph-regression",
+    workspace_path: "/tmp/user-declined-graph-regression"
+  }
+
+  const paused = await createGraph().invoke(
+    {
+      contextInclusions: [],
+      messages: [new HumanMessage("run approval tool")],
+      todos: []
+    },
+    {
+      configurable: { ...configurable, runtime_operation_kind: "invoke" }
+    }
+  )
+
+  assert.equal((paused as { __interrupt__?: unknown[] }).__interrupt__?.length, 1)
+  assert.equal(modelCalls, 1)
+
+  await createGraph().invoke(
+    new Command({
+      resume: { decisions: [{ type: "user_declined" }] }
+    }),
+    {
+      configurable: { ...configurable, runtime_operation_kind: "resume" }
+    }
+  )
+
+  assert.equal(toolCalls, 0)
+  assert.equal(modelCalls, 1)
+  assert.equal(titleCalls, 0)
 })
 
 test("direct extension agent tool calls are denied before reaching the handler", async () => {

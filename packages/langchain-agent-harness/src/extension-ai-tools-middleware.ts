@@ -6,8 +6,6 @@ import {
   getToolCallIdFromToolRuntime,
   mapJingleAiMessageToolCalls
 } from "./tool-runtime"
-import type { RuntimeMiddlewareHook } from "./harness-runtime"
-import { defineJingleHarnessHook } from "./harness-hooks"
 import type { JingleAgentStateArtifactsUpdate } from "./artifact-state"
 import { projectJingleArtifactRecordingRefs } from "./artifact-recording-projection"
 import type { RuntimeRecordingRef } from "./runtime-state"
@@ -54,7 +52,7 @@ export type JingleExtensionToolStateUpdateResult = RuntimeExtensionToolStateUpda
 export type JingleExtensionToolResult = RuntimeExtensionToolResult
 export type JingleExtensionToolCallUi = RuntimeExtensionToolCallUi
 
-export type CreateJingleExtensionAiToolsHookOptions = RuntimeExtensionToolsConfig
+export type CreateExtensionAiToolsMiddlewareOptions = RuntimeExtensionToolsConfig
 
 function hasJingleExtensionStateUpdate(
   result: JingleExtensionToolResult
@@ -62,7 +60,7 @@ function hasJingleExtensionStateUpdate(
   return "stateUpdate" in result
 }
 
-function createJingleLoadExtensionTool(options: CreateJingleExtensionAiToolsHookOptions) {
+function createJingleLoadExtensionTool(options: CreateExtensionAiToolsMiddlewareOptions) {
   return tool(
     async (input: JingleLoadExtensionToolInput, runtime: ToolRuntime) => {
       const result = await options.loadExtension(input, {
@@ -78,7 +76,7 @@ function createJingleLoadExtensionTool(options: CreateJingleExtensionAiToolsHook
   )
 }
 
-function createJingleCallExtensionTool(options: CreateJingleExtensionAiToolsHookOptions) {
+function createJingleCallExtensionTool(options: CreateExtensionAiToolsMiddlewareOptions) {
   return tool(
     async (input: JingleCallExtensionToolInput, runtime: ToolRuntime) => {
       const toolCallId = getToolCallIdFromToolRuntime(runtime)
@@ -129,7 +127,7 @@ export type JingleExtensionAiToolsRuntimeMiddleware = AgentMiddleware<
 >
 
 function createJingleExtensionAiToolsRuntimeMiddleware(
-  options: CreateJingleExtensionAiToolsHookOptions
+  options: CreateExtensionAiToolsMiddlewareOptions
 ): JingleExtensionAiToolsRuntimeMiddleware {
   const loadExtensionTool = createJingleLoadExtensionTool(options)
   const callExtensionTool = createJingleCallExtensionTool(options)
@@ -173,19 +171,8 @@ function createJingleExtensionAiToolsRuntimeMiddleware(
   })
 }
 
-export function createJingleExtensionAiToolsHook(
-  options: CreateJingleExtensionAiToolsHookOptions
-): RuntimeMiddlewareHook<JingleExtensionAiToolsRuntimeMiddleware> {
-  return defineJingleHarnessHook({
-    name: "extensionAiTools",
-    phase: "agent_loop",
-    adapterStateKeys: ["extensionAiSession"],
-    reads: [],
-    runtimeStateKeys: [],
-    writes: ["artifacts", "recordingRefs"],
-    writePolicy: "command-update",
-    failureSemantics: "tool",
-    observableSignals: ["state", "stream", "recording"],
-    createMiddleware: () => createJingleExtensionAiToolsRuntimeMiddleware(options)
-  })
+export function createExtensionAiToolsMiddleware(
+  options: CreateExtensionAiToolsMiddlewareOptions
+): JingleExtensionAiToolsRuntimeMiddleware {
+  return createJingleExtensionAiToolsRuntimeMiddleware(options)
 }

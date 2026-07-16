@@ -8,7 +8,6 @@ import {
   createRunSteeringMiddleware
 } from "@jingle/langchain-agent-harness/transitional"
 import type { RuntimeApprovalControllerContract } from "../../packages/langchain-agent-harness/src/runtime-contract"
-import { defineJingleHarnessHook } from "../../packages/langchain-agent-harness/src/harness-hooks"
 import { createRuntimeGraphEngine } from "../../packages/langchain-agent-harness/src/harness-runtime"
 
 const testApprovalController: RuntimeApprovalControllerContract = {
@@ -151,6 +150,7 @@ test("run steering re-enters the graph when a pending steer arrives before final
   const buffer = createAgentRunSteeringBuffer()
   const observedModelCalls: unknown[][] = []
   let acceptedAfterFirstModelCall = false
+  let titleGenerationCount = 0
   const observerMiddleware = createMiddleware({
     name: "ObserveModelCalls",
     wrapModelCall: async (request, handler) => {
@@ -174,11 +174,24 @@ test("run steering re-enters the graph when a pending steer arrives before final
     approvalController: testApprovalController,
     callbacks: [],
     checkpointer: new MemorySaver(),
+    memoryRecordingProjectionEnabled: false,
     middleware: [createRunSteeringMiddleware(buffer), observerMiddleware],
     model: new FakeToolCallingModel(),
     systemPrompt: "",
+    titleGenerator: async () => {
+      titleGenerationCount += 1
+      return "Steered thread"
+    },
     traceConfig: {}
   })
+  const config = {
+    configurable: {
+      run_id: "run-steering-runtime-run-1",
+      runtime_operation_kind: "invoke",
+      thread_id: "run-steering-harness-runtime-test",
+      workspace_path: "/tmp/run-steering-harness-runtime-test"
+    }
+  }
 
   await agent.invoke(
     {
@@ -186,14 +199,7 @@ test("run steering re-enters the graph when a pending steer arrives before final
       messages: [new HumanMessage({ content: "hello", id: "user-message-1" })],
       todos: []
     },
-    {
-      configurable: {
-        run_id: "run-steering-runtime-run-1",
-        runtime_operation_kind: "invoke",
-        thread_id: "run-steering-harness-runtime-test",
-        workspace_path: "/tmp/run-steering-harness-runtime-test"
-      }
-    }
+    config
   )
 
   assert.equal(observedModelCalls.length, 2)
@@ -203,9 +209,12 @@ test("run steering re-enters the graph when a pending steer arrives before final
   assert.ok(HumanMessage.isInstance(injectedMessage))
   assert.equal(injectedMessage.id, "steer-message-1")
   assert.equal(injectedMessage.content, "focus on tests")
+  const checkpoint = await agent.getState<{ title?: string }>(config)
+  assert.equal(checkpoint.values.title, "Steered thread")
+  assert.equal(titleGenerationCount, 1)
 })
 
-test("harness runtime resolves mixed entries in order", async () => {
+test("harness runtime preserves middleware order", async () => {
   const observedOrder: string[] = []
   const middleware = createMiddleware({
     name: "PlainMiddleware",
@@ -214,32 +223,22 @@ test("harness runtime resolves mixed entries in order", async () => {
       return handler(request)
     }
   })
-  const hook = defineJingleHarnessHook({
-    name: "hook",
-    phase: "model_call",
-    adapterStateKeys: [],
-    reads: [],
-    runtimeStateKeys: [],
-    writes: [],
-    writePolicy: "none",
-    failureSemantics: "tool",
-    observableSignals: ["state"],
-    createMiddleware: () =>
-      createMiddleware({
-        name: "HookMiddleware",
-        wrapModelCall: async (request, handler) => {
-          observedOrder.push("hook")
-          return handler(request)
-        }
-      })
+  const firstMiddleware = createMiddleware({
+    name: "FirstMiddleware",
+    wrapModelCall: async (request, handler) => {
+      observedOrder.push("first")
+      return handler(request)
+    }
   })
   const agent = createRuntimeGraphEngine({
     approvalController: testApprovalController,
     callbacks: [],
     checkpointer: new MemorySaver(),
-    middleware: [hook, middleware],
+    memoryRecordingProjectionEnabled: false,
+    middleware: [firstMiddleware, middleware],
     model: new FakeToolCallingModel(),
     systemPrompt: "",
+    titleGenerator: async () => null,
     traceConfig: {}
   })
 
@@ -259,5 +258,45 @@ test("harness runtime resolves mixed entries in order", async () => {
     }
   )
 
-  assert.deepEqual(observedOrder, ["hook", "middleware"])
+  assert.deepEqual(observedOrder, ["first", "middleware"])
+})
+
+test("runtime graph preserves internal beforeModel lifecycle nodes", async () => {
+  let beforeModelCalls = 0
+  const beforeModelMiddleware = createMiddleware({
+    name: "BeforeModelMiddleware",
+    beforeModel: () => {
+      beforeModelCalls += 1
+    }
+  })
+
+  const agent = createRuntimeGraphEngine({
+    approvalController: testApprovalController,
+    callbacks: [],
+    checkpointer: new MemorySaver(),
+    memoryRecordingProjectionEnabled: false,
+    middleware: [beforeModelMiddleware],
+    model: new FakeToolCallingModel(),
+    systemPrompt: "",
+    titleGenerator: async () => null,
+    traceConfig: {}
+  })
+
+  await agent.invoke(
+    {
+      contextInclusions: [],
+      messages: [new HumanMessage({ content: "hello", id: "user-message-1" })],
+      todos: []
+    },
+    {
+      configurable: {
+        run_id: "before-model-runtime-run-1",
+        runtime_operation_kind: "invoke",
+        thread_id: "before-model-runtime-test",
+        workspace_path: "/tmp/before-model-runtime-test"
+      }
+    }
+  )
+
+  assert.equal(beforeModelCalls, 1)
 })

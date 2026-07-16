@@ -1,5 +1,5 @@
 import type { RuntimeExecutionMiddleware } from "./harness-runtime"
-import { createJingleHumanApprovalHook } from "./human-approval-middleware"
+import { createHumanApprovalMiddleware } from "./human-approval-middleware"
 import type { RuntimeResolvedControlHostContract } from "./runtime-contract"
 
 export interface CreateRuntimeApprovalEntriesInput<
@@ -32,7 +32,7 @@ export function createRuntimeApprovalEntries<
   const { approvalController } = input.control
 
   return [
-    createJingleHumanApprovalHook({
+    createHumanApprovalMiddleware({
       allowedDecisions: approvalController.allowedDecisions,
       middlewareName: "ToolApprovalMiddleware",
       policyRuntime: approvalController.policyRuntime,

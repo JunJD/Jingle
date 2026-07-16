@@ -10,8 +10,7 @@ import type {
 import type { RuntimeMemoryConfig } from "@jingle/langchain-agent-harness"
 import type { JingleMemoryService } from "./service"
 
-export type JingleMemoryHarnessPortOptions =
-  RuntimeMemoryConfig<AgentContextInclusion>
+export type JingleMemoryHarnessPortOptions = RuntimeMemoryConfig<AgentContextInclusion>
 
 export interface CreateJingleMemoryHarnessPortOptions {
   allowSuggestions: boolean

@@ -2,8 +2,8 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { Command, ReducedValue, StateSchema } from "@langchain/langgraph"
 import {
+  createArtifactToolsMiddleware,
   createEmptyJingleAgentStateArtifacts,
-  createJingleArtifactToolsHook,
   reduceJingleAgentStateArtifacts
 } from "@jingle/langchain-agent-harness/transitional"
 import { createArtifactPresentationHandler } from "../../src/main/agent/artifact-presentation-handler"
@@ -47,9 +47,9 @@ function createSummaryArtifact(overrides: Partial<ArtifactRecord> = {}): Artifac
 }
 
 function createJingleArtifactToolsEntryForTest(props: { threadId: string; workspacePath: string }) {
-  return createJingleArtifactToolsHook({
+  return createArtifactToolsMiddleware({
     presentArtifacts: createArtifactPresentationHandler(props)
-  }).createMiddleware()
+  })
 }
 
 test("artifact manifest keeps agent state to storage pointers and status, not content", () => {
@@ -194,7 +194,7 @@ test("artifact state reducer accepts child state snapshots", () => {
   ])
 })
 
-test("artifact tools hook compiles the backend artifacts state channel", () => {
+test("artifact tools middleware compiles the backend artifacts state channel", () => {
   const middleware = createJingleArtifactToolsEntryForTest({
     threadId: "thread-1",
     workspacePath: process.cwd()
@@ -209,7 +209,7 @@ test("artifact tools hook compiles the backend artifacts state channel", () => {
   })
 })
 
-test("artifact tools hook preserves patch updates before reducing state", () => {
+test("artifact tools middleware preserves patch updates before reducing state", () => {
   const middleware = createJingleArtifactToolsEntryForTest({
     threadId: "thread-1",
     workspacePath: process.cwd()
@@ -244,8 +244,8 @@ test("artifact tools hook preserves patch updates before reducing state", () => 
   assert.equal(state.presentationsByIdempotencyKey["tool-call-1"]?.receipts[0]?.outcome, "created")
 })
 
-test("artifact tools hook records artifact refs into harness recording state", async () => {
-  const middleware = createJingleArtifactToolsHook({
+test("artifact tools middleware records artifact refs into runtime state", async () => {
+  const middleware = createArtifactToolsMiddleware({
     presentArtifacts: async (_input, context) => ({
       content: "Presented artifact: Recorded summary",
       update: toJingleAgentStateArtifactsUpdate(
@@ -277,7 +277,7 @@ test("artifact tools hook records artifact refs into harness recording state", a
         new Date("2026-01-01T00:00:05.000Z")
       )
     })
-  }).createMiddleware()
+  })
   const presentArtifactsTool = middleware.tools?.find((tool) => tool.name === "present_artifacts")
   assert.ok(presentArtifactsTool)
 

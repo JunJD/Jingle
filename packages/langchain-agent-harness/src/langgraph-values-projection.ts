@@ -23,7 +23,6 @@ export interface JingleValuesHostProjection {
   files?: JingleValuesFileProjection[]
   messages?: JingleLangGraphSerializedMessageChunk[]
   recordingRefs?: unknown[]
-  tasks?: unknown[]
   todos?: Array<{ content?: string; id?: string; status?: string }>
   toolDecisions?: unknown[]
   workspacePath?: string
@@ -134,14 +133,6 @@ export function projectJingleValuesStateForHost(data: unknown): JingleValuesHost
 
   if (Array.isArray(state.contextInclusions)) {
     projectedState.contextInclusions = state.contextInclusions
-  }
-
-  if (state.tasks !== undefined && !Array.isArray(state.tasks)) {
-    throw new Error("[JingleLangGraph] Invalid values tasks state.")
-  }
-
-  if (Array.isArray(state.tasks)) {
-    projectedState.tasks = state.tasks
   }
 
   if (state.compactions !== undefined && !Array.isArray(state.compactions)) {

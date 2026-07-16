@@ -1,4 +1,3 @@
-
 import { END, Send } from "@langchain/langgraph"
 import type { AgentMiddleware } from "langchain"
 import { getHookConstraint } from "./middleware/utils.js"
@@ -19,7 +18,6 @@ export const INTERNAL_MIDDLEWARE_NODE_PREFIX = "__internal_middleware__"
 
 interface RuntimeGraphNodeGroup {
   readonly allowed?: readonly string[]
-  readonly index: number
   readonly name: string
 }
 
@@ -49,15 +47,16 @@ interface LegacyBeforeFlowInput extends LegacyMiddlewareFlowInput {
 }
 
 interface LegacyAfterModelFlowInput extends LegacyMiddlewareFlowInput {
-  readonly modelStepNode: string
+  readonly afterModelEntryNode: string
   readonly modelStepResultNode: string
 }
 
-interface LegacyAfterAgentFlowInput extends Omit<LegacyMiddlewareFlowInput, "exitNode"> {}
+interface LegacyAfterAgentFlowInput extends LegacyMiddlewareFlowInput {}
 
-interface LegacyMiddlewareNodeSegmentInput extends LegacyMiddlewareFlowInput {
-  readonly modelStepNode: string
+interface LegacyMiddlewareNodeSegmentInput extends Omit<LegacyMiddlewareFlowInput, "exitNode"> {
+  readonly afterModelEntryNode: string
   readonly modelStepResultNode: string
+  readonly terminalNode: string
 }
 
 export interface MountedLegacyMiddlewareSegment {
@@ -97,6 +96,7 @@ function createBeforeAgentRouter(input: {
 }
 
 function createBeforeModelRouter(input: {
+  readonly exitNode: string
   readonly hasToolsAvailable: boolean
   readonly modelEntryNode: string
   readonly nextDefault: string
@@ -105,9 +105,9 @@ function createBeforeModelRouter(input: {
   return (state: any) => {
     if (!state.jumpTo) return input.nextDefault
     const destination = parseRuntimeJumpTarget(state.jumpTo)
-    if (destination === END) return END
+    if (destination === END) return input.exitNode
     if (destination === LEGACY_TOOLS_NODE_NAME) {
-      if (!input.hasToolsAvailable) return END
+      if (!input.hasToolsAvailable) return input.exitNode
       return new Send(input.permissionGateNode, {
         ...state,
         jumpTo: undefined
@@ -122,6 +122,7 @@ function createBeforeModelRouter(input: {
 
 function createAfterModelSequenceRouter(input: {
   readonly allowed: readonly string[]
+  readonly exitNode: string
   readonly hasToolsAvailable: boolean
   readonly modelEntryNode: string
   readonly nextDefault: string
@@ -131,9 +132,9 @@ function createAfterModelSequenceRouter(input: {
   return (state: any) => {
     if (state.jumpTo) {
       const destination = parseRuntimeJumpTarget(state.jumpTo)
-      if (destination === END && allowedSet.has(END)) return END
+      if (destination === END && allowedSet.has(END)) return input.exitNode
       if (destination === LEGACY_TOOLS_NODE_NAME && allowedSet.has(LEGACY_TOOLS_NODE_NAME)) {
-        if (!input.hasToolsAvailable) return END
+        if (!input.hasToolsAvailable) return input.exitNode
         return new Send(input.permissionGateNode, {
           ...state,
           jumpTo: undefined
@@ -191,7 +192,6 @@ export class LegacyMiddlewareSegment {
         throw new Error(`Middleware ${middleware.name} is defined multiple times`)
       }
       middlewareNames.add(middleware.name)
-
       if (middleware.beforeAgent) {
         const node = new LegacyBeforeAgentNode(middleware, {
           getState: () => input.stateManager.getState(middleware.name)
@@ -200,7 +200,6 @@ export class LegacyMiddlewareSegment {
         const name = `${INTERNAL_MIDDLEWARE_NODE_PREFIX}.${middleware.name}.before_agent`
         this.#beforeAgentNodes.push({
           allowed: getHookConstraint(middleware.beforeAgent),
-          index,
           name
         })
         input.graph.addNode(name, node, node.nodeOptions)
@@ -214,7 +213,6 @@ export class LegacyMiddlewareSegment {
         const name = `${INTERNAL_MIDDLEWARE_NODE_PREFIX}.${middleware.name}.before_model`
         this.#beforeModelNodes.push({
           allowed: getHookConstraint(middleware.beforeModel),
-          index,
           name
         })
         input.graph.addNode(name, node, node.nodeOptions)
@@ -228,7 +226,6 @@ export class LegacyMiddlewareSegment {
         const name = `${INTERNAL_MIDDLEWARE_NODE_PREFIX}.${middleware.name}.after_model`
         this.#afterModelNodes.push({
           allowed: getHookConstraint(middleware.afterModel),
-          index,
           name
         })
         input.graph.addNode(name, node, node.nodeOptions)
@@ -242,7 +239,6 @@ export class LegacyMiddlewareSegment {
         const name = `${INTERNAL_MIDDLEWARE_NODE_PREFIX}.${middleware.name}.after_agent`
         this.#afterAgentNodes.push({
           allowed: getHookConstraint(middleware.afterAgent),
-          index,
           name
         })
         input.graph.addNode(name, node, node.nodeOptions)
@@ -253,7 +249,7 @@ export class LegacyMiddlewareSegment {
   mountInternalNodes(input: LegacyMiddlewareNodeSegmentInput): MountedLegacyMiddlewareSegment {
     const runEntryNode = this.#runEntryNode(input.modelEntryNode)
     const loopEntryNode = this.#loopEntryNode(input.modelEntryNode)
-    const exitNode = this.#exitNode(input.exitNode)
+    const exitNode = this.#exitNode(input.terminalNode)
 
     this.#mountBeforeModelLoop({
       exitNode,
@@ -268,11 +264,12 @@ export class LegacyMiddlewareSegment {
       graph: input.graph,
       hasToolsAvailable: input.hasToolsAvailable,
       modelEntryNode: input.modelEntryNode,
-      modelStepNode: input.modelStepNode,
+      afterModelEntryNode: input.afterModelEntryNode,
       modelStepResultNode: input.modelStepResultNode,
       permissionGateNode: input.permissionGateNode
     })
     this.#mountAfterAgent({
+      exitNode: input.terminalNode,
       graph: input.graph,
       hasToolsAvailable: input.hasToolsAvailable,
       modelEntryNode: input.modelEntryNode,
@@ -344,6 +341,7 @@ export class LegacyMiddlewareSegment {
         input.graph.addConditionalEdges(
           node.name,
           createBeforeModelRouter({
+            exitNode: input.exitNode,
             hasToolsAvailable: input.hasToolsAvailable,
             modelEntryNode: input.modelEntryNode,
             nextDefault,
@@ -367,9 +365,9 @@ export class LegacyMiddlewareSegment {
     const firstAfterModel = this.#afterModelNodes[0]
     const lastAfterModel = this.#afterModelNodes.at(-1)
     if (lastAfterModel) {
-      input.graph.addEdge(input.modelStepNode, lastAfterModel.name)
+      input.graph.addEdge(input.afterModelEntryNode, lastAfterModel.name)
     } else {
-      input.graph.addEdge(input.modelStepNode, input.modelStepResultNode)
+      input.graph.addEdge(input.afterModelEntryNode, input.modelStepResultNode)
       return
     }
 
@@ -381,6 +379,7 @@ export class LegacyMiddlewareSegment {
           node.name,
           createAfterModelSequenceRouter({
             allowed: node.allowed,
+            exitNode: input.exitNode,
             hasToolsAvailable: input.hasToolsAvailable,
             modelEntryNode: input.modelEntryNode,
             nextDefault,
@@ -411,13 +410,14 @@ export class LegacyMiddlewareSegment {
           node.name,
           createAfterModelSequenceRouter({
             allowed: node.allowed,
+            exitNode: input.exitNode,
             hasToolsAvailable: input.hasToolsAvailable,
             modelEntryNode: input.modelEntryNode,
             nextDefault,
             permissionGateNode: input.permissionGateNode
           }),
           collectAllowedDestinations(node, {
-            exitNode: END,
+            exitNode: input.exitNode,
             hasToolsAvailable: input.hasToolsAvailable,
             modelEntryNode: input.modelEntryNode,
             nextDefault,
@@ -439,10 +439,10 @@ export class LegacyMiddlewareSegment {
         .filter((destination) => destination !== LEGACY_TOOLS_NODE_NAME || input.hasToolsAvailable)
       const destinations = Array.from(
         new Set([
-          END,
+          input.exitNode,
           ...allowedMapped.map((destination) =>
             mapRuntimeDestination(destination, {
-              exitNode: END,
+              exitNode: input.exitNode,
               modelEntryNode: input.modelEntryNode,
               permissionGateNode: input.permissionGateNode
             })
@@ -453,15 +453,16 @@ export class LegacyMiddlewareSegment {
         firstAfterAgent.name,
         createAfterModelSequenceRouter({
           allowed: firstAfterAgent.allowed,
+          exitNode: input.exitNode,
           hasToolsAvailable: input.hasToolsAvailable,
           modelEntryNode: input.modelEntryNode,
-          nextDefault: END,
+          nextDefault: input.exitNode,
           permissionGateNode: input.permissionGateNode
         }),
         destinations
       )
     } else {
-      input.graph.addEdge(firstAfterAgent.name, END)
+      input.graph.addEdge(firstAfterAgent.name, input.exitNode)
     }
   }
 }

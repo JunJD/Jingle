@@ -13,6 +13,11 @@ export type {
   RuntimeModelStepInput,
   RuntimeModelStepOutput
 } from "./runtime/ModelStepNode"
+export { MemoryRecordingProjectionNode } from "./runtime/MemoryRecordingProjectionNode"
+export type {
+  MemoryRecordingProjectionNodeResult,
+  RuntimeMemoryRecordingProjectionInput
+} from "./runtime/MemoryRecordingProjectionNode"
 export { OperationFrameNode } from "./runtime/OperationFrameNode"
 export type { OperationFrameNodeResult } from "./runtime/OperationFrameNode"
 export { PermissionGateNode } from "./runtime/PermissionGateNode"
@@ -23,6 +28,11 @@ export type {
 } from "./runtime/PermissionGateNode"
 export { StepResultNode } from "./runtime/StepResultNode"
 export type { RuntimeStepRouter, StepResultInput } from "./runtime/StepResultNode"
+export { TitleProjectionNode } from "./runtime/TitleProjectionNode"
+export type {
+  RuntimeTitleProjectionInput,
+  TitleProjectionNodeResult
+} from "./runtime/TitleProjectionNode"
 export { ToolStepNode } from "./runtime/ToolStepNode"
 export type {
   RuntimeToolStepExecutor,

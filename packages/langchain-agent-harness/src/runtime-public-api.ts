@@ -1,4 +1,5 @@
-export type { CreateRuntimeInput, Runtime } from "./runtime"
+export type { Runtime } from "./runtime"
+export type { CreateRuntimeInput } from "./runtime"
 export { createRuntime } from "./runtime"
 
 export type {
@@ -18,140 +19,49 @@ export type {
   RuntimeInvokeOperation,
   RuntimeOperation,
   RuntimeOperationBase,
-  RuntimeOperationCheckpointBoundary,
-  RuntimeOperationEntryContract,
-  RuntimeOperationEntryId,
-  RuntimeOperationEntryStatus,
-  RuntimeOperationSurfaceContract,
   RuntimeOperationKind,
   RuntimeResumeOperation,
   RuntimeRunContext,
-  RuntimeDeferredOperationCapability,
   RuntimeToolApprovalDecision,
   RuntimeToolApprovalDecisionType
 } from "./runtime-operation"
-export {
-  RUNTIME_OPERATION_CHECKPOINT_BOUNDARY,
-  RUNTIME_OPERATION_SURFACE
-} from "./runtime-operation"
-export type { RuntimeRunStreamOptions } from "./runtime-execution"
 export type { RuntimeRunContextScope, RuntimeThreadScope } from "./runtime-scope"
 
 export type {
   RuntimeApproval,
   RuntimeArtifacts,
   RuntimeArtifactsUpdate,
-  RuntimeCapabilityContract,
   RuntimeCheckpointState,
   RuntimeCompaction,
   RuntimeRecordingRef,
   RuntimeSchema,
   RuntimeState,
-  RuntimeStateFactContract,
   RuntimeToolDecision,
-  RuntimeStateFactOwner,
-  RuntimeStateFactRole,
-  RuntimeStateKey,
-  RuntimeTask,
   RuntimeTodo
 } from "./runtime-state"
 export { parseRuntimeToolDecision } from "./runtime-state"
 export {
   RUNTIME_APPROVAL_STATUSES,
-  RUNTIME_CAPABILITY_CONTRACTS,
   RUNTIME_COMPACTION_STATUSES,
   RUNTIME_RECORDING_DOMAINS,
-  RUNTIME_STATE_FACT_CONTRACTS,
-  RUNTIME_TASK_STATUSES,
   RUNTIME_TODO_STATUSES,
   runtimeApprovalsValue,
   runtimeCompactionsValue,
   runtimeRecordingRefsValue,
   runtimeStateSchema,
-  runtimeTasksValue,
   runtimeTodosValue
 } from "./runtime-state"
 
 export type {
-  RuntimeCreationAssemblyContract,
-  RuntimeInternalOnlySurface,
-  RuntimePackageExportBoundaryContract,
-  RuntimePackageEntrypointContract,
-  RuntimePackageEntrypointId,
-  RuntimePackageEntrypointName,
-  RuntimePackageEntrypointRole,
-  RuntimePackageRootBoundaryContract,
-  RuntimePackageRootExportGroup,
-  RuntimePackageSourceFile,
-  RuntimePackageTransitionalBoundaryContract,
-  RuntimePublicSurfaceContract,
-  RuntimeWorkbenchContract,
-  RuntimeWorkbenchName,
-  RuntimePublicSurfaceCapability,
-  RuntimePublicSurfaceRole,
-  RuntimePublicSurfaceStability
-} from "./runtime-workbench"
-
-export { RUNTIME_PACKAGE_EXPORT_BOUNDARY, RUNTIME_WORKBENCH_CONTRACT } from "./runtime-workbench"
-
-export type {
-  RuntimeObservationBoundaryContract,
-  RuntimeObservationDeferredSurface,
-  RuntimeObservationImplementedSurface,
-  RuntimeObservationSurface,
-  RuntimeObservationSurfaceContract,
-  RuntimeObservationSurfaceOwner,
-  RuntimeObservationSurfaceStatus
+  RuntimeObservationSink,
+  RuntimeProjectionFailure,
+  RuntimeProjectionFailureObserver,
+  RuntimeProjectionFailureRecordInput,
+  RuntimeProjectionKind,
+  RuntimeProjectionSink,
+  RuntimeTraceSink
 } from "./runtime-observation"
-export { RUNTIME_OBSERVATION_BOUNDARY } from "./runtime-observation"
-
-export type {
-  RuntimeChildWorkStatus,
-  RuntimePublicSessionType,
-  RuntimePublicThreadType,
-  RuntimeSessionBoundaryContract,
-  RuntimeThreadSessionPolicy
-} from "./runtime-session"
-export { RUNTIME_SESSION_BOUNDARY } from "./runtime-session"
-
-export type {
-  RuntimeChildWorkBoundaryContract,
-  RuntimeChildWorkCapability,
-  RuntimeChildWorkEdge,
-  RuntimeChildWorkEdgeContract,
-  RuntimeChildWorkImplementationStatus,
-  RuntimeChildWorkLifecycleStep,
-  RuntimeChildWorkLifecycleStepContract,
-  RuntimeChildWorkStoreRelation
-} from "./runtime-child-work"
-export { RUNTIME_CHILD_WORK_BOUNDARY } from "./runtime-child-work"
-
-export type {
-  RuntimeShellBoundaryContract,
-  RuntimeShellCapability,
-  RuntimeShellExecutionSurface,
-  RuntimeShellImplementationStatus,
-  RuntimeShellOwner
-} from "./runtime-shell"
-export { RUNTIME_SHELL_BOUNDARY } from "./runtime-shell"
-
-export type {
-  RuntimeStoreBoundaryContract,
-  RuntimeStoreBoundaryId,
-  RuntimeStoreBoundaryKind,
-  RuntimeStoreOwner,
-  RuntimeStoreSemantics
-} from "./runtime-store"
-export { RUNTIME_STORE_BOUNDARY_CONTRACTS } from "./runtime-store"
-
-export type {
-  RuntimeContextMiddlewareExitPriority,
-  RuntimeContextNeighborSurface,
-  RuntimeContextSurface,
-  RuntimeContextSurfaceContract
-} from "./runtime-context"
-export { RUNTIME_CONTEXT_SURFACE_CONTRACTS } from "./runtime-context"
-
+export { RUNTIME_PROJECTION_KINDS } from "./runtime-observation"
 export type {
   RuntimeApprovalController,
   RuntimeArtifactPresentationConfig,
@@ -159,12 +69,12 @@ export type {
   RuntimeArtifactPresentationProvider,
   RuntimeArtifactPresentationResult,
   RuntimeBackend,
+  RuntimeCallExtensionToolContext,
+  RuntimeCallExtensionToolInput,
   RuntimeContextRetrievalConfig,
   RuntimeContextRetrievalProvider,
   RuntimeContextRetrievalResult,
   RuntimeContextRetrievalToolContext,
-  RuntimeCallExtensionToolContext,
-  RuntimeCallExtensionToolInput,
   RuntimeDesktopAutomationTools,
   RuntimeExtensionToolCallUi,
   RuntimeExtensionToolContentResult,
@@ -175,9 +85,9 @@ export type {
   RuntimeExtensionToolsProvider,
   RuntimeGetMessageContextInput,
   RuntimeGetTraceEvidenceInput,
-  RuntimeLoadExtensionToolInput,
   RuntimeGuardrailConfig,
   RuntimeGuardrailProvider,
+  RuntimeLoadExtensionToolInput,
   RuntimeMemoryConfig,
   RuntimeMemoryProvider,
   RuntimeModelProvider,
@@ -187,40 +97,27 @@ export type {
   RuntimeSkillSources,
   RuntimeSuggestPersonalMemoryContext,
   RuntimeSuggestPersonalMemoryInput,
-  RuntimeTitleGeneratorContract,
   RuntimeTitleGenerator,
+  RuntimeTitleGeneratorContract,
   RuntimeWebTools,
   RuntimeWorkspaceFileContextConfig,
-  RuntimeWorkspaceFileContextRequest,
-  RuntimeWorkspaceFileContextProvider
+  RuntimeWorkspaceFileContextProvider,
+  RuntimeWorkspaceFileContextRequest
 } from "./runtime-capabilities"
-export type { RuntimeObservationSink, RuntimeTraceSink } from "./runtime-observation"
 
 export type {
   RuntimeThreadBoundaryContract,
   RuntimeThread,
-  RuntimeThreadAbortInput,
-  RuntimeThreadBeginInvokeInput,
-  RuntimeThreadBeginResumeInput,
-  RuntimeThreadCompleteInput,
-  RuntimeThreadDrainInput,
-  RuntimeThreadDrainResult,
-  RuntimeThreadFailInput,
   RuntimeThreadInput,
   RuntimeThreadInvokeRun,
   RuntimeThreadInvokeRunExecutionInput,
-  RuntimeThreadInvokeInput,
-  RuntimeThreadOperationControl,
   RuntimeThreadResumeRun,
   RuntimeThreadResumeRunExecutionInput,
-  RuntimeThreadResumeInput,
   RuntimeThreadRoleContract,
   RuntimeThreadRoleId,
   RuntimeThreadRoleVisibility,
   RuntimeThreadRun,
   RuntimeThreadRunExecutionInput,
-  RuntimeThreadRunResult,
-  RuntimeThreadRunLifecycleControl,
-  RuntimeThreadStreamControl
+  RuntimeThreadRunResult
 } from "./runtime-thread"
 export { RUNTIME_THREAD_BOUNDARY } from "./runtime-thread"

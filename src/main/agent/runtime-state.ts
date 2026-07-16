@@ -9,7 +9,6 @@ import type {
   RuntimeApproval,
   RuntimeCompaction,
   RuntimeRecordingRef,
-  RuntimeTask,
   RuntimeToolDecision
 } from "@jingle/langchain-agent-harness"
 import type { HitlRequestRow } from "../db"
@@ -116,7 +115,6 @@ export function extractThreadFactsFromCheckpoint(
   hasInterrupt: boolean
   hitlRequest: HITLRequest | null
   recordingRefs: RuntimeRecordingRef[]
-  tasks: RuntimeTask[]
   title: string | null
   todos: Todo[]
   toolDecisions: RuntimeToolDecision[]
@@ -138,7 +136,6 @@ export function extractThreadFactsFromCheckpoint(
     hasInterrupt: facts.hasInterrupt,
     hitlRequest: facts.hitlRequest,
     recordingRefs: facts.recordingRefs,
-    tasks: facts.tasks,
     title: facts.title,
     todos: facts.todos.map((todo) => ({
       ...todo,

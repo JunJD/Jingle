@@ -102,7 +102,6 @@ interface JingleLangGraphCheckpointState {
       contextInclusions?: unknown
       messages?: JingleLangGraphCheckpointChannelMessage[]
       recordingRefs?: unknown
-      tasks?: unknown
       title?: unknown
       todos?: JingleLangGraphCheckpointTodo[]
       toolDecisions?: unknown
@@ -351,11 +350,6 @@ export function readJingleLangGraphCheckpointRecordingRefs(
 ): unknown {
   const state = tuple as JingleLangGraphCheckpointState | undefined
   return state?.checkpoint?.channel_values?.recordingRefs
-}
-
-export function readJingleLangGraphCheckpointTasks(tuple: CheckpointTuple | undefined): unknown {
-  const state = tuple as JingleLangGraphCheckpointState | undefined
-  return state?.checkpoint?.channel_values?.tasks
 }
 
 export function readJingleLangGraphCheckpointTitle(tuple: CheckpointTuple | undefined): unknown {

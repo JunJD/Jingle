@@ -5,8 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 import { Command } from "@langchain/langgraph"
-import { createJingleContextRetrievalToolsHook } from "@jingle/langchain-agent-harness/transitional"
-import { compileRuntimeHookToMiddleware } from "../../packages/langchain-agent-harness/src/harness-runtime"
+import { createContextRetrievalToolsMiddleware } from "@jingle/langchain-agent-harness/transitional"
 import { createAgentContextInclusionToolHandlers } from "../../src/main/agent/context-retrieval-tool-handlers"
 import { parseContextRetrievalToolResult } from "../../src/shared/context-retrieval-results"
 
@@ -21,18 +20,16 @@ async function loadDbModules() {
   return { ...db, ...messageSearch, getPrismaClient }
 }
 
-function compileJingleContextRetrievalToolsHookForTest(options: {
+function createContextRetrievalToolsMiddlewareForTest(options: {
   runId: string
   threadId: string
 }) {
-  return compileRuntimeHookToMiddleware(
-    createJingleContextRetrievalToolsHook({
-      runId: options.runId,
-      ...createAgentContextInclusionToolHandlers({
-        threadId: options.threadId
-      })
+  return createContextRetrievalToolsMiddleware({
+    runId: options.runId,
+    ...createAgentContextInclusionToolHandlers({
+      threadId: options.threadId
     })
-  )
+  })
 }
 
 test.before(async () => {
@@ -340,7 +337,7 @@ test("search_history tool routes through thread digests before writing history m
     topics: ["history routing"]
   })
 
-  const middleware = compileJingleContextRetrievalToolsHookForTest({
+  const middleware = createContextRetrievalToolsMiddlewareForTest({
     runId: "run-history-tool",
     threadId: "current-thread"
   })
@@ -420,7 +417,7 @@ test("search_history tool falls back to message FTS with diagnostic when digests
     }
   ])
 
-  const middleware = compileJingleContextRetrievalToolsHookForTest({
+  const middleware = createContextRetrievalToolsMiddlewareForTest({
     runId: "run-history-tool-no-digest",
     threadId: "current-thread"
   })
@@ -509,7 +506,7 @@ test("search_history tool respects explicit thread scope for digest and message 
     topics: []
   })
 
-  const middleware = compileJingleContextRetrievalToolsHookForTest({
+  const middleware = createContextRetrievalToolsMiddlewareForTest({
     runId: "run-history-tool-scoped",
     threadId: "current-thread"
   })
@@ -561,7 +558,7 @@ test("search_history tool respects explicit thread scope for digest and message 
 })
 
 test("search_history tool returns no inclusion when digest and message search are empty", async () => {
-  const middleware = compileJingleContextRetrievalToolsHookForTest({
+  const middleware = createContextRetrievalToolsMiddlewareForTest({
     runId: "run-history-tool-empty",
     threadId: "current-thread"
   })
@@ -631,7 +628,7 @@ test("get_message_context tool expands a bounded window across projected thread 
     }
   ])
 
-  const middleware = compileJingleContextRetrievalToolsHookForTest({
+  const middleware = createContextRetrievalToolsMiddlewareForTest({
     runId: "run-message-context",
     threadId: "current-thread"
   })
@@ -708,7 +705,7 @@ test("get_message_context tool returns no inclusion when the projected message i
     }
   ])
 
-  const middleware = compileJingleContextRetrievalToolsHookForTest({
+  const middleware = createContextRetrievalToolsMiddlewareForTest({
     runId: "run-message-context-missing",
     threadId: "current-thread"
   })
@@ -767,7 +764,7 @@ test("get_message_context never exposes corrupt persisted message content", asyn
     }
   })
 
-  const middleware = compileJingleContextRetrievalToolsHookForTest({
+  const middleware = createContextRetrievalToolsMiddlewareForTest({
     runId: "run-message-context-corrupt",
     threadId: "current-thread"
   })
@@ -856,7 +853,7 @@ test("get_trace_evidence tool retrieves a trace step by traceStepId", async () =
   const step = (await getAgentTraceSteps(runId))[0]
   assert.ok(step)
 
-  const middleware = compileJingleContextRetrievalToolsHookForTest({
+  const middleware = createContextRetrievalToolsMiddlewareForTest({
     runId: "current-run-trace-step",
     threadId: "current-thread"
   })
@@ -971,7 +968,7 @@ test("get_trace_evidence tool retrieves a trace step by toolCallId and links art
   assert.equal(artifactResult.type, "stored")
   await flushAgentTraceProjection()
 
-  const middleware = compileJingleContextRetrievalToolsHookForTest({
+  const middleware = createContextRetrievalToolsMiddlewareForTest({
     runId: "current-run-trace-tool",
     threadId: "current-thread"
   })
@@ -1088,7 +1085,7 @@ test("get_trace_evidence tool does not link an explicit artifact from another so
   assert.equal(otherArtifactResult.type, "stored")
   await flushAgentTraceProjection()
 
-  const middleware = compileJingleContextRetrievalToolsHookForTest({
+  const middleware = createContextRetrievalToolsMiddlewareForTest({
     runId: "current-run-cross-artifact",
     threadId: "current-thread"
   })
@@ -1195,7 +1192,7 @@ test("get_trace_evidence tool returns no inclusion when trace output blob is mis
     }
   })
 
-  const middleware = compileJingleContextRetrievalToolsHookForTest({
+  const middleware = createContextRetrievalToolsMiddlewareForTest({
     runId: "current-run-missing-blob",
     threadId: "current-thread"
   })
@@ -1258,7 +1255,7 @@ test("get_trace_evidence tool retrieves artifact-only evidence without a trace s
   assert.equal(artifactResult.type, "stored")
   const artifact = artifactResult.artifacts[0]!
 
-  const middleware = compileJingleContextRetrievalToolsHookForTest({
+  const middleware = createContextRetrievalToolsMiddlewareForTest({
     runId: "current-run-artifact-only",
     threadId: "current-thread"
   })
@@ -1335,7 +1332,7 @@ test("get_trace_evidence tool does not expose an explicit artifact when the trac
   assert.equal(artifactResult.type, "stored")
   const artifact = artifactResult.artifacts[0]!
 
-  const middleware = compileJingleContextRetrievalToolsHookForTest({
+  const middleware = createContextRetrievalToolsMiddlewareForTest({
     runId: "current-run-missing-trace-artifact",
     threadId: "current-thread"
   })

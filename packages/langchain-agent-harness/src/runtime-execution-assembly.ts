@@ -8,7 +8,6 @@ import { createRuntimeApprovalEntries } from "./runtime-approval-capability"
 import { createRuntimeContextEntries } from "./runtime-context-capability"
 import { createRuntimeGuardrailEntries } from "./runtime-guardrail-capability"
 import { createRuntimeSteeringEntries } from "./runtime-steering-capability"
-import { createRuntimeTitleEntries } from "./runtime-title-capability"
 import {
   createRuntimeCoreToolCapability,
   createRuntimeToolEntries
@@ -34,6 +33,7 @@ export interface RuntimeExecutionAssemblyInput<
 }
 
 export interface RuntimeExecutionAssembly {
+  memoryRecordingProjectionEnabled: boolean
   middleware: readonly RuntimeExecutionMiddleware[]
 }
 
@@ -66,21 +66,22 @@ export function assembleRuntimeExecution<
     runContext,
     thread
   })
+  const contextEntries = createRuntimeContextEntries<TContextInclusion, TGuardrailMetadata>({
+    context,
+    runContext,
+    thread
+  })
   const rootTailEntries = compactRuntimeEntries([
-    ...createRuntimeContextEntries<TContextInclusion, TGuardrailMetadata>({
-      context,
-      runContext,
-      thread
-    }),
+    ...contextEntries.middleware,
     ...createRuntimeSteeringEntries({
       steeringBuffer: input.steeringBuffer
     }),
-    ...createRuntimeTitleEntries({ context }),
     ...createRuntimeGuardrailEntries<TContextInclusion, TGuardrailMetadata>({ context, thread }),
     ...createRuntimeApprovalEntries({ control })
   ])
 
   return {
+    memoryRecordingProjectionEnabled: contextEntries.memoryRecordingProjectionEnabled,
     middleware: createRuntimeAgentLoopEntries({
       rootTailEntries,
       toolEntries
@@ -88,8 +89,6 @@ export function assembleRuntimeExecution<
   }
 }
 
-function compactRuntimeEntries<TEntry>(
-  entries: readonly (TEntry | null | undefined)[]
-): TEntry[] {
+function compactRuntimeEntries<TEntry>(entries: readonly (TEntry | null | undefined)[]): TEntry[] {
   return entries.filter((candidate): candidate is TEntry => candidate != null)
 }

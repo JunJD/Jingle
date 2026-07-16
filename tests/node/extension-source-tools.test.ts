@@ -14,10 +14,7 @@ import {
   resolveExtensionToolPermission
 } from "../../src/shared/extension-sources"
 import { z } from "../../src/main/agent/tool-input-schema"
-import {
-  createJingleExtensionAiToolsHook
-} from "@jingle/langchain-agent-harness/transitional"
-import { compileRuntimeHookToMiddleware } from "../../packages/langchain-agent-harness/src/harness-runtime"
+import { createExtensionAiToolsMiddleware } from "@jingle/langchain-agent-harness/transitional"
 import {
   buildExtensionAiCapabilityGuide,
   buildExtensionInstructions,
@@ -34,9 +31,7 @@ import { ExtensionToolRegistry } from "../../src/main/extension-tools/registry"
 import { defineNativeExtensionManifest } from "../../src/shared/native-extensions"
 
 function createExtensionAiToolsMiddlewareForTest(options: CreateExtensionAiToolsPortOptionsInput) {
-  return compileRuntimeHookToMiddleware(
-    createJingleExtensionAiToolsHook(createExtensionAiToolsPortOptions(options))
-  )
+  return createExtensionAiToolsMiddleware(createExtensionAiToolsPortOptions(options))
 }
 
 type MockResolvedCapabilityInput = {
@@ -836,7 +831,7 @@ test("extension AI middleware returns input validation failures as tool results"
   assert.equal(result.status, "error")
   assert.equal(result.code, "validation_error")
   assert.equal(result.toolName, "searchItems")
-  assert.deepEqual(result.issues, ['query: Invalid input: expected string, received undefined'])
+  assert.deepEqual(result.issues, ["query: Invalid input: expected string, received undefined"])
 })
 
 test("extension AI middleware requires tool call ids for declared outputs", async () => {
@@ -1157,14 +1152,12 @@ test("extension AI runtime exposes only read bindings in explore mode", async ()
   assert.equal(runtime.aiToolBindings[0]?.agentToolName, "ext__mockSource__profile_1__createItem")
   assert.deepEqual(runtime.visibleAiToolBindings, [])
   assert.deepEqual(
-    compileRuntimeHookToMiddleware(
-      createJingleExtensionAiToolsHook(
-        runtime.createToolsOptions({
-          runId: "run-1",
-          threadId: "thread-1",
-          workspacePath: "/workspace"
-        })
-      )
+    createExtensionAiToolsMiddleware(
+      runtime.createToolsOptions({
+        runId: "run-1",
+        threadId: "thread-1",
+        workspacePath: "/workspace"
+      })
     ).tools?.map((tool) => tool.name),
     ["loadExtension", "callExtension"]
   )

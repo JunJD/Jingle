@@ -4,7 +4,6 @@ import {
   readJingleLangGraphCheckpointCompactions,
   readJingleLangGraphCheckpointContextInclusions,
   readJingleLangGraphCheckpointRecordingRefs,
-  readJingleLangGraphCheckpointTasks,
   readJingleLangGraphCheckpointTitle,
   readJingleLangGraphCheckpointToolDecisions,
   readJingleLangGraphCheckpointTodos,
@@ -14,7 +13,6 @@ import type {
   RuntimeApproval,
   RuntimeCompaction,
   RuntimeRecordingRef,
-  RuntimeTask,
   RuntimeToolDecision
 } from "./runtime-state"
 import { parseRuntimeToolDecision } from "./runtime-state"
@@ -41,7 +39,6 @@ export interface JingleLangGraphCheckpointThreadFacts<
   hasInterrupt: boolean
   hitlRequest: JingleHitlRequest<TReview> | null
   recordingRefs: RuntimeRecordingRef[]
-  tasks: RuntimeTask[]
   title: string | null
   todos: JingleLangGraphCheckpointProjectedTodo[]
   toolDecisions: RuntimeToolDecision[]
@@ -114,19 +111,6 @@ function projectJingleLangGraphCheckpointRecordingRefs(
   return recordingRefs as RuntimeRecordingRef[]
 }
 
-function projectJingleLangGraphCheckpointTasks(tuple: CheckpointTuple | undefined): RuntimeTask[] {
-  const tasks = readJingleLangGraphCheckpointTasks(tuple)
-  if (tasks === undefined) {
-    return []
-  }
-
-  if (!Array.isArray(tasks)) {
-    throw new Error("[LangGraphCheckpointReader] Invalid checkpoint tasks channel.")
-  }
-
-  return tasks as RuntimeTask[]
-}
-
 function projectJingleLangGraphCheckpointTodos(
   tuple: CheckpointTuple | undefined
 ): JingleLangGraphCheckpointProjectedTodo[] {
@@ -181,7 +165,6 @@ export function projectJingleLangGraphCheckpointThreadFacts<
     hasInterrupt: checkpointHasJingleHitlInterrupt(input.tuple),
     hitlRequest,
     recordingRefs: projectJingleLangGraphCheckpointRecordingRefs(input.tuple),
-    tasks: projectJingleLangGraphCheckpointTasks(input.tuple),
     title: projectJingleLangGraphCheckpointTitle(input.tuple),
     todos: projectJingleLangGraphCheckpointTodos(input.tuple),
     toolDecisions: projectJingleLangGraphCheckpointToolDecisions(input.tuple)

@@ -9,8 +9,8 @@ import { ToolSchemaValidationError } from "./tool-input-schema"
 import { presentExtensionToolOutputs } from "../artifacts/extension-tool-outputs"
 import { ExtensionToolExecutor } from "../extension-tools/executor"
 import type { ExtensionAgentToolBinding } from "../extension-tools/registry"
-import type { RuntimeExtensionToolsConfig } from "@jingle/langchain-agent-harness"
 import { JINGLE_CALL_EXTENSION_TOOL_NAME } from "@jingle/langchain-agent-harness/transitional"
+import type { RuntimeExtensionToolsConfig } from "@jingle/langchain-agent-harness"
 import type {
   ExtensionAiSession,
   LoadedExtensionAiCapabilitiesChange

@@ -4,12 +4,11 @@ import { AIMessage, ToolMessage } from "@langchain/core/messages"
 import {
   JINGLE_TODO_SYSTEM_PROMPT,
   JINGLE_TODO_TOOL_DESCRIPTION,
-  createJingleTodoHook
+  createTodoMiddleware
 } from "@jingle/langchain-agent-harness/transitional"
-import { compileRuntimeHookToMiddleware } from "../../packages/langchain-agent-harness/src/harness-runtime"
 
 test("jingle todo capability injects attention-anchor todo guidance", async () => {
-  const middleware = compileRuntimeHookToMiddleware(createJingleTodoHook())
+  const middleware = createTodoMiddleware()
   let observedSystemMessage = ""
 
   await middleware.wrapModelCall!(
@@ -34,12 +33,15 @@ test("jingle todo capability injects attention-anchor todo guidance", async () =
 
 test("jingle todo capability keeps stronger progress rules", () => {
   assert.match(JINGLE_TODO_SYSTEM_PROMPT, /Do not call `write_todos` more than once/)
-  assert.match(JINGLE_TODO_TOOL_DESCRIPTION, /active step, remaining work, blockers, and verification/)
+  assert.match(
+    JINGLE_TODO_TOOL_DESCRIPTION,
+    /active step, remaining work, blockers, and verification/
+  )
   assert.match(JINGLE_TODO_TOOL_DESCRIPTION, /keep one in_progress item/)
 })
 
 test("jingle todo capability rejects parallel write_todos calls", () => {
-  const middleware = compileRuntimeHookToMiddleware(createJingleTodoHook())
+  const middleware = createTodoMiddleware()
   const result = middleware.afterModel!(
     {
       messages: [

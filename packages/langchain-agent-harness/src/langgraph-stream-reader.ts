@@ -155,7 +155,6 @@ export interface JingleLangGraphValuesState {
   files?: unknown
   messages?: JingleLangGraphSerializedMessageChunk[]
   recordingRefs?: unknown
-  tasks?: unknown
   todos?: Array<{ content?: string; id?: string; status?: string }>
   toolDecisions?: unknown
   workspacePath?: unknown

@@ -1,22 +1,13 @@
 import { createMiddleware, tool, type AgentMiddleware, type ToolRuntime } from "langchain"
-import type { RuntimeMiddlewareHook } from "./harness-runtime"
 import {
   buildJingleToolResultUpdateCommand,
   getRunIdFromToolRuntime,
   getToolCallIdFromToolRuntime
 } from "./tool-runtime"
-import { defineJingleHarnessHook } from "./harness-hooks"
 import { jingleAgentArtifactsStateSchema } from "./artifact-state"
 import { projectJingleArtifactRecordingRefs } from "./artifact-recording-projection"
-import type {
-  RuntimeArtifactPresentationConfig,
-  RuntimeArtifactPresentationContext,
-  RuntimeArtifactPresentationResult
-} from "./runtime-tools"
-
-export type JingleArtifactPresentationContext = RuntimeArtifactPresentationContext
-export type JingleArtifactPresentationResult = RuntimeArtifactPresentationResult
-export type CreateJingleArtifactToolsHookOptions = RuntimeArtifactPresentationConfig
+import type { RuntimeArtifactPresentationConfig } from "./runtime-tools"
+export type CreateArtifactToolsMiddlewareOptions = RuntimeArtifactPresentationConfig
 
 const PRESENT_ARTIFACTS_TOOL_NAME = "present_artifacts"
 
@@ -53,7 +44,7 @@ export type JingleArtifactToolsRuntimeMiddleware = AgentMiddleware<
   readonly [ReturnType<typeof createPresentArtifactsTool>]
 >
 
-function createPresentArtifactsTool(options: CreateJingleArtifactToolsHookOptions) {
+function createPresentArtifactsTool(options: CreateArtifactToolsMiddlewareOptions) {
   return tool(
     async (input, runtime: ToolRuntime) => {
       const toolCallId = getToolCallIdFromToolRuntime(runtime)
@@ -90,7 +81,7 @@ function createPresentArtifactsTool(options: CreateJingleArtifactToolsHookOption
 }
 
 function createJingleArtifactToolsRuntimeMiddleware(
-  options: CreateJingleArtifactToolsHookOptions
+  options: CreateArtifactToolsMiddlewareOptions
 ): JingleArtifactToolsRuntimeMiddleware {
   const presentArtifactsTool = createPresentArtifactsTool(options)
 
@@ -101,19 +92,8 @@ function createJingleArtifactToolsRuntimeMiddleware(
   })
 }
 
-export function createJingleArtifactToolsHook(
-  options: CreateJingleArtifactToolsHookOptions
-): RuntimeMiddlewareHook<JingleArtifactToolsRuntimeMiddleware> {
-  return defineJingleHarnessHook({
-    name: "artifacts",
-    phase: "agent_loop",
-    adapterStateKeys: [],
-    reads: [],
-    runtimeStateKeys: [],
-    writes: ["artifacts", "recordingRefs"],
-    writePolicy: "command-update",
-    failureSemantics: "tool",
-    observableSignals: ["state", "stream", "recording"],
-    createMiddleware: () => createJingleArtifactToolsRuntimeMiddleware(options)
-  })
+export function createArtifactToolsMiddleware(
+  options: CreateArtifactToolsMiddlewareOptions
+): JingleArtifactToolsRuntimeMiddleware {
+  return createJingleArtifactToolsRuntimeMiddleware(options)
 }
