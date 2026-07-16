@@ -15,6 +15,9 @@ import {
   getFileMutationBasename,
   getFileMutationLineStats
 } from "./file-mutation-display"
+import { ContentCardFrame } from "../ContentCardFrame"
+import { useContentAnnotations } from "../ContentAnnotationsContext"
+import { createContentCardId } from "@shared/content-card"
 
 interface PierreFileMutationRendererProps {
   className?: string
@@ -80,7 +83,10 @@ function buildFileContents(path: string, contents: string, key: string): FileCon
   }
 }
 
-function getSelectedFilePath(selectedPaths: readonly string[], paths: readonly string[]): string | null {
+function getSelectedFilePath(
+  selectedPaths: readonly string[],
+  paths: readonly string[]
+): string | null {
   const selectedFilePath = selectedPaths.find((path) => paths.includes(path))
   if (selectedFilePath) {
     return selectedFilePath
@@ -101,7 +107,9 @@ function getTextForDiffSide(value: string | null): string {
   return ""
 }
 
-function getWorkspacePath(openTargetContext: ReturnType<typeof useOpenTargetContext>): string | null {
+function getWorkspacePath(
+  openTargetContext: ReturnType<typeof useOpenTargetContext>
+): string | null {
   if (openTargetContext) {
     return openTargetContext.folderPath
   }
@@ -143,10 +151,7 @@ function PierreFileTreePanel(props: {
   )
 }
 
-function FileContentsPreview(props: {
-  contents: string
-  fileKey: string
-}): React.JSX.Element {
+function FileContentsPreview(props: { contents: string; fileKey: string }): React.JSX.Element {
   const { contents, fileKey } = props
   const lines = contents.split("\n")
   const visibleLines = lines.slice(0, CODE_PREVIEW_MAX_LINES)
@@ -197,11 +202,7 @@ function PierreFileBlock(props: { file: FileMutationFileViewModel }): React.JSX.
     return (
       <MultiFileDiff
         className="min-w-0"
-        newFile={buildFileContents(
-          file.path,
-          getTextForDiffSide(file.after),
-          `${file.key}:after`
-        )}
+        newFile={buildFileContents(file.path, getTextForDiffSide(file.after), `${file.key}:after`)}
         oldFile={buildFileContents(
           file.path,
           getTextForDiffSide(file.before),
@@ -252,6 +253,7 @@ export function PierreFileMutationRenderer(
   props: PierreFileMutationRendererProps
 ): React.JSX.Element | null {
   const { className, compact = false, viewModel } = props
+  const annotations = useContentAnnotations()
   const openTargetContext = useOpenTargetContext()
   const workspacePath = getWorkspacePath(openTargetContext)
   const filesWithDiff = useMemo(
@@ -346,27 +348,83 @@ export function PierreFileMutationRenderer(
       {filesWithDiff.length > 0 ? (
         <div className="grid min-w-0 gap-[var(--jingle-space-2-5)]">
           {filesWithDiff.map((file) => (
-            <div
+            <PierreDiffContentCard
+              file={file}
               key={file.key}
-              ref={(node) => {
+              onRegisterNode={(node) => {
                 if (node) {
                   diffRefs.current.set(file.path, node)
                   return
                 }
                 diffRefs.current.delete(file.path)
               }}
-              className="min-w-0 overflow-hidden rounded-[var(--jingle-radius-md)] border border-border/70 bg-background-elevated/60"
-              data-file-mutation-path={file.path}
-            >
-              <FileMutationDiffHeader
-                file={file}
-                workspacePath={workspacePath}
-              />
-              <PierreFileBlock file={file} />
-            </div>
+              threadId={annotations.threadId}
+              toolKey={viewModel.key}
+              workspacePath={workspacePath}
+            />
           ))}
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function hashDiffRevision(file: FileMutationFileViewModel): string {
+  const value = `${file.before ?? ""}\u0000${file.after ?? ""}\u0000${file.patch ?? ""}`
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return `fnv1a:${(hash >>> 0).toString(16).padStart(8, "0")}`
+}
+
+function PierreDiffContentCard({
+  file,
+  onRegisterNode,
+  threadId,
+  toolKey,
+  workspacePath
+}: {
+  file: FileMutationFileViewModel
+  onRegisterNode: (node: HTMLDivElement | null) => void
+  threadId: string
+  toolKey: string
+  workspacePath: string | null
+}): React.JSX.Element {
+  const toolCallId = toolKey.slice(toolKey.indexOf(":") + 1)
+  const source = {
+    kind: "diff" as const,
+    slot: `diff:${encodeURIComponent(file.path)}`,
+    sourceId: toolCallId,
+    sourceType: "tool-call" as const
+  }
+  const identity = {
+    ...source,
+    cardId: createContentCardId(source),
+    revision: hashDiffRevision(file),
+    threadId
+  }
+  return (
+    <div ref={onRegisterNode}>
+      <ContentCardFrame
+        annotationEnabled={false}
+        className="overflow-hidden"
+        identity={identity}
+        selection={{
+          anchor: { kind: "whole-card" },
+          anchorResolution: "resolved",
+          card: identity,
+          contextHash: identity.revision,
+          quote: file.path
+        }}
+        title={file.path}
+      >
+        <div data-assistant-selection-source="true" data-file-mutation-path={file.path}>
+          <FileMutationDiffHeader file={file} workspacePath={workspacePath} />
+          <PierreFileBlock file={file} />
+        </div>
+      </ContentCardFrame>
     </div>
   )
 }

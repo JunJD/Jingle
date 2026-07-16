@@ -1,17 +1,14 @@
-import { ChevronRight } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import type { FileMutationResultMetadata } from "@shared/file-mutation-result"
 import type { JingleActiveAgentToolCall } from "@jingle/agent-client"
-import {
-  AgentActivityRow,
-  AgentTool,
-  AgentToolStatusBadge,
-  type AgentToolState
-} from "@/components/agent-ui"
+import { AgentActivityRow, AgentToolStatusBadge, type AgentToolState } from "@/components/agent-ui"
 import { useI18n } from "@/lib/i18n"
 import type { HITLRequest, ToolCall } from "@/types"
 import { createActionMessageView } from "./action-message-view"
 import { type ToolPresentation, type ToolComponentStatus } from "./tools"
+import { ContentCardFrame } from "./ContentCardFrame"
+import { createContentCardId } from "@shared/content-card"
+import { projectActionMessageCollapse } from "./action-message-collapse"
 
 interface ActionMessageProps {
   toolCall: ToolCall
@@ -80,6 +77,16 @@ function formatElapsedTime(ms: number): string {
   return `${minutes}m ${remainingSeconds}s`
 }
 
+function toolRevision(value: unknown): string {
+  const text = JSON.stringify(value) ?? ""
+  let hash = 2166136261
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return `fnv1a:${(hash >>> 0).toString(16).padStart(8, "0")}`
+}
+
 function ToolExecutionTime(props: { active: boolean; startedAt?: Date }): React.JSX.Element | null {
   const { active, startedAt } = props
   const [now, setNow] = useState(() => Date.now())
@@ -141,7 +148,6 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     toolCall
   } = props
   const { copy } = useI18n()
-  const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
   const view = useMemo(
     () =>
       createActionMessageView({
@@ -169,25 +175,22 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
   )
   const { display, hasDetail, icon: Icon, renderDetail, status, statusLabel } = view
   const activityStatus = getActionMessageStatus(status, activeToolCall)
-  const autoExpanded = Boolean(approvalRequest) || defaultExpanded
-  const isExpanded = approvalRequest ? true : (expanded ?? manualExpanded ?? autoExpanded)
-  const canExpandDetail = hasDetail && !approvalRequest
-  const detail = useMemo<React.ReactNode>(() => {
-    if (!canExpandDetail || !isExpanded) {
-      return null
-    }
-
-    return renderDetail()
-  }, [canExpandDetail, isExpanded, renderDetail])
+  const collapse = projectActionMessageCollapse({
+    approvalRequired: Boolean(approvalRequest),
+    defaultExpanded,
+    expanded,
+    hasDetail
+  })
 
   const toolState = toAgentToolState(activityStatus)
   const statusMeta =
     statusLabel && toolState !== "complete" ? (
       <AgentToolStatusBadge state={toolState}>{statusLabel}</AgentToolStatusBadge>
     ) : null
-  const detailContent = detail ? (
-    <div className="min-w-0 max-w-full overflow-hidden">{detail}</div>
-  ) : null
+  const renderDetailContent = (): React.JSX.Element | null => {
+    const detail = renderDetail()
+    return detail ? <div className="min-w-0 max-w-full overflow-hidden">{detail}</div> : null
+  }
   const executionTime =
     activeToolCall?.status === "running" ? (
       <ToolExecutionTime active startedAt={activeToolCall.startedAt} />
@@ -209,82 +212,56 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     ) : null
 
   if (!showSummary) {
-    return detailContent
+    return renderDetailContent()
   }
-
-  if (presentation === "grouped") {
-    return (
-      <div className="min-w-0">
-        <button
-          className="inline-flex max-w-full min-w-0 rounded-[var(--jingle-radius-sm)] text-left text-[var(--jingle-agent-timeline-muted)] transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          data-active={isToolActive(activityStatus) ? "true" : undefined}
-          data-tool-call-toggle={toolCall.name}
-          onClick={() => {
-            if (canExpandDetail) {
-              const nextExpanded = !isExpanded
-              onExpandedChange?.(nextExpanded)
-
-              if (expanded === undefined) {
-                setManualExpanded(nextExpanded)
-              }
-            }
-          }}
-          type="button"
-        >
+  if (fileMutationResult) {
+    return renderDetailContent()
+  }
+  const source = {
+    kind: "tool" as const,
+    slot: "tool:detail",
+    sourceId: toolCall.id,
+    sourceType: "tool-call" as const
+  }
+  const identity = {
+    ...source,
+    cardId: createContentCardId(source),
+    revision: toolRevision({ result, status: activityStatus }),
+    threadId
+  }
+  return (
+    <ContentCardFrame
+      annotationEnabled={false}
+      collapsed={collapse.collapsed}
+      collapsible={collapse.interactive}
+      defaultCollapsed={collapse.defaultCollapsed}
+      identity={identity}
+      onCollapsedChange={
+        collapse.interactive ? (nextCollapsed) => onExpandedChange?.(!nextCollapsed) : undefined
+      }
+      selection={{
+        anchor: { kind: "whole-card" },
+        anchorResolution: isToolActive(activityStatus) ? "pending-stream" : "resolved",
+        card: identity,
+        contextHash: identity.revision,
+        quote: toolCall.display?.title ?? "工具活动"
+      }}
+      title={display.title}
+    >
+      {() => (
+        <div className="min-w-0" data-tool-call-toggle={toolCall.name}>
           <AgentActivityRow
             active={isToolActive(activityStatus)}
-            className="w-full"
+            className="w-full text-[var(--jingle-agent-timeline-muted)]"
             detail={display.detail}
             icon={<Icon className="size-[var(--jingle-icon-sm)]" />}
             label={display.title}
-            meta={
-              meta || canExpandDetail ? (
-                <>
-                  {meta}
-                  {canExpandDetail ? (
-                    <ChevronRight
-                      className="jingle-agent-tool-chevron size-[var(--jingle-icon-sm)] text-[var(--jingle-agent-timeline-muted)]"
-                      data-open={isExpanded ? "true" : "false"}
-                    />
-                  ) : null}
-                </>
-              ) : null
-            }
+            meta={meta}
             trailingPlacement="inline"
           />
-        </button>
-        {canExpandDetail && isExpanded ? (
-          <div className="mt-[var(--jingle-space-2)] min-w-0 max-w-full pl-[calc(var(--jingle-icon-action)+var(--jingle-gap-sm))]">
-            {detailContent}
-          </div>
-        ) : null}
-      </div>
-    )
-  }
-
-  return (
-    <AgentTool
-      defaultOpen={autoExpanded}
-      detail={detailContent}
-      hasDetail={canExpandDetail}
-      icon={<Icon className="size-[var(--jingle-icon-sm)]" />}
-      meta={meta}
-      onOpenChange={(nextExpanded) => {
-        if (approvalRequest) {
-          return
-        }
-
-        onExpandedChange?.(nextExpanded)
-
-        if (expanded === undefined) {
-          setManualExpanded(nextExpanded)
-        }
-      }}
-      open={isExpanded}
-      state={toolState}
-      subtitle={display.detail}
-      title={display.title}
-      triggerDataAttributes={{ "data-tool-call-toggle": toolCall.name }}
-    />
+          {hasDetail ? <div className="mt-2 min-w-0">{renderDetailContent()}</div> : null}
+        </div>
+      )}
+    </ContentCardFrame>
   )
 }

@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client"
 import { getDbPath } from "../storage"
 import { closePrismaClient, getPrismaClient } from "./client"
 import { flushAgentTraceProjection } from "./agent-events"
+import { flushAssistantContentProjection } from "../content-cards/projection-queue"
 
 const REQUIRED_TABLES = [
   "_prisma_migrations",
@@ -27,6 +28,9 @@ const REQUIRED_TABLES = [
   "thread_spawn_edges",
   "artifacts",
   "artifact_presentations",
+  "content_annotations",
+  "assistant_content_projections",
+  "assistant_content_parts",
   "assistants",
   "session_bindings",
   "hitl_requests",
@@ -47,7 +51,25 @@ const REQUIRED_TABLE_COLUMNS = {
   threads: ["archived_at"],
   messages: ["seq", "raw_message", "raw_hash", "run_id"],
   hitl_requests: ["review_kind", "review_payload"],
-  checkpoints: ["run_id"]
+  checkpoints: ["run_id"],
+  content_annotations: [
+    "thread_id",
+    "card_id",
+    "card_revision",
+    "anchor_json",
+    "revision",
+    "deleted_at"
+  ],
+  assistant_content_projections: ["thread_id", "message_id", "content_revision", "finalized_at"],
+  assistant_content_parts: [
+    "part_id",
+    "thread_id",
+    "message_id",
+    "ordinal",
+    "kind",
+    "revision",
+    "payload_json"
+  ]
 } as const
 const DATABASE_SCHEMA_RECOVERY_HINT =
   "The app applies packaged Prisma migrations automatically during startup; if this is a packaged install, restart Jingle and check the main-process logs. In development, run `node scripts/run-prisma-jingle-db.mjs migrate deploy`."
@@ -397,6 +419,6 @@ export async function initializeDatabase(): Promise<void> {
 
 export async function closeDatabase(): Promise<void> {
   initialized = false
-  await flushAgentTraceProjection()
+  await Promise.all([flushAgentTraceProjection(), flushAssistantContentProjection()])
   await closePrismaClient()
 }

@@ -37,12 +37,65 @@ model Thread {
   workspaceBinding       ThreadWorkspaceBinding?
   workflow               ThreadWorkflow?
   workflowLabels         ThreadLabel[]
+  contentAnnotations     ContentAnnotation[]
+  assistantContentProjections AssistantContentProjection[]
   spawnedChildEdges      ThreadSpawnEdge[]       @relation("ThreadSpawnEdgeParent")
   spawnParentEdge        ThreadSpawnEdge?        @relation("ThreadSpawnEdgeChild")
 
   @@index([archivedAt, updatedAt], map: "idx_threads_archived_at_updated_at")
   @@index([updatedAt], map: "idx_threads_updated_at")
   @@map("threads")
+}
+
+model AssistantContentProjection {
+  threadId        String @map("thread_id")
+  messageId       String @map("message_id")
+  contentRevision String @map("content_revision")
+  finalizedAt     BigInt @map("finalized_at")
+  thread          Thread @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  parts           AssistantContentPart[]
+
+  @@id([threadId, messageId])
+  @@index([threadId, finalizedAt], map: "idx_assistant_content_projections_thread_finalized")
+  @@map("assistant_content_projections")
+}
+
+model AssistantContentPart {
+  partId      String @id @map("part_id")
+  threadId    String @map("thread_id")
+  messageId   String @map("message_id")
+  ordinal     Int
+  kind        String
+  revision    String
+  payloadJson String @map("payload_json")
+  projection  AssistantContentProjection @relation(fields: [threadId, messageId], references: [threadId, messageId], onDelete: Cascade)
+
+  @@unique([threadId, messageId, ordinal], map: "uidx_assistant_content_parts_message_ordinal")
+  @@index([threadId, messageId], map: "idx_assistant_content_parts_message")
+  @@map("assistant_content_parts")
+}
+
+model ContentAnnotation {
+  id               String  @id
+  threadId         String  @map("thread_id")
+  cardId           String  @map("card_id")
+  cardRevision     String  @map("card_revision")
+  anchorJson       String  @map("anchor_json")
+  anchorResolution String  @map("anchor_resolution")
+  quote            String
+  contextHash      String  @map("context_hash")
+  body             String
+  intent           String
+  lifecycle        String
+  revision         Int     @default(1)
+  createdAt        BigInt  @map("created_at")
+  updatedAt        BigInt  @map("updated_at")
+  deletedAt        BigInt? @map("deleted_at")
+  thread           Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+
+  @@index([threadId, updatedAt], map: "idx_content_annotations_thread_updated_at")
+  @@index([cardId, updatedAt], map: "idx_content_annotations_card_updated_at")
+  @@map("content_annotations")
 }
 
 model Project {

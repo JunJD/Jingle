@@ -28,6 +28,7 @@ import type {
 } from "@jingle/agent-react"
 import type { JingleActiveAgentToolCall, JingleAgentRunPhase } from "@jingle/agent-client"
 import { ActionMessage } from "./ActionMessage"
+import { AssistantContentCards } from "./AssistantContentCards"
 import {
   AgentActivityRow,
   AgentToolGroup,
@@ -1021,6 +1022,7 @@ function renderAssistantProcessEntry(input: {
         isLoading={isStreaming}
         key={entry.entry.key}
         message={entry.entry.message}
+        threadId={threadId}
       />
     )
   }
@@ -1150,8 +1152,9 @@ function AssistantBlock(props: {
   isLastAssistant: boolean
   isLoading?: boolean
   message: ThreadMessage
+  threadId: string
 }): React.JSX.Element | null {
-  const { isLastAssistant, isLoading, message } = props
+  const { isLastAssistant, isLoading, message, threadId } = props
   const isStreaming = Boolean(isLoading) && isLastAssistant
   const content = renderStructuredContent(message.content, {
     includeReasoning: false,
@@ -1164,18 +1167,12 @@ function AssistantBlock(props: {
   }
 
   return (
-    <Message
-      className="max-w-full"
-      data-assistant-message-id={message.id}
-      data-assistant-selection-source="true"
-      data-assistant-message-streaming={isStreaming ? "true" : "false"}
-      from="assistant"
-    >
+    <Message className="max-w-full" data-assistant-message-id={message.id} from="assistant">
       <MessageContent className="w-full gap-[var(--jingle-gap-md)]">
         {content.attachments}
         {content.reasoningContent}
         {content.textContent ? (
-          <div className="space-y-[var(--jingle-space-3)]">{content.textContent}</div>
+          <AssistantContentCards isStreaming={isStreaming} message={message} threadId={threadId} />
         ) : null}
       </MessageContent>
     </Message>
@@ -1450,7 +1447,9 @@ function UserMessage(props: {
       ) : null}
       {content.attachments}
       {content.textContent ? (
-        <MessageContent className="gap-[var(--jingle-space-2-5)]">{content.textContent}</MessageContent>
+        <MessageContent className="gap-[var(--jingle-space-2-5)]">
+          {content.textContent}
+        </MessageContent>
       ) : null}
       {hasActions ? (
         <MessageToolbar className="-mt-[var(--jingle-space-1)] ml-auto justify-end">

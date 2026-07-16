@@ -24,9 +24,39 @@ import { buildStreamingFileMutationViewModel } from "../../src/renderer/src/comp
 import { projectFileMutationTool } from "../../src/renderer/src/components/chat/tools/file-mutation-presentation"
 import { projectToolProjectionFacts } from "../../src/renderer/src/components/chat/tools/normalize"
 import { ToolContractNotice } from "../../src/renderer/src/components/chat/tools/shared-components"
+import { projectActionMessageCollapse } from "../../src/renderer/src/components/chat/action-message-collapse"
 
 const copy = appCopy["en-US"]
 const TEST_THREAD_ID = "thread-action-message-view"
+
+test("ActionMessage maps the existing expansion contract onto content-card collapse", () => {
+  assert.deepEqual(
+    projectActionMessageCollapse({
+      approvalRequired: false,
+      defaultExpanded: false,
+      hasDetail: true
+    }),
+    { collapsed: undefined, defaultCollapsed: true, interactive: true }
+  )
+  assert.deepEqual(
+    projectActionMessageCollapse({
+      approvalRequired: false,
+      defaultExpanded: false,
+      expanded: true,
+      hasDetail: true
+    }),
+    { collapsed: false, defaultCollapsed: true, interactive: true }
+  )
+  assert.deepEqual(
+    projectActionMessageCollapse({
+      approvalRequired: true,
+      defaultExpanded: false,
+      expanded: false,
+      hasDetail: true
+    }),
+    { collapsed: false, defaultCollapsed: false, interactive: false }
+  )
+})
 
 function displayText(view: {
   display: { detail: ReactNode | null; resultMeta: ReactNode | null; title: ReactNode }

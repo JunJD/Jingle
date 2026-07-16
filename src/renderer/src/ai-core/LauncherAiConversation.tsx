@@ -1,5 +1,6 @@
 import { ExternalLink, FileText, ImageIcon, Loader2, PackageOpen } from "lucide-react"
 import { Messages } from "@/components/chat/Messages"
+import { ContentCardFrame } from "@/components/chat/ContentCardFrame"
 import { ChatJumpToLatestButton } from "@/components/chat/ChatJumpToLatestButton"
 import { AgentErrorNotice } from "@/components/chat/AgentErrorNotice"
 import { ContextEvidencePanel } from "@/components/chat/ContextEvidencePanel"
@@ -20,6 +21,7 @@ import {
   type LauncherImageArtifact
 } from "./launcher-ai-artifact-projection"
 import type { ArtifactRecord } from "@shared/artifacts"
+import { createContentCardId } from "@shared/content-card"
 import type { ComposerMessageInput, ComposerMessageRef } from "@shared/message-content"
 import { memo, useCallback, useMemo, useRef } from "react"
 import type { VListHandle } from "virtua"
@@ -66,7 +68,9 @@ function LauncherAiPresenceMark(): React.JSX.Element {
   )
 }
 
-function LauncherArtifactImagePreview(props: { artifact: LauncherImageArtifact }): React.JSX.Element {
+function LauncherArtifactImagePreview(props: {
+  artifact: LauncherImageArtifact
+}): React.JSX.Element {
   const { artifact } = props
   const preview = useLauncherArtifactImagePreview(artifact)
 
@@ -139,24 +143,21 @@ function LauncherArtifactCard(props: {
       </div>
     </>
   )
-
-  if (!isOpenable) {
-    return (
-      <div
-        className={className}
-        data-launcher-artifact-card=""
-        data-launcher-artifact-kind={artifact.kind}
-        data-launcher-artifact-openable="false"
-        data-launcher-artifact-title={artifact.title}
-      >
-        {content}
-      </div>
-    )
+  const source = {
+    kind: "artifact" as const,
+    slot: "artifact:content",
+    sourceId: artifact.id,
+    sourceType: "artifact" as const
   }
-
-  return (
+  const identity = {
+    ...source,
+    cardId: createContentCardId(source),
+    revision: artifact.updatedAt.toISOString(),
+    threadId: artifact.threadId
+  }
+  const surface = isOpenable ? (
     <button
-      className={className}
+      className={cn(className, "w-full border-0 bg-transparent")}
       data-launcher-artifact-card=""
       data-launcher-artifact-kind={artifact.kind}
       data-launcher-artifact-openable="true"
@@ -167,6 +168,30 @@ function LauncherArtifactCard(props: {
     >
       {content}
     </button>
+  ) : (
+    <div
+      className={cn(className, "border-0 bg-transparent")}
+      data-launcher-artifact-card=""
+      data-launcher-artifact-openable="false"
+    >
+      {content}
+    </div>
+  )
+  return (
+    <ContentCardFrame
+      annotationEnabled={false}
+      identity={identity}
+      selection={{
+        anchor: { kind: "whole-card" },
+        anchorResolution: "resolved",
+        card: identity,
+        contextHash: identity.revision,
+        quote: artifact.title
+      }}
+      title={artifact.title}
+    >
+      {surface}
+    </ContentCardFrame>
   )
 }
 
@@ -190,7 +215,10 @@ function LauncherArtifactsPanel(props: {
   }
 
   return (
-    <section className="flex min-w-0 flex-col gap-[var(--jingle-space-2)]" data-launcher-artifacts="">
+    <section
+      className="flex min-w-0 flex-col gap-[var(--jingle-space-2)]"
+      data-launcher-artifacts=""
+    >
       <div className="flex items-center justify-between gap-[var(--jingle-gap-md)]">
         <div className="[font-size:var(--jingle-font-meta)] font-medium uppercase tracking-normal text-muted-foreground">
           {copy.toolCall.labels.present_artifacts}
@@ -394,6 +422,7 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
   return (
     <div className="relative min-h-0 flex-1">
       <Messages
+        key={threadId}
         contentClassName="mx-auto w-full min-w-0 max-w-[var(--launcher-ai-content-max-width)] px-[var(--launcher-ai-content-x)]"
         contentInsetY="var(--launcher-ai-content-y)"
         isAtBottom={isAtBottom}

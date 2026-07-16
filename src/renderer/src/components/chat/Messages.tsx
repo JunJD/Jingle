@@ -22,8 +22,10 @@ import {
 } from "@shared/message-content"
 import type { JingleActiveAgentToolCall } from "@jingle/agent-client"
 import type { ContentBlock, Message as ThreadMessage } from "@/types"
+import { readContentCardIdSource } from "@shared/content-card"
 import type { EditLastUserMessageAndInvokeInput } from "@/lib/agent-control"
 import { cn } from "@/lib/utils"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { useI18n } from "@/lib/i18n"
 import {
   createDefaultMessagesProjection,
@@ -37,6 +39,8 @@ import {
 import { useThreadSelector } from "@/lib/thread-context"
 import { MessageTurnView } from "./MessageTurnView"
 import { AssistantSelectionOverlay } from "./AssistantSelectionOverlay"
+import { ContentAnnotationsProvider } from "./ContentAnnotationsContext"
+import { ContentAnnotationsSidebar } from "./ContentAnnotationsSidebar"
 import {
   useAssistantSelectionReferenceNavigationRegistration,
   type AssistantSelectionReferenceNavigationHandler
@@ -93,10 +97,7 @@ function isRuntimeRunActive(status: string | null | undefined): boolean {
   return status === "running" || status === "waiting_approval"
 }
 
-function findAssistantMessageElement(
-  viewport: HTMLElement,
-  messageId: string
-): HTMLElement | null {
+function findAssistantMessageElement(viewport: HTMLElement, messageId: string): HTMLElement | null {
   for (const element of viewport.querySelectorAll<HTMLElement>("[data-assistant-message-id]")) {
     if (element.dataset.assistantMessageId === messageId) {
       return element
@@ -173,7 +174,9 @@ function getToolResultsScrollKey(toolResults: Map<string, ToolResultInfo>): stri
   }).join("|")
 }
 
-function getActiveToolCallsScrollKey(activeToolCalls: readonly JingleActiveAgentToolCall[]): string {
+function getActiveToolCallsScrollKey(
+  activeToolCalls: readonly JingleActiveAgentToolCall[]
+): string {
   if (activeToolCalls.length === 0) {
     return "0"
   }
@@ -702,6 +705,18 @@ export function Messages(props: MessagesProps): React.JSX.Element {
     [assistantMessageRowIndexById, revealAssistantSelectionReference, threadId]
   )
   useAssistantSelectionReferenceNavigationRegistration(referenceNavigationHandler)
+  const mountAnnotationCard = useCallback(
+    async (cardId: string): Promise<void> => {
+      const source = readContentCardIdSource(cardId)
+      if (!source || source.sourceType !== "message") return
+      const rowIndex = assistantMessageRowIndexById.get(source.sourceId)
+      const virtualizer = virtualizerRef.current
+      if (rowIndex === undefined || !virtualizer) return
+      virtualizer.scrollToIndex(rowIndex, { align: "start" })
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    },
+    [assistantMessageRowIndexById, virtualizerRef]
+  )
   const userNavigationItems = useMemo<readonly UserMessageNavigationItem[]>(() => {
     const items: UserMessageNavigationItem[] = []
     for (const turn of turns) {
@@ -726,80 +741,85 @@ export function Messages(props: MessagesProps): React.JSX.Element {
   }, [turnRowIndexByKey, turns])
 
   return (
-    <div
-      className="relative h-full min-h-0"
-      onKeyDownCapture={handleKeyDown}
-      onPointerDownCapture={markUserScrollIntent}
-      onPointerMoveCapture={handlePointerMove}
-      onTouchMoveCapture={markUserScrollIntent}
-      onWheelCapture={markUserScrollIntent}
-    >
-      <VList
-        data={displayRows}
-        keepMounted={keepMounted}
-        ref={virtualizerRef}
-        className="h-full overflow-x-hidden overflow-y-auto overscroll-contain scrollbar-hide"
-        id={scrollViewportId}
-        style={{
-          overflowAnchor: "none",
-          paddingTop: contentInsetY
-        }}
-        onScroll={handleScroll}
-        onScrollEnd={onScrollEnd}
-        bufferSize={typeof window === "undefined" ? 400 : window.innerHeight}
+    <TooltipProvider delayDuration={180}>
+      <ContentAnnotationsProvider mountCard={mountAnnotationCard} threadId={threadId}>
+        <div
+        className="relative h-full min-h-0"
+        onKeyDownCapture={handleKeyDown}
+        onPointerDownCapture={markUserScrollIntent}
+        onPointerMoveCapture={handlePointerMove}
+        onTouchMoveCapture={markUserScrollIntent}
+        onWheelCapture={markUserScrollIntent}
       >
-        {(row): ReactElement => {
-          const isTurnRow = row.kind === "turn"
-          const isLastTurnRow = isTurnRow && row.turnKey === latestTurnKey
+        <VList
+          data={displayRows}
+          keepMounted={keepMounted}
+          ref={virtualizerRef}
+          className="h-full overflow-x-hidden overflow-y-auto overscroll-contain scrollbar-hide"
+          id={scrollViewportId}
+          style={{
+            overflowAnchor: "none",
+            paddingTop: contentInsetY
+          }}
+          onScroll={handleScroll}
+          onScrollEnd={onScrollEnd}
+          bufferSize={typeof window === "undefined" ? 400 : window.innerHeight}
+        >
+          {(row): ReactElement => {
+            const isTurnRow = row.kind === "turn"
+            const isLastTurnRow = isTurnRow && row.turnKey === latestTurnKey
 
-          return (
-            <div
-              key={row.key}
-              ref={(node) => {
-                if (isLastTurnRow) {
-                  lastTurnRowRef.current = node
-                }
-              }}
-              className={cn(
-                contentClassName,
-                isTurnRow && row.turnKey !== latestTurnKey && virtualRowPadding
-              )}
-            >
-              {row.kind === "turn" ? (
-                <MessageTurnRow
-                  hasVisibleTurns={visibleTurnCount > 0}
-                  isActiveTurnBlankActive={isActiveTurnBlankActive}
-                  isAtBottom={isAtBottom}
-                  isLastTurnRow={isLastTurnRow}
-                  isLoading={isLoading}
-                  isScrolling={isScrolling}
-                  observeKey={row.key}
-                  onBranch={onBranch}
-                  onEditLastUserMessage={onEditLastUserMessage}
-                  onRetry={onRetry}
-                  onScrollToLatest={onScrollToLatest}
-                  rowRef={lastTurnRowRef}
-                  threadId={threadId}
-                  turnKey={row.turnKey}
-                />
-              ) : row.kind === "context-compaction" ? (
-                <ContextCompactionRow />
-              ) : (
-                <>
-                  {renderFooter?.()}
-                  <div aria-hidden="true" style={{ height: bottomSpacerHeight }} />
-                </>
-              )}
-            </div>
-          )
-        }}
-      </VList>
-      <UserMessageNavigationRail
-        items={userNavigationItems}
-        scrollViewportId={scrollViewportId}
-        virtualizerRef={virtualizerRef}
-      />
-      <AssistantSelectionOverlay onAddRef={onAddAssistantSelectionRef} threadId={threadId} />
-    </div>
+            return (
+              <div
+                key={row.key}
+                ref={(node) => {
+                  if (isLastTurnRow) {
+                    lastTurnRowRef.current = node
+                  }
+                }}
+                className={cn(
+                  contentClassName,
+                  isTurnRow && row.turnKey !== latestTurnKey && virtualRowPadding
+                )}
+              >
+                {row.kind === "turn" ? (
+                  <MessageTurnRow
+                    hasVisibleTurns={visibleTurnCount > 0}
+                    isActiveTurnBlankActive={isActiveTurnBlankActive}
+                    isAtBottom={isAtBottom}
+                    isLastTurnRow={isLastTurnRow}
+                    isLoading={isLoading}
+                    isScrolling={isScrolling}
+                    observeKey={row.key}
+                    onBranch={onBranch}
+                    onEditLastUserMessage={onEditLastUserMessage}
+                    onRetry={onRetry}
+                    onScrollToLatest={onScrollToLatest}
+                    rowRef={lastTurnRowRef}
+                    threadId={threadId}
+                    turnKey={row.turnKey}
+                  />
+                ) : row.kind === "context-compaction" ? (
+                  <ContextCompactionRow />
+                ) : (
+                  <>
+                    {renderFooter?.()}
+                    <div aria-hidden="true" style={{ height: bottomSpacerHeight }} />
+                  </>
+                )}
+              </div>
+            )
+          }}
+        </VList>
+        <UserMessageNavigationRail
+          items={userNavigationItems}
+          scrollViewportId={scrollViewportId}
+          virtualizerRef={virtualizerRef}
+        />
+        <AssistantSelectionOverlay onAddRef={onAddAssistantSelectionRef} threadId={threadId} />
+        <ContentAnnotationsSidebar onAddPromptRef={onAddAssistantSelectionRef} />
+        </div>
+      </ContentAnnotationsProvider>
+    </TooltipProvider>
   )
 }

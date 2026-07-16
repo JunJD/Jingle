@@ -1,6 +1,8 @@
 import { agentApi } from "./agent"
 import { durableWindowApi } from "./durableWindow"
 import { artifactsApi } from "./artifacts"
+import { contentAnnotationsApi } from "./contentAnnotations"
+import { contentCardsApi } from "./contentCards"
 import { diagnosticsApi } from "./diagnostics"
 import { devtoolsApi } from "./devtools"
 import { extensionQuicklinksApi } from "./extensionQuicklinks"
@@ -27,6 +29,8 @@ export const api = {
   durableWindow: durableWindowApi,
   threads: threadsApi,
   artifacts: artifactsApi,
+  contentAnnotations: contentAnnotationsApi,
+  contentCards: contentCardsApi,
   diagnostics: diagnosticsApi,
   devtools: devtoolsApi,
   extensionQuicklinks: extensionQuicklinksApi,

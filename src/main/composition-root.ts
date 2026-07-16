@@ -14,6 +14,11 @@ import {
 import { ThreadWindowService, type ThreadWindowRuntime } from "./thread-window/service"
 import { installApplicationMenu } from "./app-menu"
 import { registerArtifactsIpcHandlers, registerArtifactsModule } from "./artifacts/module"
+import {
+  registerContentAnnotationsIpcHandlers,
+  registerContentAnnotationsModule
+} from "./content-annotations/module"
+import { registerContentCardsIpcHandlers, registerContentCardsModule } from "./content-cards/module"
 import { registerDiagnosticsIpcHandlers } from "./diagnostics/controller"
 import {
   registerExternalLinksIpcHandlers,
@@ -147,6 +152,8 @@ export class MainCompositionRoot {
     registerAgentIpcHandlers(this.dependencyContainer, ipcMain)
     registerMainWindowIpcHandlers(this.dependencyContainer, ipcMain)
     registerArtifactsIpcHandlers(this.dependencyContainer, ipcMain)
+    registerContentAnnotationsIpcHandlers(this.dependencyContainer, ipcMain)
+    registerContentCardsIpcHandlers(this.dependencyContainer, ipcMain)
     registerDiagnosticsIpcHandlers(ipcMain)
     registerExternalLinksIpcHandlers(this.dependencyContainer, ipcMain)
     registerExtensionQuicklinkIpcHandlers(this.dependencyContainer, ipcMain)
@@ -284,6 +291,8 @@ export function createMainCompositionRoot(
     quitApplication: context.quitApplication
   })
   registerArtifactsModule(childContainer)
+  registerContentAnnotationsModule(childContainer)
+  registerContentCardsModule(childContainer)
   registerExternalLinksModule(childContainer)
   registerExtensionQuicklinkModule(childContainer, {
     extensionNames: nativeExtensionNames

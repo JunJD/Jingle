@@ -12,6 +12,7 @@ import type {
 } from "@shared/jingle-memory"
 import { runtimeUsesCheckpointPersistence } from "../checkpointer/runtime-checkpointer-manager"
 import { resolveHitlRequest } from "../db/hitl"
+import { enqueueAssistantContentProjection } from "../content-cards/projection-queue"
 import { JingleIpcError } from "../ipc/error"
 import type { JingleMemoryService } from "../jingle-memory/service"
 import type { createExtensionAiRuntime } from "./extension-ai-runtime"
@@ -162,6 +163,7 @@ export function createRuntimeRunLifecycleController(input: {
     },
     markRunFailed: async ({ error, runId, threadId }) => {
       await markRunFailed(threadId, runId, toAgentRunFailure("agent:runtime", error))
+      enqueueAssistantContentProjection({ runId, threadId })
     },
     recordMemoryRecordingRefs: ({ recordingRefs, runId, threadId }) =>
       recordJingleMemoryRecordingRefs({
@@ -172,6 +174,7 @@ export function createRuntimeRunLifecycleController(input: {
       }),
     recordRunFinished: async (event) => {
       await recordRunFinished(event)
+      enqueueAssistantContentProjection({ runId: event.runId, threadId: event.threadId })
     },
     recordRunInterrupted,
     settleRun: () => undefined,
