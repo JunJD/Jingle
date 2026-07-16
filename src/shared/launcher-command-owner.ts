@@ -14,14 +14,28 @@ export interface LauncherCommandOwnerClipboardManifest {
   accepts: ClipboardPayloadKind[]
 }
 
-export interface LauncherCommandArgumentManifest {
-  data?: Array<{ title?: LocalizedTextValue; value?: string }>
+export type LauncherCommandArgumentType = "dropdown" | "password" | "text"
+
+interface LauncherCommandArgumentBaseManifest {
   name: string
   placeholder?: LocalizedTextValue
   required?: boolean
-  title?: LocalizedTextValue
-  type?: string
+  title: LocalizedTextValue
 }
+
+export type LauncherCommandArgumentManifest =
+  | (LauncherCommandArgumentBaseManifest & {
+      data: Array<{ title: LocalizedTextValue; value: string }>
+      type: "dropdown"
+    })
+  | (LauncherCommandArgumentBaseManifest & {
+      data?: never
+      type?: "text"
+    })
+  | (LauncherCommandArgumentBaseManifest & {
+      data?: never
+      type: "password"
+    })
 
 export interface LauncherCommandManifest<TCommandName extends string = string> {
   arguments?: LauncherCommandArgumentManifest[]
@@ -75,6 +89,54 @@ export function validateLauncherCommandOwnerManifest(manifest: LauncherCommandOw
 
     commandNameSet.add(command.name)
 
+    const argumentNameSet = new Set<string>()
+    for (const [argumentIndex, argument] of (command.arguments ?? []).entries()) {
+      const argumentField = `Launcher command owner "${manifest.id}" command "${command.name}" arguments[${argumentIndex}]`
+      assertNonEmptyString(argument.name, `${argumentField}.name must be non-empty`)
+      if (argumentNameSet.has(argument.name)) {
+        throw new Error(
+          `Launcher command owner "${manifest.id}" command "${command.name}" declares duplicate argument "${argument.name}"`
+        )
+      }
+      argumentNameSet.add(argument.name)
+
+      assertNonEmptyLocalizedText(argument.title, `${argumentField}.title must be non-empty`)
+      if (argument.placeholder !== undefined) {
+        assertNonEmptyLocalizedText(
+          argument.placeholder,
+          `${argumentField}.placeholder must be non-empty when declared`
+        )
+      }
+
+      const argumentType = (argument as { type?: unknown }).type ?? "text"
+      if (argumentType !== "text" && argumentType !== "password" && argumentType !== "dropdown") {
+        throw new Error(`${argumentField}.type "${String(argument.type)}" is not supported`)
+      }
+
+      if (argumentType !== "dropdown") {
+        if (argument.data !== undefined) {
+          throw new Error(`${argumentField}.data is only supported for dropdown arguments`)
+        }
+        continue
+      }
+
+      const argumentData = (argument as { data?: LauncherCommandArgumentManifest["data"] }).data
+      if (!argumentData?.length) {
+        throw new Error(`${argumentField}.data must declare at least one option`)
+      }
+
+      const optionValueSet = new Set<string>()
+      for (const [optionIndex, option] of argumentData.entries()) {
+        const optionField = `${argumentField}.data[${optionIndex}]`
+        assertNonEmptyLocalizedText(option.title, `${optionField}.title must be non-empty`)
+        assertNonEmptyString(option.value, `${optionField}.value must be non-empty`)
+        if (optionValueSet.has(option.value)) {
+          throw new Error(`${argumentField}.data declares duplicate value "${option.value}"`)
+        }
+        optionValueSet.add(option.value)
+      }
+    }
+
     if (command.requiresLauncherArguments && !command.arguments?.length) {
       throw new Error(
         `Launcher command owner "${manifest.id}" command "${command.name}" requires launcher arguments without declaring any argument schema`
@@ -108,5 +170,35 @@ export function validateLauncherCommandOwnerManifest(manifest: LauncherCommandOw
     throw new Error(
       `Launcher command owner "${manifest.id}" declares clipboard filters without the "clipboard" capability`
     )
+  }
+}
+
+function assertNonEmptyString(value: unknown, message: string): asserts value is string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(message)
+  }
+}
+
+function assertNonEmptyLocalizedText(
+  value: unknown,
+  message: string
+): asserts value is LocalizedTextValue {
+  if (typeof value === "string") {
+    assertNonEmptyString(value, message)
+    return
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(message)
+  }
+
+  const candidate = value as Record<string, unknown>
+  if (
+    typeof candidate.en_US !== "string" ||
+    typeof candidate.zh_Hans !== "string" ||
+    candidate.en_US.trim().length === 0 ||
+    candidate.zh_Hans.trim().length === 0
+  ) {
+    throw new Error(message)
   }
 }

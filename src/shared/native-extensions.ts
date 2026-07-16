@@ -6,10 +6,12 @@ import {
   type LocalizedTextValue
 } from "./i18n"
 import type {
+  LauncherCommandArgumentManifest,
   LauncherCommandMode,
   LauncherCommandOwnerCapability,
   LauncherCommandOwnerManifest
 } from "./launcher-command-owner"
+import { validateLauncherCommandOwnerManifest } from "./launcher-command-owner"
 import type { NativeExtensionRuntimePackageMetadata } from "@jingle/extension-api"
 import type { ExtensionToolAccess, ExtensionToolDefinition } from "./extension-sources"
 import type { IpcErrorPayload } from "./ipc-error"
@@ -83,14 +85,7 @@ export interface NativeExtensionRuntimeShellManifest {
   allowedUrlSchemes?: string[]
 }
 
-export interface NativeExtensionCommandArgumentSchema {
-  data?: Array<{ title?: LocalizedTextValue; value?: string }>
-  name: string
-  placeholder?: LocalizedTextValue
-  required?: boolean
-  title?: LocalizedTextValue
-  type?: string
-}
+export type NativeExtensionCommandArgumentSchema = LauncherCommandArgumentManifest
 
 export interface NativeExtensionCommandManifest<TCommandName extends string = string> {
   arguments?: NativeExtensionCommandArgumentSchema[]
@@ -831,6 +826,10 @@ export function validateNativeExtensionPackageManifest(
         `Native extension "${manifest.name}" command "${command.name}" requires launcher arguments without declaring any argument schema`
       )
     }
+  }
+
+  if (manifest.commands.some((command) => command.mode === "view" || command.mode === "no-view")) {
+    validateLauncherCommandOwnerManifest(toLauncherCommandOwnerManifest(manifest))
   }
 
   const defaultCommandName = manifest.defaultCommandName ?? manifest.commands[0]?.name
