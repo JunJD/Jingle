@@ -10,7 +10,7 @@ export type LauncherAiAttachmentDraft =
       height: number
       id: string
       kind: "image"
-      name: string
+      name?: string
       path?: string
       previewDataUrl: string
       source: "clipboard" | "picker"
@@ -25,8 +25,68 @@ export type LauncherAiAttachmentDraft =
       source: "clipboard" | "picker"
     }
 
+type ComposerAttachmentRef = Extract<ComposerMessageRef, { type: "file" | "image" }>
+
 function reportInvalidAttachment(reason: string): void {
   console.error(`[LauncherAiAttachments] ${reason}`)
+}
+
+export function toRestoredAttachmentDraft(
+  ref: ComposerAttachmentRef
+): LauncherAiAttachmentDraft | null {
+  if (ref.type === "image") {
+    const name = ref.name?.trim()
+    const url = ref.url.trim()
+    if (!url) {
+      reportInvalidAttachment("Cannot restore an image attachment without a URL.")
+      return null
+    }
+
+    return {
+      dataUrl: url,
+      height: 1,
+      id: `restored:image:${url}`,
+      kind: "image",
+      ...(name ? { name } : {}),
+      previewDataUrl: url,
+      source: "picker",
+      width: 1
+    }
+  }
+
+  const name = ref.name.trim()
+  const path = ref.path.trim()
+  if (!name || !path) {
+    reportInvalidAttachment("Cannot restore a file attachment without a name and path.")
+    return null
+  }
+
+  return {
+    id: `restored:file:${path}`,
+    isDirectory: false,
+    kind: "file",
+    name,
+    path,
+    source: "picker"
+  }
+}
+
+export function toComposerAttachmentRef(
+  attachment: LauncherAiAttachmentDraft
+): ComposerAttachmentRef {
+  if (attachment.kind === "image") {
+    return {
+      ...(attachment.name ? { name: attachment.name } : {}),
+      type: "image",
+      url: attachment.dataUrl
+    }
+  }
+
+  return {
+    name: attachment.name,
+    path: attachment.path,
+    type: "file"
+  }
 }
 
 function deriveLauncherAiAttachmentDrafts(context: ClipboardContext): LauncherAiAttachmentDraft[] {
@@ -115,6 +175,7 @@ export function useAiAttachments(): {
   clearAllAttachments: () => void
   messageRefs: ComposerMessageRef[]
   removeAttachment: (attachmentId: string) => void
+  replaceAttachments: (refs: readonly ComposerAttachmentRef[]) => void
 } {
   const clipboard = useAiCoreClipboard()
   const clearClipboardContext = clipboard.clearContext
@@ -145,21 +206,7 @@ export function useAiAttachments(): {
   }, [acceptedClipboardAttachments, pickedImages])
 
   const messageRefs = useMemo<ComposerMessageRef[]>(() => {
-    return attachments.map((attachment) => {
-      if (attachment.kind === "image") {
-        return {
-          name: attachment.name,
-          type: "image",
-          url: attachment.dataUrl
-        }
-      }
-
-      return {
-        name: attachment.name,
-        path: attachment.path,
-        type: "file"
-      }
-    })
+    return attachments.map(toComposerAttachmentRef)
   }, [attachments])
 
   const addAttachmentDrafts = useCallback((nextAttachments: LauncherAiAttachmentDraft[]): void => {
@@ -207,22 +254,25 @@ export function useAiAttachments(): {
     clipboard.acceptedContext
   ])
 
-  const addSelectedFiles = useCallback(async (files: FileList | File[]): Promise<void> => {
-    const selectedFiles = Array.from(files)
-    if (selectedFiles.length === 0) {
-      return
-    }
+  const addSelectedFiles = useCallback(
+    async (files: FileList | File[]): Promise<void> => {
+      const selectedFiles = Array.from(files)
+      if (selectedFiles.length === 0) {
+        return
+      }
 
-    const nextAttachments = (
-      await Promise.all(selectedFiles.map(toPickedAttachment))
-    ).filter((attachment): attachment is LauncherAiAttachmentDraft => attachment !== null)
+      const nextAttachments = (await Promise.all(selectedFiles.map(toPickedAttachment))).filter(
+        (attachment): attachment is LauncherAiAttachmentDraft => attachment !== null
+      )
 
-    if (nextAttachments.length === 0) {
-      return
-    }
+      if (nextAttachments.length === 0) {
+        return
+      }
 
-    addAttachmentDrafts(nextAttachments)
-  }, [addAttachmentDrafts])
+      addAttachmentDrafts(nextAttachments)
+    },
+    [addAttachmentDrafts]
+  )
 
   const acceptClipboardAttachments = useCallback((): void => {
     addAttachmentDrafts(clipboardCandidateAttachments)
@@ -246,6 +296,18 @@ export function useAiAttachments(): {
     }
   }, [acceptedClipboardAttachments.length, attachments.length, clearClipboardContext])
 
+  const replaceAttachments = useCallback(
+    (refs: readonly ComposerAttachmentRef[]): void => {
+      setPickedImages(
+        refs
+          .map(toRestoredAttachmentDraft)
+          .filter((attachment): attachment is LauncherAiAttachmentDraft => attachment !== null)
+      )
+      clearClipboardContext()
+    },
+    [clearClipboardContext]
+  )
+
   return {
     acceptClipboardAttachments,
     attachments,
@@ -253,6 +315,7 @@ export function useAiAttachments(): {
     addSelectedFiles,
     clearAllAttachments,
     messageRefs,
-    removeAttachment
+    removeAttachment,
+    replaceAttachments
   }
 }

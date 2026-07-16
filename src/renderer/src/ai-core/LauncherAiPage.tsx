@@ -70,12 +70,22 @@ import {
   type LauncherSelectionContext
 } from "@shared/launcher-selection"
 import { shouldGoHomeFromComposerKeyDown } from "./composer-keyboard"
+import {
+  buildCurrentComposerMessageInput,
+  createComposerHistoryCursor,
+  getComposerAttachmentRefs,
+  getComposerHistoryCursorIndex,
+  navigateComposerHistory,
+  projectComposerHistory,
+  type ComposerHistoryCursor
+} from "./composer-history"
 import type { JingleAgentFollowUpQueueItem } from "@jingle/agent-client"
-import type { Todo } from "@/types"
+import type { Message, Todo } from "@/types"
 import type { LauncherSearchResult } from "@shared/launcher-search"
 
 const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
 const DEFAULT_AGENT_CAN_FORK = true
+const EMPTY_MESSAGES: readonly Message[] = []
 const EMPTY_TODOS: readonly Todo[] = []
 
 function getApprovalSubmissionKey(threadId: string, approvalId: string): string {
@@ -217,6 +227,9 @@ export function LauncherAiPage(): React.JSX.Element {
     () => new Map()
   )
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
+  const [composerHistoryCursor, setComposerHistoryCursor] = useState<ComposerHistoryCursor>(() =>
+    createComposerHistoryCursor(null)
+  )
   const [isComposerInputOverflowing, setIsComposerInputOverflowing] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     if (host.chrome?.initialSidebarOpen === true) {
@@ -256,9 +269,13 @@ export function LauncherAiPage(): React.JSX.Element {
   const workspaceFileMentionState = useWorkspaceFileMentions(threadId, mentionQuery)
   const {
     addSelectionRef,
+    clearAllRefs,
+    clearExtensionSourceRefs,
     clearSelectionRefs,
+    messageRefs: composerMetadataRefs,
     refs: assistantSelectionRefs,
-    removeSelectionRef
+    removeSelectionRef,
+    replaceRefs
   } = useAssistantSelectionRefs(threadId)
   const threadContext = useThreadContext()
   const threadControl = useThreadControl(threadId)
@@ -300,7 +317,8 @@ export function LauncherAiPage(): React.JSX.Element {
     clipboardCandidateAttachments,
     clearAllAttachments,
     messageRefs: attachmentMessageRefs,
-    removeAttachment
+    removeAttachment,
+    replaceAttachments
   } = attachmentDraft
   const clearClipboardContext = host.clipboard.clearContext
   const clipboardCandidateContext = host.clipboard.candidateContext
@@ -335,6 +353,10 @@ export function LauncherAiPage(): React.JSX.Element {
       : projectedPendingApproval
   const followUpQueue = useThreadSelector(threadId, (state) => state?.agent.followUpQueue ?? null)
   const activeRun = useThreadSelector(threadId, (state) => state?.agent.activeRun ?? null)
+  const durableMessages = useThreadSelector(
+    threadId,
+    (state) => state?.agent.messagesPage ?? EMPTY_MESSAGES
+  )
   const currentModelId =
     useThreadSelector(threadId, (state) => state?.agent.currentModel ?? null) ??
     draftTarget?.modelId ??
@@ -350,17 +372,26 @@ export function LauncherAiPage(): React.JSX.Element {
     null
   const todos = useThreadSelector(threadId, (state) => state?.agent.todos ?? EMPTY_TODOS)
   const query = localComposerText
+  const composerHistory = useMemo(() => projectComposerHistory(durableMessages), [durableMessages])
+  const composerHistoryScope = threadNavigation.target
+  const composerHistoryIndex = getComposerHistoryCursorIndex(
+    composerHistoryCursor,
+    composerHistoryScope
+  )
   const getCurrentMessageInput = useCallback((): ComposerMessageInput => {
     const input = inputRef.current
-    const refs =
-      input && "getModelText" in input
-        ? [...input.getRefs(), ...attachmentMessageRefs, ...assistantSelectionRefs]
-        : [...attachmentMessageRefs, ...assistantSelectionRefs]
+    const editorRefs = input && "getModelText" in input ? input.getRefs() : []
     const text = input && "getModelText" in input ? input.getModelText() : query
+    const currentInput = buildCurrentComposerMessageInput({
+      attachmentRefs: attachmentMessageRefs,
+      editorRefs,
+      metadataRefs: composerMetadataRefs,
+      text
+    })
 
     if (selectionContext) {
       return {
-        refs,
+        refs: currentInput.refs,
         text: buildLauncherSelectionPromptText({
           selection: selectionContext,
           userText: text
@@ -368,11 +399,30 @@ export function LauncherAiPage(): React.JSX.Element {
       }
     }
 
-    return {
-      refs,
-      text
-    }
-  }, [assistantSelectionRefs, attachmentMessageRefs, inputRef, query, selectionContext])
+    return currentInput
+  }, [attachmentMessageRefs, composerMetadataRefs, inputRef, query, selectionContext])
+  const applyComposerInput = useCallback(
+    (input: ComposerMessageInput, historyIndex = -1): void => {
+      setComposerHistoryCursor(createComposerHistoryCursor(composerHistoryScope, historyIndex))
+      replaceAttachments(getComposerAttachmentRefs(input))
+      replaceRefs(input.refs)
+      setComposerText(input.text)
+      setMentionQuery(null)
+      if (selection && selectionContext) {
+        void selection.clearContext(selectionContext.id)
+      }
+      focusComposerOnNextFrame()
+    },
+    [
+      composerHistoryScope,
+      focusComposerOnNextFrame,
+      replaceAttachments,
+      replaceRefs,
+      selection,
+      selectionContext,
+      setComposerText
+    ]
+  )
   const getLatestCurrentMessageInput = useLatestCallback(getCurrentMessageInput)
   const getLatestTarget = useLatestCallback(() => threadNavigation.target)
   useAiCoreLifecycle({
@@ -385,7 +435,6 @@ export function LauncherAiPage(): React.JSX.Element {
     }
   })
   const messageInput = useMemo(() => {
-    const refs = [...attachmentMessageRefs, ...assistantSelectionRefs]
     const text = selectionContext
       ? buildLauncherSelectionPromptText({
           selection: selectionContext,
@@ -393,11 +442,13 @@ export function LauncherAiPage(): React.JSX.Element {
         })
       : query
 
-    return {
-      refs,
+    return buildCurrentComposerMessageInput({
+      attachmentRefs: attachmentMessageRefs,
+      editorRefs: [],
+      metadataRefs: composerMetadataRefs,
       text
-    }
-  }, [assistantSelectionRefs, attachmentMessageRefs, query, selectionContext])
+    })
+  }, [attachmentMessageRefs, composerMetadataRefs, query, selectionContext])
   const initialMessageInput = useMemo(
     () => ({
       refs: [...attachmentMessageRefs],
@@ -406,9 +457,10 @@ export function LauncherAiPage(): React.JSX.Element {
     [attachmentMessageRefs, initialSeedQuery]
   )
   const clearTransientInputState = useCallback((): void => {
+    setComposerHistoryCursor(createComposerHistoryCursor(composerHistoryScope))
     clearAllAttachments()
-    clearSelectionRefs()
-  }, [clearAllAttachments, clearSelectionRefs])
+    clearAllRefs()
+  }, [clearAllAttachments, clearAllRefs, composerHistoryScope])
   const handleAcceptedComposerInput = useCallback(
     (submittedInput: ComposerMessageInput, acceptedThreadId: string): void => {
       if (!composerRevision.takeIfCurrent(submittedInput)) {
@@ -590,42 +642,64 @@ export function LauncherAiPage(): React.JSX.Element {
     setQuery,
     startFreshDraft
   } = controller
+  const handleComposerValueChange = useCallback(
+    (value: string): void => {
+      setComposerHistoryCursor(createComposerHistoryCursor(composerHistoryScope))
+      clearExtensionSourceRefs()
+      setQuery(value)
+    },
+    [clearExtensionSourceRefs, composerHistoryScope, setQuery]
+  )
+  const exitComposerHistory = useCallback((): void => {
+    setComposerHistoryCursor((currentCursor) => {
+      if (currentCursor.scope === composerHistoryScope && currentCursor.index === -1) {
+        return currentCursor
+      }
+      return createComposerHistoryCursor(composerHistoryScope)
+    })
+  }, [composerHistoryScope])
   const handleAcceptClipboardAttachments = useCallback((): void => {
+    exitComposerHistory()
     acceptClipboardAttachments()
     markComposerChanged()
-  }, [acceptClipboardAttachments, markComposerChanged])
+  }, [acceptClipboardAttachments, exitComposerHistory, markComposerChanged])
   const handleAddSelectedFiles = useCallback(
     async (files: FileList | File[]): Promise<void> => {
+      exitComposerHistory()
       markComposerChanged()
       await addSelectedFiles(files)
     },
-    [addSelectedFiles, markComposerChanged]
+    [addSelectedFiles, exitComposerHistory, markComposerChanged]
   )
   const handleRemoveAttachment = useCallback(
     (attachmentId: string): void => {
+      exitComposerHistory()
       removeAttachment(attachmentId)
       markComposerChanged()
     },
-    [markComposerChanged, removeAttachment]
+    [exitComposerHistory, markComposerChanged, removeAttachment]
   )
   const handleAddSelectionRef = useCallback(
     (ref: Parameters<typeof addSelectionRef>[0]): void => {
+      exitComposerHistory()
       addSelectionRef(ref)
       markComposerChanged()
     },
-    [addSelectionRef, markComposerChanged]
+    [addSelectionRef, exitComposerHistory, markComposerChanged]
   )
   const handleRemoveSelectionRef = useCallback(
     (ref: Parameters<typeof removeSelectionRef>[0]): void => {
+      exitComposerHistory()
       removeSelectionRef(ref)
       markComposerChanged()
     },
-    [markComposerChanged, removeSelectionRef]
+    [exitComposerHistory, markComposerChanged, removeSelectionRef]
   )
   const handleClearSelectionRefs = useCallback((): void => {
+    exitComposerHistory()
     clearSelectionRefs()
     markComposerChanged()
-  }, [clearSelectionRefs, markComposerChanged])
+  }, [clearSelectionRefs, exitComposerHistory, markComposerChanged])
   const canGoToNextChat = canGoToNextThread
   const canGoToPreviousChat = canGoToPreviousThread
   const openAttachmentPicker = useCallback((): void => {
@@ -641,9 +715,15 @@ export function LauncherAiPage(): React.JSX.Element {
         ? `${query}${query.endsWith("\n") ? "" : "\n"}${clipboardCandidateContext.text}`
         : clipboardCandidateContext.text
     clearClipboardContext()
-    setQuery(nextQuery)
+    handleComposerValueChange(nextQuery)
     focusComposerOnNextFrame()
-  }, [clearClipboardContext, clipboardCandidateContext, focusComposerOnNextFrame, query, setQuery])
+  }, [
+    clearClipboardContext,
+    clipboardCandidateContext,
+    focusComposerOnNextFrame,
+    handleComposerValueChange,
+    query
+  ])
   const dismissClipboardCandidate = useCallback((): void => {
     clearClipboardContext()
   }, [clearClipboardContext])
@@ -690,9 +770,10 @@ export function LauncherAiPage(): React.JSX.Element {
       return
     }
 
+    exitComposerHistory()
     markComposerChanged()
     void selection.clearContext(selectionContext.id)
-  }, [markComposerChanged, selection, selectionContext])
+  }, [exitComposerHistory, markComposerChanged, selection, selectionContext])
   const editQueuedFollowUp = useCallback(
     async (item: JingleAgentFollowUpQueueItem): Promise<void> => {
       if (!threadControl) {
@@ -704,12 +785,9 @@ export function LauncherAiPage(): React.JSX.Element {
         return
       }
 
-      clearTransientInputState()
-      setQuery(edited.messageInput.text)
-      setMentionQuery(null)
-      focusComposerOnNextFrame()
+      applyComposerInput(edited.messageInput)
     },
-    [clearTransientInputState, focusComposerOnNextFrame, setQuery, threadControl]
+    [applyComposerInput, threadControl]
   )
   const deleteQueuedFollowUp = useCallback(
     async (item: JingleAgentFollowUpQueueItem): Promise<void> => {
@@ -799,6 +877,46 @@ export function LauncherAiPage(): React.JSX.Element {
   }, [pendingApproval, submitApprovalDecision])
   const handleComposerKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLElement>): void => {
+      const isHistoryKey = event.key === "ArrowUp" || event.key === "ArrowDown"
+      if (
+        isHistoryKey &&
+        !isApprovalPending &&
+        mentionQuery === null &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        !event.nativeEvent.isComposing
+      ) {
+        const direction = event.key === "ArrowUp" ? "up" : "down"
+        if (direction === "down" && composerHistoryIndex < 0) {
+          return
+        }
+
+        const currentInput = getCurrentMessageInput()
+        if (
+          composerHistoryIndex < 0 &&
+          (currentInput.text.length > 0 ||
+            currentInput.refs.length > 0 ||
+            hasClipboardCandidateDraft)
+        ) {
+          return
+        }
+
+        const navigationResult = navigateComposerHistory({
+          direction,
+          entries: composerHistory,
+          index: composerHistoryIndex
+        })
+        if (!navigationResult) {
+          return
+        }
+
+        event.preventDefault()
+        applyComposerInput(navigationResult.entry, navigationResult.index)
+        return
+      }
+
       const input = inputRef.current
       const composerText = input && "getModelText" in input ? input.getModelText() : query
 
@@ -814,7 +932,19 @@ export function LauncherAiPage(): React.JSX.Element {
         return
       }
     },
-    [attachmentCount, inputRef, navigation, query]
+    [
+      applyComposerInput,
+      attachmentCount,
+      composerHistory,
+      composerHistoryIndex,
+      getCurrentMessageInput,
+      hasClipboardCandidateDraft,
+      inputRef,
+      isApprovalPending,
+      mentionQuery,
+      navigation,
+      query
+    ]
   )
   const canStartNewQuestion =
     query.trim().length > 0 ||
@@ -1385,7 +1515,7 @@ export function LauncherAiPage(): React.JSX.Element {
           hideInputChrome
           inputStatus={launcherInputStatus}
           inputValue={query}
-          onInputValueChange={setQuery}
+          onInputValueChange={handleComposerValueChange}
           placeholders={[
             copy.launcher.aiInputPlaceholder,
             copy.launcher.aiInputPlaceholderSecondary
@@ -1509,7 +1639,9 @@ export function LauncherAiPage(): React.JSX.Element {
                     maxHeight="var(--launcher-ai-composer-input-max-h)"
                     minHeight="var(--launcher-ai-composer-input-min-h)"
                     onSubmit={isApprovalPending ? undefined : submitCurrentInput}
-                    onValueChange={isApprovalPending ? setApprovalFeedback : setQuery}
+                    onValueChange={
+                      isApprovalPending ? setApprovalFeedback : handleComposerValueChange
+                    }
                     value={isApprovalPending ? approvalRejectFeedback : query}
                   >
                     <input
