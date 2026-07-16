@@ -272,6 +272,7 @@ function runPackagedRuntimeSmoke({ appAsarPath, appPath, executablePath, resourc
 
   const smokeHome = mkdtempSync(join(tmpdir(), "jingle-packaged-runtime-"))
   const smokeScript = `
+const { execFileSync } = await import("node:child_process")
 const { createRequire, builtinModules } = await import("node:module")
 const { join, normalize, sep, isAbsolute } = await import("node:path")
 
@@ -314,6 +315,16 @@ for (const packageName of requiredPackages) {
     throw new Error(packageName + " resolved outside packaged resources: " + resolvedPath)
   }
   requireFromApp(packageName)
+}
+
+const { ripgrepExecutablePath } = requireFromApp("./out/main/ripgrep-executable-audit.js")
+const unpackedRoot = join(resourcesPath, "app.asar.unpacked")
+if (!isInside(ripgrepExecutablePath, unpackedRoot)) {
+  throw new Error("Packaged ripgrep executable resolved outside app.asar.unpacked: " + ripgrepExecutablePath)
+}
+const ripgrepVersion = execFileSync(ripgrepExecutablePath, ["--version"], { encoding: "utf-8" })
+if (!ripgrepVersion.startsWith("ripgrep ")) {
+  throw new Error("Packaged ripgrep smoke returned an unexpected version: " + ripgrepVersion)
 }
 
 const { Bash } = requireFromApp("just-bash")

@@ -4,7 +4,7 @@ import { spawn } from "node:child_process"
 import * as fs from "fs/promises"
 import * as path from "path"
 import fuzzysort from "fuzzysort"
-import { rgPath } from "@vscode/ripgrep"
+import { ripgrepExecutablePath } from "@jingle/langchain-agent-harness/ripgrep-executable"
 import type {
   WorkspaceCreateDefaultParams,
   WorkspaceFileParams,
@@ -454,7 +454,7 @@ async function collectWorkspaceFilePaths(
     let stderr = ""
     let timedOut = false
     const child = spawn(
-      rgPath,
+      ripgrepExecutablePath,
       [
         "--no-config",
         "--files",

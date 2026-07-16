@@ -51,6 +51,9 @@
       "@jingle/langchain-agent-harness": [
         "packages/langchain-agent-harness/src/index.ts"
       ],
+      "@jingle/langchain-agent-harness/ripgrep-executable": [
+        "packages/langchain-agent-harness/src/harness-runtime/ripgrep-executable.ts"
+      ],
       "@jingle/langchain-agent-harness/transitional": [
         "packages/langchain-agent-harness/src/root-transitional-api.ts"
       ],

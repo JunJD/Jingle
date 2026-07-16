@@ -2,7 +2,6 @@ import { spawn } from "node:child_process"
 import { constants as fsConstants } from "node:fs"
 import { lstat, mkdir, open, readFile, readdir, stat, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
-import { rgPath } from "@vscode/ripgrep"
 import type {
   JingleFilesystemEditResult,
   JingleFilesystemFileData,
@@ -10,6 +9,7 @@ import type {
   JingleFilesystemGrepMatch,
   JingleFilesystemWriteResult
 } from "./filesystem"
+import { ripgrepExecutablePath } from "./ripgrep-executable"
 
 export interface JingleNodeFilesystemBackendOptions {
   maxFileSizeMb?: number
@@ -384,7 +384,7 @@ export class JingleNodeFilesystemBackend {
       }
       args.push("--", pattern, baseFull)
 
-      const process = spawn(rgPath, args, { timeout: 30_000 })
+      const process = spawn(ripgrepExecutablePath, args, { timeout: 30_000 })
       const results: RipgrepResults = {}
       let output = ""
       process.stdout.on("data", (data: Buffer) => {
@@ -465,7 +465,7 @@ export class JingleNodeFilesystemBackend {
   private async ripgrepFiles(searchPath: string, pattern: string): Promise<string[] | null> {
     return new Promise((resolveFiles) => {
       const args = ["--files", "--glob", pattern, searchPath]
-      const process = spawn(rgPath, args, { timeout: 30_000 })
+      const process = spawn(ripgrepExecutablePath, args, { timeout: 30_000 })
       let output = ""
       process.stdout.on("data", (data: Buffer) => {
         output += data.toString()

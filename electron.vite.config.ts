@@ -109,6 +109,9 @@ export default defineConfig({
         "@jingle/langchain-agent-harness/transitional": resolve(
           "packages/langchain-agent-harness/src/root-transitional-api.ts"
         ),
+        "@jingle/langchain-agent-harness/ripgrep-executable": resolve(
+          "packages/langchain-agent-harness/src/harness-runtime/ripgrep-executable.ts"
+        ),
         "@jingle/langchain-agent-harness": resolve("packages/langchain-agent-harness/src/index.ts"),
         canvas: resolve("src/main/runtime-shims/canvas.ts"),
         "@plugins": resolve("src/plugins"),
@@ -122,7 +125,10 @@ export default defineConfig({
         entry: {
           "database-bootstrap-audit": resolve("src/main/db/bootstrap-audit-entry.ts"),
           "extension-runtime-entry": resolve("src/extension-runtime/entry.ts"),
-          index: resolve("src/main/index.ts")
+          index: resolve("src/main/index.ts"),
+          "ripgrep-executable-audit": resolve(
+            "packages/langchain-agent-harness/src/harness-runtime/ripgrep-executable.ts"
+          )
         },
         formats: ["cjs"]
       },
