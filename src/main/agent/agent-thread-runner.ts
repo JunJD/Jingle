@@ -263,6 +263,7 @@ class ThreadRuntimeProjector {
         this.upsertMessage(
           createUserRuntimeMessage(
             {
+              ...(typeof steer.text === "string" ? { composerText: steer.text } : {}),
               content: steer.content,
               id: steer.messageId,
               refs: steer.refs

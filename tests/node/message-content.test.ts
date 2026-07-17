@@ -5,20 +5,27 @@ import {
   hasComposerMessageInputContent,
   normalizeComposerMessageRefs,
   parsePersistedMessageContent,
+  resolveComposerMessageReplay,
   toMessageContent,
-  toComposerMessageInput,
   toAgentMessageContent,
   toAgentMessageContentWithRefs,
   toDisplayAssistantMessageContent,
   toDisplayMessageContent,
-  toDisplayUserMessageContent
+  toDisplayUserMessageContent,
+  type ComposerMessageInput
 } from "../../src/shared/message-content"
 import { projectMessageContent } from "../../src/renderer/src/lib/message-projection"
 import { decodeMessagesStreamPayload } from "../../src/main/agent/agent-stream-codec"
 import { extractMessagesFromCheckpoint } from "../../src/main/agent/runtime-state"
+import {
+  buildJingleAgentCommandEnvelope,
+  buildJingleAgentCommandMessage
+} from "../../packages/agent-client/src/commands"
+import { buildJingleSubmittedMessages } from "../../packages/langchain-agent-harness/src/submitted-messages"
+import { buildRuntimeInvokeInitialState } from "../../packages/langchain-agent-harness/src/runtime-operation-payload"
 
-test("toComposerMessageInput preserves refs from metadata when content is a string", () => {
-  const input = toComposerMessageInput("Attached files:\n- spec.pdf", {
+test("composer replay refuses legacy synthetic text without verified original input", () => {
+  const replay = resolveComposerMessageReplay("Attached files:\n- spec.pdf", {
     refs: [
       {
         name: "spec.pdf",
@@ -28,15 +35,9 @@ test("toComposerMessageInput preserves refs from metadata when content is a stri
     ]
   })
 
-  assert.deepEqual(input, {
-    refs: [
-      {
-        name: "spec.pdf",
-        path: "/tmp/spec.pdf",
-        type: "file"
-      }
-    ],
-    text: ""
+  assert.deepEqual(replay, {
+    reason: "missing-composer-text",
+    type: "unavailable"
   })
 })
 
@@ -136,16 +137,20 @@ test("assistant message selection refs are metadata refs and model-only context"
       "1. snapshot should not own runtime facts"
     ].join("\n")
   )
-  assert.deepEqual(toDisplayUserMessageContent(agentContent, { refs }), [
-    {
-      text: "Is this still true?",
-      type: "text"
-    }
-  ])
+  assert.deepEqual(
+    toDisplayUserMessageContent(agentContent, { composerText: "Is this still true?", refs }),
+    [
+      {
+        text: "Is this still true?",
+        type: "text"
+      }
+    ]
+  )
 })
 
 test("toDisplayUserMessageContent reconstructs file blocks from metadata refs", () => {
   const content = toDisplayUserMessageContent("Attached files:\n- spec.pdf", {
+    composerText: "",
     refs: [
       {
         name: "spec.pdf",
@@ -245,7 +250,10 @@ test("composer ref metadata normalization does not execute getters", () => {
     }
   })
 
-  assert.deepEqual(toComposerMessageInput("safe", metadata), { refs: [], text: "safe" })
+  assert.deepEqual(resolveComposerMessageReplay("safe", metadata), {
+    input: { refs: [], text: "safe" },
+    type: "ready"
+  })
   assert.deepEqual(normalizeComposerMessageRefs([ref]), [])
   assert.equal(getterCalls, 0)
 })
@@ -475,6 +483,8 @@ test("toDisplayUserMessageContent keeps inline workspace file refs in text only"
   const content = toDisplayUserMessageContent(
     "Review [@src/main/agent/service.ts](jingle-workspace-file://src%2Fmain%2Fagent%2Fservice.ts)",
     {
+      composerText:
+        "Review [@src/main/agent/service.ts](jingle-workspace-file://src%2Fmain%2Fagent%2Fservice.ts)",
       refs: [
         {
           name: "service.ts",
@@ -497,6 +507,8 @@ test("toDisplayUserMessageContent preserves extension source markdown for render
   const content = toDisplayUserMessageContent(
     "Use [@apple-reminders](jingle-extension-source://apple-reminders/appleReminders) today",
     {
+      composerText:
+        "Use [@apple-reminders](jingle-extension-source://apple-reminders/appleReminders) today",
       refs: [
         {
           extensionName: "apple-reminders",
@@ -516,8 +528,9 @@ test("toDisplayUserMessageContent preserves extension source markdown for render
   ])
 })
 
-test("toComposerMessageInput preserves real user text when refs metadata is also present", () => {
-  const input = toComposerMessageInput("Please review spec.pdf", {
+test("composer replay preserves verified user text when refs metadata is also present", () => {
+  const replay = resolveComposerMessageReplay("Attached files:\n- spec.pdf", {
+    composerText: "Please review spec.pdf",
     refs: [
       {
         name: "spec.pdf",
@@ -527,16 +540,311 @@ test("toComposerMessageInput preserves real user text when refs metadata is also
     ]
   })
 
-  assert.deepEqual(input, {
+  assert.deepEqual(replay, {
+    input: {
+      refs: [
+        {
+          name: "spec.pdf",
+          path: "/tmp/spec.pdf",
+          type: "file"
+        }
+      ],
+      text: "Please review spec.pdf"
+    },
+    type: "ready"
+  })
+})
+
+test("canonical file sources round-trip through replay and model submission", () => {
+  const sources = [
+    { data: "cGRm", kind: "data", mimeType: "application/pdf" },
+    { fileId: "file-1", kind: "file-id", mimeType: "application/pdf" },
+    { kind: "url", mimeType: "application/pdf", url: "https://example.com/spec.pdf" },
+    { kind: "text", text: "中文 source" }
+  ] as const
+  const content = sources.map((source, index) => ({
+    name: `attachment-${index + 1}`,
+    source,
+    type: "file" as const
+  }))
+
+  const replay = resolveComposerMessageReplay(content)
+  assert.equal(replay.type, "ready")
+  if (replay.type !== "ready") return
+
+  assert.deepEqual(
+    replay.input.refs,
+    sources.map((source, index) => ({
+      name: `attachment-${index + 1}`,
+      source,
+      type: "file-attachment"
+    }))
+  )
+  assert.deepEqual(toAgentMessageContent(toMessageContent(replay.input)), [
+    {
+      data: "cGRm",
+      metadata: { filename: "attachment-1" },
+      mimeType: "application/pdf",
+      name: "attachment-1",
+      type: "file"
+    },
+    {
+      fileId: "file-1",
+      metadata: { filename: "attachment-2" },
+      mimeType: "application/pdf",
+      name: "attachment-2",
+      type: "file"
+    },
+    {
+      metadata: { filename: "attachment-3" },
+      mimeType: "application/pdf",
+      name: "attachment-3",
+      type: "file",
+      url: "https://example.com/spec.pdf"
+    },
+    {
+      data: "5Lit5paHIHNvdXJjZQ==",
+      metadata: { filename: "attachment-4" },
+      mimeType: "text/plain;charset=utf-8",
+      name: "attachment-4",
+      type: "file"
+    }
+  ])
+})
+
+test("agent command and harness persist exact composer facts for canonical file sources", () => {
+  const source = { kind: "url", url: "https://example.com/spec.pdf" } as const
+  const messageInput: ComposerMessageInput = {
     refs: [
       {
         name: "spec.pdf",
-        path: "/tmp/spec.pdf",
-        type: "file"
+        source,
+        type: "file-attachment"
       }
     ],
-    text: "Please review spec.pdf"
+    text: "Review exactly this"
+  }
+  const envelope = buildJingleAgentCommandEnvelope({ messageInput })
+  assert.ok(envelope)
+  const message = buildJingleAgentCommandMessage({ envelope, messageId: "user-1" })
+  const admission = {
+    eventId: "00000000-0000-4000-8000-000000000007",
+    sequence: 7
+  }
+  const [submitted] = buildJingleSubmittedMessages({
+    message: { ...message, admission },
+    removeMessageIds: []
   })
+  const [runtimeSubmitted] = buildRuntimeInvokeInitialState({
+    contextInclusions: [],
+    message: { ...message, admission },
+    removeMessageIds: [],
+    runId: "run-1"
+  }).messages
+
+  assert.deepEqual(message, {
+    composerText: messageInput.text,
+    content: [
+      { text: messageInput.text, type: "text" },
+      {
+        metadata: { filename: "spec.pdf" },
+        name: "spec.pdf",
+        type: "file",
+        url: source.url
+      }
+    ],
+    id: "user-1",
+    refs: messageInput.refs
+  })
+  assert.deepEqual(submitted?.additional_kwargs, {
+    jingle_user_message_admission: admission,
+    jingle_composer_text: messageInput.text,
+    refs: messageInput.refs
+  })
+  assert.deepEqual(runtimeSubmitted?.additional_kwargs, submitted?.additional_kwargs)
+  assert.deepEqual(submitted?.response_metadata, { output_version: "v1" })
+})
+
+test("checkpoint hydration preserves composer text and canonical file refs for replay", () => {
+  const refs = [
+    {
+      name: "spec.pdf",
+      source: { fileId: "file-1", kind: "file-id", mimeType: "application/pdf" },
+      type: "file-attachment"
+    }
+  ] as const
+  const [message] = extractMessagesFromCheckpoint("thread-1", {
+    checkpoint: {
+      id: "checkpoint-1",
+      channel_values: {
+        messages: [
+          {
+            id: ["HumanMessage"],
+            kwargs: {
+              additional_kwargs: {
+                jingle_composer_text: "Review the specification",
+                refs
+              },
+              content: [
+                { text: "Review the specification", type: "text" },
+                { fileId: "file-1", mimeType: "application/pdf", name: "spec.pdf", type: "file" }
+              ],
+              id: "user-1"
+            },
+            type: "human"
+          }
+        ]
+      }
+    }
+  } as never)
+  const metadata = JSON.parse(message?.metadata ?? "null") as unknown
+  const content = JSON.parse(message?.content ?? "null") as unknown
+
+  assert.deepEqual(metadata, {
+    composerText: "Review the specification",
+    refs
+  })
+  assert.deepEqual(resolveComposerMessageReplay(content as never, metadata), {
+    input: {
+      refs,
+      text: "Review the specification"
+    },
+    type: "ready"
+  })
+})
+
+test("checkpoint hydration keeps a text file source canonical without duplicating its data projection", () => {
+  const refs = [
+    {
+      name: "notes.txt",
+      source: { kind: "text", text: "中文 source" },
+      type: "file-attachment"
+    }
+  ] as const
+  const [message] = extractMessagesFromCheckpoint("thread-1", {
+    checkpoint: {
+      id: "checkpoint-1",
+      channel_values: {
+        messages: [
+          {
+            id: ["HumanMessage"],
+            kwargs: {
+              additional_kwargs: {
+                jingle_composer_text: "Review the notes",
+                refs
+              },
+              content: [
+                { text: "Review the notes", type: "text" },
+                {
+                  data: "5Lit5paHIHNvdXJjZQ==",
+                  metadata: { filename: "notes.txt" },
+                  mimeType: "text/plain;charset=utf-8",
+                  name: "notes.txt",
+                  type: "file"
+                }
+              ],
+              id: "user-1"
+            },
+            type: "human"
+          }
+        ]
+      }
+    }
+  } as never)
+  const metadata = JSON.parse(message?.metadata ?? "null") as unknown
+  const content = JSON.parse(message?.content ?? "null") as unknown
+
+  assert.deepEqual(resolveComposerMessageReplay(content as never, metadata), {
+    input: {
+      refs,
+      text: "Review the notes"
+    },
+    type: "ready"
+  })
+})
+
+test("composer replay preserves legitimate text that matches the old synthetic format", () => {
+  const text = "Attached files:\n- spec.pdf"
+  assert.deepEqual(
+    resolveComposerMessageReplay(text, {
+      composerText: text,
+      refs: [{ name: "spec.pdf", path: "/tmp/spec.pdf", type: "file" }]
+    }),
+    {
+      input: {
+        refs: [{ name: "spec.pdf", path: "/tmp/spec.pdf", type: "file" }],
+        text
+      },
+      type: "ready"
+    }
+  )
+})
+
+test("composer replay disables malformed attachment metadata instead of dropping individual refs", () => {
+  assert.deepEqual(
+    resolveComposerMessageReplay("Review", {
+      composerText: "Review",
+      refs: [
+        { name: "valid.pdf", path: "/tmp/valid.pdf", type: "file" },
+        { name: "missing source", type: "file-attachment" }
+      ]
+    }),
+    {
+      reason: "invalid-composer-metadata",
+      type: "unavailable"
+    }
+  )
+})
+
+test("checkpoint projection preserves malformed attachment metadata as a typed replay failure", () => {
+  const [message] = extractMessagesFromCheckpoint("thread-1", {
+    checkpoint: {
+      id: "checkpoint-1",
+      channel_values: {
+        messages: [
+          {
+            id: ["HumanMessage"],
+            kwargs: {
+              additional_kwargs: {
+                jingle_composer_text: "Review",
+                refs: [
+                  { name: "valid.pdf", path: "/tmp/valid.pdf", type: "file" },
+                  { name: "missing source", type: "file-attachment" }
+                ]
+              },
+              content: "Review",
+              id: "user-1"
+            },
+            type: "human"
+          }
+        ]
+      }
+    }
+  } as never)
+  const metadata = JSON.parse(message?.metadata ?? "null") as unknown
+  const content = JSON.parse(message?.content ?? "null") as unknown
+
+  assert.deepEqual(metadata, { composerText: "Review", refs: null })
+  assert.deepEqual(resolveComposerMessageReplay(content as never, metadata), {
+    reason: "invalid-composer-metadata",
+    type: "unavailable"
+  })
+})
+
+test("composer replay recovers canonical attachment facts missing from metadata refs", () => {
+  const source = { fileId: "file-1", kind: "file-id" } as const
+  assert.deepEqual(
+    resolveComposerMessageReplay([{ name: "spec.pdf", source, type: "file" }], {
+      composerText: "Review"
+    }),
+    {
+      input: {
+        refs: [{ name: "spec.pdf", source, type: "file-attachment" }],
+        text: "Review"
+      },
+      type: "ready"
+    }
+  )
 })
 
 test("toDisplayAssistantMessageContent preserves reasoning blocks outside response text", () => {

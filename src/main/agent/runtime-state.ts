@@ -17,7 +17,6 @@ import type { AgentContextInclusion } from "@shared/jingle-memory"
 import { parseToolApprovalItem } from "@shared/tool-approval"
 import { parseOptionalToolDecision } from "@shared/tool-decision"
 import {
-  normalizeComposerMessageRefs,
   toComposerMessageMetadata,
   toDisplayAssistantMessageContent,
   toDisplayMessageContent,
@@ -31,8 +30,11 @@ export type JingleCheckpointProjectionSource =
 function getCheckpointMessageMetadata(
   message: JingleLangGraphCheckpointMessage
 ): Record<string, unknown> | null {
-  const refs = normalizeComposerMessageRefs(message.metadataHints.refs)
-  const metadata = toComposerMessageMetadata({ refs }) ?? {}
+  const metadata =
+    toComposerMessageMetadata({
+      refs: message.metadataHints.refs,
+      text: message.metadataHints.composerText
+    }) ?? {}
   const lcSource = message.metadataHints.source
   const toolDecision = parseOptionalToolDecision(
     message.displayContext.additional_kwargs?.jingle_tool_decision

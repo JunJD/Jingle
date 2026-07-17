@@ -68,7 +68,10 @@ export function createRuntimeThreadInvokeRun<TContextInclusion>(input: {
               controls.operations.invoke(
                 {
                   contextInclusions: executionInput.contextInclusions,
-                  message: executionInput.message,
+                  message: {
+                    ...executionInput.message,
+                    ...(start.userMessageAdmission ? { admission: start.userMessageAdmission } : {})
+                  },
                   recordingRefs: [...start.recordingRefs],
                   removeMessageIds: executionInput.removeMessageIds,
                   runId: run.runId,

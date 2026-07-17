@@ -18,7 +18,9 @@ import {
   getComposerAttachmentRefs,
   getComposerHistoryCursorIndex,
   navigateComposerHistory,
-  projectComposerHistory
+  navigateComposerHistoryEntries,
+  projectComposerHistory,
+  projectComposerHistoryEntries
 } from "../../src/renderer/src/ai-core/composer-history"
 
 function createMessage(input: Partial<Message> & Pick<Message, "id" | "role">): Message {
@@ -40,6 +42,7 @@ test("composer history keeps the latest durable user inputs with full refs", () 
       role: "user",
       content: "latest",
       metadata: {
+        composerText: "latest",
         refs: [
           {
             name: "spec.md",
@@ -251,4 +254,74 @@ test("inline workspace refs stay in composer text instead of duplicating attachm
     { name: "notes.md", path: "/workspace/notes.md", type: "file" },
     { name: "diagram", type: "image", url: "data:image/png;base64,AA==" }
   ])
+})
+
+test("canonical file attachments restore into the visible rail without changing submission refs", () => {
+  const ref = {
+    name: "spec.pdf",
+    source: { fileId: "file-1", kind: "file-id", mimeType: "application/pdf" },
+    type: "file-attachment"
+  } as const
+  const attachmentRefs = getComposerAttachmentRefs({ refs: [ref], text: "Review" })
+  const restored = toRestoredAttachmentDraft(attachmentRefs[0]!)
+
+  assert.ok(restored)
+  assert.equal(restored.kind, "file")
+  assert.deepEqual(toComposerAttachmentRef(restored), ref)
+})
+
+test("composer history retains a typed reason for provider-unsupported attachments", () => {
+  const ref = {
+    name: "spec.pdf",
+    source: { fileId: "file-1", kind: "file-id", mimeType: "application/pdf" },
+    type: "file-attachment"
+  } as const
+  const messages = [
+    createMessage({
+      content: [
+        {
+          name: "spec.pdf",
+          source: { fileId: "file-1", kind: "file-id", mimeType: "application/pdf" },
+          type: "file"
+        }
+      ],
+      id: "user-1",
+      metadata: { composerText: "Review", refs: [ref] },
+      role: "user"
+    })
+  ]
+
+  assert.deepEqual(
+    projectComposerHistory(messages, 100, {
+      supportedFileSourceKinds: ["data", "text", "url"]
+    }),
+    []
+  )
+  const unavailableEntries = projectComposerHistoryEntries(messages, 100, {
+    supportedFileSourceKinds: ["data", "text", "url"]
+  })
+  assert.deepEqual(unavailableEntries, [
+    {
+      reason: { reason: "provider_file_id_unsupported", source: "provider" },
+      type: "unavailable"
+    }
+  ])
+  assert.deepEqual(
+    navigateComposerHistoryEntries({
+      direction: "up",
+      entries: unavailableEntries,
+      index: -1
+    }),
+    {
+      index: 0,
+      reason: { reason: "provider_file_id_unsupported", source: "provider" },
+      type: "unavailable"
+    }
+  )
+  assert.deepEqual(
+    projectComposerHistory(messages, 100, {
+      supportedFileSourceKinds: ["data", "file-id", "text", "url"]
+    }),
+    [{ refs: [ref], text: "Review" }]
+  )
 })

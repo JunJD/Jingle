@@ -55,7 +55,10 @@ import { useAiAttachments } from "./useAiAttachments"
 import { useAssistantSelectionRefs } from "@/components/chat/useAssistantSelectionRefs"
 import { useLauncherAiActions } from "./useLauncherAiActions"
 import { useLauncherAiThreadNavigation } from "./useLauncherAiThreadNavigation"
-import { useLauncherAiModelDisplayProjection } from "./use-launcher-ai-model-display-controller"
+import {
+  useLauncherAiModelDisplayProjection,
+  useModelProviderAttachmentCapabilities
+} from "./use-launcher-ai-model-display-controller"
 import { launcherAiCommands } from "./launcher-ai-commands"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
@@ -85,11 +88,15 @@ import {
   createComposerHistoryCursor,
   getComposerAttachmentRefs,
   getComposerHistoryCursorIndex,
-  navigateComposerHistory,
-  projectComposerHistory,
+  MAX_COMPOSER_HISTORY_ENTRIES,
+  navigateComposerHistoryEntries,
+  projectComposerHistoryEntries,
   type ComposerHistoryCursor
 } from "./composer-history"
-import type { JingleAgentFollowUpQueueItem } from "@jingle/agent-client"
+import {
+  resolveJingleAgentComposerSubmissionAvailability,
+  type JingleAgentFollowUpQueueItem
+} from "@jingle/agent-client"
 import type { Message, Todo } from "@/types"
 import type { LauncherSearchResult } from "@shared/launcher-search"
 
@@ -428,13 +435,22 @@ export function LauncherAiPage(): React.JSX.Element {
     targetConfiguration.kind === "configured" ? targetConfiguration.modelRuntimeSelection : null
   const canSelectModel = canSelectLauncherAiModel(targetConfiguration)
   const currentModelId = currentModelRuntimeSelection?.modelId ?? null
+  const currentModelAttachmentCapabilities = useModelProviderAttachmentCapabilities(currentModelId)
   const currentPermissionMode =
     targetConfiguration.kind === "configured" ? targetConfiguration.permissionMode : null
   const workspacePath =
     targetConfiguration.kind === "configured" ? targetConfiguration.workspacePath : null
   const todos = useThreadSelector(threadId, (state) => state?.agent.todos ?? EMPTY_TODOS)
   const query = localComposerText
-  const composerHistory = useMemo(() => projectComposerHistory(durableMessages), [durableMessages])
+  const composerHistory = useMemo(
+    () =>
+      projectComposerHistoryEntries(
+        durableMessages,
+        MAX_COMPOSER_HISTORY_ENTRIES,
+        currentModelAttachmentCapabilities
+      ),
+    [currentModelAttachmentCapabilities, durableMessages]
+  )
   const composerHistoryScope = threadNavigation.target
   const composerHistoryIndex = getComposerHistoryCursorIndex(
     composerHistoryCursor,
@@ -509,6 +525,14 @@ export function LauncherAiPage(): React.JSX.Element {
       text
     })
   }, [attachmentMessageRefs, composerMetadataRefs, query, selectionContext])
+  const composerSubmissionAvailability = useMemo(
+    () =>
+      resolveJingleAgentComposerSubmissionAvailability({
+        attachmentCapabilities: currentModelAttachmentCapabilities,
+        messageInput
+      }),
+    [currentModelAttachmentCapabilities, messageInput]
+  )
   const getLatestCurrentMessageInput = useLatestCallback(getCurrentMessageInput)
   const getLatestTarget = useLatestCallback(() => threadNavigation.target)
   const initialMessageInput = useMemo(
@@ -565,7 +589,18 @@ export function LauncherAiPage(): React.JSX.Element {
   )
   const hasPendingApproval = Boolean(pendingApproval)
   const threadError = agentError ?? navigationError
-  const canSubmitComposerDraft = !hasPendingApproval && hasComposerMessageInputContent(messageInput)
+  const composerSubmissionUnavailableReason =
+    composerSubmissionAvailability.type === "unavailable"
+      ? composerSubmissionAvailability.reason === "provider_file_id_unsupported"
+        ? copy.chat.messageReplayProviderFileIdUnavailable
+        : composerSubmissionAvailability.reason === "provider_file_url_unsupported"
+          ? copy.chat.messageReplayProviderFileUrlUnavailable
+          : copy.chat.messageReplayProviderFileSourceUnavailable
+      : null
+  const canSubmitComposerDraft =
+    !hasPendingApproval &&
+    composerSubmissionAvailability.type === "ready" &&
+    hasComposerMessageInputContent(messageInput)
   const primaryActionDisabled = hasPendingCommand || !canSubmitComposerDraft
   const showStopAction = canStop && (hasPendingCurrentCommand || !canSubmitComposerDraft)
   let launcherInputStatus: "idle" | "pending" = "idle"
@@ -823,9 +858,33 @@ export function LauncherAiPage(): React.JSX.Element {
   }, [canSelectModel])
   const submitCurrentInput = useCallback((): void => {
     const input = getCurrentMessageInput()
+    const availability = resolveJingleAgentComposerSubmissionAvailability({
+      attachmentCapabilities: currentModelAttachmentCapabilities,
+      messageInput: input
+    })
+    if (availability.type === "unavailable") {
+      setNavigationError(
+        availability.reason === "provider_file_id_unsupported"
+          ? copy.chat.messageReplayProviderFileIdUnavailable
+          : availability.reason === "provider_file_url_unsupported"
+            ? copy.chat.messageReplayProviderFileUrlUnavailable
+            : copy.chat.messageReplayProviderFileSourceUnavailable
+      )
+      return
+    }
+
+    setNavigationError(null)
     composerRevision.register(input)
     runPrimaryAction(input)
-  }, [composerRevision, getCurrentMessageInput, runPrimaryAction])
+  }, [
+    composerRevision,
+    copy.chat.messageReplayProviderFileIdUnavailable,
+    copy.chat.messageReplayProviderFileSourceUnavailable,
+    copy.chat.messageReplayProviderFileUrlUnavailable,
+    currentModelAttachmentCapabilities,
+    getCurrentMessageInput,
+    runPrimaryAction
+  ])
   const dismissSelectionContext = useCallback((): void => {
     if (!selection || !selectionContext) {
       return
@@ -963,7 +1022,7 @@ export function LauncherAiPage(): React.JSX.Element {
           return
         }
 
-        const navigationResult = navigateComposerHistory({
+        const navigationResult = navigateComposerHistoryEntries({
           direction,
           entries: composerHistory,
           index: composerHistoryIndex
@@ -973,6 +1032,25 @@ export function LauncherAiPage(): React.JSX.Element {
         }
 
         event.preventDefault()
+        if (navigationResult.type === "unavailable") {
+          applyComposerInput({ refs: [], text: "" }, navigationResult.index)
+          setNavigationError(
+            navigationResult.reason.source === "replay"
+              ? navigationResult.reason.reason === "unsupported-attachment-source"
+                ? copy.chat.messageReplayAttachmentUnavailable
+                : navigationResult.reason.reason === "unsupported-content"
+                  ? copy.chat.messageReplayContentUnavailable
+                  : copy.chat.messageReplayOriginalInputUnavailable
+              : navigationResult.reason.reason === "provider_file_id_unsupported"
+                ? copy.chat.messageReplayProviderFileIdUnavailable
+                : navigationResult.reason.reason === "provider_file_url_unsupported"
+                  ? copy.chat.messageReplayProviderFileUrlUnavailable
+                  : copy.chat.messageReplayProviderFileSourceUnavailable
+          )
+          return
+        }
+
+        setNavigationError(null)
         applyComposerInput(navigationResult.entry, navigationResult.index)
         return
       }
@@ -997,6 +1075,12 @@ export function LauncherAiPage(): React.JSX.Element {
       attachmentCount,
       composerHistory,
       composerHistoryIndex,
+      copy.chat.messageReplayAttachmentUnavailable,
+      copy.chat.messageReplayContentUnavailable,
+      copy.chat.messageReplayOriginalInputUnavailable,
+      copy.chat.messageReplayProviderFileIdUnavailable,
+      copy.chat.messageReplayProviderFileSourceUnavailable,
+      copy.chat.messageReplayProviderFileUrlUnavailable,
       getCurrentMessageInput,
       hasClipboardCandidateDraft,
       inputRef,
@@ -1933,8 +2017,14 @@ export function LauncherAiPage(): React.JSX.Element {
                               disabled={primaryActionDisabled}
                               icon={<ArrowUp className="size-[var(--jingle-icon-sm)]" />}
                               label={copy.launcher.aiPrimaryLabel}
-                              title={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
-                              tooltip={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
+                              title={
+                                composerSubmissionUnavailableReason ??
+                                `${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`
+                              }
+                              tooltip={
+                                composerSubmissionUnavailableReason ??
+                                `${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`
+                              }
                               className="text-foreground enabled:bg-background-secondary/72 enabled:hover:bg-background-secondary disabled:bg-transparent"
                             />
                           ) : null}

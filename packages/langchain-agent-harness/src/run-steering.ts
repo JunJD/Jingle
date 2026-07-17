@@ -6,27 +6,35 @@ import {
   type MessageContent
 } from "@langchain/core/messages"
 import { createMiddleware } from "langchain"
+import {
+  getJingleStandardContentResponseMetadata,
+  JINGLE_COMPOSER_TEXT_METADATA_KEY,
+  JINGLE_USER_MESSAGE_ADMISSION_METADATA_KEY,
+  type JingleUserMessageAdmissionIdentity
+} from "./message-metadata"
 
 export interface AppliedAgentSteer<
   TContent extends MessageContent = MessageContent,
   TRefs extends readonly unknown[] = readonly unknown[]
 > {
+  admission?: JingleUserMessageAdmissionIdentity
   acceptedAt: Date
   content: TContent
   messageId: string
   refs?: TRefs
   runId: string | null
-  text: string
+  text?: string
 }
 
 export interface AgentRunSteerMessage<
   TContent extends MessageContent = MessageContent,
   TRefs extends readonly unknown[] = readonly unknown[]
 > {
+  admission?: JingleUserMessageAdmissionIdentity
   content: TContent
   id: string
   refs?: TRefs
-  text: string
+  text?: string
 }
 
 export interface AgentRunPendingSteer<
@@ -72,12 +80,13 @@ export class AgentRunSteeringBuffer<
     }
 
     const accepted: AppliedAgentSteer<TContent, TRefs> = {
+      ...(input.message.admission ? { admission: input.message.admission } : {}),
       acceptedAt: input.acceptedAt ?? new Date(),
       content: input.message.content,
       messageId: input.message.id,
       ...(input.message.refs && input.message.refs.length > 0 ? { refs: input.message.refs } : {}),
       runId: input.runId,
-      text: input.message.text
+      ...(typeof input.message.text === "string" ? { text: input.message.text } : {})
     }
     this.pendingSteers.push({
       accepted,
@@ -112,10 +121,21 @@ export class AgentRunSteeringBuffer<
 
 function createSteeringHumanMessage(message: AgentRunSteerMessage): BaseMessage {
   const refs = message.refs
+  const additionalKwargs = {
+    ...(message.admission
+      ? { [JINGLE_USER_MESSAGE_ADMISSION_METADATA_KEY]: message.admission }
+      : {}),
+    ...(typeof message.text === "string"
+      ? { [JINGLE_COMPOSER_TEXT_METADATA_KEY]: message.text }
+      : {}),
+    ...(refs && refs.length > 0 ? { refs } : {})
+  }
+  const responseMetadata = getJingleStandardContentResponseMetadata(message.content)
   return new HumanMessage({
     content: message.content,
     id: message.id,
-    ...(refs && refs.length > 0 ? { additional_kwargs: { refs } } : {})
+    ...(Object.keys(additionalKwargs).length > 0 ? { additional_kwargs: additionalKwargs } : {}),
+    ...(responseMetadata ? { response_metadata: responseMetadata } : {})
   })
 }
 

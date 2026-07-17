@@ -103,6 +103,10 @@ export interface ModelProviderSystemConfiguration {
   enabled: boolean
 }
 
+export interface ModelProviderAttachmentCapabilities {
+  supportedFileSourceKinds: Array<MessageFileSource["kind"]>
+}
+
 export interface DefaultModels {
   llm: string
 }
@@ -146,6 +150,7 @@ export interface SetDefaultModelOptions extends ModelSelectionOptions {
 }
 
 export interface Provider {
+  attachmentCapabilities: ModelProviderAttachmentCapabilities
   configurateMethods: ConfigurationMethod[]
   customConfiguration: ModelProviderCustomConfiguration
   description?: LocalizedText

@@ -105,7 +105,10 @@ export function createRuntimeThreadRunLifecycleControlFromController<
         const publicStart = {
           modelId: runStart.modelId,
           recordingRefs: [...runStart.recordingRefs],
-          runId: runStart.runId
+          runId: runStart.runId,
+          ...(runStart.userMessageAdmission
+            ? { userMessageAdmission: runStart.userMessageAdmission }
+            : {})
         }
         const admission = {
           ...runStart,

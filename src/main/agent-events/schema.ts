@@ -89,8 +89,11 @@ const eventPayloadSchemas = {
     .strict(),
   "message.user.created": z
     .object({
+      admissionSequence: z.number().int().positive().optional(),
+      composerText: z.string().optional(),
       contentPreview: z.string(),
       refs: z.array(z.unknown()),
+      removeMessageIds: z.array(z.string()).optional(),
       userMessageId: z.string()
     })
     .strict(),

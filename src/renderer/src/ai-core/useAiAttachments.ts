@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { ClipboardContext } from "@shared/clipboard"
 import { isAiAttachmentImagePath } from "@shared/launcher-attachments"
+import type { MessageFileSource } from "@shared/app-types"
 import type { ComposerMessageRef } from "@shared/message-content"
 import { useAiCoreClipboard } from "./AiCoreHost"
 
@@ -17,6 +18,14 @@ export type LauncherAiAttachmentDraft =
       width: number
     }
   | {
+      fileSource: MessageFileSource
+      id: string
+      isDirectory: false
+      kind: "file"
+      name: string
+      source: "restored"
+    }
+  | {
       id: string
       isDirectory: boolean
       kind: "file"
@@ -25,7 +34,17 @@ export type LauncherAiAttachmentDraft =
       source: "clipboard" | "picker"
     }
 
-type ComposerAttachmentRef = Extract<ComposerMessageRef, { type: "file" | "image" }>
+type ComposerAttachmentRef = Extract<
+  ComposerMessageRef,
+  { type: "file" | "file-attachment" | "image" }
+>
+
+let restoredAttachmentSequence = 0
+
+function createRestoredAttachmentId(kind: string): string {
+  restoredAttachmentSequence += 1
+  return `restored:${kind}:${restoredAttachmentSequence}`
+}
 
 function reportInvalidAttachment(reason: string): void {
   console.error(`[LauncherAiAttachments] ${reason}`)
@@ -54,6 +73,17 @@ export function toRestoredAttachmentDraft(
     }
   }
 
+  if (ref.type === "file-attachment") {
+    return {
+      fileSource: ref.source,
+      id: createRestoredAttachmentId("file-attachment"),
+      isDirectory: false,
+      kind: "file",
+      name: ref.name,
+      source: "restored"
+    }
+  }
+
   const name = ref.name.trim()
   const path = ref.path.trim()
   if (!name || !path) {
@@ -79,6 +109,14 @@ export function toComposerAttachmentRef(
       ...(attachment.name ? { name: attachment.name } : {}),
       type: "image",
       url: attachment.dataUrl
+    }
+  }
+
+  if ("fileSource" in attachment) {
+    return {
+      name: attachment.name,
+      source: attachment.fileSource,
+      type: "file-attachment"
     }
   }
 

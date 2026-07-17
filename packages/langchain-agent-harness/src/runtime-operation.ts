@@ -1,6 +1,7 @@
 import type { BaseMessage, MessageContent } from "@langchain/core/messages"
 import type { RunnableConfig } from "@langchain/core/runnables"
 import type { RuntimeRunLifecycleSubmittedFacts } from "./runtime-contract"
+import type { JingleUserMessageAdmissionIdentity } from "./message-metadata"
 import type { RuntimeCompaction, RuntimeRecordingRef } from "./runtime-state"
 
 export type RuntimeDurableOperationKind = "invoke" | "resume" | "compact"
@@ -24,6 +25,8 @@ export interface RuntimeOperationBase extends RuntimeRunContext {
 export type RuntimeRunStreamChunk = [mode: string, data: unknown]
 
 export interface RuntimeSubmittedMessage {
+  admission?: JingleUserMessageAdmissionIdentity
+  composerText?: string
   content: MessageContent
   id: string
   refs?: unknown[]

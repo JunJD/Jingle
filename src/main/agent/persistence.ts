@@ -21,6 +21,7 @@ import { getPrismaClient } from "../db/client"
 import {
   appendAgentEventsInTransaction,
   commitAgentEventProjectionState,
+  reserveUserMessageAdmissionSequence,
   type AppendAgentEventInput
 } from "../db/agent-events"
 import { serializeJsonValue } from "../db/utils"
@@ -63,8 +64,10 @@ interface BeginAgentRunOptions {
   jingleMemoryTemporaryMode?: boolean
   permissionMode?: PermissionModeName
   startEvent: {
+    composerText?: string
     contentPreview: string
     refs: unknown[]
+    removeMessageIds?: string[]
     userMessageId: string
   }
 }
@@ -74,7 +77,11 @@ export async function beginAgentRun(
   threadId: string,
   selection: ModelRuntimeSelection,
   options: BeginAgentRunOptions
-): Promise<{ run: ExistingRun; runId: string }> {
+): Promise<{
+  admission: { eventId: string; sequence: number }
+  run: ExistingRun
+  runId: string
+}> {
   const runId = randomUUID()
   const permissionMode = options?.permissionMode ?? DEFAULT_PERMISSION_MODE
   const aiCapabilities = options?.aiCapabilities ?? []
@@ -92,26 +99,37 @@ export async function beginAgentRun(
     },
     selection
   )
-  const startEventInputs: AppendAgentEventInput[] = [
-    createRunStartedEventInput({
-      modelId: selection.modelId,
-      permissionMode,
-      runId,
-      threadId,
-      userMessageId: options.startEvent.userMessageId
-    }),
-    createUserMessageCreatedEventInput({
-      contentPreview: options.startEvent.contentPreview,
-      refs: options.startEvent.refs,
-      runId,
-      threadId,
-      userMessageId: options.startEvent.userMessageId
-    })
-  ]
+  const runStartedEventInput = createRunStartedEventInput({
+    modelId: selection.modelId,
+    permissionMode,
+    runId,
+    threadId,
+    userMessageId: options.startEvent.userMessageId
+  })
+  const startEventInputsRef: { current: AppendAgentEventInput[] | null } = { current: null }
+  const admissionRef: { current: { eventId: string; sequence: number } | null } = {
+    current: null
+  }
   const prisma = getPrismaClient()
   // Admission owns one durable commit; cancellation retains the run lease until it settles.
   const run = await prisma.$transaction(async (transaction) => {
     const now = BigInt(Date.now())
+    const admissionSequence = await reserveUserMessageAdmissionSequence(transaction, threadId, now)
+    const admission = { eventId: randomUUID(), sequence: admissionSequence }
+    admissionRef.current = admission
+    const startEventInputs = [
+      runStartedEventInput,
+      createUserMessageCreatedEventInput({
+        admission,
+        composerText: options.startEvent.composerText,
+        contentPreview: options.startEvent.contentPreview,
+        refs: options.startEvent.refs,
+        removeMessageIds: options.startEvent.removeMessageIds ?? [],
+        runId,
+        threadId,
+        userMessageId: options.startEvent.userMessageId
+      })
+    ]
     const row = await transaction.run.create({
       data: {
         assistantId: null,
@@ -125,6 +143,7 @@ export async function beginAgentRun(
       }
     })
     await appendAgentEventsInTransaction(transaction, startEventInputs, { now })
+    startEventInputsRef.current = startEventInputs
     await transaction.thread.update({
       data: {
         status: "busy",
@@ -134,9 +153,13 @@ export async function beginAgentRun(
     })
     return mapRunRow(row)
   })
-  commitAgentEventProjectionState(startEventInputs)
+  if (!startEventInputsRef.current || admissionRef.current === null) {
+    throw new Error("[AgentPersistence] Missing committed invoke admission events.")
+  }
+  commitAgentEventProjectionState(startEventInputsRef.current)
 
   return {
+    admission: admissionRef.current,
     run,
     runId
   }

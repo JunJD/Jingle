@@ -8,6 +8,7 @@ import type {
 import type { GuardrailProvider } from "./guardrail-middleware"
 import type { JingleRunCompletionFacts, JingleRunCompletionStatus } from "./run-completion"
 import type { RuntimeRecordingRef } from "./runtime-state"
+import type { JingleUserMessageAdmissionIdentity } from "./message-metadata"
 import type {
   JingleHitlReviewParser,
   JinglePendingHitlRequestUpserter
@@ -106,6 +107,7 @@ export interface RuntimeRunStartBase {
 
 export interface RuntimeRunStart extends RuntimeRunStartBase {
   modelId: string
+  userMessageAdmission?: JingleUserMessageAdmissionIdentity
 }
 
 export type RuntimeResumeRunStart =

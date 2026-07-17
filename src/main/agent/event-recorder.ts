@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto"
 import {
   decodeMessagesStreamPayload,
   decodeValuesStreamPayload,
@@ -8,9 +9,13 @@ import {
 import {
   appendAgentEvent,
   appendAgentEventSafely,
+  appendAgentEventsInTransaction,
   appendAgentEventsSafely,
+  commitAgentEventProjectionState,
+  reserveUserMessageAdmissionSequence,
   type AppendAgentEventInput
 } from "../db/agent-events"
+import { getPrismaClient } from "../db/client"
 import { JingleIpcError } from "../ipc/error"
 import { getDevtoolsNetworkRecorder } from "@jingle/devtools-network/main"
 import type { HITLDecision } from "../types"
@@ -228,20 +233,32 @@ export async function recordRunResumed(input: RunResumedEventInput): Promise<voi
 }
 
 export interface UserMessageCreatedEventInput {
+  composerText?: string
   contentPreview: string
   refs: unknown[]
+  removeMessageIds?: string[]
   runId: string
   threadId: string
   userMessageId: string
 }
 
+export interface UserMessageAdmissionIdentity {
+  eventId: string
+  sequence: number
+}
+
 export function createUserMessageCreatedEventInput(
-  input: UserMessageCreatedEventInput
+  input: UserMessageCreatedEventInput & { admission: UserMessageAdmissionIdentity }
 ): AppendAgentEventInput {
   return {
+    eventId: input.admission.eventId,
+    metadata: { admissionSequence: input.admission.sequence },
     payload: {
+      admissionSequence: input.admission.sequence,
+      ...(typeof input.composerText === "string" ? { composerText: input.composerText } : {}),
       contentPreview: input.contentPreview,
       refs: input.refs,
+      removeMessageIds: input.removeMessageIds ?? [],
       userMessageId: input.userMessageId
     },
     runId: input.runId,
@@ -250,8 +267,24 @@ export function createUserMessageCreatedEventInput(
   }
 }
 
-export async function recordUserMessageCreated(input: UserMessageCreatedEventInput): Promise<void> {
-  await appendAgentEvent(createUserMessageCreatedEventInput(input))
+export async function recordUserMessageCreated(
+  input: UserMessageCreatedEventInput
+): Promise<UserMessageAdmissionIdentity> {
+  const prisma = getPrismaClient()
+  const committed = await prisma.$transaction(async (transaction) => {
+    const now = BigInt(Date.now())
+    const admissionSequence = await reserveUserMessageAdmissionSequence(
+      transaction,
+      input.threadId,
+      now
+    )
+    const admission = { eventId: randomUUID(), sequence: admissionSequence }
+    const event = createUserMessageCreatedEventInput({ ...input, admission })
+    await appendAgentEventsInTransaction(transaction, [event], { now })
+    return { admission, event }
+  })
+  commitAgentEventProjectionState([committed.event])
+  return committed.admission
 }
 
 export interface ApprovalResolvedEventInput {

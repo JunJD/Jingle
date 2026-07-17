@@ -2,14 +2,21 @@ import { GitForkIcon, RefreshCcwIcon } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
 import {
   hasMessageContent,
-  toComposerMessageInput,
-  type ComposerMessageInput
+  resolveComposerMessageReplay,
+  type ComposerMessageInput,
+  type ComposerMessageReplayUnavailableReason
 } from "@shared/message-content"
 import { readJingleSteeringStatus } from "@shared/message-steering"
 import type { HITLRequest } from "@/types"
 import type { EditLastUserMessageAndInvokeInput } from "@/lib/agent-control"
-import type { JingleActiveAgentToolCall, JingleAgentRunPhase } from "@jingle/agent-client"
+import {
+  resolveJingleAgentComposerSubmissionAvailability,
+  type JingleActiveAgentToolCall,
+  type JingleAgentRunPhase
+} from "@jingle/agent-client"
 import { useI18n } from "@/lib/i18n"
+import { useThreadSelector } from "@/lib/thread-context"
+import { useModelProviderAttachmentCapabilities } from "@/ai-core/use-launcher-ai-model-display-controller"
 import {
   buildTurnAssistantEntries,
   getTurnCopyText,
@@ -33,6 +40,25 @@ import {
 } from "./message-turn-activity"
 import { ThinkingMessage } from "./message-turn-content"
 import { UserMessage } from "./message-turn-user"
+
+function getReplayUnavailableReason(
+  reason: ComposerMessageReplayUnavailableReason,
+  copy: {
+    attachment: string
+    content: string
+    originalInput: string
+  }
+): string {
+  switch (reason) {
+    case "unsupported-attachment-source":
+      return copy.attachment
+    case "unsupported-content":
+      return copy.content
+    case "invalid-composer-metadata":
+    case "missing-composer-text":
+      return copy.originalInput
+  }
+}
 
 export const MessageTurnView = memo(function MessageTurnView(props: {
   activeToolCalls: readonly JingleActiveAgentToolCall[]
@@ -69,11 +95,39 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
     toolResults,
     turn
   } = props
+  const modelId = useThreadSelector(threadId, (state) => {
+    const selectionState = state?.agent.modelRuntimeSelection
+    return selectionState?.kind === "ready" ? selectionState.selection.modelId : null
+  })
+  const attachmentCapabilities = useModelProviderAttachmentCapabilities(modelId)
   const copyText = getTurnCopyText(turn)
-  const retryInput =
+  const replay =
     turn.user && hasMessageContent(turn.user.content)
-      ? toComposerMessageInput(turn.user.content, turn.user.metadata)
+      ? resolveComposerMessageReplay(turn.user.content, turn.user.metadata)
       : null
+  const replaySubmissionAvailability =
+    replay?.type === "ready"
+      ? resolveJingleAgentComposerSubmissionAvailability({
+          attachmentCapabilities,
+          messageInput: replay.input
+        })
+      : null
+  const retryInput =
+    replay?.type === "ready" && replaySubmissionAvailability?.type === "ready" ? replay.input : null
+  const replayUnavailableReason =
+    replay?.type === "unavailable"
+      ? getReplayUnavailableReason(replay.reason, {
+          attachment: copy.chat.messageReplayAttachmentUnavailable,
+          content: copy.chat.messageReplayContentUnavailable,
+          originalInput: copy.chat.messageReplayOriginalInputUnavailable
+        })
+      : replaySubmissionAvailability?.type === "unavailable"
+        ? replaySubmissionAvailability.reason === "provider_file_id_unsupported"
+          ? copy.chat.messageReplayProviderFileIdUnavailable
+          : replaySubmissionAvailability.reason === "provider_file_url_unsupported"
+            ? copy.chat.messageReplayProviderFileUrlUnavailable
+            : copy.chat.messageReplayProviderFileSourceUnavailable
+        : null
   const handleSubmitUserEdit = useCallback(
     async (input: EditLastUserMessageAndInvokeInput): Promise<boolean> => {
       return (await onEditLastUserMessage?.(input)) ?? false
@@ -158,7 +212,8 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
       {turn.user ? (
         <UserMessage
           editInput={onEditLastUserMessage ? retryInput : null}
-          key={`${turn.user.id}:${onEditLastUserMessage ? "editable" : "read-only"}`}
+          editUnavailableReason={onEditLastUserMessage ? replayUnavailableReason : null}
+          key={`${turn.user.id}:${onEditLastUserMessage ? (replay?.type ?? "empty") : "read-only"}`}
           message={turn.user}
           onSubmitEdit={onEditLastUserMessage ? handleSubmitUserEdit : undefined}
           threadId={threadId}
@@ -186,11 +241,14 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
       {turn.assistants.length > 0 && !isStreaming ? (
         <MessageToolbar className="mt-0 justify-start">
           <MessageActions>
-            {isActiveTurn && onRetry && retryInput ? (
+            {isActiveTurn && onRetry && replay ? (
               <MessageAction
+                aria-description={replayUnavailableReason ?? undefined}
+                aria-disabled={retryInput ? undefined : true}
+                className={retryInput ? undefined : "cursor-not-allowed opacity-45"}
                 label={copy.chat.retryMessage}
-                onClick={() => void onRetry(retryInput)}
-                tooltip={copy.chat.retryMessage}
+                onClick={retryInput ? () => void onRetry(retryInput) : undefined}
+                tooltip={replayUnavailableReason ?? copy.chat.retryMessage}
               >
                 <RefreshCcwIcon className="size-[var(--jingle-icon-action)]" />
               </MessageAction>

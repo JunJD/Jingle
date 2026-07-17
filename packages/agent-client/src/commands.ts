@@ -5,7 +5,8 @@ import {
   hasJingleAgentMessageContent,
   type JingleAgentComposerMessageInput,
   type JingleAgentComposerMessageRef,
-  type JingleAgentMessageContent
+  type JingleAgentMessageContent,
+  type JingleAgentMessageFileSource
 } from "./message-content"
 import type { JingleRuntimeStatus } from "./profile"
 
@@ -13,10 +14,12 @@ export type {
   JingleAgentComposerMessageInput,
   JingleAgentComposerMessageRef,
   JingleAgentMessageContent,
-  JingleAgentMessageContentBlock
+  JingleAgentMessageContentBlock,
+  JingleAgentMessageFileSource
 } from "./message-content"
 
 export interface JingleAgentCommandMessage {
+  composerText: string
   content: JingleAgentMessageContent
   id: string
   refs?: JingleAgentComposerMessageRef[]
@@ -31,6 +34,7 @@ export interface JingleAgentRunValidationInput {
 export type JingleAgentRunValidator = (input: JingleAgentRunValidationInput) => string | null
 
 export interface JingleAgentCommandEnvelope {
+  composerText: string
   content: JingleAgentMessageContent
   refs?: JingleAgentComposerMessageRef[]
   validationText: string
@@ -59,7 +63,30 @@ export type JingleAgentSteerFailureReason =
   | "active_turn_mismatch"
   | "invalid_message"
   | "no_active_run"
+  | "provider_attachment_capability_unavailable"
+  | "provider_file_data_unsupported"
+  | "provider_file_id_unsupported"
+  | "provider_file_text_unsupported"
+  | "provider_file_url_unsupported"
   | "queue_item_not_found"
+
+export type JingleAgentComposerSubmissionUnavailableReason =
+  | "provider_attachment_capability_unavailable"
+  | "provider_file_data_unsupported"
+  | "provider_file_id_unsupported"
+  | "provider_file_text_unsupported"
+  | "provider_file_url_unsupported"
+
+export interface JingleAgentComposerAttachmentCapabilities {
+  supportedFileSourceKinds: ReadonlyArray<JingleAgentMessageFileSource["kind"]>
+}
+
+export type JingleAgentComposerSubmissionAvailability =
+  | { type: "ready" }
+  | {
+      reason: JingleAgentComposerSubmissionUnavailableReason
+      type: "unavailable"
+    }
 
 export type JingleAgentSteerResult =
   | {
@@ -87,6 +114,11 @@ export function shouldSurfaceJingleSteerRejection(reason: JingleAgentSteerFailur
     case "active_run_mismatch":
     case "active_turn_mismatch":
     case "invalid_message":
+    case "provider_attachment_capability_unavailable":
+    case "provider_file_data_unsupported":
+    case "provider_file_id_unsupported":
+    case "provider_file_text_unsupported":
+    case "provider_file_url_unsupported":
       return true
     case "no_active_run":
     case "queue_item_not_found":
@@ -106,6 +138,62 @@ export function getJingleAgentSteerRejectionMessage(reason: JingleAgentSteerFail
       return "Agent run is not available for steering"
     case "queue_item_not_found":
       return "Queued follow-up is no longer available"
+    case "provider_attachment_capability_unavailable":
+    case "provider_file_data_unsupported":
+    case "provider_file_id_unsupported":
+    case "provider_file_text_unsupported":
+    case "provider_file_url_unsupported":
+      return getJingleAgentComposerSubmissionUnavailableMessage(reason)
+  }
+}
+
+export function getJingleAgentComposerSubmissionUnavailableMessage(
+  reason: JingleAgentComposerSubmissionUnavailableReason
+): string {
+  switch (reason) {
+    case "provider_attachment_capability_unavailable":
+      return "The selected model provider has no verified file attachment capability"
+    case "provider_file_data_unsupported":
+      return "The selected model provider cannot submit embedded file data"
+    case "provider_file_id_unsupported":
+      return "The selected model provider cannot submit file-id attachments"
+    case "provider_file_text_unsupported":
+      return "The selected model provider cannot submit text file attachments"
+    case "provider_file_url_unsupported":
+      return "The selected model provider cannot submit URL file attachments"
+  }
+}
+
+export function resolveJingleAgentComposerSubmissionAvailability(input: {
+  attachmentCapabilities: JingleAgentComposerAttachmentCapabilities | null
+  messageInput: JingleAgentComposerMessageInput
+}): JingleAgentComposerSubmissionAvailability {
+  const sourceKinds = input.messageInput.refs.flatMap((ref) =>
+    ref.type === "file-attachment" ? [ref.source.kind] : []
+  )
+  if (sourceKinds.length === 0) {
+    return { type: "ready" }
+  }
+
+  const attachmentCapabilities = input.attachmentCapabilities
+  if (!attachmentCapabilities) {
+    return { reason: "provider_attachment_capability_unavailable", type: "unavailable" }
+  }
+
+  const unsupportedSourceKind = sourceKinds.find(
+    (sourceKind) => !attachmentCapabilities.supportedFileSourceKinds.includes(sourceKind)
+  )
+  switch (unsupportedSourceKind) {
+    case "data":
+      return { reason: "provider_file_data_unsupported", type: "unavailable" }
+    case "file-id":
+      return { reason: "provider_file_id_unsupported", type: "unavailable" }
+    case "text":
+      return { reason: "provider_file_text_unsupported", type: "unavailable" }
+    case "url":
+      return { reason: "provider_file_url_unsupported", type: "unavailable" }
+    case undefined:
+      return { type: "ready" }
   }
 }
 
@@ -367,6 +455,7 @@ export function buildJingleAgentCommandEnvelope(input: {
   }
 
   return {
+    composerText: input.messageInput.text,
     content: submitContent,
     ...(input.messageInput.refs.length > 0 ? { refs: input.messageInput.refs } : {}),
     validationText: input.messageInput.text.trim()
@@ -384,6 +473,7 @@ export function buildJingleAgentCommandMessage(input: {
   messageId: string
 }): JingleAgentCommandMessage {
   return {
+    composerText: input.envelope.composerText,
     content: input.envelope.content,
     id: input.messageId,
     ...(input.envelope.refs ? { refs: input.envelope.refs } : {})

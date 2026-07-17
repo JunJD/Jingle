@@ -15,12 +15,50 @@ import {
 } from "../ipc/schema-primitives"
 import { parseIpcPayloadWithSchema, z } from "../ipc/schema"
 
+const messageFileSourceSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      data: z.string().min(1),
+      kind: z.literal("data"),
+      mimeType: nonEmptyTrimmedStringSchema
+    })
+    .strict(),
+  z
+    .object({
+      fileId: nonEmptyTrimmedStringSchema,
+      kind: z.literal("file-id"),
+      mimeType: optionalNormalizedTrimmedStringSchema
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("text"),
+      mimeType: optionalNormalizedTrimmedStringSchema,
+      text: z.string().min(1)
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("url"),
+      mimeType: optionalNormalizedTrimmedStringSchema,
+      url: nonEmptyTrimmedStringSchema
+    })
+    .strict()
+])
+
 const composerMessageRefSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("file"),
       name: nonEmptyTrimmedStringSchema,
       path: nonEmptyTrimmedStringSchema
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("file-attachment"),
+      name: nonEmptyTrimmedStringSchema,
+      source: messageFileSourceSchema
     })
     .strict(),
   z
@@ -48,7 +86,43 @@ const composerMessageRefSchema = z.discriminatedUnion("type", [
     .strict()
 ])
 
-const agentMessageContentBlockSchema = z.discriminatedUnion("type", [
+const agentFileContentMetadataSchema = z
+  .object({
+    filename: nonEmptyTrimmedStringSchema
+  })
+  .strict()
+
+const agentFileContentBlockSchema = z.union([
+  z
+    .object({
+      type: z.literal("file"),
+      data: z.string().min(1),
+      metadata: agentFileContentMetadataSchema.optional(),
+      mimeType: nonEmptyTrimmedStringSchema,
+      name: nonEmptyTrimmedStringSchema
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("file"),
+      fileId: nonEmptyTrimmedStringSchema,
+      metadata: agentFileContentMetadataSchema.optional(),
+      mimeType: optionalNormalizedTrimmedStringSchema,
+      name: nonEmptyTrimmedStringSchema
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("file"),
+      metadata: agentFileContentMetadataSchema.optional(),
+      mimeType: optionalNormalizedTrimmedStringSchema,
+      name: nonEmptyTrimmedStringSchema,
+      url: nonEmptyTrimmedStringSchema
+    })
+    .strict()
+])
+
+const agentMessageContentBlockSchema = z.union([
   z
     .object({
       type: z.literal("text"),
@@ -70,7 +144,8 @@ const agentMessageContentBlockSchema = z.discriminatedUnion("type", [
       mimeType: optionalNormalizedTrimmedStringSchema,
       name: optionalNormalizedTrimmedStringSchema
     })
-    .strict()
+    .strict(),
+  agentFileContentBlockSchema
 ])
 
 const permissionModeSchema = z.enum(["explore", "ask-to-edit", "auto"])
@@ -84,11 +159,25 @@ export const agentInvokeParamsSchema = z
     threadId: nonEmptyTrimmedStringSchema,
     message: z
       .object({
+        composerText: z.string().optional(),
         content: z.union([z.string(), z.array(agentMessageContentBlockSchema)]),
         id: nonEmptyTrimmedStringSchema,
         refs: z.array(composerMessageRefSchema).optional()
       })
-      .strict(),
+      .strict()
+      .refine(
+        (message) =>
+          typeof message.composerText === "string" ||
+          (!message.refs?.some((ref) => ref.type === "file-attachment") &&
+            !(
+              Array.isArray(message.content) &&
+              message.content.some((block) => block.type === "file")
+            )),
+        {
+          message: "composerText is required for file attachments",
+          path: ["composerText"]
+        }
+      ),
     permissionMode: permissionModeSchema.optional(),
     temporaryMode: z.boolean().optional(),
     followUpAction: followUpActionSchema.optional()

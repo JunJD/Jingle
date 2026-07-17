@@ -37,9 +37,11 @@ export interface JingleInvokeRunLifecycleInput {
   selection: ModelRuntimeSelection
   permissionMode: PermissionModeName
   userMessage: {
+    composerText?: string
     contentPreview: string
     id: string
     refs: unknown[]
+    removeMessageIds: string[]
   }
   workspaceIdentity: JingleWorkspaceIdentity
 }
@@ -70,18 +72,23 @@ export function createRuntimeRunLifecycleController(input: {
 
   return {
     beginInvokeRun: async ({ invoke, threadId }) => {
-      const { run, runId } = await beginAgentRun(threadId, invoke.selection, {
+      const { admission, run, runId } = await beginAgentRun(threadId, invoke.selection, {
         aiCapabilities: invoke.aiCapabilities,
         jingleMemoryContextSnapshot: invoke.jingleMemoryContextSnapshot,
         jingleMemoryTemporaryMode: invoke.jingleMemoryTemporaryMode,
         permissionMode: invoke.permissionMode,
         startEvent: {
+          ...(typeof invoke.userMessage.composerText === "string"
+            ? { composerText: invoke.userMessage.composerText }
+            : {}),
           contentPreview: invoke.userMessage.contentPreview,
           refs: invoke.userMessage.refs,
+          removeMessageIds: invoke.userMessage.removeMessageIds,
           userMessageId: invoke.userMessage.id
         }
       })
       return {
+        userMessageAdmission: admission,
         modelId: invoke.selection.modelId,
         recordingRefs: [
           createJingleAgentTraceRecordingRef({

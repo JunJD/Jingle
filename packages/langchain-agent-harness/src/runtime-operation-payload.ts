@@ -2,6 +2,11 @@ import { HumanMessage, RemoveMessage, type BaseMessage } from "@langchain/core/m
 import { Command } from "@langchain/langgraph"
 import type { RuntimeApproval } from "./runtime-state"
 import {
+  getJingleStandardContentResponseMetadata,
+  JINGLE_COMPOSER_TEXT_METADATA_KEY,
+  JINGLE_USER_MESSAGE_ADMISSION_METADATA_KEY
+} from "./message-metadata"
+import {
   type RuntimeToolApprovalDecision,
   type RuntimeToolApprovalDecisionType,
   type RuntimeInvokeInitialState
@@ -44,10 +49,21 @@ function buildRuntimeSubmittedMessages<TContextInclusion>(
   input: RuntimeThreadInvokeInput<TContextInclusion>
 ): BaseMessage[] {
   const refs = input.message.refs ?? []
+  const additionalKwargs = {
+    ...(input.message.admission
+      ? { [JINGLE_USER_MESSAGE_ADMISSION_METADATA_KEY]: input.message.admission }
+      : {}),
+    ...(typeof input.message.composerText === "string"
+      ? { [JINGLE_COMPOSER_TEXT_METADATA_KEY]: input.message.composerText }
+      : {}),
+    ...(refs.length > 0 ? { refs } : {})
+  }
+  const responseMetadata = getJingleStandardContentResponseMetadata(input.message.content)
   const humanMessage = new HumanMessage({
     content: input.message.content,
     id: input.message.id,
-    ...(refs.length > 0 ? { additional_kwargs: { refs } } : {})
+    ...(Object.keys(additionalKwargs).length > 0 ? { additional_kwargs: additionalKwargs } : {}),
+    ...(responseMetadata ? { response_metadata: responseMetadata } : {})
   })
 
   return [

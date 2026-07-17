@@ -60,6 +60,7 @@ interface PreparedAgentEventInput {
 }
 
 const AGENT_TRACE_PROJECTION_DEBOUNCE_MS = 500
+const USER_MESSAGE_ADMISSION_SEQUENCE_PREFIX = "user-message-admission:"
 const agentTraceProjectionQueue = createProjectionQueue<string>({
   debounceMs: AGENT_TRACE_PROJECTION_DEBOUNCE_MS,
   getKey: (runId) => runId,
@@ -76,6 +77,30 @@ const agentTraceProjectionQueue = createProjectionQueue<string>({
 
 export function enqueueAgentTraceProjection(runId: string): void {
   agentTraceProjectionQueue.enqueue(runId)
+}
+
+export async function reserveUserMessageAdmissionSequence(
+  transaction: Prisma.TransactionClient,
+  threadId: string,
+  now: bigint
+): Promise<number> {
+  const sequence = await transaction.agentEventSequence.upsert({
+    where: {
+      aggregateId: `${USER_MESSAGE_ADMISSION_SEQUENCE_PREFIX}${threadId}`
+    },
+    create: {
+      aggregateId: `${USER_MESSAGE_ADMISSION_SEQUENCE_PREFIX}${threadId}`,
+      aggregateType: "thread",
+      seq: 1,
+      updatedAt: now
+    },
+    update: {
+      aggregateType: "thread",
+      seq: { increment: 1 },
+      updatedAt: now
+    }
+  })
+  return sequence.seq
 }
 
 function markAgentTraceProjectionDirty(runId: string): void {
@@ -295,6 +320,108 @@ export async function appendAgentEvents(
 
   commitAgentEventProjectionState(inputs)
   return rows
+}
+
+export async function listUserMessageCreatedAgentEvents(
+  threadId: string
+): Promise<AgentEventRow[]> {
+  const rows = await getPrismaClient().agentEvent.findMany({
+    orderBy: [{ createdAt: "asc" }, { seq: "asc" }],
+    where: {
+      threadId,
+      type: "message.user.created"
+    }
+  })
+  return rows.map(mapAgentEventRow)
+}
+
+export async function markUserMessageAdmissionsCheckpointedInTransaction(
+  transaction: Prisma.TransactionClient,
+  input: {
+    admissions: readonly { eventId: string; sequence: number }[]
+    checkpointId: string
+    runId: string | null
+    threadId: string
+  }
+): Promise<void> {
+  const checkpointAdmissions = new Map<string, number>()
+  for (const admission of input.admissions) {
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        admission.eventId
+      ) ||
+      !Number.isSafeInteger(admission.sequence) ||
+      admission.sequence <= 0
+    ) {
+      throw new Error("[AgentEventRecorder] Checkpoint contains an invalid admission identity.")
+    }
+    if (checkpointAdmissions.has(admission.eventId)) {
+      throw new Error("[AgentEventRecorder] Checkpoint contains duplicate admission identities.")
+    }
+    checkpointAdmissions.set(admission.eventId, admission.sequence)
+  }
+  if (!input.runId) {
+    return
+  }
+
+  const events = await transaction.agentEvent.findMany({
+    select: { eventId: true, metadata: true },
+    where: {
+      checkpointId: null,
+      runId: input.runId,
+      threadId: input.threadId,
+      type: "message.user.created"
+    }
+  })
+  const currentRunSequences = new Set<number>()
+  const eventIds: string[] = []
+  for (const event of events) {
+    let metadata: unknown
+    try {
+      metadata = event.metadata ? (JSON.parse(event.metadata) as unknown) : null
+    } catch {
+      throw new Error("[AgentEventRecorder] Current run admission identity is invalid.")
+    }
+    const record = metadata as { admissionSequence?: unknown } | null
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        event.eventId
+      ) ||
+      typeof record !== "object" ||
+      record === null ||
+      Array.isArray(record) ||
+      Object.keys(record).some((key) => key !== "admissionSequence") ||
+      typeof record.admissionSequence !== "number" ||
+      !Number.isSafeInteger(record.admissionSequence) ||
+      record.admissionSequence <= 0 ||
+      currentRunSequences.has(record.admissionSequence)
+    ) {
+      throw new Error("[AgentEventRecorder] Current run admission identity is invalid.")
+    }
+    currentRunSequences.add(record.admissionSequence)
+
+    const checkpointSequence = checkpointAdmissions.get(event.eventId)
+    if (checkpointSequence === undefined) {
+      continue
+    }
+    if (checkpointSequence !== record.admissionSequence) {
+      throw new Error("[AgentEventRecorder] Checkpoint admission identity is inconsistent.")
+    }
+    eventIds.push(event.eventId)
+  }
+  if (eventIds.length === 0) {
+    return
+  }
+
+  // The event payload remains append-only. checkpointId is a null-to-first-checkpoint
+  // lifecycle correlation, guarded here so concurrent writers cannot overwrite it.
+  const updated = await transaction.agentEvent.updateMany({
+    data: { checkpointId: input.checkpointId },
+    where: { checkpointId: null, eventId: { in: eventIds } }
+  })
+  if (updated.count !== eventIds.length) {
+    throw new Error("[AgentEventRecorder] User message admission checkpoint CAS conflicted.")
+  }
 }
 
 export async function appendAgentEventSafely(

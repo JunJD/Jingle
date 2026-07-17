@@ -5,6 +5,7 @@ import {
   buildJingleAgentPermissionMetadataUpdate,
   createJingleAgentFollowUpDrainRegistry,
   getJingleAgentSteerRejectionMessage,
+  resolveJingleAgentComposerSubmissionAvailability,
   resolveJingleAgentFollowUpDrainPlan,
   resolveJingleAgentFollowUpPlan,
   resolveJingleAgentEditReadiness,
@@ -538,6 +539,7 @@ test("invokeAgentThread invokes runtime through command layer without local UI m
   assert.deepEqual(invoked, [
     {
       message: {
+        composerText: "hello",
         content: "hello",
         id: "message-id"
       },
@@ -790,6 +792,7 @@ test("invokeAgentThread sends assistant selection refs as model context and meta
   assert.deepEqual(invoked, [
     {
       message: {
+        composerText: "Is this still true?",
         content:
           "Is this still true?\n\nReferenced assistant selections:\n1. snapshot should not own runtime facts",
         id: "message-id",
@@ -894,6 +897,7 @@ test("editLastUserMessageAndInvokeAgentThread preserves refs as edited message c
   assert.deepEqual(edited, [
     {
       message: {
+        composerText: "edited text",
         content: "edited text\n\nReferenced assistant selections:\n1. old selected assistant text",
         id: "user-1",
         refs: [
@@ -1044,6 +1048,7 @@ test("jingle agent client builds command payloads without shared message-content
   })
 
   assert.deepEqual(envelope, {
+    composerText: "Review this",
     content: [
       {
         text: "Review this",
@@ -1144,6 +1149,7 @@ test("invokeAgentThread sends running follow-ups with the configured follow-up a
       expectedTurnId: "turn-a",
       followUpAction: "steer",
       message: {
+        composerText: "hello",
         content: "hello",
         id: "message-id"
       },
@@ -1225,6 +1231,7 @@ test("invokeAgentThread preserves an explicit steer action after a queued item i
     {
       followUpAction: "steer",
       message: {
+        composerText: "steer queued item",
         content: "steer queued item",
         id: "message-id"
       },
@@ -1435,10 +1442,90 @@ test("shouldSurfaceJingleSteerRejection 仅对需提示用户的拒绝原因返�
   assert.equal(shouldSurfaceJingleSteerRejection("active_run_mismatch"), true)
   assert.equal(shouldSurfaceJingleSteerRejection("active_turn_mismatch"), true)
   assert.equal(shouldSurfaceJingleSteerRejection("invalid_message"), true)
+  assert.equal(shouldSurfaceJingleSteerRejection("provider_file_id_unsupported"), true)
+  assert.equal(shouldSurfaceJingleSteerRejection("provider_file_url_unsupported"), true)
   assert.equal(shouldSurfaceJingleSteerRejection("no_active_run"), false)
   assert.equal(shouldSurfaceJingleSteerRejection("queue_item_not_found"), false)
   assert.equal(
     getJingleAgentSteerRejectionMessage("active_turn_mismatch"),
     "Agent turn changed before the queued follow-up could steer it"
+  )
+})
+
+test("composer submission capability rejects provider-unsupported file sources", () => {
+  const fileIdInput: JingleAgentComposerMessageInput = {
+    refs: [
+      {
+        name: "spec.pdf",
+        source: { fileId: "file-1", kind: "file-id", mimeType: "application/pdf" },
+        type: "file-attachment"
+      }
+    ],
+    text: "Review"
+  }
+  assert.deepEqual(
+    resolveJingleAgentComposerSubmissionAvailability({
+      attachmentCapabilities: { supportedFileSourceKinds: ["data", "text", "url"] },
+      messageInput: fileIdInput
+    }),
+    { reason: "provider_file_id_unsupported", type: "unavailable" }
+  )
+  assert.deepEqual(
+    resolveJingleAgentComposerSubmissionAvailability({
+      attachmentCapabilities: {
+        supportedFileSourceKinds: ["data", "file-id", "text", "url"]
+      },
+      messageInput: fileIdInput
+    }),
+    { type: "ready" }
+  )
+
+  for (const source of [
+    { data: "cGRm", kind: "data", mimeType: "application/pdf" },
+    { kind: "url", url: "https://example.com/spec.pdf" },
+    { kind: "text", text: "specification" }
+  ] as const) {
+    assert.deepEqual(
+      resolveJingleAgentComposerSubmissionAvailability({
+        attachmentCapabilities: { supportedFileSourceKinds: ["data", "text", "url"] },
+        messageInput: {
+          refs: [{ name: "spec.pdf", source, type: "file-attachment" }],
+          text: "Review"
+        }
+      }),
+      { type: "ready" }
+    )
+  }
+
+  const urlInput: JingleAgentComposerMessageInput = {
+    refs: [
+      {
+        name: "spec.pdf",
+        source: { kind: "url", url: "https://example.com/spec.pdf" },
+        type: "file-attachment"
+      }
+    ],
+    text: "Review"
+  }
+  assert.deepEqual(
+    resolveJingleAgentComposerSubmissionAvailability({
+      attachmentCapabilities: { supportedFileSourceKinds: ["data", "file-id", "text"] },
+      messageInput: urlInput
+    }),
+    { reason: "provider_file_url_unsupported", type: "unavailable" }
+  )
+  assert.deepEqual(
+    resolveJingleAgentComposerSubmissionAvailability({
+      attachmentCapabilities: { supportedFileSourceKinds: ["data", "text", "url"] },
+      messageInput: urlInput
+    }),
+    { type: "ready" }
+  )
+  assert.deepEqual(
+    resolveJingleAgentComposerSubmissionAvailability({
+      attachmentCapabilities: null,
+      messageInput: fileIdInput
+    }),
+    { reason: "provider_attachment_capability_unavailable", type: "unavailable" }
   )
 })

@@ -171,7 +171,8 @@ function toJingleToolCalls(toolCalls: readonly JingleLangGraphToolCall[]): ToolC
 function decodeValuesMessage(message: JingleLangGraphValuesMessage, index: number): Message {
   const metadata =
     toComposerMessageMetadata({
-      refs: normalizeComposerMessageRefs(message.metadataHints.refs)
+      text: message.metadataHints.composerText,
+      refs: message.metadataHints.refs
     }) ?? {}
   const toolDecision = parseOptionalToolDecision(
     message.displayContext.additional_kwargs?.jingle_tool_decision
@@ -282,7 +283,7 @@ export function createUserRuntimeMessage(
   options: { createdAt?: Date; metadata?: Record<string, unknown> } = {}
 ): Message {
   const refs = normalizeComposerMessageRefs(message.refs)
-  const metadata = toComposerMessageMetadata({ refs })
+  const metadata = toComposerMessageMetadata({ refs, text: message.composerText })
 
   return {
     content: toDisplayUserMessageContent(message.content, metadata),

@@ -11,15 +11,46 @@ export type JingleAgentMessageContent =
           name?: string
           type: "image_url"
         }
+      | {
+          data: string
+          metadata?: { filename: string }
+          mimeType: string
+          name: string
+          type: "file"
+        }
+      | {
+          fileId: string
+          metadata?: { filename: string }
+          mimeType?: string
+          name: string
+          type: "file"
+        }
+      | {
+          metadata?: { filename: string }
+          mimeType?: string
+          name: string
+          type: "file"
+          url: string
+        }
     >
+
+export type JingleAgentMessageFileSource =
+  | { data: string; kind: "data"; mimeType: string }
+  | { fileId: string; kind: "file-id"; mimeType?: string }
+  | { kind: "text"; mimeType?: string; text: string }
+  | { kind: "url"; mimeType?: string; url: string }
 
 export interface JingleAgentMessageContentBlock {
   content?: string
+  data?: string
+  fileId?: string
   image_url?: string | { detail?: "auto" | "high" | "low"; url: string }
   mimeType?: string
   name?: string
+  source?: JingleAgentMessageFileSource
   text?: string
   type: string
+  url?: string
 }
 
 export type JingleAgentComposerMessageRef =
@@ -27,6 +58,11 @@ export type JingleAgentComposerMessageRef =
       type: "file"
       name: string
       path: string
+    }
+  | {
+      type: "file-attachment"
+      name: string
+      source: JingleAgentMessageFileSource
     }
   | {
       type: "image"
@@ -66,6 +102,8 @@ export function hasJingleAgentComposerMessageInputContent(
     switch (ref.type) {
       case "file":
         return ref.path.trim().length > 0
+      case "file-attachment":
+        return ref.name.trim().length > 0
       case "image":
         return ref.url.trim().length > 0
       case "extension-source":
@@ -102,7 +140,10 @@ export function hasJingleAgentMessageContent(
     if (block.type === "file") {
       return (
         (typeof block.name === "string" && block.name.length > 0) ||
-        (typeof block.content === "string" && block.content.length > 0)
+        (typeof block.content === "string" && block.content.length > 0) ||
+        (typeof block.data === "string" && block.data.length > 0) ||
+        (typeof block.fileId === "string" && block.fileId.length > 0) ||
+        (typeof block.url === "string" && block.url.length > 0)
       )
     }
 
@@ -139,6 +180,9 @@ export function buildJingleAgentDisplayMessageContent(
           name: ref.name,
           type: "file"
         })
+        break
+      case "file-attachment":
+        blocks.push({ name: ref.name, source: ref.source, type: "file" })
         break
       case "image":
         blocks.push({
@@ -269,6 +313,11 @@ function buildJingleAgentSubmitMessageContent(
         break
       }
       case "file": {
+        if (block.source) {
+          agentBlocks.push(toJingleAgentFileContentBlock(block.name ?? "Attachment", block.source))
+          break
+        }
+
         const name = (block.name ?? block.content ?? "").trim()
         if (name) {
           fileNames.push(name)
@@ -299,6 +348,62 @@ function buildJingleAgentSubmitMessageContent(
   }
 
   return agentBlocks
+}
+
+function encodeUtf8Base64(text: string): string {
+  const bytes = new TextEncoder().encode(text)
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+  let result = ""
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index] ?? 0
+    const second = bytes[index + 1]
+    const third = bytes[index + 2]
+    result += alphabet[first >> 2]
+    result += alphabet[((first & 3) << 4) | ((second ?? 0) >> 4)]
+    result += second === undefined ? "=" : alphabet[((second & 15) << 2) | ((third ?? 0) >> 6)]
+    result += third === undefined ? "=" : alphabet[third & 63]
+  }
+  return result
+}
+
+function toJingleAgentFileContentBlock(
+  name: string,
+  source: JingleAgentMessageFileSource
+): Extract<Exclude<JingleAgentMessageContent, string>[number], { type: "file" }> {
+  switch (source.kind) {
+    case "data":
+      return {
+        data: source.data,
+        metadata: { filename: name },
+        mimeType: source.mimeType,
+        name,
+        type: "file"
+      }
+    case "file-id":
+      return {
+        fileId: source.fileId,
+        metadata: { filename: name },
+        ...(source.mimeType ? { mimeType: source.mimeType } : {}),
+        name,
+        type: "file"
+      }
+    case "url":
+      return {
+        metadata: { filename: name },
+        ...(source.mimeType ? { mimeType: source.mimeType } : {}),
+        name,
+        type: "file",
+        url: source.url
+      }
+    case "text":
+      return {
+        data: encodeUtf8Base64(source.text),
+        metadata: { filename: name },
+        mimeType: source.mimeType ?? "text/plain;charset=utf-8",
+        name,
+        type: "file"
+      }
+  }
 }
 
 function buildJingleAssistantSelectionRefsText(

@@ -38,6 +38,7 @@ import type { ChatModelInstance, ChatModelOptions } from "./protocols/types"
 import type {
   CustomProviderConfig,
   ModelConfig,
+  ModelProviderAttachmentCapabilities,
   ProviderCredentials,
   ProviderDefinition,
   ProviderId,
@@ -50,9 +51,23 @@ const DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 const DEEPSEEK_ANTHROPIC_BASE_URL = `${DEEPSEEK_BASE_URL}/anthropic`
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models"
 
+const ANTHROPIC_ATTACHMENT_CAPABILITIES: ModelProviderAttachmentCapabilities = {
+  supportedFileSourceKinds: ["data", "file-id", "text", "url"]
+}
+const CODEX_CLI_ATTACHMENT_CAPABILITIES: ModelProviderAttachmentCapabilities = {
+  supportedFileSourceKinds: []
+}
+const GOOGLE_ATTACHMENT_CAPABILITIES: ModelProviderAttachmentCapabilities = {
+  supportedFileSourceKinds: ["data", "text", "url"]
+}
+const OPENAI_COMPATIBLE_ATTACHMENT_CAPABILITIES: ModelProviderAttachmentCapabilities = {
+  supportedFileSourceKinds: ["data", "file-id", "text"]
+}
+
 export type { ChatModelInstance, ChatModelOptions }
 
 export interface ProviderAdapter {
+  attachmentCapabilities: ModelProviderAttachmentCapabilities
   createChatModel: (
     runtimeConfig: ResolvedModelRuntimeConfig,
     options: ChatModelOptions
@@ -68,6 +83,7 @@ export interface ProviderAdapter {
 }
 
 type ProviderAdapterConfig = {
+  attachmentCapabilities: ModelProviderAttachmentCapabilities
   createChatModel: (
     runtimeConfig: ResolvedModelRuntimeConfig,
     options: ChatModelOptions
@@ -79,6 +95,7 @@ type ProviderAdapterConfig = {
 
 const BUILTIN_PROVIDER_ADAPTERS = {
   anthropic: createApiKeyProviderAdapter({
+    attachmentCapabilities: ANTHROPIC_ATTACHMENT_CAPABILITIES,
     createChatModel: (runtimeConfig, options) =>
       createAnthropicChatModel({
         apiKey: requireApiKey(runtimeConfig.credentials, runtimeConfig.providerId),
@@ -91,6 +108,7 @@ const BUILTIN_PROVIDER_ADAPTERS = {
   }),
   codex: createCodexCliProviderAdapter("codex"),
   dashscope: createApiKeyProviderAdapter({
+    attachmentCapabilities: OPENAI_COMPATIBLE_ATTACHMENT_CAPABILITIES,
     createChatModel: (runtimeConfig, options) =>
       createOpenAICompatibleChatModel({
         apiKey: requireApiKey(runtimeConfig.credentials, runtimeConfig.providerId),
@@ -104,6 +122,7 @@ const BUILTIN_PROVIDER_ADAPTERS = {
     providerId: "dashscope"
   }),
   deepseek: createApiKeyProviderAdapter({
+    attachmentCapabilities: ANTHROPIC_ATTACHMENT_CAPABILITIES,
     createChatModel: (runtimeConfig, options) =>
       createAnthropicChatModel({
         apiKey: requireApiKey(runtimeConfig.credentials, runtimeConfig.providerId),
@@ -118,6 +137,7 @@ const BUILTIN_PROVIDER_ADAPTERS = {
     providerId: "deepseek"
   }),
   google: createApiKeyProviderAdapter({
+    attachmentCapabilities: GOOGLE_ATTACHMENT_CAPABILITIES,
     createChatModel: (runtimeConfig, options) =>
       createGoogleChatModel({
         apiKey: requireApiKey(runtimeConfig.credentials, runtimeConfig.providerId),
@@ -129,6 +149,7 @@ const BUILTIN_PROVIDER_ADAPTERS = {
     providerId: "google"
   }),
   openai: createApiKeyProviderAdapter({
+    attachmentCapabilities: OPENAI_COMPATIBLE_ATTACHMENT_CAPABILITIES,
     createChatModel: (runtimeConfig, options) =>
       createOpenAICompatibleChatModel({
         apiKey: requireApiKey(runtimeConfig.credentials, runtimeConfig.providerId),
@@ -224,6 +245,7 @@ function createApiKeyProviderAdapter(config: ProviderAdapterConfig): ProviderAda
   }
 
   return {
+    attachmentCapabilities: config.attachmentCapabilities,
     createChatModel: config.createChatModel,
     definition,
     deleteCredentials: () => {
@@ -252,6 +274,7 @@ function createCodexCliProviderAdapter(providerId: ProviderId): ProviderAdapter 
   const definition = requireProviderDefinition(providerId)
 
   return {
+    attachmentCapabilities: CODEX_CLI_ATTACHMENT_CAPABILITIES,
     createChatModel: (runtimeConfig) => createCodexCliChatModel(runtimeConfig.modelName),
     definition,
     deleteCredentials: () => {},
@@ -327,6 +350,10 @@ function createProviderConfigAdapter(
   }
 
   return {
+    attachmentCapabilities:
+      providerConfig.engine === "anthropic"
+        ? ANTHROPIC_ATTACHMENT_CAPABILITIES
+        : OPENAI_COMPATIBLE_ATTACHMENT_CAPABILITIES,
     createChatModel: (runtimeConfig, options) =>
       createCustomProviderChatModel(
         providerConfig,
@@ -399,6 +426,7 @@ function createCatalogOnlyProviderAdapter(providerId: ProviderId): ProviderAdapt
   }
 
   return {
+    attachmentCapabilities: CODEX_CLI_ATTACHMENT_CAPABILITIES,
     createChatModel: () => {
       throw new Error(`${definition.name} is not supported by Jingle's LangChain chat runtime yet.`)
     },

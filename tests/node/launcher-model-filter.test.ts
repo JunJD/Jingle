@@ -30,6 +30,9 @@ function createModel(overrides: Partial<ModelConfig> = {}): ModelConfig {
 
 function createProvider(overrides: Partial<Provider> = {}): Provider {
   return {
+    attachmentCapabilities: {
+      supportedFileSourceKinds: ["data", "file-id", "text", "url"]
+    },
     configurateMethods: ["fetch-from-remote"],
     customConfiguration: {
       status: "active"

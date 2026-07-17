@@ -24,11 +24,12 @@ function getWorkspaceFileName(path: string): string {
 
 export function UserMessage(props: {
   editInput?: ComposerMessageInput | null
+  editUnavailableReason?: string | null
   message: ThreadMessage
   onSubmitEdit?: (input: EditLastUserMessageAndInvokeInput) => Promise<boolean> | boolean
   threadId: string
 }): React.JSX.Element | null {
-  const { editInput, message, onSubmitEdit, threadId } = props
+  const { editInput, editUnavailableReason, message, onSubmitEdit, threadId } = props
   const { copy, locale } = useI18n()
   const [editingInput, setEditingInput] = useState<ComposerMessageInput | null>(null)
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false)
@@ -46,11 +47,12 @@ export function UserMessage(props: {
   const hasReferences =
     getAssistantSelectionRefs(extractComposerMessageRefsMetadata(message.metadata)).length > 0
   const canEdit = Boolean(editInput && onSubmitEdit)
+  const hasEditAction = Boolean(onSubmitEdit && (editInput || editUnavailableReason))
   const isEditing = canEdit && editingInput !== null
   const editIsSubmittable = editingInput ? hasComposerMessageInputContent(editingInput) : false
   const copyText = extractMessageText(message.content)
   const canCopy = copyText.trim().length > 0
-  const hasActions = canCopy || canEdit
+  const hasActions = canCopy || hasEditAction
   const createdAtLabel = formatTime(message.created_at, locale)
 
   const startEditing = useCallback((): void => {
@@ -180,11 +182,14 @@ export function UserMessage(props: {
                 />
               </MessageAction>
             ) : null}
-            {canEdit ? (
+            {hasEditAction ? (
               <MessageAction
+                aria-description={editUnavailableReason ?? undefined}
+                aria-disabled={canEdit ? undefined : true}
+                className={canEdit ? undefined : "cursor-not-allowed opacity-45"}
                 label={copy.chat.editUserMessage}
-                onClick={startEditing}
-                tooltip={copy.chat.editUserMessage}
+                onClick={canEdit ? startEditing : undefined}
+                tooltip={editUnavailableReason ?? copy.chat.editUserMessage}
               >
                 <Edit className="size-[var(--jingle-icon-sm)]" />
               </MessageAction>

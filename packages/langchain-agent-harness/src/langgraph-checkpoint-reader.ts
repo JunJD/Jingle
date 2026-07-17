@@ -1,5 +1,9 @@
 import type { ToolCall } from "@langchain/core/messages"
 import type { CheckpointTuple } from "@langchain/langgraph-checkpoint"
+import {
+  JINGLE_COMPOSER_TEXT_METADATA_KEY,
+  JINGLE_USER_MESSAGE_ADMISSION_METADATA_KEY
+} from "./message-metadata"
 export type JingleLangGraphCheckpointMessageRole = "user" | "assistant" | "system" | "tool"
 
 export interface JingleLangGraphCheckpointMessage {
@@ -24,6 +28,8 @@ export interface JingleLangGraphCheckpointMessageDisplayContext {
 }
 
 export interface JingleLangGraphCheckpointMessageMetadataHints {
+  admission?: unknown
+  composerText?: unknown
   refs?: unknown
   source?: string
 }
@@ -256,6 +262,8 @@ export function readJingleLangGraphSerializedMessage(
       ...(responseMetadata !== undefined ? { response_metadata: responseMetadata } : {})
     },
     metadataHints: {
+      admission: additionalKwargs[JINGLE_USER_MESSAGE_ADMISSION_METADATA_KEY],
+      composerText: additionalKwargs[JINGLE_COMPOSER_TEXT_METADATA_KEY],
       refs: additionalKwargs.refs,
       source: readString(additionalKwargs.lc_source)
     },
@@ -295,6 +303,8 @@ export function readJingleLangGraphCheckpointMessages(
       index,
       kwargsId: readString(kwargs.id),
       metadataHints: {
+        admission: additionalKwargs?.[JINGLE_USER_MESSAGE_ADMISSION_METADATA_KEY],
+        composerText: additionalKwargs?.[JINGLE_COMPOSER_TEXT_METADATA_KEY],
         refs: additionalKwargs?.refs,
         source: readString(additionalKwargs?.lc_source)
       },

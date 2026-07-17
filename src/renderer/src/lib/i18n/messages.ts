@@ -68,6 +68,12 @@ export interface AppCopy {
     modelRuntimeSelectionLegacyMissingEffort: string
     modelRuntimeSelectionMissing: string
     messageContentUnavailable: string
+    messageReplayAttachmentUnavailable: string
+    messageReplayContentUnavailable: string
+    messageReplayOriginalInputUnavailable: string
+    messageReplayProviderFileIdUnavailable: string
+    messageReplayProviderFileSourceUnavailable: string
+    messageReplayProviderFileUrlUnavailable: string
     memoryTemporaryOff: string
     memoryTemporaryOn: string
     pendingWorkspaceMemoryBlocksWorkspaceChange: string
@@ -452,6 +458,15 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       modelRuntimeSelectionLegacyMissingEffort: "这个对话缺少推理强度，请重新选择模型。",
       modelRuntimeSelectionMissing: "这个对话尚未选择模型，请先选择模型。",
       messageContentUnavailable: "这条消息包含无法显示的内容。",
+      messageReplayAttachmentUnavailable: "这条消息包含当前无法重新提交的附件。",
+      messageReplayContentUnavailable: "这条消息包含当前无法重新提交的内容。",
+      messageReplayOriginalInputUnavailable: "这条消息缺少可验证的原始输入，无法安全地重新提交。",
+      messageReplayProviderFileIdUnavailable:
+        "当前模型提供商不支持重新提交 file-id 附件。请切换模型或移除该附件。",
+      messageReplayProviderFileSourceUnavailable:
+        "当前模型提供商不支持重新提交这个文件来源。请切换模型或移除该附件。",
+      messageReplayProviderFileUrlUnavailable:
+        "当前模型提供商不支持重新提交 URL 文件附件。请切换模型或移除该附件。",
       memoryTemporaryOff: "使用记忆",
       memoryTemporaryOn: "临时模式",
       pendingWorkspaceMemoryBlocksWorkspaceChange:
@@ -867,6 +882,18 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       modelRuntimeSelectionMissing:
         "This conversation has no model runtime selection. Select a model first.",
       messageContentUnavailable: "This message contains content that cannot be displayed.",
+      messageReplayAttachmentUnavailable:
+        "This message contains an attachment that cannot currently be submitted again.",
+      messageReplayContentUnavailable:
+        "This message contains content that cannot currently be submitted again.",
+      messageReplayOriginalInputUnavailable:
+        "This message has no verified original input and cannot be safely submitted again.",
+      messageReplayProviderFileIdUnavailable:
+        "The selected model provider cannot submit file-id attachments. Switch models or remove the attachment.",
+      messageReplayProviderFileSourceUnavailable:
+        "The selected model provider cannot submit this file source. Switch models or remove the attachment.",
+      messageReplayProviderFileUrlUnavailable:
+        "The selected model provider cannot submit URL file attachments. Switch models or remove the attachment.",
       memoryTemporaryOff: "Use memory",
       memoryTemporaryOn: "Temporary",
       pendingWorkspaceMemoryBlocksWorkspaceChange:

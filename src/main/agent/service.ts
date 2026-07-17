@@ -1,7 +1,9 @@
+import { isDeepStrictEqual } from "node:util"
 import {
-  extractMessageText,
   normalizeComposerMessageRefs,
   summarizeMessageContent,
+  toAgentMessageContentWithRefs,
+  toMessageContent,
   type AgentInvokeMessage
 } from "@shared/message-content"
 import {
@@ -45,11 +47,17 @@ import {
   isRuntimeThreadDurableFailureError,
   type RuntimeThreadRun
 } from "@jingle/langchain-agent-harness"
-import type { JingleAgentSteerResult } from "@jingle/agent-client"
+import {
+  getJingleAgentComposerSubmissionUnavailableMessage,
+  resolveJingleAgentComposerSubmissionAvailability,
+  type JingleAgentComposerAttachmentCapabilities,
+  type JingleAgentSteerResult
+} from "@jingle/agent-client"
 import { runtimeUsesCheckpointPersistence } from "../checkpointer/runtime-checkpointer-manager"
 import {
   createAgentStreamBoundaryRecorderState,
-  recordAgentStreamBoundaryEvents
+  recordAgentStreamBoundaryEvents,
+  recordUserMessageCreated
 } from "./event-recorder"
 import { ThreadLifecycleGate, type ThreadRunLease } from "./thread-lifecycle-gate"
 import { getHitlRequest, parsePersistedHitlAllowedDecisions } from "../db/hitl"
@@ -62,6 +70,8 @@ import { JingleMemoryService } from "../jingle-memory/service"
 import { WorkspaceService } from "../workspace/service"
 import { readRunPermissionModeSnapshot, readThreadPermissionMode } from "./permission-mode"
 import { requirePersistedModelRuntimeSelection } from "../model-provider/runtime-selection-admission"
+import { getProviderAdapter } from "../model-provider/adapters"
+import { resolveModelRuntimeConfig } from "../model-provider/resolver"
 import { resolveJingleWorkspaceIdentity } from "../workspace/identity"
 import { getAgentConfig } from "../preferences"
 import {
@@ -173,7 +183,31 @@ const DEFAULT_AGENT_EXTENSION_REGISTRY_READER: AgentExtensionRegistryReader = {
   readMainDefinitionSnapshot: readNativeExtensionMainDefinitionRegistrySnapshot
 }
 
+function getCanonicalFileAttachmentMessageError(
+  message: AgentInvokeMessage,
+  refs: ReturnType<typeof normalizeComposerMessageRefs>
+): string | null {
+  const hasFileContent =
+    Array.isArray(message.content) && message.content.some((block) => block.type === "file")
+  const hasFileRefs = refs.some((ref) => ref.type === "file-attachment")
+  if (!hasFileContent && !hasFileRefs) {
+    return null
+  }
+  if (typeof message.composerText !== "string") {
+    return "Composer text is required for file attachments."
+  }
+
+  const canonicalContent = toAgentMessageContentWithRefs(
+    toMessageContent({ refs, text: message.composerText }),
+    refs
+  )
+  return isDeepStrictEqual(message.content, canonicalContent)
+    ? null
+    : "File attachment content does not match canonical composer references."
+}
+
 interface ActiveAgentServiceRun {
+  attachmentCapabilities: JingleAgentComposerAttachmentCapabilities | null
   controller: AbortController
   markPreparationSettled(): void
   markSettled(): void
@@ -200,6 +234,7 @@ function createActiveAgentServiceRun(input: {
 
   return {
     ...input,
+    attachmentCapabilities: null,
     markPreparationSettled,
     markSettled,
     preparationSettled,
@@ -943,6 +978,35 @@ export class AgentService {
         owner: "thread"
       })
       const modelId = selection.modelId
+      activeRun.attachmentCapabilities = getProviderAdapter(
+        resolveModelRuntimeConfig({ selection }).providerId
+      ).attachmentCapabilities
+      const normalizedRefs = normalizeComposerMessageRefs(message.refs)
+      const canonicalFileAttachmentMessageError = getCanonicalFileAttachmentMessageError(
+        message,
+        normalizedRefs
+      )
+      if (canonicalFileAttachmentMessageError) {
+        throw new JingleIpcError({
+          channel,
+          code: "INVALID_ARGUMENT",
+          message: canonicalFileAttachmentMessageError
+        })
+      }
+      const submissionAvailability = resolveJingleAgentComposerSubmissionAvailability({
+        attachmentCapabilities: activeRun.attachmentCapabilities,
+        messageInput: {
+          refs: normalizedRefs,
+          text: message.composerText ?? ""
+        }
+      })
+      if (submissionAvailability.type === "unavailable") {
+        throw new JingleIpcError({
+          channel,
+          code: "INVALID_ARGUMENT",
+          message: getJingleAgentComposerSubmissionUnavailableMessage(submissionAvailability.reason)
+        })
+      }
       options?.onCoreAdmitted?.()
       const workspacePath = await awaitAbortableSetupRead(abortController.signal, () =>
         this.workspaceService.getWorkspacePath(threadId)
@@ -958,7 +1022,6 @@ export class AgentService {
         return
       }
 
-      const normalizedRefs = normalizeComposerMessageRefs(message.refs)
       const messageIdsToRemove = options?.getMessageIdsToRemove
         ? await awaitAbortableSetupRead(abortController.signal, options.getMessageIdsToRemove)
         : []
@@ -1064,9 +1127,13 @@ export class AgentService {
         selection,
         permissionMode,
         userMessage: {
+          ...(typeof message.composerText === "string"
+            ? { composerText: message.composerText }
+            : {}),
           contentPreview: messagePreview,
           id: message.id,
-          refs: normalizedRefs
+          refs: normalizedRefs,
+          removeMessageIds: messageIdsToRemove
         },
         workspaceIdentity
       })
@@ -1119,6 +1186,9 @@ export class AgentService {
         contextInclusions: providedInclusions,
         expectedMessageId: message.id,
         message: {
+          ...(typeof message.composerText === "string"
+            ? { composerText: message.composerText }
+            : {}),
           content: message.content,
           id: message.id,
           refs: normalizedRefs
@@ -1311,6 +1381,10 @@ export class AgentService {
       }
 
       const selection = resolveResumeModelRuntimeSelection({ channel, decision, sourceRun })
+      activeRun.attachmentCapabilities = selection
+        ? getProviderAdapter(resolveModelRuntimeConfig({ selection }).providerId)
+            .attachmentCapabilities
+        : null
       options?.onCoreAdmitted?.()
       const permissionMode = readRunPermissionModeSnapshot(sourceRun)
       const resumedJingleMemoryContextSnapshot = readJingleMemoryContextSnapshot(sourceRun.metadata)
@@ -1601,16 +1675,21 @@ export class AgentService {
     return didAbort
   }
 
-  steerActiveRun(
+  async steerActiveRun(
     threadId: string,
     message: AgentInvokeParams["message"],
     options: AgentSteerActiveRunOptions = {}
-  ): JingleAgentSteerResult {
+  ): Promise<JingleAgentSteerResult> {
     const activeRun = this.activeRuns.get(threadId)
     if (!activeRun || activeRun.controller.signal.aborted) {
       return { reason: "no_active_run", type: "rejected" }
     }
-    const activeRunId = activeRun.run?.runId ?? null
+    const runtimeRun = activeRun.run
+    const activeRunId = runtimeRun?.runId ?? null
+
+    if (!runtimeRun || !activeRun.attachmentCapabilities) {
+      return { reason: "no_active_run", type: "rejected" }
+    }
 
     if (
       options.expectedTurnId &&
@@ -1634,18 +1713,72 @@ export class AgentService {
       }
     }
 
+    const normalizedRefs = normalizeComposerMessageRefs(message.refs)
+    if (getCanonicalFileAttachmentMessageError(message, normalizedRefs)) {
+      return {
+        reason: "invalid_message",
+        runId: activeRunId,
+        turnId: activeRun.turnId,
+        type: "rejected"
+      }
+    }
+    const submissionAvailability = resolveJingleAgentComposerSubmissionAvailability({
+      attachmentCapabilities: activeRun.attachmentCapabilities,
+      messageInput: {
+        refs: normalizedRefs,
+        text: message.composerText ?? ""
+      }
+    })
+    if (submissionAvailability.type === "unavailable") {
+      return {
+        reason: submissionAvailability.reason,
+        runId: activeRunId,
+        turnId: activeRun.turnId,
+        type: "rejected"
+      }
+    }
+
+    let admission: Awaited<ReturnType<typeof recordUserMessageCreated>>
+    try {
+      admission = await recordUserMessageCreated({
+        ...(typeof message.composerText === "string" ? { composerText: message.composerText } : {}),
+        contentPreview: summarizeMessageContent(message.content),
+        refs: normalizedRefs,
+        removeMessageIds: [],
+        runId: runtimeRun.runId,
+        threadId,
+        userMessageId: message.id
+      })
+    } catch (_error) {
+      activeRun.controller.abort()
+      this.threadLifecycleGate.requireRecovery(threadId)
+      throw new JingleIpcError({
+        channel: "agent:steerFollowUp",
+        code: "UNAVAILABLE",
+        message: "The follow-up could not be saved before steering. Restart Jingle to recover."
+      })
+    }
+
     const accepted = activeRun.steeringBuffer.accept({
       acceptedAt: options.acceptedAt,
       message: {
+        admission,
         content: message.content,
         id: message.id,
-        refs: normalizeComposerMessageRefs(message.refs),
-        text: extractMessageText(message.content).trim()
+        refs: normalizedRefs,
+        ...(typeof message.composerText === "string" ? { text: message.composerText } : {})
       },
       runId: activeRunId
     })
     if (!accepted) {
-      return { reason: "no_active_run", type: "rejected" }
+      activeRun.controller.abort()
+      this.threadLifecycleGate.requireRecovery(threadId)
+      throw new JingleIpcError({
+        channel: "agent:steerFollowUp",
+        code: "UNAVAILABLE",
+        message:
+          "The follow-up was saved, but the active run closed before it could be steered. Restart Jingle to recover."
+      })
     }
     return { runId: accepted.runId, turnId: activeRun.turnId, type: "accepted" }
   }

@@ -31,6 +31,7 @@ import {
   listProjectedThreadMessages,
   type MessageProjectionRow
 } from "../db/message-state"
+import { listUserMessageCreatedAgentEvents, type AgentEventRow } from "../db/agent-events"
 import { closeCheckpointer, getCheckpointer } from "../checkpointer/runtime-checkpointer-manager"
 import {
   type JingleCheckpointProjectionSource,
@@ -51,11 +52,15 @@ import { WorkspaceService } from "../workspace/service"
 import { rebuildMessageSearchIndexFromMessages } from "../db/message-search"
 import { formatDefaultThreadTitle } from "@shared/i18n"
 import {
+  normalizeComposerMessageRefs,
+  toComposerMessageMetadata,
   toDisplayAssistantMessageContent,
   toDisplayMessageContent,
   parsePersistedMessageContent,
-  toDisplayUserMessageContent
+  toDisplayUserMessageContent,
+  toMessageContent
 } from "@shared/message-content"
+import { parseAgentEventPayloadFromJson } from "../agent-events/schema"
 import { THREAD_PINNED_METADATA_KEY } from "@shared/thread-sidebar"
 import {
   MODEL_RUNTIME_SELECTION_METADATA_KEY,
@@ -207,6 +212,90 @@ function mapProjectedMessagesToThreadMessages(
   })
 }
 
+function mergeDurableUserMessageEvents(messages: Message[], events: AgentEventRow[]): Message[] {
+  const admissionSequences = new Set<number>()
+  const pendingAdmissions: Array<{
+    composerText: string
+    createdAt: number
+    messageId: string
+    refs: ReturnType<typeof normalizeComposerMessageRefs>
+    removeMessageIds: string[]
+    sequence: number
+  }> = []
+
+  for (const event of events) {
+    const payload = parseAgentEventPayloadFromJson(event.type, event.payload)
+    if (
+      typeof payload.admissionSequence !== "number" ||
+      typeof payload.composerText !== "string" ||
+      typeof payload.userMessageId !== "string" ||
+      !Array.isArray(payload.refs) ||
+      !event.run_id ||
+      event.checkpoint_id !== null
+    ) {
+      continue
+    }
+    if (admissionSequences.has(payload.admissionSequence)) {
+      throw new Error(
+        `[Threads] Duplicate durable user message admission sequence "${payload.admissionSequence}".`
+      )
+    }
+    admissionSequences.add(payload.admissionSequence)
+    const refs = normalizeComposerMessageRefs(payload.refs)
+    if (refs.length !== payload.refs.length) {
+      throw new Error(
+        `[Threads] Durable user message "${payload.userMessageId}" has invalid composer refs.`
+      )
+    }
+    const rawRemoveMessageIds = payload.removeMessageIds
+    const removeMessageIds = Array.isArray(rawRemoveMessageIds)
+      ? rawRemoveMessageIds.filter(
+          (messageId): messageId is string => typeof messageId === "string"
+        )
+      : []
+    if (
+      (Array.isArray(rawRemoveMessageIds) &&
+        removeMessageIds.length !== rawRemoveMessageIds.length) ||
+      removeMessageIds.some((messageId) => !messageId)
+    ) {
+      throw new Error(
+        `[Threads] Durable user message "${payload.userMessageId}" has invalid removals.`
+      )
+    }
+    pendingAdmissions.push({
+      composerText: payload.composerText,
+      createdAt: event.created_at,
+      messageId: payload.userMessageId,
+      refs,
+      removeMessageIds,
+      sequence: payload.admissionSequence
+    })
+  }
+
+  let merged = [...messages]
+  for (const admission of pendingAdmissions.toSorted(
+    (left, right) => left.sequence - right.sequence
+  )) {
+    const removedMessageIds = new Set(admission.removeMessageIds)
+    merged = merged.filter(
+      (message) => message.id !== admission.messageId && !removedMessageIds.has(message.id)
+    )
+    const metadata = toComposerMessageMetadata({
+      refs: admission.refs,
+      text: admission.composerText
+    })
+    merged.push({
+      content: toMessageContent({ refs: admission.refs, text: admission.composerText }),
+      created_at: new Date(admission.createdAt),
+      id: admission.messageId,
+      ...(metadata ? { metadata } : {}),
+      role: "user"
+    })
+  }
+
+  return merged.toSorted((left, right) => left.created_at.getTime() - right.created_at.getTime())
+}
+
 async function computeThreadForkState(input: {
   checkpointHasInterrupt: boolean
   thread: ThreadRow
@@ -354,13 +443,15 @@ export class ThreadsService {
   }
 
   private async loadThreadRuntimeFacts(threadId: string): Promise<LoadedThreadRuntimeFacts> {
-    const [checkpointer, latestPendingHitl, artifacts, row, thread] = await Promise.all([
-      getCheckpointer(threadId),
-      getLatestPendingHitlRequest(threadId),
-      this.artifactsService.list(threadId),
-      getThread(threadId),
-      this.get(threadId)
-    ])
+    const [checkpointer, latestPendingHitl, artifacts, row, thread, userMessageEvents] =
+      await Promise.all([
+        getCheckpointer(threadId),
+        getLatestPendingHitlRequest(threadId),
+        this.artifactsService.list(threadId),
+        getThread(threadId),
+        this.get(threadId),
+        listUserMessageCreatedAgentEvents(threadId)
+      ])
     if (!row || !thread) {
       throw new Error("Thread not found")
     }
@@ -372,7 +463,7 @@ export class ThreadsService {
     )
 
     const checkpointFacts = extractThreadFactsFromCheckpoint(threadId, checkpoint)
-    const [messages, forkState] = await Promise.all([
+    const [projectedMessages, forkState] = await Promise.all([
       listProjectedThreadMessages(threadId).then(mapProjectedMessagesToThreadMessages),
       computeThreadForkState({
         checkpointHasInterrupt: checkpointFacts.hasInterrupt,
@@ -380,6 +471,7 @@ export class ThreadsService {
         threadId
       })
     ])
+    const messages = mergeDurableUserMessageEvents(projectedMessages, userMessageEvents)
 
     return {
       approvals: checkpointFacts.approvals,

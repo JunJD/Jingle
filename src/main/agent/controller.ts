@@ -361,7 +361,7 @@ export class AgentController {
     }
 
     const acceptedAt = new Date()
-    const steerResult = this.agentService.steerActiveRun(params.threadId, params.message, {
+    const steerResult = await this.agentService.steerActiveRun(params.threadId, params.message, {
       acceptedAt,
       expectedRunId: params.expectedRunId,
       expectedTurnId: params.expectedTurnId
@@ -434,7 +434,7 @@ export class AgentController {
       messageId: queued.requestId
     })
     const acceptedAt = new Date()
-    const steerResult = this.agentService.steerActiveRun(threadId, message, {
+    const steerResult = await this.agentService.steerActiveRun(threadId, message, {
       acceptedAt,
       expectedRunId: options.expectedRunId,
       expectedTurnId: options.expectedTurnId
@@ -467,6 +467,11 @@ export class AgentController {
       case "no_active_run":
         return "CONFLICT"
       case "invalid_message":
+      case "provider_attachment_capability_unavailable":
+      case "provider_file_data_unsupported":
+      case "provider_file_id_unsupported":
+      case "provider_file_text_unsupported":
+      case "provider_file_url_unsupported":
         return "INVALID_ARGUMENT"
       case "queue_item_not_found":
         return "NOT_FOUND"

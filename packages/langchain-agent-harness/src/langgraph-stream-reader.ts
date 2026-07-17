@@ -1,4 +1,8 @@
 import type { ToolCall, ToolCallChunk } from "@langchain/core/messages"
+import {
+  JINGLE_COMPOSER_TEXT_METADATA_KEY,
+  JINGLE_USER_MESSAGE_ADMISSION_METADATA_KEY
+} from "./message-metadata"
 
 export interface JingleLangGraphUsageMetadata {
   input_token_details?: {
@@ -116,6 +120,8 @@ export interface JingleLangGraphStreamMessageDisplayContext {
 }
 
 export interface JingleLangGraphStreamMessageMetadataHints {
+  admission?: unknown
+  composerText?: unknown
   refs?: unknown
 }
 
@@ -145,6 +151,8 @@ export interface JingleLangGraphValuesMessageDisplayContext {
 }
 
 export interface JingleLangGraphValuesMessageMetadataHints {
+  admission?: unknown
+  composerText?: unknown
   refs?: unknown
 }
 
@@ -337,6 +345,8 @@ function decodeValuesMessage(
     displayContext,
     id: kwargs.id,
     metadataHints: {
+      admission: additionalKwargs?.[JINGLE_USER_MESSAGE_ADMISSION_METADATA_KEY],
+      composerText: additionalKwargs?.[JINGLE_COMPOSER_TEXT_METADATA_KEY],
       refs: additionalKwargs?.refs
     },
     name: kwargs.name,
@@ -387,6 +397,8 @@ export function decodeJingleLangGraphMessagesStreamChunk(
     displayContext.response_metadata = responseMetadata
   }
   const metadataHints: JingleLangGraphStreamMessageMetadataHints = {
+    admission: additionalKwargs?.[JINGLE_USER_MESSAGE_ADMISSION_METADATA_KEY],
+    composerText: additionalKwargs?.[JINGLE_COMPOSER_TEXT_METADATA_KEY],
     refs: additionalKwargs?.refs
   }
   let assistant: JingleLangGraphAssistantMessageChunk | null = null

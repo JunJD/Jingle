@@ -20,12 +20,18 @@ import { ExtensionMainDefinitionRegistry } from "../../src/main/extensions/regis
 import type { ExtensionMainRef } from "../../src/main/extensions/registry/types"
 import { ThreadsService } from "../../src/main/threads/service"
 import {
+  resolveComposerMessageReplay,
+  toComposerMessageMetadata,
+  toMessageContent
+} from "../../src/shared/message-content"
+import {
   MODEL_RUNTIME_SELECTION_METADATA_KEY,
   MODEL_RUNTIME_SELECTION_REVISION_METADATA_KEY,
   readRunModelRuntimeSelection,
   readThreadModelRuntimeSelection,
   readThreadModelRuntimeSelectionRevision
 } from "../../src/shared/model-runtime-selection"
+import { buildJingleSubmittedMessages } from "../../packages/langchain-agent-harness/src/submitted-messages"
 
 const repoRoot = process.cwd()
 const originalJingleHome = process.env.JINGLE_HOME
@@ -1069,6 +1075,458 @@ test("beginAgentRun rolls back the run row when marking the thread busy fails", 
   assert.equal(await prisma.agentEvent.count({ where: { threadId } }), 0)
   assert.equal(await prisma.agentEventSequence.count(), sequenceCountBefore)
   assert.equal((await getThread(threadId))?.status, "idle")
+})
+
+test("accepted user messages hydrate exact composer facts before the first checkpoint", async () => {
+  const { createThread } = await loadDbModules()
+  const { beginAgentRun } = await import("../../src/main/agent/persistence")
+  const { recordUserMessageCreated } = await import("../../src/main/agent/event-recorder")
+  const threadId = "thread-admission-message-hydration"
+  const refs = [
+    {
+      name: "notes.txt",
+      source: { kind: "text" as const, text: "中文 source" },
+      type: "file-attachment" as const
+    }
+  ]
+
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+  const { runId } = await beginAgentRun(
+    threadId,
+    createTestModelRuntimeSelection("deepseek:deepseek-v4-pro"),
+    {
+      startEvent: {
+        composerText: "Review the notes",
+        contentPreview: "Review the notes",
+        refs,
+        userMessageId: "message-invoke"
+      }
+    }
+  )
+  await recordUserMessageCreated({
+    composerText: "Follow up",
+    contentPreview: "Follow up",
+    refs,
+    runId,
+    threadId,
+    userMessageId: "message-steer"
+  })
+
+  const snapshot = await (await createThreadsServiceForTest()).getAgentThreadData(threadId)
+  assert.deepEqual(
+    snapshot.messages.messages.map((message) => ({
+      id: message.id,
+      replay: resolveComposerMessageReplay(message.content, message.metadata)
+    })),
+    [
+      {
+        id: "message-invoke",
+        replay: { input: { refs, text: "Review the notes" }, type: "ready" }
+      },
+      {
+        id: "message-steer",
+        replay: { input: { refs, text: "Follow up" }, type: "ready" }
+      }
+    ]
+  )
+})
+
+test("pending same-id edits replace stale projections without reviving checkpoint removals", async () => {
+  const { createRun, createThread, getPrismaClient } = await loadDbModules()
+  const { beginAgentRun } = await import("../../src/main/agent/persistence")
+  const { recordUserMessageCreated } = await import("../../src/main/agent/event-recorder")
+  const { persistMessageStateVersion } = await import("../../src/main/db/message-state")
+  const threadId = "thread-pending-same-id-edit"
+  const messageId = "message-edited"
+  const removedAssistantId = "message-old-assistant"
+  const prisma = getPrismaClient()
+  const oldRefs = [
+    {
+      name: "old.txt",
+      source: { kind: "text" as const, text: "old source" },
+      type: "file-attachment" as const
+    }
+  ]
+  const oldComposerText = "Old input"
+  const oldUserItem = {
+    content: JSON.stringify(toMessageContent({ refs: oldRefs, text: oldComposerText })),
+    kind: "message",
+    messageId,
+    metadata: JSON.stringify(toComposerMessageMetadata({ refs: oldRefs, text: oldComposerText })),
+    name: null,
+    order: 1,
+    rawHash: "unchanged-user-hash",
+    rawMessageEncoding: "text" as const,
+    rawMessageType: "json",
+    rawMessageValue: "{}",
+    role: "user",
+    toolCallId: null,
+    toolCalls: null
+  }
+  const assistantItem = {
+    content: JSON.stringify("Old response"),
+    kind: "message",
+    messageId: removedAssistantId,
+    metadata: null,
+    name: null,
+    order: 2,
+    rawHash: "old-assistant-hash",
+    rawMessageEncoding: "text" as const,
+    rawMessageType: "json",
+    rawMessageValue: "{}",
+    role: "assistant",
+    toolCallId: null,
+    toolCalls: null
+  }
+
+  await createThread(threadId)
+  await createRun("run-before-edit", threadId, { status: "success" })
+  const oldAdmission = await recordUserMessageCreated({
+    composerText: oldComposerText,
+    contentPreview: oldComposerText,
+    refs: oldRefs,
+    runId: "run-before-edit",
+    threadId,
+    userMessageId: messageId
+  })
+  const checkpointedOldUserItem = {
+    ...oldUserItem,
+    admission: oldAdmission
+  }
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-before-edit",
+    checkpointNs: "",
+    messages: [checkpointedOldUserItem, assistantItem],
+    runId: "run-before-edit",
+    threadId,
+    version: "1"
+  })
+
+  const refs = [
+    {
+      name: "replacement.txt",
+      source: { kind: "text" as const, text: "replacement source" },
+      type: "file-attachment" as const
+    }
+  ]
+  const composerText = "Replacement input"
+  const { admission, runId } = await beginAgentRun(
+    threadId,
+    createTestModelRuntimeSelection("deepseek:deepseek-v4-pro"),
+    {
+      startEvent: {
+        composerText,
+        contentPreview: composerText,
+        refs,
+        removeMessageIds: [removedAssistantId],
+        userMessageId: messageId
+      }
+    }
+  )
+
+  const pendingSnapshot = await (await createThreadsServiceForTest()).getAgentThreadData(threadId)
+  assert.deepEqual(
+    pendingSnapshot.messages.messages.map((message) => ({
+      id: message.id,
+      replay: resolveComposerMessageReplay(message.content, message.metadata)
+    })),
+    [
+      {
+        id: messageId,
+        replay: { input: { refs, text: composerText }, type: "ready" }
+      }
+    ]
+  )
+
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-stale-same-id",
+    checkpointNs: "",
+    messages: [checkpointedOldUserItem],
+    runId,
+    threadId,
+    version: "2"
+  })
+  const admissionEvent = await prisma.agentEvent.findFirstOrThrow({
+    where: { runId, type: "message.user.created" }
+  })
+  assert.equal(admissionEvent.checkpointId, null)
+  const staleCheckpointSnapshot = await (
+    await createThreadsServiceForTest()
+  ).getAgentThreadData(threadId)
+  assert.deepEqual(
+    staleCheckpointSnapshot.messages.messages.map((message) => ({
+      id: message.id,
+      replay: resolveComposerMessageReplay(message.content, message.metadata)
+    })),
+    [
+      {
+        id: messageId,
+        replay: { input: { refs, text: composerText }, type: "ready" }
+      }
+    ]
+  )
+
+  const currentUserItem = {
+    ...checkpointedOldUserItem,
+    admission,
+    content: JSON.stringify(toMessageContent({ refs, text: composerText })),
+    metadata: JSON.stringify(toComposerMessageMetadata({ refs, text: composerText }))
+  }
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-current-admission",
+    checkpointNs: "",
+    messages: [currentUserItem],
+    runId,
+    threadId,
+    version: "3"
+  })
+  assert.equal(
+    await prisma.messageEvent.count({
+      where: { checkpointId: "checkpoint-current-admission", messageId }
+    }),
+    1
+  )
+  assert.equal(
+    await prisma.agentEvent.count({
+      where: {
+        checkpointId: "checkpoint-current-admission",
+        runId,
+        type: "message.user.created"
+      }
+    }),
+    1
+  )
+
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-current-admission-retry",
+    checkpointNs: "",
+    messages: [currentUserItem],
+    runId,
+    threadId,
+    version: "4"
+  })
+  assert.equal(
+    (
+      await prisma.agentEvent.findFirstOrThrow({
+        where: { runId, type: "message.user.created" }
+      })
+    ).checkpointId,
+    "checkpoint-current-admission"
+  )
+  assert.equal(
+    await prisma.messageEvent.count({
+      where: { checkpointId: "checkpoint-current-admission-retry", messageId }
+    }),
+    0
+  )
+
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-after-edit-removal",
+    checkpointNs: "",
+    messages: [],
+    runId: null,
+    threadId,
+    version: "5"
+  })
+
+  const checkpointedSnapshot = await (
+    await createThreadsServiceForTest()
+  ).getAgentThreadData(threadId)
+  assert.deepEqual(checkpointedSnapshot.messages.messages, [])
+})
+
+test("cloned admission identities cannot consume a target admission with the same sequence", async () => {
+  const { cloneThread, cloneThreadUntilCheckpoint, createRun, createThread, getPrismaClient } =
+    await loadDbModules()
+  const { beginAgentRun } = await import("../../src/main/agent/persistence")
+  const { recordUserMessageCreated } = await import("../../src/main/agent/event-recorder")
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+  const sourceThreadId = "thread-admission-clone-source"
+  const sourceRunId = "run-admission-clone-source"
+  const sourceMessageId = "message-admission-clone-source"
+  const sourceText = "Source question"
+  const prisma = getPrismaClient()
+
+  await createThread(sourceThreadId)
+  await bindThreadWorkspace(sourceThreadId, repoRoot)
+  await createRun(sourceRunId, sourceThreadId, { status: "success" })
+  const sourceAdmission = await recordUserMessageCreated({
+    composerText: sourceText,
+    contentPreview: sourceText,
+    refs: [],
+    runId: sourceRunId,
+    threadId: sourceThreadId,
+    userMessageId: sourceMessageId
+  })
+  assert.equal(sourceAdmission.sequence, 1)
+  const [sourceMessage] = buildJingleSubmittedMessages({
+    message: {
+      admission: sourceAdmission,
+      composerText: sourceText,
+      content: sourceText,
+      id: sourceMessageId,
+      refs: []
+    },
+    removeMessageIds: []
+  })
+  assert.ok(sourceMessage)
+
+  const sourceCheckpoint = emptyCheckpoint()
+  sourceCheckpoint.id = "checkpoint-admission-clone-source"
+  sourceCheckpoint.channel_values = { messages: [sourceMessage] }
+  const sourceSaver = new PrismaCheckpointSaver()
+  await sourceSaver.put(
+    {
+      configurable: { thread_id: sourceThreadId },
+      metadata: { run_id: sourceRunId }
+    },
+    sourceCheckpoint,
+    { parents: {}, source: "update", step: 0 }
+  )
+
+  const cloneCases = [
+    {
+      clone: (targetThreadId: string) => cloneThread(sourceThreadId, targetThreadId),
+      name: "full"
+    },
+    {
+      clone: (targetThreadId: string) =>
+        cloneThreadUntilCheckpoint(sourceThreadId, targetThreadId, {
+          checkpointId: sourceCheckpoint.id
+        }),
+      name: "branch"
+    }
+  ] as const
+
+  for (const cloneCase of cloneCases) {
+    const targetThreadId = `thread-admission-clone-target-${cloneCase.name}`
+    const targetMessageId = `message-admission-clone-target-${cloneCase.name}`
+    const targetText = `Target question ${cloneCase.name}`
+    await cloneCase.clone(targetThreadId)
+    const { admission: targetAdmission, runId: targetRunId } = await beginAgentRun(
+      targetThreadId,
+      createTestModelRuntimeSelection("deepseek:deepseek-v4-pro"),
+      {
+        startEvent: {
+          composerText: targetText,
+          contentPreview: targetText,
+          refs: [],
+          userMessageId: targetMessageId
+        }
+      }
+    )
+    assert.equal(targetAdmission.sequence, 1)
+    assert.notEqual(targetAdmission.eventId, sourceAdmission.eventId)
+    const [targetMessage] = buildJingleSubmittedMessages({
+      message: {
+        admission: targetAdmission,
+        composerText: targetText,
+        content: targetText,
+        id: targetMessageId,
+        refs: []
+      },
+      removeMessageIds: []
+    })
+    assert.ok(targetMessage)
+
+    const targetSaver = new PrismaCheckpointSaver()
+    const intermediateCheckpoint = emptyCheckpoint()
+    intermediateCheckpoint.id = `checkpoint-admission-clone-intermediate-${cloneCase.name}`
+    intermediateCheckpoint.channel_values = { messages: [sourceMessage] }
+    await targetSaver.put(
+      {
+        configurable: {
+          checkpoint_id: sourceCheckpoint.id,
+          thread_id: targetThreadId
+        },
+        metadata: { run_id: targetRunId }
+      },
+      intermediateCheckpoint,
+      { parents: { "": sourceCheckpoint.id }, source: "update", step: 1 }
+    )
+    assert.equal(
+      (
+        await prisma.agentEvent.findUniqueOrThrow({
+          where: { eventId: targetAdmission.eventId }
+        })
+      ).checkpointId,
+      null
+    )
+    assert.deepEqual(
+      (
+        await (await createThreadsServiceForTest()).getAgentThreadData(targetThreadId)
+      ).messages.messages.map((message) => message.id),
+      [sourceMessageId, targetMessageId]
+    )
+
+    const admittedCheckpoint = emptyCheckpoint()
+    admittedCheckpoint.id = `checkpoint-admission-clone-current-${cloneCase.name}`
+    admittedCheckpoint.channel_values = { messages: [sourceMessage, targetMessage] }
+    await targetSaver.put(
+      {
+        configurable: {
+          checkpoint_id: intermediateCheckpoint.id,
+          thread_id: targetThreadId
+        },
+        metadata: { run_id: targetRunId }
+      },
+      admittedCheckpoint,
+      { parents: { "": intermediateCheckpoint.id }, source: "update", step: 2 }
+    )
+    assert.equal(
+      (
+        await prisma.agentEvent.findUniqueOrThrow({
+          where: { eventId: targetAdmission.eventId }
+        })
+      ).checkpointId,
+      admittedCheckpoint.id
+    )
+
+    const retryCheckpoint = emptyCheckpoint()
+    retryCheckpoint.id = `checkpoint-admission-clone-retry-${cloneCase.name}`
+    retryCheckpoint.channel_values = { messages: [sourceMessage, targetMessage] }
+    await targetSaver.put(
+      {
+        configurable: {
+          checkpoint_id: admittedCheckpoint.id,
+          thread_id: targetThreadId
+        },
+        metadata: { run_id: targetRunId }
+      },
+      retryCheckpoint,
+      { parents: { "": admittedCheckpoint.id }, source: "update", step: 3 }
+    )
+    assert.equal(
+      (
+        await prisma.agentEvent.findUniqueOrThrow({
+          where: { eventId: targetAdmission.eventId }
+        })
+      ).checkpointId,
+      admittedCheckpoint.id
+    )
+
+    const removalCheckpoint = emptyCheckpoint()
+    removalCheckpoint.id = `checkpoint-admission-clone-removal-${cloneCase.name}`
+    removalCheckpoint.channel_values = { messages: [sourceMessage] }
+    await targetSaver.put(
+      {
+        configurable: {
+          checkpoint_id: retryCheckpoint.id,
+          thread_id: targetThreadId
+        },
+        metadata: { run_id: targetRunId }
+      },
+      removalCheckpoint,
+      { parents: { "": retryCheckpoint.id }, source: "update", step: 4 }
+    )
+    assert.deepEqual(
+      (
+        await (await createThreadsServiceForTest()).getAgentThreadData(targetThreadId)
+      ).messages.messages.map((message) => message.id),
+      [sourceMessageId]
+    )
+  }
 })
 
 test("resume admission rolls back the decision and run when marking the thread busy fails", async () => {
@@ -2180,7 +2638,7 @@ test("agent cancel releases pending invoke setup and ignores its late fulfillmen
     const cancel = agentService.cancel({ threadId })
     const duplicateCancel = agentService.cancel({ threadId })
     assert.deepEqual(
-      agentService.steerActiveRun(threadId, {
+      await agentService.steerActiveRun(threadId, {
         content: "ignored after cancellation",
         id: "message-steer-after-cancel"
       }),
@@ -2287,6 +2745,7 @@ test("invoke admission atomically records one start and one user message event",
     await agentService.invoke(
       {
         message: {
+          composerText: "atomic invoke admission",
           content: "atomic invoke admission",
           id: "message-atomic-invoke"
         },
@@ -2316,9 +2775,20 @@ test("invoke admission atomically records one start and one user message event",
         [2, "message.user.created"]
       ]
     )
-    assert.equal(
-      JSON.parse(preparationEvents[1]?.payload ?? "{}").userMessageId,
-      "message-atomic-invoke"
+    assert.deepEqual(JSON.parse(preparationEvents[1]?.payload ?? "{}"), {
+      admissionSequence: 1,
+      composerText: "atomic invoke admission",
+      contentPreview: "atomic invoke admission",
+      refs: [],
+      removeMessageIds: [],
+      userMessageId: "message-atomic-invoke"
+    })
+    assert.deepEqual(JSON.parse(preparationEvents[1]?.metadata ?? "{}"), {
+      admissionSequence: 1
+    })
+    assert.match(
+      preparationEvents[1]?.eventId ?? "",
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     )
   } finally {
     if (previousRuntimeMode === undefined) {
@@ -2355,6 +2825,52 @@ test("invoke command reports missing workspace before accepting the command", as
     type: "rejected"
   })
   assert.deepEqual(events, [])
+  assert.equal(await getPrismaClient().run.count({ where: { threadId } }), 0)
+})
+
+test("invoke admission rejects file content that differs from canonical composer refs", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const threadId = "thread-file-content-ref-mismatch"
+  await createThread(threadId)
+  const agentService = await createAgentServiceForTest()
+
+  const outcome = await agentService.dispatchInvoke(
+    {
+      message: {
+        composerText: "Review",
+        content: [
+          { text: "Review", type: "text" },
+          {
+            mimeType: "application/pdf",
+            name: "remote.pdf",
+            type: "file",
+            url: "https://example.com/remote.pdf"
+          }
+        ],
+        id: "message-file-content-ref-mismatch",
+        refs: [
+          {
+            name: "embedded.pdf",
+            source: {
+              data: "cGRm",
+              kind: "data",
+              mimeType: "application/pdf"
+            },
+            type: "file-attachment"
+          }
+        ]
+      },
+      threadId
+    },
+    { send: () => {} }
+  )
+
+  assert.equal(outcome.type, "rejected")
+  assert.equal(outcome.type === "rejected" ? outcome.error.code : null, "INVALID_ARGUMENT")
+  assert.match(
+    outcome.type === "rejected" ? outcome.error.message : "",
+    /does not match canonical composer references/
+  )
   assert.equal(await getPrismaClient().run.count({ where: { threadId } }), 0)
 })
 

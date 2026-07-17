@@ -361,7 +361,7 @@ export async function listModelsByProviderForUI(
       models: listCatalogModelsByProvider(adapter.definition.id, "no-configure").filter(
         (model) => model.modelType === supportedModelType
       ),
-      provider: toProviderState(adapter.definition, "no-configure", "no-configure")
+      provider: toProviderState(adapter, "no-configure", "no-configure")
     }
   }
 
@@ -374,7 +374,7 @@ export async function listModelsByProviderForUI(
 
     return {
       models,
-      provider: toProviderState(adapter.definition, "active", "active")
+      provider: toProviderState(adapter, "active", "active")
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -382,7 +382,7 @@ export async function listModelsByProviderForUI(
 
     return {
       models: [],
-      provider: toProviderState(adapter.definition, "active", "error", message)
+      provider: toProviderState(adapter, "active", "error", message)
     }
   }
 }
@@ -516,18 +516,18 @@ export function upsertCustomProviderForUI(provider: CustomProviderInput): Provid
 
 function getProviderStateForUI(adapter: ReturnType<typeof getProviderAdapter>): Provider {
   if (!isProviderConfiguredForUI(adapter)) {
-    return toProviderState(adapter.definition, "no-configure", "no-configure")
+    return toProviderState(adapter, "no-configure", "no-configure")
   }
 
   const modelListState = getProviderModelListState(adapter.definition.id)
   if (modelListState?.status === "error") {
-    return toProviderState(adapter.definition, "active", "error", modelListState.error)
+    return toProviderState(adapter, "active", "error", modelListState.error)
   }
   if (!modelListState && requiresRemoteModelDiscovery(adapter.definition)) {
-    return toProviderState(adapter.definition, "active", "no-configure")
+    return toProviderState(adapter, "active", "no-configure")
   }
 
-  return toProviderState(adapter.definition, "active", "active")
+  return toProviderState(adapter, "active", "active")
 }
 
 function requiresRemoteModelDiscovery(provider: ProviderDefinition): boolean {
@@ -644,17 +644,19 @@ function requireProviderSupportsModelType(
 }
 
 function toProviderState(
-  provider: ProviderDefinition,
+  adapter: ReturnType<typeof getProviderAdapter>,
   customConfigurationStatus: Provider["customConfiguration"]["status"],
   modelListStatus: Provider["modelListStatus"],
   modelListError?: string
 ): Provider {
+  const provider = adapter.definition
   const catalogOnlyMessage =
     provider.source === "registry"
       ? "Jingle can read this model registry, but local inference runtime is not wired yet."
       : undefined
 
   return {
+    attachmentCapabilities: adapter.attachmentCapabilities,
     configurateMethods: provider.configurateMethods,
     customConfiguration: {
       currentCredentialName:

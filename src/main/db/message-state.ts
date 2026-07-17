@@ -5,7 +5,6 @@ import { readJingleLangGraphSerializedMessage } from "@jingle/langchain-agent-ha
 import type { ContentBlock } from "@shared/app-types"
 import {
   extractComposerMessageRefsMetadata,
-  normalizeComposerMessageRefs,
   extractMessageText,
   summarizeMessageContent,
   toComposerMessageMetadata,
@@ -20,6 +19,7 @@ import {
   buildUnicodeFtsQuery
 } from "../search-text"
 import { getPrismaClient } from "./client"
+import { markUserMessageAdmissionsCheckpointedInTransaction } from "./agent-events"
 
 export type MessageEventType = "message.upsert" | "message.remove"
 
@@ -47,6 +47,7 @@ export interface MessageSearchMatchRow extends MessageProjectionRow {
 }
 
 export interface PreparedMessageStateItem {
+  admission?: UserMessageAdmissionIdentity
   content: string
   kind: string
   messageId: string
@@ -60,6 +61,11 @@ export interface PreparedMessageStateItem {
   role: string
   toolCallId: string | null
   toolCalls: string | null
+}
+
+interface UserMessageAdmissionIdentity {
+  eventId: string
+  sequence: number
 }
 
 interface PersistMessageStateInput {
@@ -153,13 +159,12 @@ function hashText(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex")
 }
 
-function readMetadata(input: { refs?: unknown; source?: string }): string | null {
-  const refs = normalizeComposerMessageRefs(input.refs)
-  const metadata: Record<string, unknown> = {}
-
-  if (refs.length > 0) {
-    metadata.refs = refs
-  }
+function readMetadata(input: {
+  composerText?: unknown
+  refs?: unknown
+  source?: string
+}): string | null {
+  const metadata = toComposerMessageMetadata({ refs: input.refs, text: input.composerText }) ?? {}
 
   if (input.source === "summarization") {
     metadata.lc_source = "summarization"
@@ -220,6 +225,36 @@ function buildIndexedMessageSearchText(input: {
   return Array.from(new Set(candidateParts.filter(Boolean))).join("\n")
 }
 
+function readUserMessageAdmission(input: {
+  role: string
+  value: unknown
+}): UserMessageAdmissionIdentity | undefined {
+  if (input.value === undefined) {
+    return undefined
+  }
+
+  const value = input.value as Partial<UserMessageAdmissionIdentity> | null
+  if (
+    input.role !== "user" ||
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    Object.keys(value).some((key) => key !== "eventId" && key !== "sequence") ||
+    typeof value.eventId !== "string" ||
+    value.eventId.trim() !== value.eventId ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value.eventId
+    ) ||
+    typeof value.sequence !== "number" ||
+    !Number.isSafeInteger(value.sequence) ||
+    value.sequence <= 0
+  ) {
+    throw new Error("[MessageState] User message admission identity is invalid.")
+  }
+
+  return { eventId: value.eventId, sequence: value.sequence }
+}
+
 async function serializeMessageStateItem(input: {
   index: number
   message: unknown
@@ -234,7 +269,8 @@ async function serializeMessageStateItem(input: {
     rawHash
   })
   const displayMetadata = toComposerMessageMetadata({
-    refs: normalizeComposerMessageRefs(message.metadataHints.refs)
+    text: message.metadataHints.composerText,
+    refs: message.metadataHints.refs
   })
   const displayContent =
     message.role === "assistant"
@@ -247,8 +283,13 @@ async function serializeMessageStateItem(input: {
           })
   const content = stableStringify(displayContent)
   const metadata = readMetadata(message.metadataHints)
+  const admission = readUserMessageAdmission({
+    role: message.role,
+    value: message.metadataHints.admission
+  })
 
   return {
+    ...(admission ? { admission } : {}),
     content,
     kind: message.role === "tool" ? "tool_result" : "message",
     messageId: message.messageId,
@@ -269,6 +310,7 @@ function buildStateHash(items: PreparedMessageStateItem[]): string {
   return hashText(
     stableStringify(
       items.map((item) => ({
+        admission: item.admission,
         messageId: item.messageId,
         order: item.order,
         rawHash: item.rawHash
@@ -313,8 +355,13 @@ function parseMessageStateEventItem(event: {
     throw new Error(`[MessageState] Message event "${event.eventId}" has an invalid payload.`)
   }
   const rawMessageEncoding = payload.rawMessageEncoding
+  const admission = readUserMessageAdmission({
+    role: payload.role,
+    value: payload.admission
+  })
 
   return {
+    ...(admission ? { admission } : {}),
     content: payload.content,
     kind: payload.kind,
     messageId: payload.messageId,
@@ -565,6 +612,8 @@ export async function persistMessageStateVersion(
           const previousItem = previousById.get(item.messageId)
           return (
             !previousItem ||
+            previousItem.admission?.eventId !== item.admission?.eventId ||
+            previousItem.admission?.sequence !== item.admission?.sequence ||
             previousItem.rawHash !== item.rawHash ||
             previousItem.order !== item.order
           )
@@ -628,6 +677,17 @@ export async function persistMessageStateVersion(
     }
 
     seq += 1
+  }
+
+  if (input.checkpointNs === "") {
+    await markUserMessageAdmissionsCheckpointedInTransaction(tx, {
+      admissions: items.flatMap((item) =>
+        item.role === "user" && item.admission ? [item.admission] : []
+      ),
+      checkpointId: input.checkpointId,
+      runId: input.runId,
+      threadId: input.threadId
+    })
   }
 
   await tx.messageStateVersion.upsert({

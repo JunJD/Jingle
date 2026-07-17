@@ -11,6 +11,9 @@ export type { JingleToolExecutionTiming, JingleToolExecutionError } from "./tool
 export { JINGLE_TOOL_EXECUTION_METADATA_KEY, readJingleToolExecutionTiming } from "./tool-execution"
 export type {
   JingleAgentCommandState,
+  JingleAgentComposerAttachmentCapabilities,
+  JingleAgentComposerSubmissionAvailability,
+  JingleAgentComposerSubmissionUnavailableReason,
   JingleAgentFollowUpAction,
   JingleAgentFollowUpMode,
   JingleAgentFollowUpQueueItem,
@@ -25,7 +28,8 @@ export type {
   JingleAgentComposerMessageInput,
   JingleAgentComposerMessageRef,
   JingleAgentMessageContent,
-  JingleAgentMessageContentBlock
+  JingleAgentMessageContentBlock,
+  JingleAgentMessageFileSource
 } from "./message-content"
 export {
   buildJingleAgentCommandEnvelope,
@@ -34,9 +38,11 @@ export {
   createEmptyJingleAgentFollowUpQueueSummary,
   buildJingleAgentPermissionMetadataUpdate,
   buildJingleAgentResumeDecision,
+  getJingleAgentComposerSubmissionUnavailableMessage,
   getJingleAgentSteerRejectionMessage,
   resolveJingleAgentFollowUpDrainPlan,
   resolveJingleAgentEditReadiness,
+  resolveJingleAgentComposerSubmissionAvailability,
   resolveJingleAgentFollowUpPlan,
   resolveJingleAgentInvokeReadiness,
   resolveJingleAgentResumeReadiness,

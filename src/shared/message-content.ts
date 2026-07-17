@@ -29,6 +29,27 @@ export type AgentMessageContent =
           mimeType?: string
           type: "image_url"
         }
+      | {
+          data: string
+          metadata?: { filename: string }
+          mimeType: string
+          name: string
+          type: "file"
+        }
+      | {
+          fileId: string
+          metadata?: { filename: string }
+          mimeType?: string
+          name: string
+          type: "file"
+        }
+      | {
+          metadata?: { filename: string }
+          mimeType?: string
+          name: string
+          type: "file"
+          url: string
+        }
     >
 
 export type ComposerMessageRef =
@@ -36,6 +57,11 @@ export type ComposerMessageRef =
       type: "file"
       name: string
       path: string
+    }
+  | {
+      type: "file-attachment"
+      name: string
+      source: MessageFileSource
     }
   | {
       type: "image"
@@ -60,7 +86,18 @@ export interface ComposerMessageInput {
   text: string
 }
 
+export type ComposerMessageReplayUnavailableReason =
+  | "invalid-composer-metadata"
+  | "missing-composer-text"
+  | "unsupported-attachment-source"
+  | "unsupported-content"
+
+export type ComposerMessageReplay =
+  | { input: ComposerMessageInput; type: "ready" }
+  | { reason: ComposerMessageReplayUnavailableReason; type: "unavailable" }
+
 export interface AgentInvokeMessage {
+  composerText?: string
   content: AgentMessageContent
   id: string
   refs?: ComposerMessageRef[]
@@ -69,6 +106,64 @@ export interface AgentInvokeMessage {
 export interface AssistantMessageContentSource {
   additional_kwargs?: unknown
   response_metadata?: unknown
+}
+
+function normalizeComposerFileSource(value: unknown): MessageFileSource | null {
+  const source = readSafeDataRecord(value)
+  if (!source || typeof source.kind !== "string") {
+    return null
+  }
+
+  const keys = Object.keys(source)
+  const hasOnlyKeys = (...allowedKeys: string[]): boolean =>
+    keys.every((key) => allowedKeys.includes(key))
+  const mimeType = hasOwn(source, "mimeType") ? source.mimeType : undefined
+  if (mimeType !== undefined && (typeof mimeType !== "string" || !mimeType.trim())) {
+    return null
+  }
+  const normalizedMimeType = typeof mimeType === "string" ? mimeType.trim() : undefined
+
+  switch (source.kind) {
+    case "data":
+      return hasOnlyKeys("data", "kind", "mimeType") &&
+        typeof source.data === "string" &&
+        source.data.length > 0 &&
+        normalizedMimeType
+        ? { data: source.data, kind: "data", mimeType: normalizedMimeType }
+        : null
+    case "file-id": {
+      if (
+        !hasOnlyKeys("fileId", "kind", "mimeType") ||
+        typeof source.fileId !== "string" ||
+        !source.fileId.trim()
+      ) {
+        return null
+      }
+      return {
+        fileId: source.fileId.trim(),
+        kind: "file-id",
+        ...(normalizedMimeType ? { mimeType: normalizedMimeType } : {})
+      }
+    }
+    case "text":
+      return hasOnlyKeys("kind", "mimeType", "text") &&
+        typeof source.text === "string" &&
+        source.text.length > 0
+        ? {
+            kind: "text",
+            ...(normalizedMimeType ? { mimeType: normalizedMimeType } : {}),
+            text: source.text
+          }
+        : null
+    case "url": {
+      if (!hasOnlyKeys("kind", "mimeType", "url")) {
+        return null
+      }
+      return normalizeUrlSource(source.url, normalizedMimeType)
+    }
+    default:
+      return null
+  }
 }
 
 function normalizeComposerMessageRef(value: unknown): ComposerMessageRef | null {
@@ -93,6 +188,16 @@ function normalizeComposerMessageRef(value: unknown): ComposerMessageRef | null 
       path,
       type: "file"
     }
+  }
+
+  if (ref.type === "file-attachment") {
+    if (typeof ref.name !== "string") {
+      return null
+    }
+
+    const name = ref.name.trim()
+    const source = normalizeComposerFileSource(ref.source)
+    return name && source ? { name, source, type: "file-attachment" } : null
   }
 
   if (ref.type === "image") {
@@ -176,69 +281,59 @@ export function normalizeComposerMessageRefs(value: unknown): ComposerMessageRef
   })
 }
 
-export function toComposerMessageMetadata(
-  input: Pick<ComposerMessageInput, "refs">
-): Record<string, unknown> | undefined {
-  if (input.refs.length === 0) {
-    return undefined
+export function toComposerMessageMetadata(input: {
+  refs?: unknown
+  text?: unknown
+}): Record<string, unknown> | undefined {
+  const metadata: Record<string, unknown> = {}
+
+  if (input.refs !== undefined) {
+    const rawRefs = readSafeArray(input.refs)
+    if (!rawRefs) {
+      metadata.refs = null
+    } else if (rawRefs.length > 0) {
+      const refs = normalizeComposerMessageRefs(rawRefs)
+      metadata.refs = refs.length === rawRefs.length ? refs : null
+    }
+  }
+  if (typeof input.text === "string") {
+    metadata.composerText = input.text
   }
 
-  return {
-    refs: input.refs
-  }
+  return Object.keys(metadata).length > 0 ? metadata : undefined
 }
 
 export function extractComposerMessageRefsMetadata(metadata: unknown): ComposerMessageRef[] {
+  const result = readComposerMessageRefsMetadata(metadata)
+  return result.status === "present" ? result.refs : []
+}
+
+function readComposerMessageRefsMetadata(
+  metadata: unknown
+): { status: "absent" | "invalid" } | { refs: ComposerMessageRef[]; status: "present" } {
   const record = readSafeDataRecord(metadata)
-  return record ? normalizeComposerMessageRefs(record.refs) : []
+  if (!record || !hasOwn(record, "refs")) {
+    return { status: "absent" }
+  }
+
+  const rawRefs = readSafeArray(record.refs)
+  if (!rawRefs) {
+    return { status: "invalid" }
+  }
+  const refs = normalizeComposerMessageRefs(rawRefs)
+  return refs.length === rawRefs.length ? { refs, status: "present" } : { status: "invalid" }
 }
 
-function getSyntheticFileRefsText(refs: ComposerMessageRef[]): string | null {
-  const fileNames = refs.flatMap((ref) => {
-    if (ref.type !== "file") {
-      return []
-    }
-
-    const name = ref.name.trim()
-    return name ? [name] : []
-  })
-
-  if (fileNames.length === 0) {
-    return null
+function readComposerMessageTextMetadata(
+  metadata: unknown
+): { status: "absent" | "invalid" } | { status: "present"; text: string } {
+  const record = readSafeDataRecord(metadata)
+  if (!record || !hasOwn(record, "composerText")) {
+    return { status: "absent" }
   }
-
-  return `Attached files:\n${fileNames.map((name) => `- ${name}`).join("\n")}`
-}
-
-function stripSyntheticRefsText(text: string, refs: ComposerMessageRef[]): string {
-  const syntheticFileRefsText = getSyntheticFileRefsText(refs)
-  if (syntheticFileRefsText && text.trim() === syntheticFileRefsText.trim()) {
-    return ""
-  }
-
-  return stripSyntheticAssistantSelectionRefsText(text, refs)
-}
-
-function stripSyntheticAssistantSelectionRefsText(
-  text: string,
-  refs: ComposerMessageRef[]
-): string {
-  const syntheticAssistantSelectionRefsText = getAssistantSelectionRefsText(refs)
-  if (!syntheticAssistantSelectionRefsText) {
-    return text
-  }
-
-  const trimmedText = text.trim()
-  const trimmedSyntheticText = syntheticAssistantSelectionRefsText.trim()
-  if (trimmedText === trimmedSyntheticText) {
-    return ""
-  }
-
-  if (trimmedText.endsWith(trimmedSyntheticText)) {
-    return trimmedText.slice(0, -trimmedSyntheticText.length).trimEnd()
-  }
-
-  return text
+  return typeof record.composerText === "string"
+    ? { status: "present", text: record.composerText }
+    : { status: "invalid" }
 }
 
 export interface DisplayAssistantMessageContentOptions extends AssistantMessageContentSource {}
@@ -1047,42 +1142,156 @@ export function toMessageContent(input: ComposerMessageInput): MessageContent {
   return toDisplayMessageContent(buildJingleAgentDisplayMessageContent(input), { role: "user" })
 }
 
-export function toComposerMessageInput(
-  content: string | ContentBlock[] | AgentMessageContent | undefined,
-  metadata?: unknown
-): ComposerMessageInput {
-  const metadataRefs = extractComposerMessageRefsMetadata(metadata)
-  const displayContent = toDisplayMessageContent(content, { role: "user" })
-  if (typeof displayContent === "string") {
-    return { refs: metadataRefs, text: stripSyntheticRefsText(displayContent, metadataRefs) }
+type StructuredComposerReplayRead =
+  | { input: ComposerMessageInput; type: "ready" }
+  | { reason: ComposerMessageReplayUnavailableReason; type: "unavailable" }
+
+function getComposerMessageRefKey(ref: ComposerMessageRef): string {
+  switch (ref.type) {
+    case "file":
+      return JSON.stringify(["file", ref.name, ref.path])
+    case "file-attachment":
+      return JSON.stringify(["file-attachment", ref.name, ref.source])
+    case "image":
+      return JSON.stringify(["image", ref.name, ref.url])
+    case "extension-source":
+      return JSON.stringify(["extension-source", ref.extensionName, ref.name, ref.sourceId])
+    case "assistant-message-selection":
+      return JSON.stringify([
+        "assistant-message-selection",
+        ref.selectedText,
+        ref.sourceMessageId,
+        ref.sourceThreadId
+      ])
+  }
+}
+
+function encodeComposerTextSourceData(text: string): string {
+  const bytes = new TextEncoder().encode(text)
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+  let result = ""
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index] ?? 0
+    const second = bytes[index + 1]
+    const third = bytes[index + 2]
+    result += alphabet[first >> 2]
+    result += alphabet[((first & 3) << 4) | ((second ?? 0) >> 4)]
+    result += second === undefined ? "=" : alphabet[((second & 15) << 2) | ((third ?? 0) >> 6)]
+    result += third === undefined ? "=" : alphabet[third & 63]
+  }
+  return result
+}
+
+function isComposerTextSourceProjection(
+  canonicalRef: ComposerMessageRef,
+  projectedRef: ComposerMessageRef
+): boolean {
+  if (
+    canonicalRef.type !== "file-attachment" ||
+    projectedRef.type !== "file-attachment" ||
+    canonicalRef.name !== projectedRef.name ||
+    canonicalRef.source.kind !== "text" ||
+    projectedRef.source.kind !== "data"
+  ) {
+    return false
+  }
+
+  return (
+    projectedRef.source.data === encodeComposerTextSourceData(canonicalRef.source.text) &&
+    projectedRef.source.mimeType === (canonicalRef.source.mimeType ?? "text/plain;charset=utf-8")
+  )
+}
+
+function mergeComposerMessageRefs(
+  primary: readonly ComposerMessageRef[],
+  secondary: readonly ComposerMessageRef[]
+): ComposerMessageRef[] {
+  const refs: ComposerMessageRef[] = []
+  const keys = new Set<string>()
+  for (const ref of primary) {
+    const key = getComposerMessageRefKey(ref)
+    if (!keys.has(key)) {
+      refs.push(ref)
+      keys.add(key)
+    }
+  }
+  for (const ref of secondary) {
+    const key = getComposerMessageRefKey(ref)
+    if (
+      keys.has(key) ||
+      primary.some((canonicalRef) => isComposerTextSourceProjection(canonicalRef, ref))
+    ) {
+      continue
+    }
+    refs.push(ref)
+    keys.add(key)
+  }
+  return refs
+}
+
+function readStructuredComposerReplay(content: MessageContent): StructuredComposerReplayRead {
+  if (typeof content === "string") {
+    return { input: { refs: [], text: content }, type: "ready" }
   }
 
   const textParts: string[] = []
   const refs: ComposerMessageRef[] = []
-  for (const block of displayContent) {
+  for (const block of content) {
     switch (block.type) {
-      case "text": {
-        const text = stripSyntheticRefsText(block.text, metadataRefs)
-        if (text.length > 0) textParts.push(text)
+      case "text":
+        if (block.text.length > 0) textParts.push(block.text)
         break
-      }
       case "image":
       case "image_url": {
         const url = resolveImageBlockUrl(block)
-        if (url) refs.push({ ...(block.name ? { name: block.name } : {}), type: "image", url })
+        if (!url) {
+          return { reason: "unsupported-attachment-source", type: "unavailable" }
+        }
+        refs.push({ ...(block.name ? { name: block.name } : {}), type: "image", url })
         break
       }
       case "file":
-        if (block.source.kind === "text") {
-          refs.push({ name: block.name, path: block.source.text, type: "file" })
-        }
+        refs.push({ name: block.name, source: block.source, type: "file-attachment" })
         break
       case "reasoning":
       case "unrenderable":
-        break
+        return { reason: "unsupported-content", type: "unavailable" }
     }
   }
-  return { refs: metadataRefs.length > 0 ? metadataRefs : refs, text: textParts.join("") }
+  return { input: { refs, text: textParts.join("") }, type: "ready" }
+}
+
+export function resolveComposerMessageReplay(
+  content: string | ContentBlock[] | AgentMessageContent | undefined,
+  metadata?: unknown
+): ComposerMessageReplay {
+  const metadataRefs = readComposerMessageRefsMetadata(metadata)
+  const metadataText = readComposerMessageTextMetadata(metadata)
+  if (metadataText.status === "invalid" || metadataRefs.status === "invalid") {
+    return { reason: "invalid-composer-metadata", type: "unavailable" }
+  }
+  const displayContent = toDisplayMessageContent(content, { role: "user" })
+  const structuredReplay = readStructuredComposerReplay(displayContent)
+  if (structuredReplay.type === "unavailable") {
+    return structuredReplay
+  }
+  if (metadataText.status === "present") {
+    return {
+      input: {
+        refs: mergeComposerMessageRefs(
+          metadataRefs.status === "present" ? metadataRefs.refs : [],
+          structuredReplay.input.refs
+        ),
+        text: metadataText.text
+      },
+      type: "ready"
+    }
+  }
+  if (metadataRefs.status === "present" && metadataRefs.refs.length > 0) {
+    return { reason: "missing-composer-text", type: "unavailable" }
+  }
+
+  return structuredReplay
 }
 
 function toJingleAgentContentBlocks(
@@ -1114,9 +1323,7 @@ function toJingleAgentContentBlocks(
           : []
       }
       case "file":
-        return block.source.kind === "text"
-          ? [{ content: block.source.text, name: block.name, type: "file" }]
-          : []
+        return [{ name: block.name, source: block.source, type: "file" }]
       case "reasoning":
       case "unrenderable":
         return []
@@ -1141,38 +1348,28 @@ export function toAgentMessageContentWithRefs(
   }) as AgentMessageContent
 }
 
-function getAssistantSelectionRefsText(refs: ComposerMessageRef[]): string | null {
-  const selections = refs.flatMap((ref) => {
-    if (ref.type !== "assistant-message-selection") {
-      return []
-    }
-
-    const selectedText = ref.selectedText.trim()
-    return selectedText ? [selectedText] : []
-  })
-
-  if (selections.length === 0) {
-    return null
-  }
-
-  return `Referenced assistant selections:\n${selections
-    .map((selection, index) => `${index + 1}. ${selection}`)
-    .join("\n")}`
-}
-
 export function toDisplayUserMessageContent(content: unknown, metadata?: unknown): MessageContent {
   const canonical = toDisplayMessageContent(content, { role: "user" })
-  const metadataRefs = extractComposerMessageRefsMetadata(metadata)
-
-  if (metadataRefs.length === 0) {
+  const metadataText = readComposerMessageTextMetadata(metadata)
+  const metadataRefs = readComposerMessageRefsMetadata(metadata)
+  if (metadataText.status !== "present" || metadataRefs.status === "invalid") {
+    return canonical
+  }
+  const structuredReplay = readStructuredComposerReplay(canonical)
+  if (structuredReplay.type === "unavailable") {
     return canonical
   }
 
   const unrenderable = Array.isArray(canonical)
     ? canonical.filter((block): block is UnrenderableContentBlock => block.type === "unrenderable")
     : []
-  const editable = toComposerMessageInput(canonical, metadata)
-  const rebuilt = toMessageContent(editable)
+  const rebuilt = toMessageContent({
+    refs: mergeComposerMessageRefs(
+      metadataRefs.status === "present" ? metadataRefs.refs : [],
+      structuredReplay.input.refs
+    ),
+    text: metadataText.text
+  })
   if (unrenderable.length === 0) {
     return rebuilt
   }

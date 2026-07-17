@@ -56,7 +56,6 @@ test("parseAgentInvokeParams trims routing identifiers and preserves message con
         }
       ]
     },
-    modelId: "  gpt-5  ",
     permissionMode: "auto",
     expectedRunId: "  run-1  ",
     expectedTurnId: "  turn-1  ",
@@ -109,10 +108,34 @@ test("parseAgentInvokeParams trims routing identifiers and preserves message con
         }
       ]
     },
-    modelId: "gpt-5",
     permissionMode: "auto",
     followUpAction: "steer"
   })
+
+  assert.throws(
+    () =>
+      parseAgentInvokeParams({
+        message: {
+          content: [
+            {
+              data: "cGRm",
+              mimeType: "application/pdf",
+              name: "spec.pdf",
+              type: "file"
+            }
+          ],
+          id: "message-file-without-composer-text"
+        },
+        threadId: "thread-1"
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof IpcSchemaValidationError)
+      assert.deepEqual(error.issues, [
+        "message.composerText: composerText is required for file attachments"
+      ])
+      return true
+    }
+  )
 })
 
 test("parseAgentResumeParams requires request_id at the IPC boundary", () => {
@@ -280,8 +303,7 @@ test("parseAgentResumeParams preserves a typed non-empty correction", () => {
       request_id: "  request-1  ",
       tool_call_id: "  tool-1  ",
       correction: "  use a safer path  "
-    },
-    modelId: "  "
+    }
   })
 
   assert.deepEqual(parsed, {
@@ -291,8 +313,7 @@ test("parseAgentResumeParams preserves a typed non-empty correction", () => {
       request_id: "request-1",
       tool_call_id: "tool-1",
       correction: "use a safer path"
-    },
-    modelId: undefined
+    }
   })
 })
 
