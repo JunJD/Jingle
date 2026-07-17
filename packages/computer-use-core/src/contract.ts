@@ -1,5 +1,13 @@
 export const JINGLE_COMPUTER_USE_PROTOCOL_VERSION = 1 as const
 
+export const COMPUTER_USE_NATIVE_RESPONSE_LIMITS = Object.freeze({
+  actions: 128,
+  elements: 750,
+  keys: 32,
+  text: 16_384,
+  token: 1_024
+})
+
 export type ComputerUsePlatform = "macos" | "windows" | "linux"
 export type ComputerUseBackendEnvironment =
   | "macos-quartz"

@@ -327,6 +327,16 @@ private func failedStep(_ action: SemanticAction, route: String, outcome: String
     ), outcome: outcome)
 }
 
+private func aggregateStoppedOutcome(_ outcome: String, completedSteps: [StepResult], actionCount: Int) -> String {
+    if completedSteps.contains(where: { $0.outcome == "worked" || $0.outcome == "unknown" }) {
+        return "unknown"
+    }
+    if outcome == "didnt", completedSteps.count + 1 != actionCount {
+        return "unknown"
+    }
+    return outcome
+}
+
 private func execute(_ request: OperationRequest) throws -> ExecutionResult {
     guard request.delivery == "background" else {
         throw NativeError(description: "macOS Computer Use helper only accepts background semantic delivery.")
@@ -347,8 +357,9 @@ private func execute(_ request: OperationRequest) throws -> ExecutionResult {
     for (index, action) in actions.enumerated() {
         let expectedRoute = action.kind == "press" ? "ax_action" : (action.kind == "set_value" || action.kind == "type_text" ? "ax_value" : "unavailable")
         guard let target = byRef[action.ref], target.1.actions.contains(action.kind) else {
+            let outcome = aggregateStoppedOutcome("didnt", completedSteps: steps, actionCount: actions.count)
             steps.append(failedStep(action, route: expectedRoute, outcome: "didnt", noSideEffect: true))
-            return ExecutionResult(baseStateId: baseStateId, outcome: "didnt", steps: steps, stoppedAt: index)
+            return ExecutionResult(baseStateId: baseStateId, outcome: outcome, steps: steps, stoppedAt: index)
         }
         let error: AXError
         let route: String
@@ -358,14 +369,16 @@ private func execute(_ request: OperationRequest) throws -> ExecutionResult {
             error = AXUIElementPerformAction(target.0, kAXPressAction as CFString)
         case "set_value", "type_text":
             guard let value = action.value else {
+                let outcome = aggregateStoppedOutcome("refused", completedSteps: steps, actionCount: actions.count)
                 steps.append(failedStep(action, route: "ax_value", outcome: "refused", noSideEffect: true))
-                return ExecutionResult(baseStateId: baseStateId, outcome: "refused", steps: steps, stoppedAt: index)
+                return ExecutionResult(baseStateId: baseStateId, outcome: outcome, steps: steps, stoppedAt: index)
             }
             route = "ax_value"
             error = AXUIElementSetAttributeValue(target.0, kAXValueAttribute as CFString, value as CFTypeRef)
         default:
+            let outcome = aggregateStoppedOutcome("refused", completedSteps: steps, actionCount: actions.count)
             steps.append(failedStep(action, route: expectedRoute, outcome: "refused", noSideEffect: true))
-            return ExecutionResult(baseStateId: baseStateId, outcome: "refused", steps: steps, stoppedAt: index)
+            return ExecutionResult(baseStateId: baseStateId, outcome: outcome, steps: steps, stoppedAt: index)
         }
         guard error == .success else {
             steps.append(failedStep(action, route: route, outcome: "unknown", noSideEffect: false))

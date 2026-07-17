@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import * as computerUseCore from "../../packages/computer-use-core/src"
 import {
+  COMPUTER_USE_NATIVE_RESPONSE_LIMITS,
   ComputerUseAuthorizationRegistry,
   ComputerUseActionLedger,
   computerUseCapabilityMatrix,
@@ -146,9 +147,12 @@ function recordingNativeBridge(
   const calls: RecordedNativeInvocation[] = []
   return {
     bridge: {
-      async invoke<T>(request: JingleComputerUseNativeRequest, signal?: AbortSignal): Promise<T> {
+      async invoke(
+        request: JingleComputerUseNativeRequest,
+        signal?: AbortSignal
+      ): Promise<unknown> {
         calls.push({ request, signal })
-        return (await handler(request, signal)) as T
+        return handler(request, signal)
       }
     },
     calls
@@ -1749,7 +1753,8 @@ test("native capability probes reject environment and protocol mismatches", asyn
   const invalidMatrices: unknown[] = [
     { ...base, environment: "windows-win32" },
     { ...base, platform: "windows" },
-    { ...base, protocolVersion: 2 }
+    { ...base, protocolVersion: 2 },
+    { ...base, unexpected: true }
   ]
   for (const matrix of invalidMatrices) {
     const { bridge } = recordingNativeBridge(() => matrix)
@@ -1857,6 +1862,255 @@ test("native bridge keeps signals out of probe, observe, and execute JSON payloa
       assert.equal(Object.hasOwn(call.request.request, "signal"), false)
     }
   }
+})
+
+test("native observations are strictly decoded into bounded immutable facts", async () => {
+  const base = typeTextObservation()
+  const { epoch: _epoch, stateId: _stateId, ...validObservation } = base
+  const { bridge } = recordingNativeBridge((request) => {
+    if (request.method === "probe") return probedMatrix("macos-quartz")
+    if (request.method === "observe") return validObservation
+    return undefined
+  })
+  const backend = await createJingleComputerUseNativeBackend("macos-quartz", bridge)
+  const result = await backend.observe({})
+
+  assert.deepEqual(result, validObservation)
+  assert.equal(Object.isFrozen(result), true)
+  assert.equal(Object.isFrozen(result.elements), true)
+  assert.equal(Object.isFrozen(result.elements[0]), true)
+
+  const invalidObservations: unknown[] = [
+    { ...validObservation, unexpected: true },
+    { ...validObservation, application: { id: validObservation.application.id } },
+    { ...validObservation, window: { ...validObservation.window, platform: "windows" } },
+    {
+      ...validObservation,
+      elements: [validObservation.elements[0], validObservation.elements[0]]
+    },
+    { ...validObservation, elements: Array(1) },
+    {
+      ...validObservation,
+      elements: [
+        {
+          ...validObservation.elements[0],
+          actions: ["type_text", "type_text"]
+        }
+      ]
+    },
+    {
+      ...validObservation,
+      elements: [{ ...validObservation.elements[0], actions: Array(1) }]
+    },
+    {
+      ...validObservation,
+      elements: [
+        {
+          ...validObservation.elements[0],
+          unexpected: true
+        }
+      ]
+    },
+    {
+      ...validObservation,
+      application: {
+        ...validObservation.application,
+        name: "x".repeat(COMPUTER_USE_NATIVE_RESPONSE_LIMITS.text + 1)
+      }
+    },
+    {
+      ...validObservation,
+      elements: Array.from(
+        { length: COMPUTER_USE_NATIVE_RESPONSE_LIMITS.elements + 1 },
+        (_, index) => ({
+          actions: ["type_text"],
+          index,
+          ref: `@e${index}`,
+          role: "text_field"
+        })
+      )
+    }
+  ]
+
+  for (const invalidObservation of invalidObservations) {
+    const invalid = recordingNativeBridge((request) =>
+      request.method === "probe" ? probedMatrix("macos-quartz") : invalidObservation
+    )
+    const invalidBackend = await createJingleComputerUseNativeBackend(
+      "macos-quartz",
+      invalid.bridge
+    )
+    await assert.rejects(invalidBackend.observe({}), /Computer-use native/)
+  }
+})
+
+test("native execution results reject malformed action, status, route, and evidence facts", async () => {
+  const base = typeTextObservation()
+  const action = { kind: "type_text", ref: "@e1", value: "hello" } as const
+  const authorization = {
+    expiresAt: Date.now() + 1_000,
+    runId: "run",
+    sessionId: "session",
+    threadId: "thread",
+    window: base.window
+  }
+  const validStep = {
+    action,
+    evidence: {
+      delivery: "semantic",
+      noSideEffectProof: false,
+      route: "ax_value",
+      verification: "verified"
+    },
+    outcome: "worked"
+  }
+  const validResult = {
+    baseStateId: base.stateId,
+    outcome: "worked",
+    steps: [validStep]
+  }
+  const responses: unknown[] = [
+    { ...validResult, unexpected: true },
+    { ...validResult, baseStateId: "another-state" },
+    { ...validResult, outcome: "cancelled_before_dispatch" },
+    { ...validResult, steps: [] },
+    { ...validResult, outcome: "didnt" },
+    { ...validResult, outcome: "refused" },
+    {
+      ...validResult,
+      outcome: "unavailable",
+      steps: [
+        {
+          ...validStep,
+          evidence: { ...validStep.evidence, verification: "unverifiable" },
+          outcome: "unknown"
+        }
+      ]
+    },
+    { ...validResult, stoppedAt: 1 },
+    { ...validResult, outcome: "unknown", steps: Array(1), stoppedAt: 0 },
+    { ...validResult, steps: [{ ...validStep, action: { ...action, unexpected: true } }] },
+    { ...validResult, steps: [{ ...validStep, action: { ...action, ref: "@other" } }] },
+    {
+      ...validResult,
+      steps: [{ ...validStep, evidence: { ...validStep.evidence, route: "global_input" } }]
+    },
+    {
+      ...validResult,
+      steps: [{ ...validStep, evidence: { ...validStep.evidence, unexpected: true } }]
+    },
+    {
+      ...validResult,
+      steps: [
+        {
+          ...validStep,
+          evidence: { ...validStep.evidence, verification: "unverifiable" }
+        }
+      ]
+    },
+    { ...validResult, steps: [validStep, validStep] }
+  ]
+
+  for (const response of responses) {
+    const invalid = recordingNativeBridge((request) => {
+      if (request.method === "probe") return probedMatrix("macos-quartz")
+      if (request.method === "execute") return response
+      return undefined
+    })
+    const backend = await createJingleComputerUseNativeBackend("macos-quartz", invalid.bridge)
+    await assert.rejects(
+      backend.execute({
+        actions: [action],
+        authorization,
+        base,
+        delivery: "background"
+      }),
+      /Computer-use native/
+    )
+  }
+
+  const valid = recordingNativeBridge((request) => {
+    if (request.method === "probe") return probedMatrix("macos-quartz")
+    if (request.method === "execute") return validResult
+    return undefined
+  })
+  const backend = await createJingleComputerUseNativeBackend("macos-quartz", valid.bridge)
+  const result = await backend.execute({
+    actions: [action],
+    authorization,
+    base,
+    delivery: "background"
+  })
+  assert.deepEqual(result, validResult)
+  assert.equal(Object.isFrozen(result.steps[0]?.evidence), true)
+
+  const secondAction = { ...action, value: "world" }
+  const didntStep = {
+    action: secondAction,
+    evidence: {
+      delivery: "semantic",
+      noSideEffectProof: true,
+      route: "ax_value",
+      verification: "failed"
+    },
+    outcome: "didnt"
+  }
+  const earlyStop = {
+    baseStateId: base.stateId,
+    outcome: "unknown",
+    steps: [validStep, didntStep],
+    stoppedAt: 1
+  }
+  const helperShaped = recordingNativeBridge((request) => {
+    if (request.method === "probe") return probedMatrix("macos-quartz")
+    if (request.method === "execute") return earlyStop
+    return undefined
+  })
+  const helperBackend = await createJingleComputerUseNativeBackend(
+    "macos-quartz",
+    helperShaped.bridge
+  )
+  assert.deepEqual(
+    await helperBackend.execute({
+      actions: [action, secondAction],
+      authorization,
+      base,
+      delivery: "background"
+    }),
+    earlyStop
+  )
+
+  const contradictoryHelper = recordingNativeBridge((request) => {
+    if (request.method === "probe") return probedMatrix("macos-quartz")
+    if (request.method === "execute") return { ...earlyStop, outcome: "didnt" }
+    return undefined
+  })
+  const contradictoryBackend = await createJingleComputerUseNativeBackend(
+    "macos-quartz",
+    contradictoryHelper.bridge
+  )
+  await assert.rejects(
+    contradictoryBackend.execute({
+      actions: [action, secondAction],
+      authorization,
+      base,
+      delivery: "background"
+    }),
+    /inconsistent didnt result/
+  )
+
+  await assert.rejects(
+    backend.execute({
+      actions: Array.from(
+        { length: COMPUTER_USE_NATIVE_RESPONSE_LIMITS.actions + 1 },
+        () => action
+      ),
+      authorization,
+      base,
+      delivery: "background"
+    }),
+    /invalid action count/
+  )
 })
 
 test("pre-aborted native calls never invoke the bridge", async () => {
