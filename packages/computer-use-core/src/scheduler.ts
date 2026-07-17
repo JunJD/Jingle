@@ -16,6 +16,61 @@ interface ResourceRecord {
   tail: Promise<void>
 }
 
+function enqueueAfter<T>(
+  previous: Promise<void>,
+  signal: AbortSignal | undefined,
+  work: () => Promise<T>
+): { result: Promise<T>; tail: Promise<void> } {
+  let started = false
+  let settled = false
+  let resolveResult!: (value: T | PromiseLike<T>) => void
+  let rejectResult!: (reason?: unknown) => void
+  const result = new Promise<T>((resolve, reject) => {
+    resolveResult = resolve
+    rejectResult = reject
+  })
+  const rejectOnce = (reason: unknown): void => {
+    if (settled) return
+    settled = true
+    rejectResult(reason)
+  }
+  const onAbort = (): void => {
+    if (!started) rejectOnce(signal?.reason ?? new DOMException("Aborted", "AbortError"))
+  }
+
+  signal?.addEventListener("abort", onAbort, { once: true })
+  if (signal?.aborted) onAbort()
+
+  const operation = previous
+    .catch(() => undefined)
+    .then(async () => {
+      if (signal?.aborted) {
+        rejectOnce(signal.reason ?? new DOMException("Aborted", "AbortError"))
+        return
+      }
+      started = true
+      try {
+        const value = await work()
+        if (!settled) {
+          settled = true
+          resolveResult(value)
+        }
+      } catch (error) {
+        rejectOnce(error)
+      } finally {
+        signal?.removeEventListener("abort", onAbort)
+      }
+    })
+
+  return {
+    result,
+    tail: operation.then(
+      () => undefined,
+      () => undefined
+    )
+  }
+}
+
 export class ComputerUseResourceScheduler {
   private readonly resources = new Map<string, ResourceRecord>()
   private globalPhysicalInputTail = Promise.resolve()
@@ -25,16 +80,21 @@ export class ComputerUseResourceScheduler {
     return this.resource(resourceKey).epoch
   }
 
-  async read<T>(resourceKey: string, work: (epoch: number) => Promise<T>): Promise<T> {
-    return this.enqueue(resourceKey, undefined, (record) => work(record.epoch))
+  async read<T>(
+    resourceKey: string,
+    work: (epoch: number) => Promise<T>,
+    signal?: AbortSignal
+  ): Promise<T> {
+    return this.enqueue(resourceKey, signal, (record) => work(record.epoch))
   }
 
   async readAt<T>(
     resourceKey: string,
     expectedEpoch: number,
-    work: (epoch: number) => Promise<T>
+    work: (epoch: number) => Promise<T>,
+    signal?: AbortSignal
   ): Promise<T> {
-    return this.enqueue(resourceKey, undefined, (record) => {
+    return this.enqueue(resourceKey, signal, (record) => {
       this.assertEpoch(resourceKey, expectedEpoch, record)
       return work(record.epoch)
     })
@@ -96,37 +156,17 @@ export class ComputerUseResourceScheduler {
     if (this.closed) throw new Error("Computer-use scheduler is closed.")
     signal?.throwIfAborted()
     const record = this.resource(resourceKey)
-    const previous = record.tail
-    let release!: () => void
-    const next = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    record.tail = previous.catch(() => undefined).then(() => next)
-    await previous.catch(() => undefined)
-    try {
-      signal?.throwIfAborted()
-      return await work(record)
-    } finally {
-      release()
-    }
+    const queued = enqueueAfter(record.tail, signal, () => work(record))
+    record.tail = queued.tail
+    return queued.result
   }
 
   private async withGlobalPhysicalInput<T>(
     signal: AbortSignal | undefined,
     work: () => Promise<T>
   ): Promise<T> {
-    const previous = this.globalPhysicalInputTail
-    let release!: () => void
-    const next = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    this.globalPhysicalInputTail = previous.catch(() => undefined).then(() => next)
-    await previous.catch(() => undefined)
-    try {
-      signal?.throwIfAborted()
-      return await work()
-    } finally {
-      release()
-    }
+    const queued = enqueueAfter(this.globalPhysicalInputTail, signal, work)
+    this.globalPhysicalInputTail = queued.tail
+    return queued.result
   }
 }

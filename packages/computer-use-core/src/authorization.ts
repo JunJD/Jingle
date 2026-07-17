@@ -4,7 +4,10 @@ import type {
   ComputerUseWindowIdentity
 } from "./contract"
 
-function sameWindow(left: ComputerUseWindowIdentity, right: ComputerUseWindowIdentity): boolean {
+export function sameComputerUseWindowIdentity(
+  left: ComputerUseWindowIdentity,
+  right: ComputerUseWindowIdentity
+): boolean {
   return (
     left.generation === right.generation &&
     left.nativeId === right.nativeId &&
@@ -33,7 +36,7 @@ export class ComputerUseAuthorizationRegistry {
     if (grant.runId !== input.runId || grant.threadId !== input.threadId) {
       throw new Error("Computer-use authorization belongs to another run.")
     }
-    if (!sameWindow(grant.window, input.observation.window)) {
+    if (!sameComputerUseWindowIdentity(grant.window, input.observation.window)) {
       throw new Error("Computer-use authorization does not match the observed window generation.")
     }
     return Object.freeze({ ...grant, window: Object.freeze({ ...grant.window }) })

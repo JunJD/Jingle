@@ -83,7 +83,22 @@ export interface ComputerUseTransactionResult {
   successor?: ComputerUseObservation
 }
 
-export type ComputerUseBackendExecutionResult = Omit<ComputerUseTransactionResult, "successor">
+export type ComputerUseBackendExecutionOutcome = Exclude<
+  ComputerUseOutcome,
+  "cancelled_before_dispatch"
+>
+
+export type ComputerUseBackendStepResult = Omit<ComputerUseStepResult, "outcome"> & {
+  outcome: ComputerUseBackendExecutionOutcome
+}
+
+export type ComputerUseBackendExecutionResult = Omit<
+  ComputerUseTransactionResult,
+  "outcome" | "steps" | "successor"
+> & {
+  outcome: ComputerUseBackendExecutionOutcome
+  steps: readonly ComputerUseBackendStepResult[]
+}
 
 export interface ComputerUseCapability {
   action: ComputerUseActionKind

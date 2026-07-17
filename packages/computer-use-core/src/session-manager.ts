@@ -10,13 +10,18 @@ interface ActiveSession {
   abortController: AbortController
   runId: string
   sessionId: string
-  threadId: string
 }
+
+const MIN_SESSION_TTL_MS = 1_000
+const MAX_SESSION_TTL_MS = 30 * 60_000
 
 export class ComputerUseSessionManager {
   private readonly active = new Map<string, ActiveSession>()
+  private readonly closing = new Map<string, Promise<void>>()
+  private desiredEnabled = false
   private enabled = false
   private disabling: Promise<void> | null = null
+  private enablementGeneration = 0
 
   constructor(
     private readonly backend: ComputerUseBackend,
@@ -28,17 +33,18 @@ export class ComputerUseSessionManager {
   }
 
   async setEnabled(enabled: boolean): Promise<void> {
+    const generation = ++this.enablementGeneration
+    this.desiredEnabled = enabled
     if (enabled) {
       if (this.disabling) await this.disabling
-      this.enabled = true
+      if (!this.enabled && this.active.size > 0) await this.startDisabling()
+      if (this.desiredEnabled && this.enablementGeneration === generation) {
+        this.enabled = true
+      }
       return
     }
     this.enabled = false
-    if (this.disabling) return this.disabling
-    this.disabling = this.disposeAll().finally(() => {
-      this.disabling = null
-    })
-    return this.disabling
+    return this.startDisabling()
   }
 
   openSession(input: {
@@ -48,9 +54,13 @@ export class ComputerUseSessionManager {
     ttlMs?: number
   }): ComputerUseAuthorizationGrant {
     if (!this.isEnabled()) throw new Error("Computer use is disabled.")
+    const ttlMs = input.ttlMs ?? MAX_SESSION_TTL_MS
+    if (!Number.isFinite(ttlMs) || ttlMs < MIN_SESSION_TTL_MS || ttlMs > MAX_SESSION_TTL_MS) {
+      throw new Error("Computer-use session TTL must be between 1 second and 30 minutes.")
+    }
     const sessionId = randomUUID()
     const grant: ComputerUseAuthorizationGrant = {
-      expiresAt: Date.now() + Math.max(1_000, input.ttlMs ?? 30 * 60_000),
+      expiresAt: Date.now() + ttlMs,
       runId: input.runId,
       sessionId,
       threadId: input.threadId,
@@ -60,8 +70,7 @@ export class ComputerUseSessionManager {
     this.active.set(sessionId, {
       abortController: new AbortController(),
       runId: input.runId,
-      sessionId,
-      threadId: input.threadId
+      sessionId
     })
     return grant
   }
@@ -77,12 +86,22 @@ export class ComputerUseSessionManager {
   }
 
   async closeSession(sessionId: string): Promise<void> {
-    this.active.get(sessionId)?.abortController.abort(
-      new Error("Computer-use session was closed.")
-    )
+    const existingClose = this.closing.get(sessionId)
+    if (existingClose) return existingClose
+    const session = this.active.get(sessionId)
+    if (!session) return
+    session.abortController.abort(new Error("Computer-use session was closed."))
     this.authorization.revokeSession(sessionId)
-    this.active.delete(sessionId)
-    await this.backend.disposeSession(sessionId)
+    const close = this.backend
+      .disposeSession(sessionId)
+      .then(() => {
+        this.active.delete(sessionId)
+      })
+      .finally(() => {
+        if (this.closing.get(sessionId) === close) this.closing.delete(sessionId)
+      })
+    this.closing.set(sessionId, close)
+    return close
   }
 
   signal(sessionId: string): AbortSignal {
@@ -103,8 +122,14 @@ export class ComputerUseSessionManager {
     for (const session of sessions) {
       session.abortController.abort(new Error("Computer use was disabled."))
     }
-    const sessionIds = sessions.map((session) => session.sessionId)
-    this.active.clear()
-    await Promise.all(sessionIds.map((sessionId) => this.backend.disposeSession(sessionId)))
+    await Promise.all(sessions.map((session) => this.closeSession(session.sessionId)))
+  }
+
+  private startDisabling(): Promise<void> {
+    if (this.disabling) return this.disabling
+    this.disabling = this.disposeAll().finally(() => {
+      this.disabling = null
+    })
+    return this.disabling
   }
 }

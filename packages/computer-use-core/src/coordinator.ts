@@ -6,13 +6,29 @@ import type {
   ComputerUseSemanticAction,
   ComputerUseTransactionResult
 } from "./contract"
+import { sameComputerUseWindowIdentity } from "./authorization"
 import { ComputerUseActionLedger } from "./action-ledger"
 import { ComputerUseResourceScheduler } from "./scheduler"
 import { ComputerUseSessionManager } from "./session-manager"
 import { ComputerUseObservationStore } from "./state-store"
 
 function sameAction(left: ComputerUseSemanticAction, right: ComputerUseSemanticAction): boolean {
-  return JSON.stringify(left) === JSON.stringify(right)
+  return (
+    left.kind === right.kind &&
+    left.ref === right.ref &&
+    left.value === right.value &&
+    left.scrollAmount === right.scrollAmount &&
+    sameKeys(left.keys, right.keys)
+  )
+}
+
+function sameKeys(
+  left: readonly string[] | undefined,
+  right: readonly string[] | undefined
+): boolean {
+  if (left === right) return true
+  if (!left || !right || left.length !== right.length) return false
+  return left.every((key, index) => key === right[index])
 }
 
 function mayRetryForeground(
@@ -45,14 +61,21 @@ export class ComputerUseTransactionCoordinator {
   async observe(request: ComputerUseObserveRequest): Promise<ComputerUseObservation> {
     request.signal?.throwIfAborted()
     const discovery = await this.backend.observe(request)
-    return this.scheduler.read(discovery.resourceKey, async (epoch) => {
-      request.signal?.throwIfAborted()
-      const current = await this.backend.observe(request)
-      if (current.resourceKey !== discovery.resourceKey) {
-        throw new Error("Computer-use target changed while it was being observed.")
-      }
-      return this.observations.create({ ...current, epoch })
-    })
+    return this.scheduler.read(
+      discovery.resourceKey,
+      async (epoch) => {
+        request.signal?.throwIfAborted()
+        const current = await this.backend.observe(request)
+        if (
+          current.resourceKey !== discovery.resourceKey ||
+          !sameComputerUseWindowIdentity(current.window, discovery.window)
+        ) {
+          throw new Error("Computer-use target changed while it was being observed.")
+        }
+        return this.observations.create({ ...current, epoch })
+      },
+      request.signal
+    )
   }
 
   async execute(input: {
@@ -156,12 +179,13 @@ export class ComputerUseTransactionCoordinator {
           })
           const identityChanged =
             successor.resourceKey !== base.resourceKey ||
-            successor.window.generation !== base.window.generation
-          const result: ComputerUseTransactionResult = {
-            ...execution,
-            outcome: identityChanged ? "unknown" : execution.outcome,
-            successor: this.observations.create({ ...successor, epoch: nextEpoch })
-          }
+            !sameComputerUseWindowIdentity(successor.window, base.window)
+          const result: ComputerUseTransactionResult = identityChanged
+            ? { ...execution, outcome: "unknown" }
+            : {
+                ...execution,
+                successor: this.observations.create({ ...successor, epoch: nextEpoch })
+              }
           await this.ledger.settle(attempt.attemptId, result.outcome)
           return result
         }
@@ -170,11 +194,11 @@ export class ComputerUseTransactionCoordinator {
       const current = this.ledger.get(attempt.attemptId)
       const cancelled =
         signal.aborted || (error instanceof DOMException && error.name === "AbortError")
-      const outcome = cancelled
-        ? await this.ledger.cancel(attempt.attemptId)
-        : current?.phase === "queued"
-          ? (await this.ledger.settle(attempt.attemptId, "refused"), "refused" as const)
-          : await this.ledger.cancel(attempt.attemptId)
+      if (!cancelled && current?.phase === "queued") {
+        await this.ledger.settle(attempt.attemptId, "unavailable")
+        throw error
+      }
+      const outcome = await this.ledger.cancel(attempt.attemptId)
       if (outcome !== "unknown") return { baseStateId: base.stateId, outcome, steps: [] }
       const successor = await this.observeAfterUnknown(base)
       return {
@@ -198,7 +222,7 @@ export class ComputerUseTransactionCoordinator {
         })
         if (
           successor.resourceKey !== base.resourceKey ||
-          successor.window.generation !== base.window.generation
+          !sameComputerUseWindowIdentity(successor.window, base.window)
         ) {
           return undefined
         }
@@ -263,6 +287,16 @@ export class ComputerUseTransactionCoordinator {
     delivery: "background" | "foreground",
     baseStateId: string
   ): ComputerUseBackendExecutionResult {
+    if (
+      (result as ComputerUseTransactionResult).outcome === "cancelled_before_dispatch" ||
+      result.steps.some(
+        (step) =>
+          (step as ComputerUseTransactionResult["steps"][number]).outcome ===
+          "cancelled_before_dispatch"
+      )
+    ) {
+      throw new Error("Computer-use backend reported pre-dispatch cancellation after dispatch.")
+    }
     if (result.baseStateId !== baseStateId) {
       throw new Error("Computer-use backend result belongs to another base state.")
     }
