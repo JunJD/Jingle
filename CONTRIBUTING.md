@@ -180,12 +180,14 @@ that explains the migration. Reverts use `revert(scope):` and include
 `Part-of:`; reserve `Fixes:` for a dependency-closed commit or pull request.
 Public commit messages must not disclose security exploitation details.
 
-Only subjects beginning with `Merge` bypass commitlint, and that exception is
-reserved for Git or GitHub generated merge messages. Contributors must not
-create manual merge commits; integrate branches with rebase or squash instead.
-Dependency bots receive no blanket exemption and must use `build(deps): ...`.
-Release tags are not commit subjects; release preparation uses
-`ci(release): ...`, `build(release): ...`, or `docs(release): ...`.
+Only actual Git or GitHub merge commits with subjects beginning with `Merge`
+bypass commitlint. The local hook requires Git's active `MERGE_HEAD`; CI requires
+the stored commit to have at least two parents. A normal single-parent commit
+whose subject merely begins with `Merge` fails validation. Contributors must
+not create manual merge commits; integrate branches with rebase or squash
+instead. Dependency bots receive no blanket exemption and must use
+`build(deps): ...`. Release tags are not commit subjects; release preparation
+uses `ci(release): ...`, `build(release): ...`, or `docs(release): ...`.
 
 `pnpm install` installs the local `commit-msg` hook. It can also be restored
 explicitly with `make setup-hooks`. To check the current commit manually, run:

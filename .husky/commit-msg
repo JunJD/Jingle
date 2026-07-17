@@ -1,17 +1,8 @@
 #!/usr/bin/env sh
 
 repo_root=$(git rev-parse --show-toplevel)
-commitlint="$repo_root/node_modules/.bin/commitlint"
 
-if [ ! -x "$commitlint" ]; then
-  cat >&2 <<'EOF'
-Jingle commit message check could not start because commitlint is not installed.
-Run `pnpm install` from the repository root and retry the commit.
-EOF
-  exit 1
-fi
-
-"$commitlint" --edit "$1"
+node "$repo_root/scripts/check-commit-messages.mjs" --edit "$1"
 status=$?
 
 if [ "$status" -ne 0 ]; then

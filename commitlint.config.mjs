@@ -43,7 +43,6 @@ export default {
   defaultIgnores: false,
   extends: ["@commitlint/config-conventional"],
   helpUrl: "https://github.com/JunJD/Jingle/blob/main/CONTRIBUTING.md#commit-messages",
-  ignores: [(message) => /^Merge\b/.test(message)],
   plugins: [
     {
       rules: {

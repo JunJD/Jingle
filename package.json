@@ -51,8 +51,9 @@
   "scripts": {
     "prepare": "husky",
     "format": "prettier --write .",
-    "commitlint": "commitlint",
-    "commitlint:last": "commitlint --last --verbose",
+    "commitlint": "node scripts/check-commit-messages.mjs",
+    "commitlint:last": "node scripts/check-commit-messages.mjs --last",
+    "test:commitlint": "node scripts/check-commit-message-fixtures.mjs",
     "lint": "eslint --cache --ext .js,.cjs,.mjs,.ts,.tsx src packages scripts installable-extensions tests bin electron.vite.config.ts eslint.config.mjs prisma.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc -p tests/node/tsconfig.json && tsc --noEmit -p tsconfig.web.json --composite false && tsc --noEmit -p tests/bdd/tsconfig.json",
     "start": "node scripts/start-jingle-preview.mjs",

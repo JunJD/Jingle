@@ -62,7 +62,10 @@ jobs:
             }
             range_start="${bootstrap_commit}^"
           fi
-          pnpm exec commitlint --from "$range_start" --to "$HEAD_SHA" --verbose
+          pnpm run commitlint --from "$range_start" --to "$HEAD_SHA"
+
+      - name: Check commit message fixtures
+        run: pnpm run test:commitlint
 
       - name: Check
         run: make check

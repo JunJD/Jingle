@@ -84,5 +84,5 @@
 - type 仅使用 `feat`、`fix`、`refactor`、`perf`、`test`、`docs`、`build`、`ci`、`chore`、`revert`。具体语义和允许的 scope 以 `CONTRIBUTING.md#commit-messages` 与 `commitlint.config.mjs` 为准。
 - scope 必须指向状态或行为的唯一 owner。`agent` 不能代指 runtime、checkpoint 或 HITL；`launcher` 不能代指主窗口生命周期；`extension` 不能代指 extension host 或公开 SDK。没有单一 scope 能准确描述时，先拆分提交。
 - 前置片和 partial commit 只描述本片成立的事实，并使用 `Refs:` 或 `Part-of:`；不要提前写 resolved、completed 或 `Fixes:`。只有 dependency-closed 的最终提交或 PR 才能关闭 Issue。
-- 创建提交前先运行或尊重 `.husky/commit-msg`。hook 失败时按输出修正 subject，不要使用 `--no-verify` 绕过。只允许以 `Merge` 开头的自动 merge subject 跳过校验；禁止人工 merge commit，优先用 rebase 或 squash 集成分支。
+- 创建提交前先运行或尊重 `.husky/commit-msg`。hook 失败时按输出修正 subject，不要使用 `--no-verify` 绕过。只有以 `Merge` 开头且本地存在 `MERGE_HEAD`、或 CI 中真实拥有至少两个 parent 的 merge commit 才能跳过校验；普通单 parent 的 `Merge ...` subject 必须失败。禁止人工 merge commit，优先用 rebase 或 squash 集成分支。
 - 裸 `Revert`、无 scope 的 revert、`fixup!`、`squash!` 和版本号 subject 都必须失败。revert 使用 `revert(<scope>): <直接描述>`，并在正文中添加 `Reverts: <原提交 SHA>`；依赖机器人使用 `build(deps): ...`，不得豁免；release tag 不是 subject，发布准备使用 `ci(release)`、`build(release)` 或 `docs(release)`。
