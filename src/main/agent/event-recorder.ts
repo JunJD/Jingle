@@ -14,6 +14,7 @@ import {
 import { JingleIpcError } from "../ipc/error"
 import { getDevtoolsNetworkRecorder } from "@jingle/devtools-network/main"
 import type { HITLDecision } from "../types"
+import { parseAgentRunFailure } from "@shared/agent-run-failure"
 
 export interface AgentStreamBoundaryRecorderState {
   approvalRequestIds: Set<string>
@@ -50,6 +51,14 @@ function describeRuntimeErrorForTrace(error: unknown): {
   errorMessage: string
   errorType: string
 } {
+  const failure = parseAgentRunFailure(error)
+  if (failure) {
+    return {
+      errorMessage: failure.message,
+      errorType: failure.kind
+    }
+  }
+
   if (error instanceof JingleIpcError) {
     return {
       errorMessage: error.message,

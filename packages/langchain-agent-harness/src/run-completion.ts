@@ -27,13 +27,17 @@ export interface CompleteJingleAgentRunInput<TContextInclusion = unknown> {
     interrupted: boolean
     runId: string
     threadId: string
-  }) => Promise<JingleRunCompletionFacts<TContextInclusion>> | JingleRunCompletionFacts<TContextInclusion>
+  }) =>
+    | Promise<JingleRunCompletionFacts<TContextInclusion>>
+    | JingleRunCompletionFacts<TContextInclusion>
   syncRunFromLatestCheckpoint: (input: {
     expectedMessageId?: string
     interrupted: boolean
     runId: string
     threadId: string
-  }) => Promise<JingleRunCompletionFacts<TContextInclusion>> | JingleRunCompletionFacts<TContextInclusion>
+  }) =>
+    | Promise<JingleRunCompletionFacts<TContextInclusion>>
+    | JingleRunCompletionFacts<TContextInclusion>
 }
 
 export interface AbortJingleAgentRunInput {
@@ -53,15 +57,13 @@ export interface AbortJingleAgentRunInput {
   threadId: string
 }
 
-export interface FailJingleAgentRunInput<TError = unknown> {
+export interface FailJingleAgentRunInput<TError = unknown, TFailure = unknown> {
   error: TError
-  markRunFailed: (input: { error: TError; runId: string; threadId: string }) => Promise<void> | void
-  recordRunFinished: (event: {
+  markRunFailed: (input: {
     error: TError
     runId: string
-    status: "error"
     threadId: string
-  }) => Promise<void> | void
+  }) => Promise<TFailure> | TFailure
   runId: string
   threadId: string
 }
@@ -129,18 +131,13 @@ export async function abortJingleAgentRun(input: AbortJingleAgentRunInput): Prom
   })
 }
 
-export async function failJingleAgentRun<TError>(
-  input: FailJingleAgentRunInput<TError>
-): Promise<void> {
-  await input.markRunFailed({
+export async function failJingleAgentRun<TError, TFailure>(
+  input: FailJingleAgentRunInput<TError, TFailure>
+): Promise<TFailure> {
+  const failure = await input.markRunFailed({
     error: input.error,
     runId: input.runId,
     threadId: input.threadId
   })
-  await input.recordRunFinished({
-    error: input.error,
-    runId: input.runId,
-    status: "error",
-    threadId: input.threadId
-  })
+  return failure
 }

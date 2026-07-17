@@ -1,5 +1,10 @@
 interface JingleAgentErrorPayload {
-  kind: "authentication" | "context_window_exceeded" | "rate_limited" | "transport_interrupted" | "unknown"
+  kind:
+    | "authentication"
+    | "context_window_exceeded"
+    | "rate_limited"
+    | "transport_interrupted"
+    | "unknown"
   message: string
 }
 
@@ -37,10 +42,14 @@ function formatJingleAgentErrorForView(
 
 export function resolveJingleAgentViewState(input: JingleAgentViewInput): JingleAgentViewState {
   const isBusy = input.runtimeStatus === "running"
+  const recoveryError =
+    input.runtimeStatus === "recovery_required"
+      ? "Run state could not be saved. Restart Jingle before continuing."
+      : null
 
   return {
     canStop: Boolean(input.threadId) && isBusy,
-    error: formatJingleAgentErrorForView(input.threadError) ?? input.localError,
+    error: recoveryError ?? formatJingleAgentErrorForView(input.threadError) ?? input.localError,
     isBusy
   }
 }

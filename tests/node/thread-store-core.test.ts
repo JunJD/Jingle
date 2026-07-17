@@ -106,6 +106,7 @@ function createThreadDataSnapshot(
       error: null,
       forkState: { canFork: true },
       pendingApproval: null,
+      recovery: null,
       runId: null,
       todos: [],
       workspacePath: null
@@ -431,6 +432,7 @@ test("thread data snapshot and events update thread state through store reducer"
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
+        recovery: null,
         runId: activeRun.runId,
         todos: [],
         workspacePath: "/tmp/launcher-ai-first-send"
@@ -563,6 +565,7 @@ test("run started immediately moves projection active turn before assistant firs
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
+        recovery: null,
         runId: null,
         todos: [],
         workspacePath: null
@@ -642,6 +645,7 @@ test("stale idle snapshots do not remove runtime messages after a finished run",
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
+        recovery: null,
         runId: "run-1",
         todos: [],
         workspacePath: null
@@ -701,6 +705,7 @@ test("stale idle snapshots do not remove runtime messages after a finished run",
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
+        recovery: null,
         runId: "run-1",
         todos: [],
         workspacePath: null
@@ -742,6 +747,7 @@ test("stale idle snapshots do not remove runtime messages after a finished run",
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
+        recovery: null,
         runId: "run-2",
         todos: [],
         workspacePath: null
@@ -791,6 +797,7 @@ test("runtime tool events update source run facts and message projection facts",
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
+        recovery: null,
         runId: "run-1",
         todos: [],
         workspacePath: null
@@ -913,6 +920,7 @@ test("run finished clears active run when no tool result exists", () => {
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
+        recovery: null,
         runId: "run-1",
         todos: [],
         workspacePath: null
@@ -1010,6 +1018,7 @@ test("pending approval updates source approval facts", () => {
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
+        recovery: null,
         runId: "run-1",
         todos: [],
         workspacePath: null
@@ -1080,6 +1089,7 @@ test("pending approval updates source approval facts", () => {
         error: null,
         forkState: { canFork: false, reason: "pending_hitl" },
         pendingApproval: snapshotApproval,
+        recovery: null,
         runId: "run-1",
         todos: [],
         workspacePath: null
@@ -1131,6 +1141,7 @@ test("runtime delta for an unknown message does not advance revision before thre
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
+        recovery: null,
         runId: "run-1",
         todos: [],
         workspacePath: null
@@ -1168,6 +1179,7 @@ test("runtime token delta keeps historical turn references stable after thread d
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
+        recovery: null,
         runId: "run-1",
         todos: [],
         workspacePath: null
@@ -1224,6 +1236,7 @@ test("runtime token delta in long history keeps inactive turns and rows stable",
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
+        recovery: null,
         runId: "run-1",
         todos: [],
         workspacePath: null
@@ -1293,6 +1306,7 @@ test("thread data snapshot restores non-runtime facts and stale events do not ro
         error: createLegacyAgentRunFailure("Needs approval"),
         forkState: { canFork: false, reason: "pending_hitl" },
         pendingApproval,
+        recovery: null,
         runId: "run-1",
         todos: [
           {

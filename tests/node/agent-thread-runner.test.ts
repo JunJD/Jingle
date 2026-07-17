@@ -143,6 +143,7 @@ function createThreadData(
         canFork: true
       },
       pendingApproval,
+      recovery: null,
       runId: input.runId ?? null,
       todos: input.todos ?? [],
       workspacePath: null
@@ -166,7 +167,7 @@ test("AgentThreadRunner preserves identical failure facts across live snapshot, 
     runId: "run-parity",
     type: "run_started"
   })
-  await liveHub.handlePayload("thread-parity", { failure, type: "error" })
+  await liveHub.handlePayload("thread-parity", { failure, status: "error", type: "error" })
 
   const liveState = await liveHub.readThreadState("thread-parity")
   const liveSnapshot = liveHub.readLiveThreadDataSnapshot("thread-parity", persistedBeforeFailure)
@@ -196,6 +197,57 @@ test("AgentThreadRunner preserves identical failure facts across live snapshot, 
   assert.deepEqual((await hydratedHub.readThreadState("thread-parity-hydrated")).error, failure)
 })
 
+test("AgentThreadRunner projects terminal persistence failure as reload-required recovery", async () => {
+  const persisted = createThreadData({ runId: "run-recovery" })
+  const hub = new AgentThreadRunner(createThreadsService(persisted))
+  const replayEvents: AgentThreadEvent[] = []
+  await hub.prepareInvoke("thread-recovery", { content: "run", id: "user-recovery" })
+  await hub.handlePayload("thread-recovery", { runId: "run-recovery", type: "run_started" })
+  await hub.connectThreadEvents(
+    "thread-recovery",
+    "recovery-replay",
+    (batch) => replayEvents.push(...batch.events),
+    { fromRevision: 0 }
+  )
+  await hub.handlePayload("thread-recovery", {
+    recovery: {
+      action: "app_restart_required",
+      reason: "terminal_persistence_failed",
+      schemaVersion: 1
+    },
+    type: "recovery_required"
+  })
+
+  const state = await hub.readThreadState("thread-recovery")
+  const snapshot = hub.readLiveThreadDataSnapshot("thread-recovery", persisted)
+  const terminal = replayEvents.findLast((event) => event.type === "run.finished")
+  assert.equal(state.status, "recovery_required")
+  assert.equal(state.activeRun, null)
+  assert.equal(state.error, null)
+  assert.equal(snapshot?.thread.status, "error")
+  assert.equal(snapshot?.runState.error, null)
+  assert.equal(terminal?.type, "run.finished")
+  if (terminal?.type === "run.finished") {
+    assert.equal(terminal.status, "recovery_required")
+    assert.equal(terminal.error, null)
+  }
+})
+
+test("AgentThreadRunner rejects malformed terminal recovery payloads", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+  await assert.rejects(
+    hub.handlePayload("thread-invalid-recovery", {
+      recovery: {
+        action: "app_restart_required",
+        reason: "terminal_persistence_failed",
+        schemaVersion: 2
+      } as never,
+      type: "recovery_required"
+    }),
+    /invalid run recovery payload/
+  )
+})
+
 test("AgentThreadRunner keeps cancellation terminal state separate from failure", async () => {
   const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
   await hub.prepareInvoke("thread-cancelled", { content: "run", id: "user-cancelled" })
@@ -213,6 +265,7 @@ test("AgentThreadRunner keeps cancellation terminal state separate from failure"
       schemaVersion: 1,
       status: 500
     },
+    status: "error",
     type: "error"
   })
   const afterLateFailure = await hub.readThreadState("thread-cancelled")
@@ -239,7 +292,11 @@ test("AgentThreadRunner keeps pending approval interrupted when its execution at
     schemaVersion: 1,
     status: 503
   }
-  await hub.handlePayload("thread-pending-failure", { failure, type: "error" })
+  await hub.handlePayload("thread-pending-failure", {
+    failure,
+    status: "interrupted",
+    type: "error"
+  })
 
   const state = await hub.readThreadState("thread-pending-failure")
   assert.equal(state.status, "interrupted")
@@ -251,6 +308,41 @@ test("AgentThreadRunner keeps pending approval interrupted when its execution at
   const afterLateCancellation = await hub.readThreadState("thread-pending-failure")
   assert.equal(afterLateCancellation.status, "interrupted")
   assert.deepEqual(afterLateCancellation.error, failure)
+})
+
+test("AgentThreadRunner rejects interrupted durable failure without pending approval", async () => {
+  const failure: AgentRunFailure = {
+    ipcCode: "INTERNAL",
+    kind: "unknown",
+    message: "checkpoint-owned execution failed",
+    schemaVersion: 1,
+    status: 500
+  }
+  const hub = new AgentThreadRunner(
+    createThreadsService(createThreadData({ runId: "run-interrupted-no-approval" }))
+  )
+  await hub.prepareInvoke("thread-interrupted-no-approval", {
+    content: "run",
+    id: "user-interrupted-no-approval"
+  })
+  await hub.handlePayload("thread-interrupted-no-approval", {
+    runId: "run-interrupted-no-approval",
+    type: "run_started"
+  })
+  await assert.rejects(
+    hub.handlePayload("thread-interrupted-no-approval", {
+      failure,
+      status: "interrupted",
+      type: "error"
+    }),
+    /without a pending approval/
+  )
+
+  const state = await hub.readThreadState("thread-interrupted-no-approval")
+  assert.equal(state.status, "running")
+  assert.equal(state.error, null)
+  assert.equal(state.pendingApproval, null)
+  assert.equal(state.activeRun?.runId, "run-interrupted-no-approval")
 })
 
 test("AgentThreadRunner keeps a pending approval interrupt authoritative over late failure", async () => {
@@ -274,6 +366,7 @@ test("AgentThreadRunner keeps a pending approval interrupt authoritative over la
       schemaVersion: 1,
       status: 500
     },
+    status: "error",
     type: "error"
   })
 
@@ -311,6 +404,7 @@ test("AgentThreadRunner rejects an invalid failure wire payload", async () => {
         schemaVersion: 2,
         status: 500
       } as unknown as AgentRunFailure,
+      status: "error",
       type: "error"
     }),
     /invalid agent run failure payload/
@@ -582,6 +676,7 @@ test("AgentThreadRunner preserves pending approval while resume is waiting for s
       schemaVersion: 1,
       status: 500
     },
+    status: "interrupted",
     type: "error"
   })
 
@@ -712,6 +807,7 @@ test("AgentThreadRunner hydrates an empty thread only once", async () => {
           error: null,
           forkState: { canFork: true },
           pendingApproval: null,
+          recovery: null,
           runId: null,
           todos: [],
           workspacePath: null
@@ -737,6 +833,7 @@ test("AgentThreadRunner hydrates an empty thread only once", async () => {
           error: null,
           forkState: { canFork: true },
           pendingApproval: null,
+          recovery: null,
           runId: null,
           todos: [],
           workspacePath: null

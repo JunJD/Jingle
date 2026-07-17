@@ -5,6 +5,7 @@ import type { ExtensionToolCallPresentation, ToolCallDisplay } from "./tool-pres
 import type { ThreadWorkspaceKind } from "./thread-workspace"
 import type { AgentContextInclusion } from "./jingle-memory"
 import type { AgentRunFailure } from "./agent-run-failure"
+import type { AgentRunRecoveryRequired } from "./agent-run-recovery"
 import type { AgentFollowUpMode } from "./agent-follow-up"
 import type { ThreadWorkflowCreateInput } from "./thread-workflow"
 import type { JingleTodo } from "@jingle/agent-client"
@@ -373,6 +374,7 @@ export interface AgentThreadRunStateSnapshot {
   error: AgentRunFailure | null
   forkState: ThreadForkState
   pendingApproval: HITLRequest | null
+  recovery: AgentRunRecoveryRequired | null
   runId: string | null
   todos: Todo[]
   workspacePath: string | null

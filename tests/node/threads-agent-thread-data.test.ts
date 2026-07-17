@@ -92,6 +92,7 @@ function createThreadDataSnapshot(input: {
       error: null,
       forkState: { canFork: true },
       pendingApproval: null,
+      recovery: null,
       runId: null,
       todos: [],
       workspacePath: "/tmp/demo-workspace"

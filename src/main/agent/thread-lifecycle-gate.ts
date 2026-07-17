@@ -37,12 +37,16 @@ export type ThreadRunClaim =
       status: "running"
     }
   | {
+      status: "recovery_required"
+    }
+  | {
       status: "shutting_down"
     }
 
 export class ThreadLifecycleGate {
   private readonly deletions = new Map<string, Promise<void>>()
   private readonly runs = new Map<string, ActiveThreadRun>()
+  private readonly recoveryRequired = new Set<string>()
   private readonly transitions = new Map<string, Promise<void>>()
   private shutdownPromise: Promise<void> | null = null
   private shuttingDown = false
@@ -56,6 +60,10 @@ export class ThreadLifecycleGate {
       return { status: "deleting" }
     }
 
+    if (this.recoveryRequired.has(threadId)) {
+      return { status: "recovery_required" }
+    }
+
     return this.runTransition(threadId, async () => {
       if (this.shuttingDown) {
         return { status: "shutting_down" }
@@ -63,6 +71,10 @@ export class ThreadLifecycleGate {
 
       if (this.deletions.has(threadId)) {
         return { status: "deleting" }
+      }
+
+      if (this.recoveryRequired.has(threadId)) {
+        return { status: "recovery_required" }
       }
 
       if (this.runs.has(threadId)) {
@@ -92,6 +104,14 @@ export class ThreadLifecycleGate {
         status: "accepted"
       }
     })
+  }
+
+  isRecoveryRequired(threadId: string): boolean {
+    return this.recoveryRequired.has(threadId)
+  }
+
+  requireRecovery(threadId: string): void {
+    this.recoveryRequired.add(threadId)
   }
 
   shutdown(): Promise<void> {

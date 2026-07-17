@@ -51,6 +51,7 @@ test("agent runtime snapshot reducer applies messages, metadata, and non-runtime
       error: null,
       forkState: { canFork: true },
       pendingApproval: null,
+      recovery: null,
       runId: "run-1",
       todos: [],
       workspacePath: "/tmp/demo"
@@ -114,6 +115,7 @@ test("agent runtime snapshot reducer hydrates context inclusions from run state"
       error: null,
       forkState: { canFork: true },
       pendingApproval: null,
+      recovery: null,
       runId: "run-1",
       todos: [],
       workspacePath: null
@@ -164,6 +166,7 @@ test("agent runtime snapshot reducer does not produce runtime facts from snapsho
       error: null,
       forkState: { canFork: true },
       pendingApproval: null,
+      recovery: null,
       runId: "snapshot-run",
       todos: [
         {
@@ -211,6 +214,7 @@ test("agent runtime snapshot reducer clears missing metadata instead of keeping 
       error: null,
       forkState: { canFork: true },
       pendingApproval: null,
+      recovery: null,
       runId: null,
       todos: [],
       workspacePath: null
@@ -246,6 +250,7 @@ test("agent runtime snapshot reducer applies only metadata from busy snapshots",
       error: null,
       forkState: { canFork: false, reason: "busy" },
       pendingApproval: null,
+      recovery: null,
       runId: "run-1",
       todos: [],
       workspacePath: "/tmp/busy"
@@ -292,6 +297,7 @@ test("agent runtime snapshot reducer hydrates interrupted approval snapshots", (
       contextInclusions: [],
       error: null,
       forkState: { canFork: false, reason: "pending_hitl" },
+      recovery: null,
       pendingApproval: {
         allowed_decisions: ["approve", "user_declined", "corrected"],
         id: "hitl:thread-1:run-1:tool-1",

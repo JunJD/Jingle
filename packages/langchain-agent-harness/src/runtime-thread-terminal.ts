@@ -22,7 +22,7 @@ export type RuntimeThreadTerminalIntent<TContextInclusion> =
 export type RuntimeThreadTerminalResult<TContextInclusion> =
   | { status: "aborted" }
   | { status: "cancelled" }
-  | { error: unknown; status: "failed" }
+  | { durableFailure: unknown; error: unknown; status: "failed" }
   | {
       completion: CompleteJingleAgentRunResult<TContextInclusion>
       status: "completed"
@@ -54,6 +54,81 @@ export interface RuntimeThreadIgnoredTerminalDiagnostic {
   ignoredStatus: RuntimeThreadTerminalStatus
   runId: string
   winnerStatus: RuntimeThreadTerminalStatus
+}
+
+export class RuntimeThreadDurableFailureError extends Error {
+  readonly durableFailure: unknown
+  readonly runId: string
+  readonly type = "runtime_thread_durable_failure" as const
+
+  constructor(input: { cause: unknown; durableFailure: unknown; runId: string }) {
+    super(
+      input.cause instanceof Error
+        ? input.cause.message
+        : "The runtime run failed after committing its durable failure fact.",
+      { cause: input.cause }
+    )
+    this.name = "RuntimeThreadDurableFailureError"
+    this.durableFailure = input.durableFailure
+    this.runId = input.runId
+  }
+}
+
+export class RuntimeThreadAdmissionPersistenceError extends AggregateError {
+  readonly runId: string
+  readonly type = "runtime_thread_admission_persistence_failure" as const
+
+  constructor(input: { errors: unknown[]; runId: string }) {
+    super(
+      input.errors,
+      `Run "${input.runId}" admission succeeded but its failure state could not be persisted.`
+    )
+    this.name = "RuntimeThreadAdmissionPersistenceError"
+    this.runId = input.runId
+  }
+}
+
+const MISSING_RUNTIME_ERROR_FIELD = Symbol("missing-runtime-error-field")
+
+function readOwnRuntimeErrorField(value: object, key: PropertyKey): unknown {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    return descriptor && "value" in descriptor ? descriptor.value : MISSING_RUNTIME_ERROR_FIELD
+  } catch {
+    return MISSING_RUNTIME_ERROR_FIELD
+  }
+}
+
+export function isRuntimeThreadDurableFailureError(
+  value: unknown
+): value is RuntimeThreadDurableFailureError {
+  try {
+    return (
+      value instanceof Error &&
+      readOwnRuntimeErrorField(value, "name") === "RuntimeThreadDurableFailureError" &&
+      readOwnRuntimeErrorField(value, "type") === "runtime_thread_durable_failure" &&
+      typeof readOwnRuntimeErrorField(value, "runId") === "string" &&
+      readOwnRuntimeErrorField(value, "durableFailure") !== MISSING_RUNTIME_ERROR_FIELD
+    )
+  } catch {
+    return false
+  }
+}
+
+export function isRuntimeThreadAdmissionPersistenceError(
+  value: unknown
+): value is RuntimeThreadAdmissionPersistenceError {
+  try {
+    return (
+      value instanceof AggregateError &&
+      readOwnRuntimeErrorField(value, "name") === "RuntimeThreadAdmissionPersistenceError" &&
+      readOwnRuntimeErrorField(value, "type") === "runtime_thread_admission_persistence_failure" &&
+      typeof readOwnRuntimeErrorField(value, "runId") === "string" &&
+      Array.isArray(readOwnRuntimeErrorField(value, "errors"))
+    )
+  } catch {
+    return false
+  }
 }
 
 export function createRuntimeThreadTerminalReferee<TContextInclusion>(input: {
@@ -152,10 +227,14 @@ async function commitRuntimeThreadTerminal<TContextInclusion>(input: {
 
   if (!settlement.ok) {
     if (persistence.value.status === "failed") {
-      throw new AggregateError(
-        [persistence.value.error, settlement.error],
-        `Run "${input.start.runId}" failed and ownership cleanup also failed.`
-      )
+      throw new RuntimeThreadDurableFailureError({
+        cause: new AggregateError(
+          [persistence.value.error, settlement.error],
+          `Run "${input.start.runId}" failed and ownership cleanup also failed.`
+        ),
+        durableFailure: persistence.value.durableFailure,
+        runId: input.start.runId
+      })
     }
     throw settlement.error
   }
@@ -182,8 +261,8 @@ async function persistRuntimeThreadTerminal<TContextInclusion>(
   }
   if (intent.status === "failed") {
     try {
-      await lifecycle.failRun({ error: intent.error, runId: start.runId })
-      return intent
+      const durableFailure = await lifecycle.failRun({ error: intent.error, runId: start.runId })
+      return { ...intent, durableFailure }
     } catch (persistenceError) {
       throw new AggregateError(
         [intent.error, persistenceError],
@@ -203,8 +282,8 @@ async function persistRuntimeThreadTerminal<TContextInclusion>(
     return { completion, status: "completed" }
   } catch (completionError) {
     try {
-      await lifecycle.failRun({ error: completionError, runId: start.runId })
-      return { error: completionError, status: "failed" }
+      const durableFailure = await lifecycle.failRun({ error: completionError, runId: start.runId })
+      return { durableFailure, error: completionError, status: "failed" }
     } catch (persistenceError) {
       throw new AggregateError(
         [completionError, persistenceError],

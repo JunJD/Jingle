@@ -9,12 +9,24 @@ import { DEFAULT_MODELS } from "@shared/models"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
 import { deriveThreadBootstrapState } from "@shared/agent-thread-bootstrap"
 import type { AgentThreadDataSnapshot } from "@shared/app-types"
+import { parseAgentRunRecoveryRequired } from "@shared/agent-run-recovery"
 import { projectMessages } from "./message-projection"
 import type { ThreadState } from "./thread-store-core"
 
 function toRuntimeSnapshotStatus(
-  status: AgentThreadDataSnapshot["thread"]["status"]
+  snapshot: AgentThreadDataSnapshot
 ): ThreadState["agent"]["status"] {
+  const recovery = snapshot.runState.recovery
+    ? parseAgentRunRecoveryRequired(snapshot.runState.recovery)
+    : null
+  if (snapshot.runState.recovery && !recovery) {
+    throw new Error("Agent thread snapshot contains an invalid run recovery fact.")
+  }
+  if (recovery) {
+    return "recovery_required"
+  }
+
+  const status = snapshot.thread.status
   if (status === "error") {
     return "error"
   }
@@ -45,7 +57,7 @@ export function applyRuntimeSnapshotToThreadState(
       contextInclusions: snapshot.runState.contextInclusions,
       error: snapshot.runState.error,
       messagesPage: snapshot.messages.messages,
-      sourceStatus: toRuntimeSnapshotStatus(snapshot.thread.status),
+      sourceStatus: toRuntimeSnapshotStatus(snapshot),
       threadStatus: snapshot.thread.status
     }
   })

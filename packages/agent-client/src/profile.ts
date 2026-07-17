@@ -1,8 +1,14 @@
-export type JingleRuntimeStatus = "cancelled" | "error" | "idle" | "interrupted" | "running"
+export type JingleRuntimeStatus =
+  | "cancelled"
+  | "error"
+  | "idle"
+  | "interrupted"
+  | "recovery_required"
+  | "running"
 
 export type JingleRunStatus = "running" | "waiting_approval"
 
-export type JingleRunFinishStatus = "cancelled" | "completed" | "failed"
+export type JingleRunFinishStatus = "cancelled" | "completed" | "failed" | "recovery_required"
 
 export type JingleRunPhase = "thinking" | "streaming" | "tool_running" | "waiting_tool_result"
 

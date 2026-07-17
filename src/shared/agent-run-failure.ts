@@ -19,6 +19,13 @@ export interface AgentRunFailure {
   details?: string[]
 }
 
+export type AgentRunFailureTerminalStatus = "error" | "interrupted"
+
+export interface AgentRunFailureTerminalFact {
+  failure: AgentRunFailure
+  status: AgentRunFailureTerminalStatus
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -77,6 +84,20 @@ export function parseAgentRunFailure(value: unknown): AgentRunFailure | null {
     status,
     ...(details ? { details } : {})
   }
+}
+
+export function parseAgentRunFailureTerminalFact(
+  value: unknown
+): AgentRunFailureTerminalFact | null {
+  if (
+    !isRecord(value) ||
+    Object.keys(value).some((key) => key !== "failure" && key !== "status") ||
+    (value.status !== "error" && value.status !== "interrupted")
+  ) {
+    return null
+  }
+  const failure = parseAgentRunFailure(value.failure)
+  return failure ? { failure, status: value.status } : null
 }
 
 export function encodeAgentRunFailure(failure: AgentRunFailure): Record<string, unknown> {

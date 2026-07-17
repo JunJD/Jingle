@@ -121,3 +121,9 @@ export type {
   RuntimeThreadRunResult
 } from "./runtime-thread"
 export { RUNTIME_THREAD_BOUNDARY } from "./runtime-thread"
+export {
+  isRuntimeThreadAdmissionPersistenceError,
+  isRuntimeThreadDurableFailureError,
+  RuntimeThreadAdmissionPersistenceError,
+  RuntimeThreadDurableFailureError
+} from "./runtime-thread-terminal"

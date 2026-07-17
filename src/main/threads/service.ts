@@ -80,6 +80,10 @@ import type {
   ThreadUpdateParams
 } from "../types"
 
+function isFailureBearingRunStatus(status: string | null): boolean {
+  return status === "error" || status === "interrupted"
+}
+
 function mapThreadRowToThread(row: ThreadRow, fallbackTitle?: string): Thread {
   return {
     thread_id: row.thread_id,
@@ -306,12 +310,14 @@ export class ThreadsService {
       } catch {
         metadata = null
       }
+      const canHydrateFailure = isFailureBearingRunStatus(latestRun.status)
       if (metadata && Object.hasOwn(metadata, AGENT_RUN_FAILURE_METADATA_KEY)) {
-        error = parseAgentRunFailure(metadata[AGENT_RUN_FAILURE_METADATA_KEY])
-        if (!error) {
+        const canonicalFailure = parseAgentRunFailure(metadata[AGENT_RUN_FAILURE_METADATA_KEY])
+        if (!canonicalFailure) {
           throw new Error(`Run ${latestRun.run_id} has an invalid agent run failure.`)
         }
-      } else if (metadata && typeof metadata.error === "string") {
+        error = canHydrateFailure ? canonicalFailure : null
+      } else if (canHydrateFailure && metadata && typeof metadata.error === "string") {
         error = createLegacyAgentRunFailure(metadata.error)
       }
     }
@@ -704,6 +710,7 @@ export class ThreadsService {
               }),
         forkState: facts.forkState,
         pendingApproval: facts.pendingApproval,
+        recovery: null,
         todos: facts.todos,
         error: latestRun.error,
         runId: latestRun.runId,

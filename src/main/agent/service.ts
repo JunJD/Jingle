@@ -19,8 +19,16 @@ import {
 import { resolveNativeExtensionConnection } from "../native-extensions/connection-resolver"
 import { resolveNativeExtensionExecutionContext } from "../native-extensions/execution-context"
 import { updateRunExtensionAiCapabilitiesSnapshot } from "./persistence"
-import { isAbortLikeError, isModelAuthenticationError, toAgentRunFailure } from "./errors"
-import type { AgentRunFailure } from "@shared/agent-run-failure"
+import { isAbortLikeError } from "./errors"
+import {
+  parseAgentRunFailureTerminalFact,
+  type AgentRunFailure,
+  type AgentRunFailureTerminalStatus
+} from "@shared/agent-run-failure"
+import {
+  createAgentRunRecoveryRequired,
+  type AgentRunRecoveryRequired
+} from "@shared/agent-run-recovery"
 import { createAgentRunHandle } from "./runtime"
 import { createAgentRuntime } from "./runtime-assembly"
 import { createExtensionAiRuntime } from "./extension-ai-runtime"
@@ -31,7 +39,11 @@ import {
   type AgentRunSteeringBuffer,
   type AppliedAgentSteer
 } from "@jingle/langchain-agent-harness/transitional"
-import type { RuntimeThreadRun } from "@jingle/langchain-agent-harness"
+import {
+  isRuntimeThreadAdmissionPersistenceError,
+  isRuntimeThreadDurableFailureError,
+  type RuntimeThreadRun
+} from "@jingle/langchain-agent-harness"
 import type { JingleAgentSteerResult } from "@jingle/agent-client"
 import { runtimeUsesCheckpointPersistence } from "../checkpointer/runtime-checkpointer-manager"
 import {
@@ -44,6 +56,7 @@ import { getRun } from "../db/runs"
 import { getThread } from "../db/threads"
 import { listProjectedThreadMessages } from "../db/message-state"
 import { buildIpcErrorPayload, JingleIpcError } from "../ipc/error"
+import { diagnosticsGraph } from "../diagnostics/instance"
 import { JingleMemoryService } from "../jingle-memory/service"
 import { WorkspaceService } from "../workspace/service"
 import { readRunPermissionModeSnapshot, readThreadPermissionMode } from "./permission-mode"
@@ -77,7 +90,9 @@ export type AgentStreamPayload =
   | {
       type: "error"
       failure: AgentRunFailure
+      status: AgentRunFailureTerminalStatus
     }
+  | { type: "recovery_required"; recovery: AgentRunRecoveryRequired }
   | {
       type: "run_rejected"
       error: string
@@ -433,26 +448,112 @@ async function resolveReportableRunError(input: {
   }
 
   try {
-    return (await input.run.fail(input.error)) ? input.error : null
+    return await input.run.fail(input.error)
   } catch (settlementError) {
     return settlementError
   }
 }
 
 function reportAgentRuntimeError(input: {
-  channel: AgentRunChannel
   error: unknown
   label: string
+  markRecoveryRequired: () => void
+  runId: string
   sink: AgentStreamSink
-}): void {
-  const failure = toAgentRunFailure(input.channel, input.error)
-  if (!isModelAuthenticationError(input.error)) {
-    console.error(input.label, input.error)
+  threadId: string
+}): boolean {
+  if (!isRuntimeThreadDurableFailureError(input.error)) {
+    recordTerminalPersistenceFailure(input)
+    input.markRecoveryRequired()
+    input.sink.send({ recovery: createAgentRunRecoveryRequired(), type: "recovery_required" })
+    return true
+  }
+
+  const terminal = parseAgentRunFailureTerminalFact(input.error.durableFailure)
+  if (!terminal) {
+    recordTerminalPersistenceFailure(input)
+    input.markRecoveryRequired()
+    input.sink.send({ recovery: createAgentRunRecoveryRequired(), type: "recovery_required" })
+    return true
+  }
+
+  const { failure, status } = terminal
+  if (failure.kind !== "authentication") {
+    console.error(input.label, input.error.cause ?? input.error)
   }
   input.sink.send({
     type: "error",
-    failure
+    failure,
+    status
   })
+  return true
+}
+
+function readDurableAdmissionRunId(error: unknown): string | null {
+  return isRuntimeThreadDurableFailureError(error) ||
+    isRuntimeThreadAdmissionPersistenceError(error)
+    ? error.runId
+    : null
+}
+
+function recordTerminalPersistenceFailure(input: {
+  error: unknown
+  runId: string
+  threadId: string
+}): void {
+  diagnosticsGraph.capture({
+    component: "agent-service",
+    dimensionEntries: [
+      {
+        key: "errorType",
+        value: readBoundedDiagnosticErrorType(input.error)
+      },
+      {
+        key: "ipcCode",
+        value: readBoundedDiagnosticIpcCode(input.error)
+      }
+    ],
+    eventCode: "agent.terminal_persistence_failed",
+    fingerprint: "agent.terminal_persistence_failed",
+    level: "error",
+    operation: "persist-run-terminal",
+    recoverable: true,
+    refs: [
+      { id: input.threadId, kind: "agent-thread" },
+      { id: input.runId, kind: "agent-run" }
+    ],
+    stateImpact: "terminal-state-unknown-app-restart-required",
+    summary: "Agent terminal state persistence failed; app restart is required."
+  })
+}
+
+function readOwnStringField(value: object, key: PropertyKey): string | null {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    return descriptor && "value" in descriptor && typeof descriptor.value === "string"
+      ? descriptor.value
+      : null
+  } catch {
+    return null
+  }
+}
+
+function readBoundedDiagnosticErrorType(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return typeof error
+  }
+  const name = readOwnStringField(error, "name")
+  if (name && /^[A-Za-z][A-Za-z0-9_.:-]{0,79}$/.test(name)) {
+    return name
+  }
+  return error instanceof AggregateError ? "AggregateError" : "Error"
+}
+
+function readBoundedDiagnosticIpcCode(error: unknown): string {
+  if (!(error instanceof JingleIpcError)) {
+    return "INTERNAL"
+  }
+  return readOwnStringField(error, "code") ?? "INTERNAL"
 }
 
 function cloneStreamDataForIpc<T>(value: T): T {
@@ -581,6 +682,18 @@ export class AgentService {
     })
   }
 
+  private sendThreadRecoveryRequiredError(
+    channel: AgentRunChannel,
+    sink: AgentStreamSink
+  ): AgentRunRejection {
+    return this.rejectThreadRun({
+      channel,
+      code: "UNAVAILABLE",
+      message: "Run state recovery requires restarting Jingle before another command.",
+      sink
+    })
+  }
+
   private async claimThreadRun(
     threadId: string,
     channel: AgentRunChannel,
@@ -608,6 +721,13 @@ export class AgentService {
       return {
         lease: null,
         outcome: this.sendThreadRunActiveError(channel, sink)
+      }
+    }
+
+    if (claim.status === "recovery_required") {
+      return {
+        lease: null,
+        outcome: this.sendThreadRecoveryRequiredError(channel, sink)
       }
     }
 
@@ -693,6 +813,10 @@ export class AgentService {
     return this.dispatchRun("agent:resume", (reportOutcome) => {
       return this.resume(params, sink, { ...options, onCommandOutcome: reportOutcome })
     })
+  }
+
+  isRecoveryRequired(threadId: string): boolean {
+    return this.threadLifecycleGate.isRecoveryRequired(threadId)
   }
 
   async shutdown(): Promise<void> {
@@ -985,12 +1109,31 @@ export class AgentService {
         run: activeRun.run,
         signal: abortController.signal
       })
-      if (reportableError && commandOutcome.wasAccepted()) {
-        didReportRuntimeError = true
-        reportAgentRuntimeError({
-          channel,
+      const durableAdmissionRunId = readDurableAdmissionRunId(reportableError)
+      if (
+        reportableError &&
+        durableAdmissionRunId &&
+        isRuntimeThreadAdmissionPersistenceError(reportableError) &&
+        !commandOutcome.hasReported()
+      ) {
+        recordTerminalPersistenceFailure({
+          error: reportableError,
+          runId: durableAdmissionRunId,
+          threadId
+        })
+        this.threadLifecycleGate.requireRecovery(threadId)
+        commandOutcome.report(this.sendThreadRecoveryRequiredError(channel, sink))
+        commandRejectionError = null
+      } else if (reportableError && commandOutcome.wasAccepted()) {
+        if (!activeRun.run) {
+          throw new Error("[Agent] Accepted run is missing its runtime handle.")
+        }
+        didReportRuntimeError = reportAgentRuntimeError({
           error: reportableError,
           label: "[Agent] Error:",
+          markRecoveryRequired: () => this.threadLifecycleGate.requireRecovery(threadId),
+          runId: activeRun.run.runId,
+          threadId,
           sink
         })
       }
@@ -1012,9 +1155,11 @@ export class AgentService {
           } catch (error) {
             if (!didReportRuntimeError) {
               reportAgentRuntimeError({
-                channel,
                 error,
                 label: "[Agent] Abort persistence error:",
+                markRecoveryRequired: () => this.threadLifecycleGate.requireRecovery(threadId),
+                runId: activeRun.run.runId,
+                threadId,
                 sink
               })
             }
@@ -1065,6 +1210,7 @@ export class AgentService {
     })
     let commandRejectionError: unknown = null
     let didReportRuntimeError = false
+    let durableResumeDecision: ResolvedHitlDecision | null = null
     let runExecutionStarted = false
     this.activeRuns.set(threadId, activeRun)
     options?.onCoreAdmitted?.()
@@ -1207,6 +1353,7 @@ export class AgentService {
               tool_call_id: resumeTarget.toolCallId,
               type: decision.type
             }
+      durableResumeDecision = resolvedHitlDecision
       const run = await runHandle.thread.startResume({
         aiCapabilities: runtimeAiCapabilities,
         decision: resolvedHitlDecision,
@@ -1305,12 +1452,33 @@ export class AgentService {
         run: activeRun.run,
         signal: abortController.signal
       })
-      if (reportableError && commandOutcome.wasAccepted()) {
-        didReportRuntimeError = true
-        reportAgentRuntimeError({
-          channel: "agent:resume",
+      const durableAdmissionRunId = readDurableAdmissionRunId(reportableError)
+      if (reportableError && durableAdmissionRunId && !commandOutcome.hasReported()) {
+        if (!durableResumeDecision) {
+          throw new Error("[Agent] Durable resume admission is missing its committed decision.")
+        }
+        options?.onRunAccepted?.(durableResumeDecision)
+        sink.send({ type: "run_started", runId: durableAdmissionRunId })
+        commandOutcome.report(claim.outcome)
+        commandRejectionError = null
+        didReportRuntimeError = reportAgentRuntimeError({
+          error: reportableError,
+          label: "[Agent] Resume admission error:",
+          markRecoveryRequired: () => this.threadLifecycleGate.requireRecovery(threadId),
+          runId: durableAdmissionRunId,
+          threadId,
+          sink
+        })
+      } else if (reportableError && commandOutcome.wasAccepted()) {
+        if (!activeRun.run) {
+          throw new Error("[Agent] Accepted resumed run is missing its runtime handle.")
+        }
+        didReportRuntimeError = reportAgentRuntimeError({
           error: reportableError,
           label: "[Agent] Resume error:",
+          markRecoveryRequired: () => this.threadLifecycleGate.requireRecovery(threadId),
+          runId: activeRun.run.runId,
+          threadId,
           sink
         })
       }
@@ -1332,9 +1500,11 @@ export class AgentService {
           } catch (error) {
             if (!didReportRuntimeError) {
               reportAgentRuntimeError({
-                channel: "agent:resume",
                 error,
                 label: "[Agent] Resume abort persistence error:",
+                markRecoveryRequired: () => this.threadLifecycleGate.requireRecovery(threadId),
+                runId: activeRun.run.runId,
+                threadId,
                 sink
               })
             }

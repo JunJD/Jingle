@@ -3,6 +3,7 @@ import test, { mock } from "node:test"
 import type { IpcMain, IpcMainInvokeEvent, WebContents } from "electron"
 import { AgentController } from "../../src/main/agent/controller"
 import { parseAgentConnectThreadEventsResult } from "../../src/shared/agent-thread-contract"
+import { parseSerializedIpcErrorMessage } from "../../src/shared/ipc-error"
 
 type IpcHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
 
@@ -404,6 +405,7 @@ test("AgentController distinguishes accepted steering from stale steering fallba
 test("AgentController keeps queued steer rejection nonterminal and retains the queue item", async () => {
   const warnings: Array<{ message: string; metadata: Record<string, unknown> }> = []
   const service = {
+    isRecoveryRequired: () => false,
     steerActiveRun: () => ({
       reason: "active_turn_mismatch" as const,
       type: "rejected" as const
@@ -681,6 +683,64 @@ test("AgentController rejects every main-window command targeting another thread
   }
 })
 
+test("AgentController blocks follow-up mutations while terminal recovery is required", async () => {
+  const unexpectedOwnerCall = (): never => {
+    throw new Error("Recovery-blocked follow-up reached the runtime owner.")
+  }
+  const controller = new AgentController(
+    new Proxy(
+      { isRecoveryRequired: () => true },
+      {
+        get: (target, property, receiver) =>
+          property === "isRecoveryRequired"
+            ? Reflect.get(target, property, receiver)
+            : unexpectedOwnerCall
+      }
+    ) as unknown as ConstructorParameters<typeof AgentController>[0],
+    new Proxy({}, { get: () => unexpectedOwnerCall }) as ConstructorParameters<
+      typeof AgentController
+    >[1],
+    { error: () => undefined, warn: () => undefined },
+    launcherSenderIdentity
+  )
+  const ipcMain = new FakeIpcMain()
+  controller.register(ipcMain as unknown as IpcMain)
+  const threadId = "thread-recovery-required"
+  const cases: ReadonlyArray<{ channel: string; payload: unknown }> = [
+    {
+      channel: "agent:enqueueFollowUp",
+      payload: { messageInput: { refs: [], text: "queued" }, threadId }
+    },
+    {
+      channel: "agent:restoreFollowUp",
+      payload: {
+        item: {
+          messageInput: { refs: [], text: "restore" },
+          requestId: "follow-up-restore",
+          text: "restore"
+        },
+        threadId
+      }
+    },
+    {
+      channel: "agent:takeFollowUp",
+      payload: { requestId: "follow-up-take", threadId }
+    },
+    {
+      channel: "agent:steerFollowUp",
+      payload: { requestId: "follow-up-steer", threadId }
+    }
+  ]
+
+  for (const testCase of cases) {
+    await assert.rejects(ipcMain.invoke(testCase.channel, testCase.payload), (error) => {
+      assert.ok(error instanceof Error)
+      assert.equal(parseSerializedIpcErrorMessage(error.message)?.code, "UNAVAILABLE")
+      return true
+    })
+  }
+})
+
 test("AgentController requires a subscription token for thread event disconnect", async () => {
   const controller = new AgentController(
     {} as ConstructorParameters<typeof AgentController>[0],
@@ -754,7 +814,10 @@ test("AgentController restores Launcher events after a Main window changes threa
   await ipcMain.invokeFrom(pinnedEvent, "agent:connectThreadEvents", {
     threadId: "thread-b"
   })
-  assert.equal(disconnected.some((key) => key.startsWith("1:thread-a:")), false)
+  assert.equal(
+    disconnected.some((key) => key.startsWith("1:thread-a:")),
+    false
+  )
   assert.equal(disconnected.includes(pinnedThreadAKey), true)
   assert.equal(listeners.has(launcherThreadAKey), true)
   assert.equal(listeners.has(pinnedThreadAKey), false)
@@ -1045,8 +1108,12 @@ test("AgentController keeps Launcher events active until a Main subscription con
 test("AgentController preserves a pending Launcher subscription through Main handoff", async () => {
   let launcherConnectStarted!: () => void
   let releaseLauncherConnect!: () => void
-  const launcherConnectEntered = new Promise<void>((resolve) => { launcherConnectStarted = resolve })
-  const launcherConnectGate = new Promise<void>((resolve) => { releaseLauncherConnect = resolve })
+  const launcherConnectEntered = new Promise<void>((resolve) => {
+    launcherConnectStarted = resolve
+  })
+  const launcherConnectGate = new Promise<void>((resolve) => {
+    releaseLauncherConnect = resolve
+  })
   const listeners = new Map<string, (batch: never) => void>()
   const runner = {
     connectThreadEvents: async (

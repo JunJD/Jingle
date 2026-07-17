@@ -23,8 +23,9 @@ import {
 } from "../db/agent-events"
 import { serializeJsonValue } from "../db/utils"
 import { getThread, updateThread } from "../db/threads"
-import { hasPendingHitlRequestForRun, parsePersistedHitlAllowedDecisions } from "../db/hitl"
+import { parsePersistedHitlAllowedDecisions } from "../db/hitl"
 import { getCheckpointer } from "../checkpointer/runtime-checkpointer-manager"
+import { JingleIpcError } from "../ipc/error"
 import { extractThreadFactsFromCheckpoint } from "./runtime-state"
 import { listProjectedThreadMessages } from "../db/message-state"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
@@ -67,7 +68,6 @@ interface BeginAgentRunOptions {
 }
 
 const runMetadataUpdateQueues = new Map<string, Promise<unknown>>()
-
 export async function beginAgentRun(
   threadId: string,
   modelId: string | undefined,
@@ -227,9 +227,10 @@ function mergeRunFailureMetadata(
   run: ExistingRun,
   failure: AgentRunFailure
 ): Record<string, unknown> {
-  return mergeRunMetadata(run, {
+  return {
+    ...removeRunFailureMetadata(mergeRunMetadata(run, {})),
     [AGENT_RUN_FAILURE_METADATA_KEY]: encodeAgentRunFailure(failure)
-  })
+  }
 }
 
 export async function commitAgentResumeDecision(
@@ -341,10 +342,14 @@ export async function commitAgentResumeDecision(
       const terminalDecline = decision.type === "user_declined"
       const updatedRow = await transaction.run.update({
         data: {
+          metadata: serializeJsonValue(
+            terminalDecline
+              ? mergeRunMetadataWithoutFailure(existing)
+              : mergeRunResumeMetadata(existing, metadata)
+          ),
           ...(terminalDecline
             ? { status: "cancelled" }
             : {
-                metadata: serializeJsonValue(mergeRunResumeMetadata(existing, metadata)),
                 status: "running"
               }),
           updatedAt: now
@@ -468,34 +473,81 @@ export async function markRunFailed(
   threadId: string,
   runId: string,
   failure: AgentRunFailure
-): Promise<void> {
-  let syncedStatus: PersistedRunStatus | null = null
-  try {
-    syncedStatus = await syncRunFromLatestCheckpoint(threadId, runId)
-  } catch {
-    // Best effort: preserve the failure even if checkpoint sync fails.
-  }
+): Promise<"error" | "interrupted"> {
+  const terminal = await withRunMetadataLock(runId, async () => {
+    const prisma = getPrismaClient()
+    return prisma.$transaction(async (transaction) => {
+      const existingRow = await transaction.run.findUnique({ where: { runId } })
+      if (!existingRow) {
+        throw new Error(`[Agent] Cannot fail missing run "${runId}".`)
+      }
+      const existing = mapRunRow(existingRow)
+      if (existing.thread_id !== threadId) {
+        throw new Error(
+          `[Agent] Cannot fail run "${runId}" from thread "${threadId}"; actual thread is "${existing.thread_id}".`
+        )
+      }
+      const [pendingHitlCount, latestLifecycleEvent] = await Promise.all([
+        transaction.hitlRequest.count({
+          where: { runId, status: "pending", threadId }
+        }),
+        transaction.agentEvent.findFirst({
+          orderBy: { seq: "desc" },
+          select: { type: true },
+          where: {
+            runId,
+            type: { in: ["run.started", "run.resumed", "run.finished"] }
+          }
+        })
+      ])
+      const canCommitFailure =
+        existing.status === "pending" ||
+        existing.status === "running" ||
+        (existing.status === "interrupted" && pendingHitlCount > 0)
+      if (!canCommitFailure || latestLifecycleEvent?.type === "run.finished") {
+        throw new JingleIpcError({
+          channel: "agent:runtime",
+          code: "CONFLICT",
+          message: `[Agent] Cannot fail run "${runId}" from settled status "${existing.status ?? "unknown"}".`
+        })
+      }
 
-  if (syncedStatus === "interrupted" || (await hasPendingHitlRequestForRun(threadId, runId))) {
-    await updateRunMetadata(runId, {
-      status: "interrupted",
-      merge: (run) => mergeRunFailureMetadata(run, failure)
+      const status: "error" | "interrupted" = pendingHitlCount > 0 ? "interrupted" : "error"
+      const now = BigInt(Date.now())
+      const event = createRunFinishedEventInput({
+        error: failure,
+        runId,
+        status,
+        threadId
+      })
+      const runTransition = await transaction.run.updateMany({
+        data: {
+          metadata: serializeJsonValue(mergeRunFailureMetadata(existing, failure)),
+          status,
+          updatedAt: now
+        },
+        where: {
+          runId,
+          status: existing.status
+        }
+      })
+      if (runTransition.count !== 1) {
+        throw new JingleIpcError({
+          channel: "agent:runtime",
+          code: "CONFLICT",
+          message: `[Agent] Run "${runId}" reached another terminal state before failure commit.`
+        })
+      }
+      await transaction.thread.update({
+        data: { status, updatedAt: now },
+        where: { threadId }
+      })
+      await appendAgentEventsInTransaction(transaction, [event], { now })
+      return { event, status }
     })
-
-    await updateThread(threadId, {
-      status: "interrupted"
-    })
-    return
-  }
-
-  await updateRunMetadata(runId, {
-    status: "error",
-    merge: (run) => mergeRunFailureMetadata(run, failure)
   })
-
-  await updateThread(threadId, {
-    status: "error"
-  })
+  commitAgentEventProjectionState([terminal.event])
+  return terminal.status
 }
 
 export async function markRunCancelled(threadId: string, runId: string): Promise<void> {

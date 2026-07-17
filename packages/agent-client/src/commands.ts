@@ -7,6 +7,7 @@ import {
   type JingleAgentComposerMessageRef,
   type JingleAgentMessageContent
 } from "./message-content"
+import type { JingleRuntimeStatus } from "./profile"
 
 export type {
   JingleAgentComposerMessageInput,
@@ -216,6 +217,7 @@ export interface JingleAgentCommandState<TPermissionMode = string> {
   currentModel: string | null
   pendingApproval: JingleAgentPendingApprovalRef | null
   permissionMode: TPermissionMode
+  status: JingleRuntimeStatus
   workspacePath: string | null
 }
 
@@ -281,6 +283,7 @@ export function selectJingleAgentCommandState<TPermissionMode = string>(
         }
       : null,
     permissionMode: source.permissionMode,
+    status: source.status,
     workspacePath: source.workspacePath
   }
 }
@@ -296,7 +299,11 @@ export function resolveJingleAgentInvokeReadiness<TPermissionMode = string>(inpu
     }
   }
 
-  if (!input.state.currentModel || input.state.pendingApproval) {
+  if (
+    !input.state.currentModel ||
+    input.state.pendingApproval ||
+    input.state.status === "recovery_required"
+  ) {
     return { type: "blocked" }
   }
 
@@ -323,7 +330,8 @@ export function resolveJingleAgentEditReadiness<TPermissionMode = string>(input:
   if (
     !input.state.currentModel ||
     input.state.activeRun?.status === "running" ||
-    input.state.pendingApproval
+    input.state.pendingApproval ||
+    input.state.status === "recovery_required"
   ) {
     return { type: "blocked" }
   }
@@ -348,7 +356,11 @@ export function resolveJingleAgentResumeReadiness<TPermissionMode = string>(inpu
     }
   }
 
-  if (!input.state.pendingApproval || !input.state.currentModel) {
+  if (
+    !input.state.pendingApproval ||
+    !input.state.currentModel ||
+    input.state.status === "recovery_required"
+  ) {
     return { type: "blocked" }
   }
 

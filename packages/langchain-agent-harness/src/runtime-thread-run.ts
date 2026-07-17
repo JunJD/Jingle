@@ -6,6 +6,7 @@ import {
 } from "./runtime-execution-context"
 import type { RuntimeRunStreamChunk } from "./runtime-operation"
 import {
+  RuntimeThreadDurableFailureError,
   type RuntimeThreadTerminalCompletionInput,
   type RuntimeThreadTerminalLifecycle,
   type RuntimeThreadTerminalResult,
@@ -212,7 +213,7 @@ function createRuntimeThreadRunBase<TContextInclusion>(
           } catch (error) {
             terminal.submit({ error, status: "failed" })
           }
-          return readPublicTerminalResult(await terminal.commit())
+          return readPublicTerminalResult(await terminal.commit(), start.runId)
         } finally {
           releaseExecutionBarrier()
         }
@@ -224,14 +225,16 @@ function createRuntimeThreadRunBase<TContextInclusion>(
       if (terminal.winnerStatus()) {
         await executionSettled
         await terminal.commit()
-        return false
+        return null
       }
       executionContext.assertActive()
       const submission = terminal.submit({ error, status: "failed" })
       executionContext.abort()
       await executionSettled
-      await terminal.commit()
-      return terminal.owns(submission)
+      const result = await terminal.commit()
+      return terminal.owns(submission) && result.status === "failed"
+        ? createDurableFailureError(result, start.runId)
+        : null
     },
     requestAbort,
     runId: start.runId,
@@ -250,13 +253,25 @@ function assertRuntimeThreadRunNotExecuted(executionStarted: boolean, runId: str
 }
 
 function readPublicTerminalResult<TContextInclusion>(
-  result: RuntimeThreadTerminalResult<TContextInclusion>
+  result: RuntimeThreadTerminalResult<TContextInclusion>,
+  runId: string
 ): RuntimeThreadRunResult<TContextInclusion> {
   if (result.status !== "failed") {
     return result
   }
 
-  throw result.error
+  throw createDurableFailureError(result, runId)
+}
+
+function createDurableFailureError(
+  result: Extract<RuntimeThreadTerminalResult<unknown>, { status: "failed" }>,
+  runId: string
+): RuntimeThreadDurableFailureError {
+  return new RuntimeThreadDurableFailureError({
+    cause: result.error,
+    durableFailure: result.durableFailure,
+    runId
+  })
 }
 
 function forwardAbortSignal(source: AbortSignal, abortExecution: () => void): () => void {

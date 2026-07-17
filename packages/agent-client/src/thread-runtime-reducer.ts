@@ -331,13 +331,15 @@ function reduceJingleAgentThreadRuntimeEventInternal(
         pendingApproval: state.pendingApproval,
         revision: event.revision,
         status:
-          event.status === "failed"
-            ? "error"
-            : event.status === "cancelled"
-              ? "cancelled"
-              : state.pendingApproval
-                ? "interrupted"
-                : "idle"
+          event.status === "recovery_required"
+            ? "recovery_required"
+            : event.status === "failed"
+              ? "error"
+              : event.status === "cancelled"
+                ? "cancelled"
+                : state.pendingApproval
+                  ? "interrupted"
+                  : "idle"
       }
   }
 }

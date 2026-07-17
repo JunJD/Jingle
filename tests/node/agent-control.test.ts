@@ -56,6 +56,7 @@ function createThreadDataSnapshot(
       error: null,
       forkState: { canFork: true },
       pendingApproval: null,
+      recovery: null,
       runId: null,
       todos: [],
       workspacePath: null
@@ -305,6 +306,7 @@ test("jingle agent client owns command readiness policy", () => {
     currentModel: "model-a",
     pendingApproval: null,
     permissionMode: "explore",
+    status: "idle" as const,
     workspacePath: null
   }
 
@@ -320,6 +322,23 @@ test("jingle agent client owns command readiness policy", () => {
       },
       threadId: "thread-a"
     }),
+    { type: "blocked" }
+  )
+  const recoveryState = {
+    ...idleState,
+    pendingApproval: pendingApprovalRef,
+    status: "recovery_required" as const
+  }
+  assert.deepEqual(
+    resolveJingleAgentInvokeReadiness({ state: recoveryState, threadId: "thread-a" }),
+    { type: "blocked" }
+  )
+  assert.deepEqual(
+    resolveJingleAgentEditReadiness({ state: recoveryState, threadId: "thread-a" }),
+    { type: "blocked" }
+  )
+  assert.deepEqual(
+    resolveJingleAgentResumeReadiness({ state: recoveryState, threadId: "thread-a" }),
     { type: "blocked" }
   )
   assert.equal(

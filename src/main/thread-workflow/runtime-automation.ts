@@ -27,6 +27,7 @@ function workflowStatusKeyForFinishedRun(
     case "completed":
       return "review"
     case "failed":
+    case "recovery_required":
       return "blocked"
     case "cancelled":
       return "cancelled"

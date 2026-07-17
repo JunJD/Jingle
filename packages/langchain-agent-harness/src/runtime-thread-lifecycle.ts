@@ -11,6 +11,10 @@ import type {
   RuntimeThreadRunLifecycleControl
 } from "./runtime-thread"
 import type { RuntimeThreadContext } from "./runtime-thread-context"
+import {
+  RuntimeThreadAdmissionPersistenceError,
+  RuntimeThreadDurableFailureError
+} from "./runtime-thread-terminal"
 
 export interface RuntimeThreadRunLifecycleControlInput<
   TContextInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem,
@@ -201,7 +205,6 @@ export function createRuntimeThreadRunLifecycleControlFromController<
       failJingleAgentRun({
         error: failInput.error,
         markRunFailed: lifecycle.markRunFailed,
-        recordRunFinished: lifecycle.recordRunFinished,
         runId: failInput.runId,
         threadId: thread.threadId
       }),
@@ -220,22 +223,21 @@ export function createRuntimeThreadRunLifecycleControlFromController<
 
 async function failStartedRunAdmission(input: {
   error: unknown
-  lifecycle: Pick<
-    RuntimeRunLifecycleControllerContract,
-    "markRunFailed" | "recordRunFinished" | "settleRun"
-  >
+  lifecycle: Pick<RuntimeRunLifecycleControllerContract, "markRunFailed" | "settleRun">
   runStart: RuntimeRunStart
   threadId: string
-}): Promise<void> {
+}): Promise<never> {
   const compensationErrors: unknown[] = []
+  let durableFailure: unknown
+  let failurePersisted = false
   try {
-    await failJingleAgentRun({
+    durableFailure = await failJingleAgentRun({
       error: input.error,
       markRunFailed: input.lifecycle.markRunFailed,
-      recordRunFinished: input.lifecycle.recordRunFinished,
       runId: input.runStart.runId,
       threadId: input.threadId
     })
+    failurePersisted = true
   } catch (error) {
     compensationErrors.push(error)
   }
@@ -246,10 +248,23 @@ async function failStartedRunAdmission(input: {
     compensationErrors.push(error)
   }
 
-  if (compensationErrors.length > 0) {
-    throw new AggregateError(
-      [input.error, ...compensationErrors],
-      `[RuntimeThread] Run "${input.runStart.runId}" admission and compensation both failed.`
-    )
+  if (!failurePersisted) {
+    throw new RuntimeThreadAdmissionPersistenceError({
+      errors: [input.error, ...compensationErrors],
+      runId: input.runStart.runId
+    })
   }
+
+  const cause =
+    compensationErrors.length > 0
+      ? new AggregateError(
+          [input.error, ...compensationErrors],
+          `[RuntimeThread] Run "${input.runStart.runId}" admission failed and ownership cleanup also failed.`
+        )
+      : input.error
+  throw new RuntimeThreadDurableFailureError({
+    cause,
+    durableFailure,
+    runId: input.runStart.runId
+  })
 }

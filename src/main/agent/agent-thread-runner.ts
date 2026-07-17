@@ -46,6 +46,10 @@ import { parseCompleteToolCallArgsObject } from "@shared/tool-call-args"
 import type { AgentStreamPayload } from "./service"
 import { parseAgentRunFailure, type AgentRunFailure } from "@shared/agent-run-failure"
 import {
+  parseAgentRunRecoveryRequired,
+  type AgentRunRecoveryRequired
+} from "@shared/agent-run-recovery"
+import {
   appendAssistantMessageContent,
   createUserRuntimeMessage,
   decodeMessagesStreamPayload,
@@ -57,7 +61,7 @@ import {
   type DecodedValuesToolMessageChunk
 } from "./agent-stream-codec"
 
-type TerminalRuntimeStatus = "idle" | "interrupted" | "error" | "cancelled"
+type TerminalRuntimeStatus = "idle" | "interrupted" | "error" | "cancelled" | "recovery_required"
 type ToolResultFinalization = "applied" | "duplicate" | "unmatched"
 type JingleAppliedAgentSteer = AppliedAgentSteer<
   AgentInvokeMessage["content"],
@@ -87,7 +91,7 @@ function toThreadSnapshotStatus(
     return "interrupted"
   }
 
-  if (status === "error") {
+  if (status === "error" || status === "recovery_required") {
     return "error"
   }
 
@@ -140,6 +144,7 @@ class ThreadRuntimeProjector {
     { result: DecodedValuesToolMessageChunk; turnId: string }
   >()
   private pendingResumeDecision: HITLDecision | null = null
+  private recovery: AgentRunRecoveryRequired | null = null
   private runtimeState: AgentThreadRuntimeState
   private terminalSettled = true
 
@@ -155,8 +160,19 @@ class ThreadRuntimeProjector {
     return structuredClone(this.runtimeState)
   }
 
+  readRecovery(): AgentRunRecoveryRequired | null {
+    return this.recovery ? { ...this.recovery } : null
+  }
+
   hydrateFromThreadData(threadData: AgentThreadDataSnapshot): void {
     this.resetStreamingState()
+    const recovery = threadData.runState.recovery
+      ? parseAgentRunRecoveryRequired(threadData.runState.recovery)
+      : null
+    if (threadData.runState.recovery && !recovery) {
+      throw new Error("[AgentThreadRunner] Received an invalid run recovery snapshot.")
+    }
+    this.recovery = recovery
     const messages = sanitizeAssistantHistoryMessages(threadData.messages.messages)
     const bootstrap = deriveThreadBootstrapState({
       ...threadData,
@@ -348,7 +364,12 @@ class ThreadRuntimeProjector {
         if (this.terminalSettled) {
           return
         }
-        if (this.runtimeState.pendingApproval) {
+        if (payload.status === "interrupted") {
+          if (!this.runtimeState.pendingApproval) {
+            throw new Error(
+              "[AgentThreadRunner] Received an interrupted agent run failure without a pending approval."
+            )
+          }
           this.terminalSettled = true
           this.commitRuntimeEvent({
             error,
@@ -364,6 +385,16 @@ class ThreadRuntimeProjector {
           type: "thread.statusChanged"
         })
         this.finishActiveRun("error", error, { terminalClaimed: true })
+        return
+      }
+
+      case "recovery_required": {
+        const recovery = parseAgentRunRecoveryRequired(payload.recovery)
+        if (!recovery) {
+          throw new Error("[AgentThreadRunner] Received an invalid run recovery payload.")
+        }
+        this.recovery = recovery
+        this.finishActiveRun("recovery_required")
         return
       }
     }
@@ -614,7 +645,13 @@ class ThreadRuntimeProjector {
     const completedAt = new Date()
     const startedAt = this.runtimeState.activeRun?.startedAt ?? null
     const terminalStatus =
-      status === "cancelled" ? "cancelled" : status === "error" ? "failed" : "completed"
+      status === "recovery_required"
+        ? "recovery_required"
+        : status === "cancelled"
+          ? "cancelled"
+          : status === "error"
+            ? "failed"
+            : "completed"
     this.commitRuntimeEvent({
       completedAt,
       durationMs: startedAt ? Math.max(0, completedAt.getTime() - startedAt.getTime()) : null,
@@ -1265,6 +1302,7 @@ class ThreadRuntimeProjector {
     this.currentMessageId = null
     this.pendingValuesAssistantToolMessage = null
     this.pendingValuesToolResults.clear()
+    this.recovery = null
   }
 
   private upsertMessage(message: Message, options: { appendAssistantText: boolean }): boolean {
@@ -1516,6 +1554,7 @@ export class AgentThreadRunner {
         contextInclusions: runtimeState.contextInclusions,
         forkState: toRuntimeForkState(runtimeState, persistedThreadData.runState.forkState),
         pendingApproval: runtimeState.pendingApproval,
+        recovery: entry.projector.readRecovery(),
         runId: runtimeState.latestRunId ?? persistedThreadData.runState.runId,
         todos: runtimeState.todos,
         workspacePath: persistedThreadData.runState.workspacePath
@@ -1528,7 +1567,12 @@ export class AgentThreadRunner {
     const previousRevision = entry.projector.readState().revision
     entry.projector.applyPayload(payload)
     this.notify(threadId)
-    if (payload.type === "done" || payload.type === "cancelled" || payload.type === "error") {
+    if (
+      payload.type === "done" ||
+      payload.type === "cancelled" ||
+      payload.type === "error" ||
+      payload.type === "recovery_required"
+    ) {
       entry.replayEvents = entry.replayEvents.filter((event) => event.revision > previousRevision)
     }
   }

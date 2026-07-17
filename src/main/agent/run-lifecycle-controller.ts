@@ -154,8 +154,10 @@ export function createRuntimeRunLifecycleController(input: {
       await markRunAborted(threadId, runId)
     },
     markRunFailed: async ({ error, runId, threadId }) => {
-      await markRunFailed(threadId, runId, toAgentRunFailure("agent:runtime", error))
+      const failure = toAgentRunFailure("agent:runtime", error)
+      const status = await markRunFailed(threadId, runId, failure)
       enqueueAssistantContentProjection({ runId, threadId })
+      return { failure, status }
     },
     markRunCancelled: async ({ runId, threadId }) => {
       await markRunCancelled(threadId, runId)

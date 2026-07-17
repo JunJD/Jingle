@@ -143,6 +143,7 @@ export class AgentController {
       const sender = this.resolveAgentSender(event, "agent:enqueueFollowUp")
       const params = parseAgentFollowUpQueueMessageParams("agent:enqueueFollowUp", rawParams)
       this.assertAgentThreadAccess(sender, params.threadId, "agent:enqueueFollowUp")
+      this.assertThreadRecoveryCleared(params.threadId, "agent:enqueueFollowUp")
       return this.agentThreadRunner.enqueueFollowUp(params.threadId, {
         messageInput: params.messageInput
       })
@@ -159,6 +160,7 @@ export class AgentController {
       const sender = this.resolveAgentSender(event, "agent:restoreFollowUp")
       const params = parseAgentFollowUpQueueItemParams("agent:restoreFollowUp", rawParams)
       this.assertAgentThreadAccess(sender, params.threadId, "agent:restoreFollowUp")
+      this.assertThreadRecoveryCleared(params.threadId, "agent:restoreFollowUp")
       await this.agentThreadRunner.restoreFollowUp(params.threadId, params.item)
     })
 
@@ -166,6 +168,7 @@ export class AgentController {
       const sender = this.resolveAgentSender(event, "agent:takeFollowUp")
       const params = parseAgentFollowUpQueueRequestParams("agent:takeFollowUp", rawParams)
       this.assertAgentThreadAccess(sender, params.threadId, "agent:takeFollowUp")
+      this.assertThreadRecoveryCleared(params.threadId, "agent:takeFollowUp")
       return this.agentThreadRunner.takeFollowUp(params.threadId, params.requestId)
     })
 
@@ -173,6 +176,7 @@ export class AgentController {
       const sender = this.resolveAgentSender(event, "agent:steerFollowUp")
       const params = parseAgentSteerFollowUpParams(rawParams)
       this.assertAgentThreadAccess(sender, params.threadId, "agent:steerFollowUp")
+      this.assertThreadRecoveryCleared(params.threadId, "agent:steerFollowUp")
       return this.handleSteerFollowUp(params.threadId, params.requestId, {
         expectedRunId: params.expectedRunId,
         expectedTurnId: params.expectedTurnId
@@ -467,6 +471,17 @@ export class AgentController {
       case "queue_item_not_found":
         return "NOT_FOUND"
     }
+  }
+
+  private assertThreadRecoveryCleared(threadId: string, channel: string): void {
+    if (!this.agentService.isRecoveryRequired(threadId)) {
+      return
+    }
+    throw new JingleIpcError({
+      channel,
+      code: "UNAVAILABLE",
+      message: "Run state recovery requires restarting Jingle before another command."
+    })
   }
 
   private createStreamSink(threadId: string): AgentStreamSink {

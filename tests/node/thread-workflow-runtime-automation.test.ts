@@ -52,6 +52,23 @@ test("workflow automation maps agent lifecycle facts without making runtime the 
       threadId: "thread-1"
     }
   )
+  assert.deepEqual(
+    resolveThreadWorkflowRuntimeTransition("thread-1", {
+      completedAt: new Date(),
+      durationMs: 10,
+      error: null,
+      revision: 3,
+      runId: "run-1",
+      status: "recovery_required",
+      type: "run.finished"
+    }),
+    {
+      currentGate: null,
+      expectedStatusKeys: ["running"],
+      statusKey: "blocked",
+      threadId: "thread-1"
+    }
+  )
 })
 
 test("workflow automation serializes one thread batch through the workflow service owner", async () => {

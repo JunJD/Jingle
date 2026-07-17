@@ -24,6 +24,7 @@ import type {
 import type { RuntimeRunStream } from "./runtime-execution"
 import type { RuntimeExecutionFactory } from "./runtime-execution-factory"
 import type { RuntimeThreadScope } from "./runtime-scope"
+import type { RuntimeThreadDurableFailureError } from "./runtime-thread-terminal"
 
 export interface RuntimeThreadInput {
   threadId: string
@@ -228,8 +229,8 @@ export interface RuntimeThreadRun {
   readonly runId: string
   /** Returns true only when abort owns the run's terminal outcome. */
   abort(): Promise<boolean>
-  /** Returns true only when this failure owns the run's terminal outcome. */
-  fail(error: unknown): Promise<boolean>
+  /** Returns the committed durable failure only when this call owns the terminal outcome. */
+  fail(error: unknown): Promise<RuntimeThreadDurableFailureError | null>
 }
 
 export interface RuntimeThreadInvokeRun<
@@ -276,7 +277,7 @@ export interface RuntimeThreadRunLifecycleControl<
   completeRun(
     input: RuntimeThreadCompleteInput<TContextInclusion>
   ): Promise<CompleteJingleAgentRunResult<TContextInclusion>>
-  failRun(input: RuntimeThreadFailInput): Promise<void>
+  failRun(input: RuntimeThreadFailInput): Promise<unknown>
   /** Releases run-scoped runtime ownership after the terminal persistence attempt. */
   settleRun(input: { runId: string }): Promise<void>
 }

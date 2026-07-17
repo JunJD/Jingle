@@ -8,8 +8,12 @@ import { emptyCheckpoint } from "@langchain/langgraph-checkpoint"
 import type { SerializerProtocol } from "@langchain/langgraph-checkpoint"
 import { appleRemindersManifest } from "../../installable-extensions/apple-reminders/manifest"
 import { appleRemindersMain } from "../../installable-extensions/apple-reminders/main"
-import type { AgentService } from "../../src/main/agent/service"
-import { AGENT_RUN_FAILURE_METADATA_KEY } from "../../src/shared/agent-run-failure"
+import type { AgentService, AgentStreamPayload } from "../../src/main/agent/service"
+import {
+  AGENT_RUN_FAILURE_METADATA_KEY,
+  parseAgentRunFailure,
+  type AgentRunFailureTerminalFact
+} from "../../src/shared/agent-run-failure"
 import { toAgentRunFailure } from "../../src/main/agent/errors"
 import { ExtensionMainDefinitionRegistry } from "../../src/main/extensions/registry/main-definition-registry"
 import type { ExtensionMainRef } from "../../src/main/extensions/registry/types"
@@ -452,7 +456,16 @@ test("user_declined atomically resolves HITL and cancels its run", async () => {
   const runId = "run-hitl-declined"
   const requestId = "request-hitl-declined"
   await createThread(threadId)
-  await createRun(runId, threadId, { status: "running" })
+  await createRun(runId, threadId, {
+    metadata: {
+      [AGENT_RUN_FAILURE_METADATA_KEY]: toAgentRunFailure(
+        "agent:runtime",
+        new Error("stale declined failure")
+      ),
+      error: "legacy stale declined failure"
+    },
+    status: "running"
+  })
   await upsertHitlRequest({
     allowed_decisions: ["approve", "user_declined", "corrected"],
     request_id: requestId,
@@ -476,8 +489,14 @@ test("user_declined atomically resolves HITL and cancels its run", async () => {
     { resumeEvent: { modelId: "bdd" } }
   )
   assert.ok(committed)
-  assert.equal((await getRun(runId))?.status, "cancelled")
+  const run = await getRun(runId)
+  const runMetadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+  assert.equal(run?.status, "cancelled")
+  assert.equal(Object.hasOwn(runMetadata, AGENT_RUN_FAILURE_METADATA_KEY), false)
+  assert.equal(Object.hasOwn(runMetadata, "error"), false)
   assert.equal((await getThread(threadId))?.status, "idle")
+  const threadsService = Object.create(ThreadsService.prototype) as ThreadsService
+  assert.equal((await threadsService.getLatestRunSummary(threadId)).error, null)
 })
 
 test("HITL resume admission accepts exactly one decision and one event batch", async () => {
@@ -738,6 +757,285 @@ test("resume admission rolls back the decision and run when marking the thread b
   assert.equal(await prisma.agentEventSequence.count(), sequenceCountBefore)
 })
 
+test("markRunFailed rolls back run failure metadata and status when the thread transition fails", async () => {
+  const { createRun, createThread, getPrismaClient, getRun, getThread, updateThread } =
+    await loadDbModules()
+  const { markRunFailed } = await import("../../src/main/agent/persistence")
+  const threadId = "thread-failure-transaction-rollback"
+  const runId = "run-failure-transaction-rollback"
+  const triggerName = "fail_run_failure_thread_error_update"
+  const prisma = getPrismaClient()
+
+  await createThread(threadId)
+  await createRun(runId, threadId, {
+    metadata: { existing: true },
+    status: "running"
+  })
+  await updateThread(threadId, { status: "busy" })
+  await prisma.$executeRawUnsafe(`
+    CREATE TRIGGER "${triggerName}"
+    BEFORE UPDATE OF "status" ON "threads"
+    WHEN NEW."thread_id" = '${threadId}' AND NEW."status" = 'error'
+    BEGIN
+      SELECT RAISE(FAIL, 'injected run failure thread transition failure');
+    END
+  `)
+
+  try {
+    await assert.rejects(
+      markRunFailed(
+        threadId,
+        runId,
+        toAgentRunFailure("agent:runtime", new Error("durable failure must roll back"))
+      )
+    )
+  } finally {
+    await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${triggerName}"`)
+  }
+
+  const run = await getRun(runId)
+  assert.equal(run?.status, "running")
+  assert.deepEqual(JSON.parse(run?.metadata ?? "{}"), { existing: true })
+  assert.equal((await getThread(threadId))?.status, "busy")
+})
+
+test("markRunFailed rolls back run and thread when the atomic run.finished append fails", async () => {
+  const { createRun, createThread, getPrismaClient, getRun, getThread, updateThread } =
+    await loadDbModules()
+  const { markRunFailed } = await import("../../src/main/agent/persistence")
+  const threadId = "thread-failure-event-rollback"
+  const runId = "run-failure-event-rollback"
+  const triggerName = "fail_run_finished_event_insert"
+  const prisma = getPrismaClient()
+
+  await createThread(threadId)
+  await createRun(runId, threadId, { metadata: { existing: true }, status: "running" })
+  await updateThread(threadId, { status: "busy" })
+  await prisma.$executeRawUnsafe(`
+    CREATE TRIGGER "${triggerName}"
+    BEFORE INSERT ON "agent_events"
+    WHEN NEW."run_id" = '${runId}' AND NEW."type" = 'run.finished'
+    BEGIN
+      SELECT RAISE(FAIL, 'injected run.finished append failure');
+    END
+  `)
+
+  try {
+    await assert.rejects(
+      markRunFailed(
+        threadId,
+        runId,
+        toAgentRunFailure("agent:runtime", new Error("event append must roll back"))
+      )
+    )
+  } finally {
+    await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${triggerName}"`)
+  }
+
+  const run = await getRun(runId)
+  assert.equal(run?.status, "running")
+  assert.deepEqual(JSON.parse(run?.metadata ?? "{}"), { existing: true })
+  assert.equal((await getThread(threadId))?.status, "busy")
+  assert.equal(await prisma.agentEvent.count({ where: { runId } }), 0)
+})
+
+test("markRunFailed never overwrites success, cancelled, interrupted, or an earlier failure winner", async () => {
+  const { createRun, createThread, getPrismaClient, getRun, getThread } = await loadDbModules()
+  const { markRunFailed } = await import("../../src/main/agent/persistence")
+  const prisma = getPrismaClient()
+
+  for (const status of ["success", "cancelled", "interrupted"] as const) {
+    const threadId = `thread-late-failure-${status}`
+    const runId = `run-late-failure-${status}`
+    await createThread(threadId)
+    await createRun(runId, threadId, { metadata: { winner: status }, status })
+
+    await assert.rejects(
+      markRunFailed(
+        threadId,
+        runId,
+        toAgentRunFailure("agent:runtime", new Error(`late ${status} failure`))
+      ),
+      (error) => {
+        assert.equal((error as { code?: unknown }).code, "CONFLICT")
+        return true
+      }
+    )
+
+    const run = await getRun(runId)
+    assert.equal(run?.status, status)
+    assert.deepEqual(JSON.parse(run?.metadata ?? "{}"), { winner: status })
+    assert.equal((await getThread(threadId))?.status, "idle")
+    assert.equal(await prisma.agentEvent.count({ where: { runId, type: "run.finished" } }), 0)
+  }
+
+  const threadId = "thread-duplicate-failure"
+  const runId = "run-duplicate-failure"
+  const originalFailure = toAgentRunFailure("agent:runtime", new Error("original failure"))
+  await createThread(threadId)
+  await createRun(runId, threadId, {
+    metadata: { error: "stale legacy failure" },
+    status: "running"
+  })
+  assert.equal(await markRunFailed(threadId, runId, originalFailure), "error")
+  const originalMetadata = (await getRun(runId))?.metadata
+  assert.equal(Object.hasOwn(JSON.parse(originalMetadata ?? "{}"), "error"), false)
+
+  await assert.rejects(
+    markRunFailed(
+      threadId,
+      runId,
+      toAgentRunFailure("agent:runtime", new Error("duplicate late failure"))
+    ),
+    (error) => {
+      assert.equal((error as { code?: unknown }).code, "CONFLICT")
+      return true
+    }
+  )
+
+  assert.equal((await getRun(runId))?.metadata, originalMetadata)
+  assert.equal(await prisma.agentEvent.count({ where: { runId, type: "run.finished" } }), 1)
+})
+
+test("pending HITL is the sole interrupted failure classifier after resume", async () => {
+  const {
+    createRun,
+    createThread,
+    getHitlRequest,
+    getPrismaClient,
+    getRun,
+    getThread,
+    upsertHitlRequest
+  } = await loadDbModules()
+  const { commitAgentResumeDecision, markRunFailed } =
+    await import("../../src/main/agent/persistence")
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+  const threadId = "thread-resumed-after-old-interrupt"
+  const runId = "run-resumed-after-old-interrupt"
+  const requestId = "request-resumed-after-old-interrupt"
+
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "interrupted" })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve"],
+    request_id: requestId,
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: "tool-call-resumed-after-old-interrupt",
+    tool_name: "write_file"
+  })
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-old-interrupt"
+  checkpoint.channel_values = { __interrupt__: [{ value: { actionRequests: [] } }] }
+  await new PrismaCheckpointSaver().put(
+    { configurable: { thread_id: threadId }, metadata: { run_id: runId } },
+    checkpoint,
+    { parents: {}, source: "update", step: 0 }
+  )
+
+  await commitAgentResumeDecision(
+    threadId,
+    runId,
+    {
+      request_id: requestId,
+      tool_call_id: "tool-call-resumed-after-old-interrupt",
+      type: "approve"
+    },
+    undefined,
+    { resumeEvent: {} }
+  )
+  assert.equal((await getRun(runId))?.status, "running")
+  assert.equal((await getHitlRequest(requestId))?.status, "approved")
+
+  assert.equal(
+    await markRunFailed(
+      threadId,
+      runId,
+      toAgentRunFailure("agent:runtime", new Error("resumed execution failed"))
+    ),
+    "error"
+  )
+  assert.equal((await getRun(runId))?.status, "error")
+  assert.equal((await getThread(threadId))?.status, "error")
+  const finished = await getPrismaClient().agentEvent.findFirst({
+    where: { runId, type: "run.finished" }
+  })
+  assert.equal((JSON.parse(finished?.payload ?? "{}") as { status?: unknown }).status, "error")
+})
+
+test("a resumed attempt can append a new failure after an earlier interrupted finish", async () => {
+  const { createRun, createThread, getPrismaClient, getRun, upsertHitlRequest } =
+    await loadDbModules()
+  const { commitAgentResumeDecision, markRunFailed } =
+    await import("../../src/main/agent/persistence")
+  const threadId = "thread-resumed-generation-failure"
+  const runId = "run-resumed-generation-failure"
+  const requestId = "request-resumed-generation-failure"
+  const firstFailure = toAgentRunFailure("agent:runtime", new Error("paused attempt failed"))
+  const resumedFailure = toAgentRunFailure("agent:runtime", new Error("resumed attempt failed"))
+
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve"],
+    request_id: requestId,
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: "tool-resumed-generation-failure",
+    tool_name: "write_file"
+  })
+
+  assert.equal(await markRunFailed(threadId, runId, firstFailure), "interrupted")
+  assert.ok(
+    await commitAgentResumeDecision(
+      threadId,
+      runId,
+      {
+        request_id: requestId,
+        tool_call_id: "tool-resumed-generation-failure",
+        type: "approve"
+      },
+      undefined,
+      { resumeEvent: {} }
+    )
+  )
+  assert.equal((await getRun(runId))?.status, "running")
+  assert.equal(await markRunFailed(threadId, runId, resumedFailure), "error")
+
+  const run = await getRun(runId)
+  const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+  assert.deepEqual(parseAgentRunFailure(metadata[AGENT_RUN_FAILURE_METADATA_KEY]), resumedFailure)
+  const lifecycleEvents = await getPrismaClient().agentEvent.findMany({
+    orderBy: { seq: "asc" },
+    where: { runId, type: { in: ["run.resumed", "run.finished"] } }
+  })
+  assert.deepEqual(
+    lifecycleEvents.map((event) => event.type),
+    ["run.finished", "run.resumed", "run.finished"]
+  )
+
+  await assert.rejects(markRunFailed(threadId, runId, firstFailure), (error) => {
+    assert.equal((error as { code?: unknown }).code, "CONFLICT")
+    return true
+  })
+  assert.equal(
+    await getPrismaClient().agentEvent.count({ where: { runId, type: "run.finished" } }),
+    2
+  )
+  assert.deepEqual(
+    parseAgentRunFailure(
+      (JSON.parse((await getRun(runId))?.metadata ?? "{}") as Record<string, unknown>)[
+        AGENT_RUN_FAILURE_METADATA_KEY
+      ]
+    ),
+    resumedFailure
+  )
+})
+
 test("agent resume commits HITL before a resumed stream can fail on its first chunk", async () => {
   const { createRun, createThread, getHitlRequest, getRun, upsertHitlRequest } =
     await loadDbModules()
@@ -763,7 +1061,12 @@ test("agent resume commits HITL before a resumed stream can fail on its first ch
   })
 
   const events: Array<{ type: string }> = []
+  let resolveTerminalFailure!: (terminal: AgentRunFailureTerminalFact) => void
+  const terminalFailure = new Promise<AgentRunFailureTerminalFact>((resolve) => {
+    resolveTerminalFailure = resolve
+  })
   let outcome: Awaited<ReturnType<AgentService["dispatchResume"]>> | null = null
+  let liveTerminal: AgentRunFailureTerminalFact | null = null
   process.env.JINGLE_BDD_AGENT_RUNTIME = "scripted"
   try {
     outcome = await (
@@ -780,9 +1083,15 @@ test("agent resume commits HITL before a resumed stream can fail on its first ch
         threadId
       },
       {
-        send: (event) => events.push({ type: event.type })
+        send: (event) => {
+          events.push({ type: event.type })
+          if (event.type === "error") {
+            resolveTerminalFailure({ failure: event.failure, status: event.status })
+          }
+        }
       }
     )
+    liveTerminal = await terminalFailure
   } finally {
     if (previousRuntimeMode === undefined) {
       delete process.env.JINGLE_BDD_AGENT_RUNTIME
@@ -795,6 +1104,7 @@ test("agent resume commits HITL before a resumed stream can fail on its first ch
 
   const request = await getHitlRequest(requestId)
   assert.ok(outcome)
+  assert.ok(liveTerminal)
   assert.equal(request?.status, "corrected")
   assert.deepEqual(JSON.parse(request?.decision ?? "{}"), {
     correction: "bdd:fail-before-first-chunk",
@@ -802,11 +1112,444 @@ test("agent resume commits HITL before a resumed stream can fail on its first ch
     tool_call_id: "tool-call-resume-failure",
     type: "corrected"
   })
-  assert.equal((await getRun(runId))?.status, "error")
+  const run = await getRun(runId)
+  assert.equal(run?.status, "error")
+  const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+  const persistedFailure = parseAgentRunFailure(metadata[AGENT_RUN_FAILURE_METADATA_KEY])
+  assert.deepEqual(persistedFailure, liveTerminal.failure)
+  assert.equal(liveTerminal.status, run?.status)
+  const threadsService = Object.create(ThreadsService.prototype) as ThreadsService
+  assert.deepEqual((await threadsService.getLatestRunSummary(threadId)).error, liveTerminal.failure)
   assert.equal(outcome.type, "accepted")
   assert.deepEqual(
     events.map((event) => event.type),
     ["run_started", "error"]
+  )
+})
+
+test("admission binding failures preserve invoke rejection and resume acceptance contracts", async () => {
+  const { createRun, createThread, getHitlRequest, getRun, upsertHitlRequest } =
+    await loadDbModules()
+  const { beginAgentRun, commitAgentResumeDecision, markRunFailed } =
+    await import("../../src/main/agent/persistence")
+  const { RuntimeThreadAdmissionPersistenceError, RuntimeThreadDurableFailureError } =
+    await import("@jingle/langchain-agent-harness")
+  const consoleLog = mock.method(console, "log", () => {})
+  const consoleError = mock.method(console, "error", () => {})
+  const previousRuntimeMode = process.env.JINGLE_BDD_AGENT_RUNTIME
+  delete process.env.JINGLE_BDD_AGENT_RUNTIME
+
+  const invokeThreadId = "thread-invoke-binding-failure"
+  const editThreadId = "thread-edit-binding-failure"
+  const resumeThreadId = "thread-resume-binding-failure"
+  const recoveryThreadId = "thread-invoke-binding-persistence-failure"
+  const resumeRunId = "run-resume-binding-failure"
+  const resumeRequestId = "request-resume-binding-failure"
+  const invokeFailure = toAgentRunFailure(
+    "agent:runtime",
+    new Error("invoke execution binding failed")
+  )
+  const resumeFailure = toAgentRunFailure(
+    "agent:runtime",
+    new Error("resume execution binding failed")
+  )
+  const invokeRunIds = new Map<string, string>()
+
+  await createThread(invokeThreadId)
+  await createThread(editThreadId)
+  await createThread(resumeThreadId)
+  await createThread(recoveryThreadId)
+  await Promise.all([
+    bindThreadWorkspace(invokeThreadId, repoRoot),
+    bindThreadWorkspace(editThreadId, repoRoot),
+    bindThreadWorkspace(resumeThreadId, repoRoot),
+    bindThreadWorkspace(recoveryThreadId, repoRoot)
+  ])
+  await createRun(resumeRunId, resumeThreadId, { status: "interrupted" })
+  await upsertHitlRequest({
+    allowed_decisions: ["corrected"],
+    request_id: resumeRequestId,
+    run_id: resumeRunId,
+    status: "pending",
+    thread_id: resumeThreadId,
+    tool_args: {},
+    tool_call_id: "tool-resume-binding-failure",
+    tool_name: "write_file"
+  })
+
+  const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
+  const { diagnosticsGraph } = await import("../../src/main/diagnostics/instance")
+  const diagnostics: unknown[] = []
+  const capture = mock.method(diagnosticsGraph, "capture", (input) => {
+    diagnostics.push(input)
+    return { eventId: "diag:admission-persistence:1", sequence: 1, sessionId: "test" }
+  })
+  const lifecycleGate = new ThreadLifecycleGate()
+  const service = await createAgentServiceForTest({ threadLifecycleGate: lifecycleGate })
+  Object.defineProperty(service, "agentRuntime", {
+    value: {
+      thread: ({ threadId }: { threadId: string }) => ({
+        startInvoke: async (invoke: {
+          modelId: string
+          permissionMode: "ask-to-edit" | "auto" | "explore"
+          userMessage: { id: string }
+        }) => {
+          const started = await beginAgentRun(threadId, invoke.modelId, {
+            permissionMode: invoke.permissionMode,
+            startEvent: {
+              contentPreview: "binding failure",
+              refs: [],
+              userMessageId: invoke.userMessage.id
+            }
+          })
+          if (threadId === recoveryThreadId) {
+            throw new RuntimeThreadAdmissionPersistenceError({
+              errors: [new Error("binding failed"), new Error("failure transaction failed")],
+              runId: started.runId
+            })
+          }
+          invokeRunIds.set(threadId, started.runId)
+          const status = await markRunFailed(threadId, started.runId, invokeFailure)
+          throw new RuntimeThreadDurableFailureError({
+            cause: new Error("invoke binder failed"),
+            durableFailure: { failure: invokeFailure, status },
+            runId: started.runId
+          })
+        },
+        startResume: async (resume: {
+          decision: Parameters<typeof commitAgentResumeDecision>[2]
+          modelId: string
+          runId: string
+        }) => {
+          const committed = await commitAgentResumeDecision(
+            threadId,
+            resume.runId,
+            resume.decision,
+            undefined,
+            { resumeEvent: { modelId: resume.modelId } }
+          )
+          assert.ok(committed)
+          const status = await markRunFailed(threadId, resume.runId, resumeFailure)
+          throw new RuntimeThreadDurableFailureError({
+            cause: new Error("resume binder failed"),
+            durableFailure: { failure: resumeFailure, status },
+            runId: resume.runId
+          })
+        }
+      })
+    }
+  })
+
+  try {
+    const invokeEvents: AgentStreamPayload[] = []
+    let invokeAccepted = 0
+    const invokeOutcome = await service.dispatchInvoke(
+      {
+        message: { content: "invoke binding failure", id: "message-invoke-binding-failure" },
+        modelId: "bdd",
+        threadId: invokeThreadId
+      },
+      { send: (event) => invokeEvents.push(event) },
+      { onRunAccepted: () => (invokeAccepted += 1) }
+    )
+    assert.equal(invokeOutcome.type, "rejected")
+    assert.equal(invokeAccepted, 0)
+    assert.deepEqual(invokeEvents, [])
+    const invokeRunId = invokeRunIds.get(invokeThreadId)
+    assert.ok(invokeRunId)
+    const invokeRun = await getRun(invokeRunId)
+    const invokeMetadata = JSON.parse(invokeRun?.metadata ?? "{}") as Record<string, unknown>
+    assert.deepEqual(
+      parseAgentRunFailure(invokeMetadata[AGENT_RUN_FAILURE_METADATA_KEY]),
+      invokeFailure
+    )
+    const threadsService = Object.create(ThreadsService.prototype) as ThreadsService
+    assert.deepEqual(
+      (await threadsService.getLatestRunSummary(invokeThreadId)).error,
+      invokeFailure
+    )
+
+    await new Promise((resolve) => setImmediate(resolve))
+    const editEvents: AgentStreamPayload[] = []
+    let editAccepted = 0
+    let resolveEditOutcome!: (outcome: Awaited<ReturnType<AgentService["dispatchInvoke"]>>) => void
+    const editOutcomePromise = new Promise<Awaited<ReturnType<AgentService["dispatchInvoke"]>>>(
+      (resolve) => {
+        resolveEditOutcome = resolve
+      }
+    )
+    await service.invoke(
+      {
+        message: { content: "edit binding failure", id: "message-edit-binding-failure" },
+        modelId: "bdd",
+        threadId: editThreadId
+      },
+      { send: (event) => editEvents.push(event) },
+      {
+        channel: "agent:editLastUserMessageAndInvoke",
+        onCommandOutcome: (outcome) => {
+          resolveEditOutcome(outcome)
+        },
+        onRunAccepted: () => (editAccepted += 1)
+      }
+    )
+    assert.equal((await editOutcomePromise).type, "rejected")
+    assert.equal(editAccepted, 0)
+    assert.deepEqual(editEvents, [])
+    const editRunId = invokeRunIds.get(editThreadId)
+    assert.ok(editRunId)
+    const editRun = await getRun(editRunId)
+    assert.equal(editRun?.status, "error")
+
+    await new Promise((resolve) => setImmediate(resolve))
+    const resumeEvents: AgentStreamPayload[] = []
+    const acceptedDecisions: unknown[] = []
+    const resumeOutcome = await service.dispatchResume(
+      {
+        decision: {
+          correction: "continue",
+          request_id: resumeRequestId,
+          tool_call_id: "tool-resume-binding-failure",
+          type: "corrected"
+        },
+        modelId: "bdd",
+        threadId: resumeThreadId
+      },
+      { send: (event) => resumeEvents.push(event) },
+      { onRunAccepted: (decision) => acceptedDecisions.push(decision) }
+    )
+    assert.equal(resumeOutcome.type, "accepted")
+    assert.equal(acceptedDecisions.length, 1)
+    assert.deepEqual(
+      resumeEvents.map((event) => event.type),
+      ["run_started", "error"]
+    )
+    const resumeTerminal = resumeEvents.at(-1)
+    assert.equal(resumeTerminal?.type, "error")
+    if (resumeTerminal?.type === "error") {
+      assert.deepEqual(resumeTerminal.failure, resumeFailure)
+      assert.equal(resumeTerminal.status, "error")
+    }
+    assert.equal((await getHitlRequest(resumeRequestId))?.status, "corrected")
+    const resumedRun = await getRun(resumeRunId)
+    const resumedMetadata = JSON.parse(resumedRun?.metadata ?? "{}") as Record<string, unknown>
+    assert.deepEqual(
+      parseAgentRunFailure(resumedMetadata[AGENT_RUN_FAILURE_METADATA_KEY]),
+      resumeFailure
+    )
+    assert.deepEqual(
+      (await threadsService.getLatestRunSummary(resumeThreadId)).error,
+      resumeFailure
+    )
+
+    await new Promise((resolve) => setImmediate(resolve))
+    const recoveryEvents: AgentStreamPayload[] = []
+    const recoveryOutcome = await service.dispatchInvoke(
+      {
+        message: { content: "admission persistence failure", id: "message-admission-recovery" },
+        modelId: "bdd",
+        threadId: recoveryThreadId
+      },
+      { send: (event) => recoveryEvents.push(event) }
+    )
+    assert.equal(recoveryOutcome.type, "rejected")
+    assert.equal(
+      recoveryOutcome.type === "rejected" ? recoveryOutcome.error.code : null,
+      "UNAVAILABLE"
+    )
+    assert.deepEqual(
+      recoveryEvents.map((event) => event.type),
+      ["run_rejected"]
+    )
+    assert.equal(lifecycleGate.isRecoveryRequired(recoveryThreadId), true)
+    assert.equal(diagnostics.length, 1)
+    assert.match(JSON.stringify(diagnostics[0]), /agent\.terminal_persistence_failed/)
+    assert.doesNotMatch(JSON.stringify(diagnostics[0]), /failure transaction failed/)
+  } finally {
+    if (previousRuntimeMode === undefined) {
+      delete process.env.JINGLE_BDD_AGENT_RUNTIME
+    } else {
+      process.env.JINGLE_BDD_AGENT_RUNTIME = previousRuntimeMode
+    }
+    capture.mock.restore()
+    consoleError.mock.restore()
+    consoleLog.mock.restore()
+  }
+})
+
+test("terminal transaction failure emits restart-required recovery without a durable failure wire", async () => {
+  const {
+    createRun,
+    createThread,
+    getHitlRequest,
+    getPrismaClient,
+    getRun,
+    getThread,
+    upsertHitlRequest
+  } = await loadDbModules()
+  const consoleLog = mock.method(console, "log", () => {})
+  const consoleError = mock.method(console, "error", () => {})
+  const previousRuntimeMode = process.env.JINGLE_BDD_AGENT_RUNTIME
+  const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
+  const { diagnosticsGraph } = await import("../../src/main/diagnostics/instance")
+  const diagnostics: unknown[] = []
+  const capture = mock.method(diagnosticsGraph, "capture", (input) => {
+    diagnostics.push(input)
+    return { eventId: "diag:terminal-persistence:1", sequence: 1, sessionId: "test" }
+  })
+  const lifecycleGate = new ThreadLifecycleGate()
+  const service = await createAgentServiceForTest({ threadLifecycleGate: lifecycleGate })
+  const threadId = "thread-resume-persistence-recovery"
+  const runId = "run-resume-persistence-recovery"
+  const requestId = "request-resume-persistence-recovery"
+  const triggerName = "fail_live_terminal_thread_error_update"
+  const prisma = getPrismaClient()
+  const events: AgentStreamPayload[] = []
+  let resolveRecovery!: (
+    payload: Extract<AgentStreamPayload, { type: "recovery_required" }>
+  ) => void
+  const recovery = new Promise<Extract<AgentStreamPayload, { type: "recovery_required" }>>(
+    (resolve) => {
+      resolveRecovery = resolve
+    }
+  )
+  let outcome: Awaited<ReturnType<AgentService["dispatchResume"]>> | null = null
+
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+  await createRun(runId, threadId, { metadata: { existing: true }, status: "interrupted" })
+  await upsertHitlRequest({
+    allowed_decisions: ["corrected"],
+    request_id: requestId,
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: "tool-call-resume-persistence-recovery",
+    tool_name: "write_file"
+  })
+  await prisma.$executeRawUnsafe(`
+    CREATE TRIGGER "${triggerName}"
+    BEFORE UPDATE OF "status" ON "threads"
+    WHEN NEW."thread_id" = '${threadId}' AND NEW."status" = 'error'
+    BEGIN
+      SELECT RAISE(FAIL, 'injected live terminal persistence failure');
+    END
+  `)
+
+  process.env.JINGLE_BDD_AGENT_RUNTIME = "scripted"
+  try {
+    outcome = await service.dispatchResume(
+      {
+        decision: {
+          correction: "bdd:fail-before-first-chunk",
+          request_id: requestId,
+          tool_call_id: "tool-call-resume-persistence-recovery",
+          type: "corrected"
+        },
+        modelId: "bdd",
+        threadId
+      },
+      {
+        send: (event) => {
+          events.push(event)
+          if (event.type === "recovery_required") {
+            resolveRecovery(event)
+          }
+        }
+      }
+    )
+    await recovery
+    await new Promise((resolve) => setImmediate(resolve))
+  } finally {
+    await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${triggerName}"`)
+    if (previousRuntimeMode === undefined) {
+      delete process.env.JINGLE_BDD_AGENT_RUNTIME
+    } else {
+      process.env.JINGLE_BDD_AGENT_RUNTIME = previousRuntimeMode
+    }
+    capture.mock.restore()
+    consoleError.mock.restore()
+    consoleLog.mock.restore()
+  }
+
+  assert.equal(outcome?.type, "accepted")
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["run_started", "recovery_required"]
+  )
+  assert.deepEqual(events.at(-1), {
+    recovery: {
+      action: "app_restart_required",
+      reason: "terminal_persistence_failed",
+      schemaVersion: 1
+    },
+    type: "recovery_required"
+  })
+  const run = await getRun(runId)
+  const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+  assert.equal(run?.status, "running")
+  assert.equal(Object.hasOwn(metadata, AGENT_RUN_FAILURE_METADATA_KEY), false)
+  assert.equal((await getThread(threadId))?.status, "busy")
+  assert.equal((await getHitlRequest(requestId))?.status, "corrected")
+  assert.equal(await prisma.agentEvent.count({ where: { runId, type: "run.finished" } }), 0)
+  assert.equal(lifecycleGate.isRecoveryRequired(threadId), true)
+  assert.deepEqual(diagnostics, [
+    {
+      component: "agent-service",
+      dimensionEntries: [
+        { key: "errorType", value: "AggregateError" },
+        { key: "ipcCode", value: "INTERNAL" }
+      ],
+      eventCode: "agent.terminal_persistence_failed",
+      fingerprint: "agent.terminal_persistence_failed",
+      level: "error",
+      operation: "persist-run-terminal",
+      recoverable: true,
+      refs: [
+        { id: threadId, kind: "agent-thread" },
+        { id: runId, kind: "agent-run" }
+      ],
+      stateImpact: "terminal-state-unknown-app-restart-required",
+      summary: "Agent terminal state persistence failed; app restart is required."
+    }
+  ])
+  assert.doesNotMatch(JSON.stringify(diagnostics), /injected live terminal persistence failure/)
+
+  const rejectedEvents: AgentStreamPayload[] = []
+  const sink = { send: (event: AgentStreamPayload) => rejectedEvents.push(event) }
+  const [invokeOutcome, editOutcome, resumeOutcome] = await Promise.all([
+    service.dispatchInvoke(
+      { message: { content: "blocked", id: "blocked-invoke" }, modelId: "bdd", threadId },
+      sink
+    ),
+    service.dispatchEditLastUserMessageAndInvoke(
+      { message: { content: "blocked", id: "blocked-edit" }, modelId: "bdd", threadId },
+      sink
+    ),
+    service.dispatchResume(
+      {
+        decision: {
+          request_id: requestId,
+          tool_call_id: "tool-call-resume-persistence-recovery",
+          type: "approve"
+        },
+        modelId: "bdd",
+        threadId
+      },
+      sink
+    )
+  ])
+  for (const blockedOutcome of [invokeOutcome, editOutcome, resumeOutcome]) {
+    assert.equal(blockedOutcome.type, "rejected")
+    assert.equal(
+      blockedOutcome.type === "rejected" ? blockedOutcome.error.code : null,
+      "UNAVAILABLE"
+    )
+  }
+  assert.deepEqual(
+    rejectedEvents.map((event) => event.type),
+    ["run_rejected", "run_rejected", "run_rejected"]
   )
 })
 
@@ -1677,7 +2420,8 @@ test("agent deletion gate rejects invoke while thread deletion is active", async
 })
 
 test("run failure preserves interrupted status when pending HITL remains", async () => {
-  const { createRun, createThread, getRun, getThread, upsertHitlRequest } = await loadDbModules()
+  const { createRun, createThread, getPrismaClient, getRun, getThread, upsertHitlRequest } =
+    await loadDbModules()
   const { markRunFailed } = await import("../../src/main/agent/persistence")
 
   const threadId = "thread-failed-with-pending-hitl"
@@ -1701,10 +2445,13 @@ test("run failure preserves interrupted status when pending HITL remains", async
     status: "pending"
   })
 
-  await markRunFailed(
-    threadId,
-    runId,
-    toAgentRunFailure("agent:runtime", new Error("checkpoint write timed out"))
+  assert.equal(
+    await markRunFailed(
+      threadId,
+      runId,
+      toAgentRunFailure("agent:runtime", new Error("checkpoint write timed out"))
+    ),
+    "interrupted"
   )
 
   const run = await getRun(runId)
@@ -1719,28 +2466,39 @@ test("run failure preserves interrupted status when pending HITL remains", async
     schemaVersion: 1,
     status: 500
   })
+  const finishedEvents = await getPrismaClient().agentEvent.findMany({
+    where: { runId, type: "run.finished" }
+  })
+  assert.equal(finishedEvents.length, 1)
+  assert.equal(
+    (JSON.parse(finishedEvents[0]?.payload ?? "{}") as { status?: unknown }).status,
+    "interrupted"
+  )
 })
 
 test("thread hydrate rejects an invalid new agent run failure instead of using legacy fallback", async () => {
   const { createRun, createThread } = await loadDbModules()
-  const threadId = "thread-invalid-agent-run-failure"
-  await createThread(threadId)
-  await createRun("run-invalid-agent-run-failure", threadId, {
-    metadata: {
-      [AGENT_RUN_FAILURE_METADATA_KEY]: {
-        ipcCode: "INTERNAL",
-        kind: "unknown",
-        message: "invalid version",
-        schemaVersion: 2,
-        status: 500
-      },
-      error: "401 authentication_error"
-    },
-    status: "error"
-  })
   const threadsService = Object.create(ThreadsService.prototype) as ThreadsService
 
-  await assert.rejects(threadsService.getLatestRunSummary(threadId), /invalid agent run failure/)
+  for (const status of ["error", "success", "cancelled", "running"] as const) {
+    const threadId = `thread-invalid-agent-run-failure-${status}`
+    await createThread(threadId)
+    await createRun(`run-invalid-agent-run-failure-${status}`, threadId, {
+      metadata: {
+        [AGENT_RUN_FAILURE_METADATA_KEY]: {
+          ipcCode: "INTERNAL",
+          kind: "unknown",
+          message: "invalid version",
+          schemaVersion: 2,
+          status: 500
+        },
+        error: "401 authentication_error"
+      },
+      status
+    })
+
+    await assert.rejects(threadsService.getLatestRunSummary(threadId), /invalid agent run failure/)
+  }
 })
 
 test("thread hydrate degrades legacy error text to unknown without reclassification", async () => {
@@ -1762,6 +2520,60 @@ test("thread hydrate degrades legacy error text to unknown without reclassificat
     schemaVersion: 1,
     status: 500
   })
+})
+
+test("thread hydrate maps legacy error text only for failure-bearing run statuses", async () => {
+  const { createRun, createThread, getRun } = await loadDbModules()
+  const threadsService = Object.create(ThreadsService.prototype) as ThreadsService
+  const statuses = ["success", "cancelled", "running", "pending", "interrupted", "error"] as const
+
+  for (const status of statuses) {
+    const threadId = `thread-legacy-agent-run-failure-${status}`
+    const runId = `run-legacy-agent-run-failure-${status}`
+    const message = `legacy ${status} 401 authentication_error 429 rate_limit context overflow`
+    await createThread(threadId)
+    await createRun(runId, threadId, { metadata: { error: message }, status })
+
+    const summary = await threadsService.getLatestRunSummary(threadId)
+    assert.deepEqual(
+      summary.error,
+      status === "error" || status === "interrupted"
+        ? {
+            ipcCode: "INTERNAL",
+            kind: "unknown",
+            message,
+            schemaVersion: 1,
+            status: 500
+          }
+        : null
+    )
+    assert.deepEqual(JSON.parse((await getRun(runId))?.metadata ?? "{}"), { error: message })
+  }
+})
+
+test("thread hydrate maps canonical failure only for failure-bearing run statuses", async () => {
+  const { createRun, createThread, getRun } = await loadDbModules()
+  const threadsService = Object.create(ThreadsService.prototype) as ThreadsService
+  const statuses = ["success", "cancelled", "running", "pending", "interrupted", "error"] as const
+
+  for (const status of statuses) {
+    const threadId = `thread-canonical-agent-run-failure-${status}`
+    const runId = `run-canonical-agent-run-failure-${status}`
+    const failure = toAgentRunFailure("agent:runtime", new Error(`canonical ${status} failure`))
+    await createThread(threadId)
+    await createRun(runId, threadId, {
+      metadata: { [AGENT_RUN_FAILURE_METADATA_KEY]: failure },
+      status
+    })
+
+    assert.deepEqual(
+      (await threadsService.getLatestRunSummary(threadId)).error,
+      status === "error" || status === "interrupted" ? failure : null
+    )
+    assert.deepEqual(JSON.parse((await getRun(runId))?.metadata ?? "{}"), {
+      [AGENT_RUN_FAILURE_METADATA_KEY]: failure
+    })
+  }
 })
 
 test("thread hydration fails closed for corrupt and noncanonical persisted message content", async () => {

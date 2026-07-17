@@ -16,7 +16,13 @@ import { createRuntimeThreadFromControls } from "../../packages/langchain-agent-
 import { createRuntimeThreadContext } from "../../packages/langchain-agent-harness/src/runtime-thread-context"
 import { createRuntimeThreadRunLifecycleControlFromController } from "../../packages/langchain-agent-harness/src/runtime-thread-lifecycle"
 import { createRuntimeThreadStreamDrainControlFromController } from "../../packages/langchain-agent-harness/src/runtime-thread-stream"
-import { createRuntimeThreadTerminalReferee } from "../../packages/langchain-agent-harness/src/runtime-thread-terminal"
+import {
+  createRuntimeThreadTerminalReferee,
+  isRuntimeThreadAdmissionPersistenceError,
+  isRuntimeThreadDurableFailureError,
+  RuntimeThreadAdmissionPersistenceError,
+  RuntimeThreadDurableFailureError
+} from "../../packages/langchain-agent-harness/src/runtime-thread-terminal"
 import type {
   RuntimeThreadOperationControl,
   RuntimeThreadInvokeRun,
@@ -425,6 +431,7 @@ test("RuntimeThreadRun keeps an explicit failure when abort follows during strea
   const chunkStarted = createDeferred<void>()
   const releaseChunk = createDeferred<void>()
   const failure = new Error("stream owner failed")
+  const durableFailure = { kind: "unknown", marker: "same-object" }
   const failedErrors: unknown[] = []
   let abortCount = 0
   let settleCount = 0
@@ -434,6 +441,7 @@ test("RuntimeThreadRun keeps an explicit failure when abort follows during strea
     },
     failRun: async ({ error }) => {
       failedErrors.push(error)
+      return durableFailure
     },
     settleRun: async () => {
       settleCount += 1
@@ -463,8 +471,16 @@ test("RuntimeThreadRun keeps an explicit failure when abort follows during strea
   const abort = run.abort()
   releaseChunk.resolve()
 
-  await assert.rejects(execution, failure)
-  assert.equal(await fail, true)
+  await assert.rejects(execution, (error) => {
+    assert.ok(error instanceof RuntimeThreadDurableFailureError)
+    assert.equal(error.cause, failure)
+    assert.equal(error.durableFailure, durableFailure)
+    return true
+  })
+  const committedFailure = await fail
+  assert.ok(committedFailure instanceof RuntimeThreadDurableFailureError)
+  assert.equal(committedFailure.cause, failure)
+  assert.equal(committedFailure.durableFailure, durableFailure)
   assert.equal(await abort, false)
   assert.deepEqual(failedErrors, [failure])
   assert.equal(abortCount, 0)
@@ -941,6 +957,7 @@ test("RuntimeThreadRun abort waits for its signal-aware execution factory", asyn
 test("RuntimeThreadRun fail waits for its signal-aware execution factory", async () => {
   const factoryStarted = createDeferred<void>()
   const failure = new Error("explicit failure during resolution")
+  const durableFailure = { kind: "unknown", marker: "pending-failure" }
   const failedErrors: unknown[] = []
   let settleCount = 0
   const thread = createRuntimeThreadFromControls({
@@ -955,6 +972,7 @@ test("RuntimeThreadRun fail waits for its signal-aware execution factory", async
       upsertPendingHitlRequest: async () => undefined
     },
     runLifecycleController: createLifecycleController({
+      failureFact: durableFailure,
       onFailure: (error) => failedErrors.push(error),
       onSettle: () => {
         settleCount += 1
@@ -966,8 +984,16 @@ test("RuntimeThreadRun fail waits for its signal-aware execution factory", async
   const execution = run.execute(createInvokeExecutionInput())
 
   await factoryStarted.promise
-  assert.equal(await run.fail(failure), true)
-  await assert.rejects(execution, failure)
+  const committedFailure = await run.fail(failure)
+  assert.ok(committedFailure instanceof RuntimeThreadDurableFailureError)
+  assert.equal(committedFailure.cause, failure)
+  assert.equal(committedFailure.durableFailure, durableFailure)
+  await assert.rejects(execution, (error) => {
+    assert.ok(error instanceof RuntimeThreadDurableFailureError)
+    assert.equal(error.cause, failure)
+    assert.equal(error.durableFailure, durableFailure)
+    return true
+  })
   assert.deepEqual(failedErrors, [failure])
   assert.equal(settleCount, 1)
 
@@ -1081,18 +1107,17 @@ test("RuntimeThread lifecycle does not bind execution for a durable terminal res
 test("RuntimeThread lifecycle compensates durable starts when execution binding fails", async () => {
   const invokeFailure = new Error("invoke binding failed")
   const resumeFailure = new Error("resume binding failed")
+  const durableFailure = { failure: { marker: "canonical" }, status: "error" }
   const failedErrors: unknown[] = []
   const events: string[] = []
   const lifecycle = createLifecycleController({
     events,
+    failureFact: durableFailure,
     onFailure: (error) => {
       failedErrors.push(error)
       events.push("failed")
     }
   })
-  lifecycle.recordRunFinished = async ({ status }) => {
-    events.push(`finished:${status}`)
-  }
   const runtime = createRuntimeThreadFactory({
     bindExecution: {
       invoke: () => {
@@ -1118,26 +1143,95 @@ test("RuntimeThread lifecycle compensates durable starts when execution binding 
     workspacePath: "/workspace"
   })
 
-  await assert.rejects(thread.startInvoke({}), invokeFailure)
+  await assert.rejects(thread.startInvoke({}), (error) => {
+    assert.ok(error instanceof RuntimeThreadDurableFailureError)
+    assert.equal(error.cause, invokeFailure)
+    assert.equal(error.durableFailure, durableFailure)
+    assert.equal(error.runId, "run-1")
+    return true
+  })
   await assert.rejects(
     thread.startResume({
       decision: { request_id: "request-1", tool_call_id: "tool-1", type: "approve" }
     }),
-    resumeFailure
+    (error) => {
+      assert.ok(error instanceof RuntimeThreadDurableFailureError)
+      assert.equal(error.cause, resumeFailure)
+      assert.equal(error.durableFailure, durableFailure)
+      assert.equal(error.runId, "run-2")
+      return true
+    }
   )
 
   assert.deepEqual(failedErrors, [invokeFailure, resumeFailure])
-  assert.deepEqual(events, [
-    "failed",
-    "finished:error",
-    "settle",
-    "failed",
-    "finished:error",
-    "settle"
-  ])
+  assert.deepEqual(events, ["failed", "settle", "failed", "settle"])
 
   const nextRun = await thread.startInvoke({})
   assert.equal(await nextRun.abort(), true)
+})
+
+test("RuntimeThread admission exposes recovery only when failure compensation cannot persist", async () => {
+  const bindingError = new Error("invoke binding failed")
+  const persistenceError = new Error("failure transaction failed")
+  const lifecycle = createLifecycleController()
+  lifecycle.markRunFailed = async () => {
+    throw persistenceError
+  }
+  const runtime = createRuntimeThreadFactory({
+    bindExecution: {
+      invoke: () => {
+        throw bindingError
+      },
+      resume: () => async () => {
+        throw new Error("Execution was not expected.")
+      }
+    },
+    pauseController: {
+      parseReview: () => null,
+      upsertPendingHitlRequest: async () => undefined
+    },
+    runLifecycleController: lifecycle
+  })
+
+  await assert.rejects(
+    runtime
+      .thread({ threadId: "thread-admission-persistence", workspacePath: "/workspace" })
+      .startInvoke({}),
+    (error) => {
+      assert.ok(error instanceof RuntimeThreadAdmissionPersistenceError)
+      assert.equal(error.runId, "run-1")
+      assert.deepEqual(error.errors, [bindingError, persistenceError])
+      return true
+    }
+  )
+})
+
+test("RuntimeThread failure guards reject forged and accessor-backed error shapes", () => {
+  assert.equal(
+    isRuntimeThreadDurableFailureError({
+      durableFailure: {},
+      name: "RuntimeThreadDurableFailureError",
+      runId: "forged",
+      type: "runtime_thread_durable_failure"
+    }),
+    false
+  )
+  const accessorBacked = new Error("forged")
+  Object.defineProperties(accessorBacked, {
+    durableFailure: { get: () => ({}) },
+    name: { value: "RuntimeThreadDurableFailureError" },
+    runId: { value: "forged" },
+    type: { value: "runtime_thread_durable_failure" }
+  })
+  assert.equal(isRuntimeThreadDurableFailureError(accessorBacked), false)
+
+  const admissionAccessor = new AggregateError([], "forged")
+  Object.defineProperties(admissionAccessor, {
+    name: { value: "RuntimeThreadAdmissionPersistenceError" },
+    runId: { get: () => "forged" },
+    type: { value: "runtime_thread_admission_persistence_failure" }
+  })
+  assert.equal(isRuntimeThreadAdmissionPersistenceError(admissionAccessor), false)
 })
 
 test("Runtime thread facades share one active-state referee and release it after settle", async () => {
@@ -1310,6 +1404,7 @@ test("createRuntime makes the manager-owned checkpoint wait abortable", async ()
 
 test("createRuntime gives every synchronous capability the active run signal", async () => {
   const failure = new Error("stop after synchronous capability resolution")
+  const durableFailure = { kind: "unknown", marker: "capability-failure" }
   const bindingSignals: AbortSignal[] = []
   const capabilitySignals: Array<{ name: string; signal: AbortSignal }> = []
   const failedErrors: unknown[] = []
@@ -1334,6 +1429,7 @@ test("createRuntime gives every synchronous capability the active run signal", a
         upsertPendingHitlRequest: async () => undefined
       },
       runLifecycleController: createLifecycleController({
+        failureFact: durableFailure,
         onFailure: (error) => failedErrors.push(error)
       })
     }
@@ -1342,7 +1438,12 @@ test("createRuntime gives every synchronous capability the active run signal", a
     .thread({ threadId: "thread-sync-capabilities", workspacePath: "/workspace" })
     .startInvoke({})
 
-  await assert.rejects(run.execute(createInvokeExecutionInput()), failure)
+  await assert.rejects(run.execute(createInvokeExecutionInput()), (error) => {
+    assert.ok(error instanceof RuntimeThreadDurableFailureError)
+    assert.equal(error.cause, failure)
+    assert.equal(error.durableFailure, durableFailure)
+    return true
+  })
   assert.deepEqual(
     capabilitySignals.map(({ name }) => name),
     ["approval", "backend", "model"]
@@ -1402,6 +1503,7 @@ function createExecutionCapabilities(input: {
 function createLifecycleController(
   input: {
     events?: string[]
+    failureFact?: unknown
     onFailure?: (error: unknown) => void
     onSettle?: () => void
   } = {}
@@ -1435,6 +1537,7 @@ function createLifecycleController(
     },
     markRunFailed: async ({ error }) => {
       input.onFailure?.(error)
+      return input.failureFact
     },
     recordMemoryRecordingRefs: async () => undefined,
     recordRunFinished: async () => undefined,

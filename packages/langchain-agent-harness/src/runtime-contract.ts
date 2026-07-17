@@ -141,7 +141,7 @@ export interface RuntimeRunLifecycleControllerContract<
     error: unknown
     runId: string
     threadId: string
-  }) => Promise<void> | void
+  }) => Promise<unknown> | unknown
   recordMemoryRecordingRefs: (input: {
     recordingRefs: readonly RuntimeRecordingRef[]
     runId: string

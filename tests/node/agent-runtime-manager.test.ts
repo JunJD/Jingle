@@ -5,6 +5,7 @@ import type { JingleAgentRuntimeReplayOptions, JingleRuntimeEventBatch } from "@
 import type { AgentThreadDataSnapshot } from "../../src/shared/app-types"
 import type { HITLRequest } from "../../src/shared/hitl"
 import type { AgentContextInclusion } from "../../src/shared/jingle-memory"
+import { resolveJingleAgentViewState } from "@jingle/agent-react"
 import { createAgentRuntimeManager } from "../../src/renderer/src/lib/agent-runtime-manager"
 import {
   createThreadStore,
@@ -56,6 +57,7 @@ function createThreadDataSnapshot(input: {
   metadata?: Record<string, unknown>
   messages: Message[]
   pendingApproval?: AgentThreadDataSnapshot["runState"]["pendingApproval"]
+  recovery?: AgentThreadDataSnapshot["runState"]["recovery"]
   status?: AgentThreadDataSnapshot["thread"]["status"]
   workspacePath?: string | null
 }): AgentThreadDataSnapshot {
@@ -70,6 +72,7 @@ function createThreadDataSnapshot(input: {
       error: null,
       forkState: { canFork: true },
       pendingApproval: input.pendingApproval ?? null,
+      recovery: input.recovery ?? null,
       runId: null,
       todos: [],
       workspacePath: input.workspacePath ?? null
@@ -345,6 +348,95 @@ test("agent runtime manager refreshes thread data after a run finishes", async (
   assert.deepEqual(
     state.agent.messagesPage.map((message) => message.id),
     ["user-1", "assistant-1"]
+  )
+})
+
+test("recovery-required survives its post-run live snapshot refresh", async () => {
+  const connection: {
+    listener: ((batch: JingleRuntimeEventBatch<AgentThreadEvent>) => void) | null
+  } = { listener: null }
+  installWindowApiStub({
+    getAgentThreadData: async () =>
+      createThreadDataSnapshot({
+        messages: [createUserMessage("user-recovery", "Question")],
+        recovery: {
+          action: "app_restart_required",
+          reason: "terminal_persistence_failed",
+          schemaVersion: 1
+        },
+        status: "error"
+      }),
+    onConnect: (callback) => {
+      connection.listener = callback
+    }
+  })
+  const store = createThreadStore()
+  const manager = createAgentRuntimeManager({ threadStore: store })
+
+  await manager.awaitThreadRuntime("thread-a")
+  const connectedListener = connection.listener
+  assert.ok(connectedListener)
+  connectedListener({
+    events: [
+      {
+        message: createUserMessage("user-recovery", "Question"),
+        revision: 1,
+        type: "message.upserted"
+      },
+      {
+        revision: 2,
+        run: {
+          assistantMessageId: null,
+          currentToolCallId: null,
+          phase: "thinking",
+          phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
+          runId: "run-recovery",
+          startedAt: new Date("2026-01-01T00:00:00.000Z"),
+          status: "running",
+          threadId: "thread-a",
+          toolCalls: [],
+          turnId: "user-recovery",
+          userMessageId: "user-recovery"
+        },
+        type: "run.started"
+      }
+    ],
+    latestRevision: 2,
+    threadId: "thread-a"
+  })
+  connectedListener({
+    events: [
+      {
+        completedAt: new Date("2026-01-01T00:00:02.000Z"),
+        durationMs: 2_000,
+        error: null,
+        revision: 3,
+        runId: "run-recovery",
+        status: "recovery_required",
+        type: "run.finished"
+      }
+    ],
+    latestRevision: 3,
+    threadId: "thread-a"
+  })
+  await new Promise((resolve) => setImmediate(resolve))
+
+  const state = getThreadState(store, "thread-a")
+  assert.equal(state.agent.status, "recovery_required")
+  assert.equal(state.agent.activeRun, null)
+  assert.equal(state.agent.error, null)
+  assert.deepEqual(
+    resolveJingleAgentViewState({
+      localError: null,
+      runtimeStatus: state.agent.status,
+      threadError: state.agent.error,
+      threadId: "thread-a"
+    }),
+    {
+      canStop: false,
+      error: "Run state could not be saved. Restart Jingle before continuing.",
+      isBusy: false
+    }
   )
 })
 

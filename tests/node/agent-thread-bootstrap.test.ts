@@ -48,6 +48,7 @@ test("thread bootstrap derives interrupted state and approval-owned active run",
       error: null,
       forkState: { canFork: false, reason: "pending_hitl" },
       pendingApproval: createPendingApproval(),
+      recovery: null,
       runId: "run-1",
       todos: [],
       workspacePath: null
@@ -79,6 +80,7 @@ test("thread bootstrap maps persisted error string into runtime error payload", 
       error: createLegacyAgentRunFailure("boom"),
       forkState: { canFork: true },
       pendingApproval: null,
+      recovery: null,
       runId: "run-1",
       todos: [],
       workspacePath: null
@@ -128,6 +130,7 @@ test("thread bootstrap preserves persisted context inclusions", () => {
       error: null,
       forkState: { canFork: true },
       pendingApproval: null,
+      recovery: null,
       runId: "run-1",
       todos: [],
       workspacePath: null
