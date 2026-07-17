@@ -23,11 +23,21 @@ only layer allowed to translate this contract into agent tools.
 
 ## Platform status
 
-The static capability matrices are fail-closed ceilings. A capability remains
-`unavailable` until its Jingle native backend and environment-specific behavior matrix are
-accepted. Linux is split into X11, GNOME Wayland, KDE Wayland, and other Wayland because
-their accessibility, portal, capture, focus, and input guarantees are not interchangeable.
+The static capability matrices are fail-closed ceilings. The packaged helpers expose one
+raw JSON protocol and may enable only routes accepted by the core probe policy:
 
-The current package is cached-ready core infrastructure. Runtime mutation integration must
-be stacked on the committed runtime terminal/settlement contract so run cancellation and
-native action facts cannot disagree.
+- macOS uses Accessibility observations and background AX actions. Mutation support is
+  reported only while the process has Accessibility permission.
+- Windows ships a real HWND/UI Automation observation backend, but every mutation remains
+  `unavailable` until the Windows behavior matrix is accepted.
+- Linux ships AT-SPI observation with X11 native-window binding. X11 and every Wayland
+  environment keep mutation `unavailable` until their platform behavior matrices are
+  accepted; a requested/detected environment mismatch also fails closed.
+
+None of the helpers accepts coordinates, pixel clicks, XTest, SendInput, portals, or other
+global-input routes. Native PID, handle, process generation, and accessibility fingerprints
+are transient evidence; Jingle's durable window registry remains the caller/run owner.
+
+The native artifact bundle is an additive prerequisite. Production runtime, settings,
+approval, persistence, projection, and legacy deletion remain separate dependency-closed
+cutover work.
