@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto"
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
-import { isAbsolute, join, relative, resolve } from "node:path"
+import { basename, isAbsolute, join, relative, resolve } from "node:path"
 import {
   validateNativeExtensionPackageManifest,
   type NativeExtensionPackageManifest
@@ -7,7 +8,8 @@ import {
 import type { NativeExtensionRuntimePackageMetadata } from "@jingle/extension-api"
 import {
   parseInstalledExtensionDescriptorFile,
-  type InstalledExtensionDescriptorFile
+  type InstalledExtensionDescriptorFile,
+  type InstalledExtensionRuntimeArtifactRevision
 } from "./descriptor-schema"
 import type {
   ExtensionPackageDescriptor,
@@ -172,6 +174,12 @@ export class InstalledExtensionProvider {
       })
     }
 
+    const runtimeArtifactRevision = verifyRuntimeArtifactRevision({
+      errors,
+      expectedRevision: descriptor.runtimeArtifactRevision,
+      runtimeModulePath
+    })
+
     if (mainModulePath && !existsSync(mainModulePath)) {
       errors.push({
         code: "main_missing",
@@ -238,6 +246,9 @@ export class InstalledExtensionProvider {
             extensionName: descriptor.id,
             kind: "module",
             modulePath: runtimeModulePath,
+            runtimeArtifactRevision: runtimeArtifactRevision
+              ? { kind: "available", revision: runtimeArtifactRevision }
+              : { kind: "unavailable", reason: "legacy-descriptor" },
             version: descriptor.version
           }
         : null,
@@ -247,6 +258,48 @@ export class InstalledExtensionProvider {
       trust: descriptor.trust,
       version: descriptor.version
     } satisfies LoadedExtensionPackageDescriptor
+  }
+}
+
+function verifyRuntimeArtifactRevision(input: {
+  errors: ExtensionPackageError[]
+  expectedRevision: InstalledExtensionRuntimeArtifactRevision | null
+  runtimeModulePath: string | null
+}): InstalledExtensionRuntimeArtifactRevision | null {
+  if (!input.expectedRevision) {
+    return null
+  }
+  if (!input.runtimeModulePath || !existsSync(input.runtimeModulePath)) {
+    return null
+  }
+
+  const digest = input.expectedRevision.slice("sha256:".length)
+  if (basename(input.runtimeModulePath) !== `runtime-${digest}.mjs`) {
+    input.errors.push({
+      code: "runtime_artifact_revision_invalid",
+      message: "Installed extension runtime path does not match its content revision"
+    })
+    return null
+  }
+
+  try {
+    const actualRevision = `sha256:${createHash("sha256")
+      .update(readFileSync(input.runtimeModulePath))
+      .digest("hex")}` as InstalledExtensionRuntimeArtifactRevision
+    if (actualRevision !== input.expectedRevision) {
+      input.errors.push({
+        code: "runtime_artifact_revision_invalid",
+        message: "Installed extension runtime content does not match its declared revision"
+      })
+      return null
+    }
+    return actualRevision
+  } catch {
+    input.errors.push({
+      code: "runtime_artifact_revision_invalid",
+      message: "Installed extension runtime content revision could not be verified"
+    })
+    return null
   }
 }
 

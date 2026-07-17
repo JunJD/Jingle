@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
+import { createHash } from "node:crypto"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -88,6 +89,7 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
     assert.equal(extensionPackage.source, "installed")
     assert.equal(extensionPackage.trust, "trusted")
     assert.equal(extensionPackage.runtime?.kind, "module")
+    assert.equal(extensionPackage.runtime?.runtimeArtifactRevision.kind, "available")
     assert.equal(extensionPackage.main?.kind, "module")
     assert.equal(extensionPackage.main?.trust, "trusted")
     assert.equal(extensionPackage.runtimeMetadata?.extensionName, "apple-reminders")
@@ -115,6 +117,22 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
     assert.equal(notionPackage.main?.kind, "module")
     assert.equal(notionPackage.main?.trust, "trusted")
     assert.equal(notionPackage.runtimeMetadata?.extensionName, "notion")
+    assert.ok(extensionPackage.runtime)
+    assert.equal(extensionPackage.runtime.kind, "module")
+    const runtimeBundle = await readFile(extensionPackage.runtime.modulePath)
+    const descriptor = JSON.parse(
+      await readFile(join(extensionPackage.rootDir, "jingle.extension.json"), "utf8")
+    ) as { runtime: string; runtimeArtifactRevision: string }
+    const expectedRuntimeArtifactRevision = createRuntimeArtifactRevision(runtimeBundle)
+    assert.deepEqual(extensionPackage.runtime.runtimeArtifactRevision, {
+      kind: "available",
+      revision: expectedRuntimeArtifactRevision
+    })
+    assert.equal(descriptor.runtimeArtifactRevision, expectedRuntimeArtifactRevision)
+    assert.equal(
+      descriptor.runtime,
+      `./dist/runtime-${descriptor.runtimeArtifactRevision.slice("sha256:".length)}.mjs`
+    )
     assert.ok(extensionPackage.main)
     const mainBundle = await readFile(extensionPackage.main.modulePath, "utf8")
     assert.doesNotMatch(mainBundle, /__dirname/)
@@ -505,8 +523,8 @@ test("extension CLI rejects function search adapters in installable runtime meta
         "  capabilities: [],",
         "  commands: [],",
         "  connection: {",
-        "    auth: { type: \"none\" },",
-        "    id: \"default\",",
+        '    auth: { type: "none" },',
+        '    id: "default",',
         '    provider: "function-search",',
         '    title: "Function Search"',
         "  },",
@@ -562,6 +580,51 @@ test("extension CLI rejects function search adapters in installable runtime meta
   }
 })
 
+test("extension CLI content-addresses same-version runtime rebuilds", async () => {
+  const sourceRoot = await mkdtemp(join(tmpdir(), "jingle-runtime-revision-source-"))
+  const outputRoot = await mkdtemp(join(tmpdir(), "jingle-runtime-revision-out-"))
+
+  try {
+    await writeRuntimeRevisionExtensionSource(sourceRoot, "first-build")
+    await execFileAsync(
+      process.execPath,
+      ["packages/extension-cli/src/cli.mjs", "build", sourceRoot, "--out-dir", outputRoot],
+      { cwd: process.cwd(), timeout: 60_000 }
+    )
+
+    const packageRoot = join(outputRoot, "runtime-revision-sample", "1.0.0")
+    const firstDescriptor = await readRuntimeRevisionDescriptor(packageRoot)
+    const firstRuntimePath = join(packageRoot, firstDescriptor.runtime)
+    assert.equal(
+      firstDescriptor.runtimeArtifactRevision,
+      createRuntimeArtifactRevision(await readFile(firstRuntimePath))
+    )
+
+    await writeRuntimeRevisionSource(sourceRoot, "second-build")
+    await execFileAsync(
+      process.execPath,
+      ["packages/extension-cli/src/cli.mjs", "build", sourceRoot, "--out-dir", outputRoot],
+      { cwd: process.cwd(), timeout: 60_000 }
+    )
+
+    const secondDescriptor = await readRuntimeRevisionDescriptor(packageRoot)
+    const secondRuntimePath = join(packageRoot, secondDescriptor.runtime)
+    assert.notEqual(
+      secondDescriptor.runtimeArtifactRevision,
+      firstDescriptor.runtimeArtifactRevision
+    )
+    assert.notEqual(secondRuntimePath, firstRuntimePath)
+    assert.equal(
+      secondDescriptor.runtimeArtifactRevision,
+      createRuntimeArtifactRevision(await readFile(secondRuntimePath))
+    )
+    await assert.rejects(() => readFile(firstRuntimePath), /ENOENT/)
+  } finally {
+    await rm(sourceRoot, { force: true, recursive: true })
+    await rm(outputRoot, { force: true, recursive: true })
+  }
+})
+
 test("installed extension provider loads a valid descriptor package", async () => {
   const rootDir = await mkdtemp(join(tmpdir(), "jingle-installed-extension-"))
   try {
@@ -575,6 +638,7 @@ test("installed extension provider loads a valid descriptor package", async () =
     assert.equal(extensionPackage.source, "installed")
     assert.equal(extensionPackage.trust, "untrusted")
     assert.equal(extensionPackage.runtime?.kind, "module")
+    assert.equal(extensionPackage.runtime?.runtimeArtifactRevision.kind, "available")
     assert.equal(extensionPackage.main?.kind, "module")
     assert.equal(extensionPackage.main?.trust, "untrusted")
     assert.equal(extensionPackage.runtimeMetadata?.extensionName, "sample")
@@ -582,6 +646,46 @@ test("installed extension provider loads a valid descriptor package", async () =
     assert.deepEqual(
       registry.listManifests("darwin").map((manifest) => manifest.name),
       ["sample"]
+    )
+  } finally {
+    await rm(rootDir, { force: true, recursive: true })
+  }
+})
+
+test("installed extension provider keeps legacy runtime revision unavailable", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "jingle-installed-extension-"))
+  try {
+    const packageRoot = join(rootDir, "sample", "1.0.0")
+    await writeInstalledExtensionFixture(packageRoot, { legacyRuntimeAddress: true })
+
+    const registry = await createExtensionRegistryService([new InstalledExtensionProvider(rootDir)])
+    const extensionPackage = registry.getLoadedPackage("sample")
+
+    assert.ok(extensionPackage?.runtime)
+    assert.equal(extensionPackage.runtime.kind, "module")
+    assert.deepEqual(extensionPackage.runtime.runtimeArtifactRevision, {
+      kind: "unavailable",
+      reason: "legacy-descriptor"
+    })
+  } finally {
+    await rm(rootDir, { force: true, recursive: true })
+  }
+})
+
+test("installed extension provider rejects runtime content that changed after publication", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "jingle-installed-extension-"))
+  try {
+    const packageRoot = join(rootDir, "sample", "1.0.0")
+    const runtimeModulePath = await writeInstalledExtensionFixture(packageRoot)
+    await writeFile(runtimeModulePath, "export default { changed: true }")
+
+    const registry = await createExtensionRegistryService([new InstalledExtensionProvider(rootDir)])
+    const extensionPackage = registry.getPackage("sample")
+
+    assert.equal(extensionPackage?.status, "error")
+    assert.deepEqual(
+      extensionPackage?.errors.map((error) => error.code),
+      ["runtime_artifact_revision_invalid"]
     )
   } finally {
     await rm(rootDir, { force: true, recursive: true })
@@ -633,15 +737,19 @@ async function writeInstalledExtensionFixture(
   packageRoot: string,
   options: {
     descriptorOverrides?: Record<string, unknown>
+    legacyRuntimeAddress?: boolean
   } = {}
-): Promise<void> {
+): Promise<string> {
+  const runtimeSource = "export default { commands: {}, extensionName: 'sample' }"
+  const runtimeArtifactRevision = createRuntimeArtifactRevision(runtimeSource)
+  const runtimeFileName = options.legacyRuntimeAddress
+    ? "runtime.mjs"
+    : `runtime-${runtimeArtifactRevision.slice("sha256:".length)}.mjs`
+  const runtimeModulePath = join(packageRoot, "dist", runtimeFileName)
   await mkdir(join(packageRoot, "assets"), { recursive: true })
   await mkdir(join(packageRoot, "dist"), { recursive: true })
   await writeFile(join(packageRoot, "assets", "icon.svg"), "<svg />")
-  await writeFile(
-    join(packageRoot, "dist", "runtime.mjs"),
-    "export default { commands: {}, extensionName: 'sample' }"
-  )
+  await writeFile(runtimeModulePath, runtimeSource)
   await writeFile(join(packageRoot, "dist", "main.mjs"), "export default {}")
   await writeFile(
     join(packageRoot, "manifest.json"),
@@ -675,12 +783,90 @@ async function writeInstalledExtensionFixture(
       id: "sample",
       main: "./dist/main.mjs",
       manifest: "./manifest.json",
-      runtime: "./dist/runtime.mjs",
+      runtime: `./dist/${runtimeFileName}`,
+      ...(!options.legacyRuntimeAddress && { runtimeArtifactRevision }),
       runtimeMetadata: "./runtime-metadata.json",
       schemaVersion: 1,
       version: "1.0.0",
       ...options.descriptorOverrides
     })
+  )
+  return runtimeModulePath
+}
+
+function createRuntimeArtifactRevision(content: string | Uint8Array): string {
+  return `sha256:${createHash("sha256").update(content).digest("hex")}`
+}
+
+async function readRuntimeRevisionDescriptor(packageRoot: string): Promise<{
+  runtime: string
+  runtimeArtifactRevision: string
+}> {
+  return JSON.parse(await readFile(join(packageRoot, "jingle.extension.json"), "utf8")) as {
+    runtime: string
+    runtimeArtifactRevision: string
+  }
+}
+
+async function writeRuntimeRevisionExtensionSource(
+  sourceRoot: string,
+  marker: string
+): Promise<void> {
+  await mkdir(join(sourceRoot, "assets"), { recursive: true })
+  await Promise.all([
+    writeFile(join(sourceRoot, "assets", "icon.svg"), "<svg />"),
+    writeFile(
+      join(sourceRoot, "package.json"),
+      JSON.stringify({ name: "runtime-revision-sample", type: "module", version: "1.0.0" })
+    ),
+    writeFile(
+      join(sourceRoot, "manifest.ts"),
+      [
+        'import { defineNativeExtensionManifest } from "@jingle/extension-api"',
+        "export const manifest = defineNativeExtensionManifest({",
+        "  capabilities: [],",
+        '  commands: [{ mode: "no-view", name: "run", runtime: {}, title: "Run" }],',
+        '  connection: { auth: { type: "none" }, id: "default", provider: "sample", title: "Sample" },',
+        '  icon: "assets/icon.svg",',
+        '  name: "runtime-revision-sample",',
+        "  runtimeCapabilities: [],",
+        '  title: "Runtime Revision Sample"',
+        "})"
+      ].join("\n")
+    ),
+    writeFile(
+      join(sourceRoot, "runtime-metadata.ts"),
+      [
+        'import { defineNativeExtensionRuntimeMetadata } from "@jingle/extension-api"',
+        "export const runtimeMetadata = defineNativeExtensionRuntimeMetadata({",
+        '  commands: [{ name: "run" }],',
+        '  extensionName: "runtime-revision-sample"',
+        "})"
+      ].join("\n")
+    ),
+    writeFile(
+      join(sourceRoot, "main.ts"),
+      [
+        'import { defineNativeExtensionMain } from "@jingle/extension-api"',
+        "export const main = defineNativeExtensionMain({})"
+      ].join("\n")
+    )
+  ])
+  await writeRuntimeRevisionSource(sourceRoot, marker)
+}
+
+async function writeRuntimeRevisionSource(sourceRoot: string, marker: string): Promise<void> {
+  await writeFile(
+    join(sourceRoot, "runtime.ts"),
+    [
+      'import { defineNativeExtensionRuntime } from "@jingle/extension-api"',
+      "export const runtime = defineNativeExtensionRuntime({",
+      "  commands: {",
+      `    run: { mode: "no-view", run: async () => "${marker}" }`,
+      "  },",
+      '  extensionName: "runtime-revision-sample"',
+      "})"
+    ].join("\n")
   )
 }
 

@@ -1,4 +1,7 @@
 export type InstalledExtensionTrustLevel = "trusted" | "untrusted"
+export type InstalledExtensionRuntimeArtifactRevision = `sha256:${string}`
+
+const RUNTIME_ARTIFACT_REVISION_PATTERN = /^sha256:[a-f0-9]{64}$/
 
 export interface InstalledExtensionDescriptorFile {
   assets: string
@@ -6,6 +9,7 @@ export interface InstalledExtensionDescriptorFile {
   main?: string | null
   manifest: string
   runtime?: string | null
+  runtimeArtifactRevision: InstalledExtensionRuntimeArtifactRevision | null
   runtimeMetadata?: string | null
   schemaVersion: 1
   trust: InstalledExtensionTrustLevel
@@ -23,17 +27,41 @@ export function parseInstalledExtensionDescriptorFile(
     throw new Error("Installed extension descriptor schemaVersion must be 1")
   }
 
+  const runtime = readOptionalString(value, "runtime")
+  const runtimeArtifactRevision = readOptionalRuntimeArtifactRevision(value)
+  if (!runtime && runtimeArtifactRevision) {
+    throw new Error(
+      "Installed extension descriptor runtimeArtifactRevision requires a runtime module"
+    )
+  }
+
   return {
     assets: readRequiredString(value, "assets"),
     id: readRequiredString(value, "id"),
     main: readOptionalString(value, "main"),
     manifest: readRequiredString(value, "manifest"),
-    runtime: readOptionalString(value, "runtime"),
+    runtime,
+    runtimeArtifactRevision,
     runtimeMetadata: readOptionalString(value, "runtimeMetadata"),
     schemaVersion: 1,
     trust: readOptionalTrustLevel(value, "trust") ?? "untrusted",
     version: readRequiredString(value, "version")
   }
+}
+
+function readOptionalRuntimeArtifactRevision(
+  record: Record<string, unknown>
+): InstalledExtensionRuntimeArtifactRevision | null {
+  const value = record.runtimeArtifactRevision
+  if (value === null || value === undefined) {
+    return null
+  }
+  if (typeof value !== "string" || !RUNTIME_ARTIFACT_REVISION_PATTERN.test(value)) {
+    throw new Error(
+      "Installed extension descriptor runtimeArtifactRevision must be a sha256 content revision"
+    )
+  }
+  return value as InstalledExtensionRuntimeArtifactRevision
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -6,6 +6,7 @@ import type {
   NativeExtensionRuntimePackage,
   NativeExtensionRuntimePackageMetadata
 } from "@jingle/extension-api"
+import type { InstalledExtensionRuntimeArtifactRevision } from "./descriptor-schema"
 
 export type ExtensionPackageSource = "built-in" | "installed"
 export type ExtensionPackageTrustLevel = "trusted" | "untrusted"
@@ -18,6 +19,7 @@ export type ExtensionPackageErrorCode =
   | "main_missing"
   | "manifest_invalid"
   | "manifest_missing"
+  | "runtime_artifact_revision_invalid"
   | "runtime_invalid"
   | "runtime_metadata_invalid"
   | "runtime_metadata_missing"
@@ -35,10 +37,21 @@ export interface ExtensionRuntimePackageRef {
   version: string
 }
 
+export type ExtensionRuntimeArtifactRevision =
+  | {
+      kind: "available"
+      revision: InstalledExtensionRuntimeArtifactRevision
+    }
+  | {
+      kind: "unavailable"
+      reason: "legacy-descriptor"
+    }
+
 export interface ExtensionRuntimeModuleRef {
   extensionName: string
   kind: "module"
   modulePath: string
+  runtimeArtifactRevision: ExtensionRuntimeArtifactRevision
   version: string
 }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import {
   cpSync,
   existsSync,
@@ -296,10 +296,11 @@ async function buildExtension(input) {
         "defineNativeExtensionMain"
       )
 
+      const runtimeModulePath = join(stagingRoot, "dist", "runtime.mjs")
       await buildModuleFromSource({
         extensionRoot,
         installRuntimeReactShim: true,
-        outfile: join(stagingRoot, "dist", "runtime.mjs"),
+        outfile: runtimeModulePath,
         source: `export { ${runtimeExportName} as default } from "./runtime"\n`,
         sourcefile: `${manifest.name}-runtime-entry.ts`
       })
@@ -311,12 +312,17 @@ async function buildExtension(input) {
         sourcefile: `${manifest.name}-main-entry.ts`
       })
 
+      const runtimeArtifactRevision = createRuntimeArtifactRevision(runtimeModulePath)
+      const runtimeArtifactFileName = `runtime-${runtimeArtifactRevision.slice("sha256:".length)}.mjs`
+      await rename(runtimeModulePath, join(stagingRoot, "dist", runtimeArtifactFileName))
+
       writeJson(join(stagingRoot, "jingle.extension.json"), {
         assets: "./assets",
         id: manifest.name,
         main: "./dist/main.mjs",
         manifest: "./manifest.json",
-        runtime: "./dist/runtime.mjs",
+        runtime: `./dist/${runtimeArtifactFileName}`,
+        runtimeArtifactRevision,
         runtimeMetadata: "./runtime-metadata.json",
         schemaVersion: 1,
         trust,
@@ -380,6 +386,10 @@ async function buildExtension(input) {
     trust,
     version
   }
+}
+
+function createRuntimeArtifactRevision(runtimeModulePath) {
+  return `sha256:${createHash("sha256").update(readFileSync(runtimeModulePath)).digest("hex")}`
 }
 
 async function publishPackageDirectory(stagingRoot, packageRoot, publishLock) {
