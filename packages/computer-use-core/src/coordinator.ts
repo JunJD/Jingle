@@ -238,8 +238,7 @@ export class ComputerUseTransactionCoordinator {
     baseStateId: string,
     delivery: "background" | "foreground"
   ): ComputerUseBackendExecutionResult | null {
-    for (let index = 0; index < actions.length; index += 1) {
-      const action = actions[index]!
+    for (const action of actions) {
       const capability = this.backend.matrix.capabilities.find(
         (candidate) => candidate.action === action.kind
       )
@@ -248,19 +247,7 @@ export class ComputerUseTransactionCoordinator {
       return {
         baseStateId,
         outcome,
-        steps: [
-          {
-            action,
-            evidence: {
-              delivery: "semantic",
-              noSideEffectProof: true,
-              route: capability?.route ?? "unavailable",
-              verification: "failed"
-            },
-            outcome
-          }
-        ],
-        stoppedAt: index
+        steps: []
       }
     }
     return null

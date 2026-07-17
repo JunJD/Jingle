@@ -1317,3 +1317,108 @@ test("native capability matrices are canonical immutable copies", async () => {
     ;(backend.matrix.capabilities[0] as { route: string }).route = "global_input"
   })
 })
+
+test("coordinator preflight settles first and later unsupported actions without dispatch", async () => {
+  const raw = observation({
+    elements: [
+      {
+        actions: ["type_text", "keypress", "scroll"],
+        index: 0,
+        ref: "@e1",
+        role: "text_field"
+      }
+    ]
+  })
+  let backendDispatches = 0
+  const backend: ComputerUseBackend = {
+    matrix: {
+      capabilities: [
+        {
+          action: "type_text",
+          background: "verified",
+          foreground: "unavailable",
+          route: "ax_value"
+        },
+        {
+          action: "keypress",
+          background: "refused",
+          foreground: "unavailable",
+          route: "unavailable"
+        },
+        {
+          action: "scroll",
+          background: "unavailable",
+          foreground: "unavailable",
+          route: "unavailable"
+        }
+      ],
+      environment: "macos-quartz",
+      platform: "macos",
+      protocolVersion: 1
+    },
+    disposeSession: resolvedVoid,
+    async execute() {
+      backendDispatches += 1
+      throw new Error("unsupported coordinator actions must not dispatch")
+    },
+    async observe() {
+      const { epoch: _epoch, stateId: _stateId, ...value } = raw
+      return value
+    }
+  }
+  const ledgerWrites: string[] = []
+  const ledger = new ComputerUseActionLedger({
+    async reserve() {
+      return "reserved"
+    },
+    async write(attempt) {
+      ledgerWrites.push(`${attempt.attemptId}:${attempt.phase}:${attempt.outcome ?? "pending"}`)
+    }
+  })
+  const scheduler = new ComputerUseResourceScheduler()
+  const sessions = new ComputerUseSessionManager(backend)
+  const coordinator = new ComputerUseTransactionCoordinator(backend, scheduler, sessions, ledger)
+  const base = await coordinator.observe({})
+  await sessions.setEnabled(true)
+  const grant = sessions.openSession({ observation: base, runId: "run", threadId: "thread" })
+  const input = {
+    baseStateId: base.stateId,
+    runId: "run",
+    sessionId: grant.sessionId,
+    threadId: "thread"
+  }
+
+  const firstUnsupported = await coordinator.execute({
+    ...input,
+    actions: [
+      { kind: "scroll", ref: "@e1", scrollAmount: 1 },
+      { kind: "type_text", ref: "@e1", value: "hello" }
+    ],
+    transactionId: "first-unsupported"
+  })
+  const laterUnsupported = await coordinator.execute({
+    ...input,
+    actions: [
+      { kind: "type_text", ref: "@e1", value: "hello" },
+      { keys: ["ENTER"], kind: "keypress", ref: "@e1" }
+    ],
+    transactionId: "later-unsupported"
+  })
+
+  assert.deepEqual(firstUnsupported, {
+    baseStateId: base.stateId,
+    outcome: "unavailable",
+    steps: []
+  })
+  assert.deepEqual(laterUnsupported, {
+    baseStateId: base.stateId,
+    outcome: "refused",
+    steps: []
+  })
+  assert.equal(backendDispatches, 0)
+  assert.equal(scheduler.epoch(base.resourceKey), 0)
+  assert.deepEqual(ledgerWrites, [
+    "first-unsupported:settled:unavailable",
+    "later-unsupported:settled:refused"
+  ])
+})
