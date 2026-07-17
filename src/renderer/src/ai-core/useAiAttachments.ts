@@ -89,6 +89,19 @@ export function toComposerAttachmentRef(
   }
 }
 
+export function toComposerAttachmentRefs(
+  attachments: readonly LauncherAiAttachmentDraft[]
+): ComposerAttachmentRef[] {
+  return attachments.map(toComposerAttachmentRef)
+}
+
+export function removeLauncherAiAttachmentById(
+  attachments: readonly LauncherAiAttachmentDraft[],
+  attachmentId: string
+): LauncherAiAttachmentDraft[] {
+  return attachments.filter((attachment) => attachment.id !== attachmentId)
+}
+
 function deriveLauncherAiAttachmentDrafts(context: ClipboardContext): LauncherAiAttachmentDraft[] {
   switch (context.kind) {
     case "image":
@@ -206,7 +219,7 @@ export function useAiAttachments(): {
   }, [acceptedClipboardAttachments, pickedImages])
 
   const messageRefs = useMemo<ComposerMessageRef[]>(() => {
-    return attachments.map(toComposerAttachmentRef)
+    return toComposerAttachmentRefs(attachments)
   }, [attachments])
 
   const addAttachmentDrafts = useCallback((nextAttachments: LauncherAiAttachmentDraft[]): void => {
@@ -280,9 +293,7 @@ export function useAiAttachments(): {
   }, [addAttachmentDrafts, clearClipboardContext, clipboardCandidateAttachments])
 
   const removeAttachment = useCallback((attachmentId: string): void => {
-    setPickedImages((currentImages) =>
-      currentImages.filter((attachment) => attachment.id !== attachmentId)
-    )
+    setPickedImages((currentImages) => removeLauncherAiAttachmentById(currentImages, attachmentId))
   }, [])
 
   const clearAllAttachments = useCallback((): void => {

@@ -25,7 +25,7 @@ function toAttachmentData(
   if (attachment.kind === "image") {
     return {
       id: attachment.id,
-      label: clipboardImageLabel,
+      label: attachment.name ?? clipboardImageLabel,
       mediaCategory: "image",
       mediaType: "image/png",
       url: attachment.previewDataUrl
@@ -106,7 +106,7 @@ function LauncherAttachmentItem(props: {
           ? "absolute right-[var(--jingle-leading-nudge)] top-[var(--jingle-leading-nudge)] size-[var(--jingle-icon-compact)] rounded-full border-0 bg-zinc-500/95 p-0 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-zinc-600 [&>svg]:size-[var(--jingle-icon-close-glyph)]"
           : "absolute right-[var(--jingle-space-1)] top-[var(--jingle-space-1)] size-[var(--jingle-icon-sm)] rounded-full border-0 bg-zinc-500/95 p-0 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-zinc-600 [&>svg]:size-[var(--jingle-icon-micro)]"
       }
-      label={removeLabel}
+      label={`${removeLabel}: ${data.label}`}
     />
   )
 
@@ -183,19 +183,14 @@ export function LauncherAttachmentStrip(
     onRemove,
     removeLabel = copy.launcher.removeAttachment
   } = props
-  const isCandidate = intent === "candidate"
-
   if (attachments.length === 0) {
     return null
   }
 
-  const visibleAttachments = attachments.slice(0, 3)
-  const overflowCount = attachments.length - visibleAttachments.length
-
   return (
-    <div className="flex min-w-0 items-center gap-[var(--jingle-space-1-5)] px-[var(--jingle-space-1)] py-[var(--jingle-space-1)]">
-      <Attachments variant="inline" className="min-w-0 flex-nowrap items-center overflow-hidden">
-        {visibleAttachments.map((attachment) => (
+    <div className="flex w-max shrink-0 items-center gap-[var(--jingle-space-1-5)] px-[var(--jingle-space-1)] py-[var(--jingle-space-1)]">
+      <Attachments variant="inline" className="flex-nowrap items-center">
+        {attachments.map((attachment) => (
           <LauncherAttachmentItem
             key={attachment.id}
             attachment={attachment}
@@ -206,17 +201,6 @@ export function LauncherAttachmentStrip(
             removeLabel={removeLabel}
           />
         ))}
-        {overflowCount > 0 ? (
-          <div
-            className={
-              isCandidate
-                ? "flex h-[var(--jingle-icon-lg)] w-[var(--jingle-icon-lg)] shrink-0 items-center justify-center rounded-[var(--jingle-radius-md)] border border-dashed border-border/70 bg-muted/45 [font-size:var(--jingle-font-caption)] font-medium text-muted-foreground shadow-sm ring-1 ring-black/5"
-                : "flex h-[var(--jingle-icon-lg)] w-[var(--jingle-icon-lg)] shrink-0 items-center justify-center rounded-[var(--jingle-radius-md)] border border-white/10 bg-black/[0.035] [font-size:var(--jingle-font-caption)] font-medium text-muted-foreground shadow-sm ring-1 ring-black/5"
-            }
-          >
-            +{overflowCount}
-          </div>
-        ) : null}
       </Attachments>
     </div>
   )
