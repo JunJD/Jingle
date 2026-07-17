@@ -16,6 +16,7 @@ import {
   createFileExtensionRuntimeCacheBackend,
   EXTENSION_RUNTIME_CACHE_DIR_ENV
 } from "./cache-backend"
+import { createExtensionRuntimeCacheLifecycle } from "./cache-lifecycle"
 import { createExtensionRuntimeRenderer, type ExtensionRuntimeRenderer } from "./reconciler/render"
 import {
   createExtensionRuntimeLaunchProps,
@@ -26,7 +27,8 @@ import {
   normalizeExtensionRuntimeNavigationHostRequest,
   runWithExtensionRuntimeSdk,
   sendExtensionRuntimeHostRequest,
-  type ExtensionRuntimeHostRequestInput
+  type ExtensionRuntimeHostRequestInput,
+  type RuntimeCacheBackend
 } from "@jingle/extension-api/host-runtime"
 
 let activeRenderer: ExtensionRuntimeRenderer | null = null
@@ -35,7 +37,11 @@ let hostRequestIndex = 0
 
 const parentPort = getParentPort()
 installRuntimeReactBridge()
-installRuntimeCacheBackend()
+const runtimeCacheLifecycle = createExtensionRuntimeCacheLifecycle(installRuntimeCacheBackend(), {
+  onPersistenceFailure: (sessionId) => {
+    postToHost({ sessionId, type: "cache-persistence-failed" })
+  }
+})
 
 parentPort.on("message", (event) => {
   const message = event.data as ExtensionHostToRuntimeMessage
@@ -45,7 +51,7 @@ parentPort.on("message", (event) => {
       void startRuntime(message.sessionId, message.lease)
       return
     case "stop":
-      process.exit(0)
+      void stopRuntime(message.sessionId)
       return
     case "event":
       void handleRuntimeEvent(message.sessionId, message.event)
@@ -103,6 +109,7 @@ async function startRuntime(
   receivedLease: ExtensionRuntimeUtilityExecutionLease
 ): Promise<void> {
   try {
+    runtimeCacheLifecycle.bindSession(sessionId)
     const lease = deepFreeze(structuredClone(receivedLease))
     const { context, runtime: runtimeRef } = lease
     const command = await loadNativeExtensionRuntimeCommand(runtimeRef, context)
@@ -139,7 +146,10 @@ async function startRuntime(
             navigation
           })
       )
-        .then(() => {
+        .then(async () => {
+          if (!(await runtimeCacheLifecycle.flushBeforeReady(sessionId))) {
+            return
+          }
           postToHost({
             sessionId,
             type: "ready"
@@ -185,7 +195,10 @@ async function startRuntime(
     )
     void renderer
       .flushSnapshots()
-      .then(() => {
+      .then(async () => {
+        if (!(await runtimeCacheLifecycle.flushBeforeReady(sessionId))) {
+          return
+        }
         postToHost({
           sessionId,
           type: "ready"
@@ -197,6 +210,11 @@ async function startRuntime(
   } catch (error) {
     postRuntimeError(sessionId, error)
   }
+}
+
+async function stopRuntime(sessionId: string): Promise<void> {
+  const result = await runtimeCacheLifecycle.stop(sessionId)
+  postToHost({ result, sessionId, type: "stopped" })
 }
 
 function installRuntimeReactBridge(): void {
@@ -263,13 +281,15 @@ function getParentPort(): NonNullable<typeof process.parentPort> {
   return port
 }
 
-function installRuntimeCacheBackend(): void {
+function installRuntimeCacheBackend(): RuntimeCacheBackend | null {
   const cacheDir = process.env[EXTENSION_RUNTIME_CACHE_DIR_ENV]
   if (!cacheDir) {
-    return
+    return null
   }
 
-  installExtensionRuntimeCacheBackend(createFileExtensionRuntimeCacheBackend(cacheDir))
+  const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+  installExtensionRuntimeCacheBackend(backend)
+  return backend
 }
 
 function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {

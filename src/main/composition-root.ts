@@ -241,7 +241,7 @@ export class MainCompositionRoot {
       this.dependencyContainer.resolve(ThreadDigestService).shutdown()
     ])
     resolveExtensionRuntimeMenuBarService(this.dependencyContainer).dispose()
-    resolveExtensionRuntimeManager(this.dependencyContainer).dispose()
+    await resolveExtensionRuntimeManager(this.dependencyContainer).dispose()
     resolveNativeMenuBarService(this.dependencyContainer).dispose()
     unregisterGlobalShortcutService()
     await disposeNativeExtensionMainDefinitionRegistry()

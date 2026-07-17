@@ -67,6 +67,7 @@ import type {
 } from "../../src/main/services/extension-runtime/runtime-process"
 
 class FakeRuntimeProcess implements ExtensionRuntimeProcess {
+  autoAcknowledgeStop = true
   killCalls = 0
   killed = false
   messages: ExtensionHostToRuntimeMessage[] = []
@@ -107,14 +108,24 @@ class FakeRuntimeProcess implements ExtensionRuntimeProcess {
 
   postMessage(message: ExtensionHostToRuntimeMessage): void {
     this.messages.push(message)
+    if (message.type === "stop" && this.autoAcknowledgeStop) {
+      this.emitMessage({
+        result: { kind: "flushed" },
+        sessionId: message.sessionId,
+        type: "stopped"
+      })
+    }
   }
 }
 
 class FakeRuntimeProcessLauncher implements ExtensionRuntimeProcessLauncher {
   processes: FakeRuntimeProcess[] = []
 
+  constructor(private readonly autoAcknowledgeStops = true) {}
+
   launch(): ExtensionRuntimeProcess {
     const process = new FakeRuntimeProcess()
+    process.autoAcknowledgeStop = this.autoAcknowledgeStops
     process.pid = 100 + this.processes.length
     this.processes.push(process)
     return process
@@ -257,12 +268,16 @@ function createHost(
 
 function createManager(
   params: {
+    autoAcknowledgeStops?: boolean
     host?: ExtensionRuntimeHostCapabilities
     launcher?: FakeRuntimeProcessLauncher
     onEventAck?: ConstructorParameters<typeof ExtensionRuntimeManager>[0]["onEventAck"]
     onError?: ConstructorParameters<typeof ExtensionRuntimeManager>[0]["onError"]
     onIssue?: ConstructorParameters<typeof ExtensionRuntimeManager>[0]["onIssueSnapshot"]
     onSurface?: ConstructorParameters<typeof ExtensionRuntimeManager>[0]["onSurface"]
+    scheduleStopTimeout?: ConstructorParameters<
+      typeof ExtensionRuntimeManager
+    >[0]["scheduleStopTimeout"]
     executionLeaseOwner?: ExtensionRuntimeExecutionLeaseOwner
     runtimeCapabilities?: readonly ExtensionRuntimeHostCapability[]
     sessionIds?: string[]
@@ -271,7 +286,7 @@ function createManager(
     >[0]["subscribeConfigurationCommits"]
   } = {}
 ) {
-  const launcher = params.launcher ?? new FakeRuntimeProcessLauncher()
+  const launcher = params.launcher ?? new FakeRuntimeProcessLauncher(params.autoAcknowledgeStops)
   const sessionIds = [...(params.sessionIds ?? ["session-1", "session-2", "session-3"])]
   const executionLeaseOwner =
     params.executionLeaseOwner ??
@@ -293,6 +308,7 @@ function createManager(
     onIssueSnapshot: params.onIssue,
     onSurface: params.onSurface,
     processLauncher: launcher,
+    scheduleStopTimeout: params.scheduleStopTimeout,
     subscribeConfigurationCommits: params.subscribeConfigurationCommits
   })
 
@@ -764,9 +780,25 @@ test("utility execution lease only exposes preferences to entitled runtimes", ()
   assert.equal(withPreferences.utility.context.extensionPreferences.accessToken, "secret-token")
   assert.equal(withPreferences.utility.context.commandPreferences.accessToken, "secret-token")
 
+  const installedInvokeContext = {
+    ...withPreferences.invokeContext,
+    configurationToken: {
+      ...withPreferences.invokeContext.configurationToken,
+      revisions: {
+        commandConfigRevision: 5,
+        connectionConfigRevision: 4,
+        credentialRevision: 3,
+        extensionConfigRevision: 2
+      }
+    }
+  }
+  const runtimeArtifactRevision = {
+    kind: "available" as const,
+    revision: `sha256:${"a".repeat(64)}` as `sha256:${string}`
+  }
   const installedUtility = createExtensionRuntimeUtilityExecutionLease({
     intent,
-    invokeContext: withPreferences.invokeContext,
+    invokeContext: installedInvokeContext,
     locale: "zh-CN",
     mode: "view",
     runtime: {
@@ -775,6 +807,7 @@ test("utility execution lease only exposes preferences to entitled runtimes", ()
       modulePath: "/immutable/github/1.2.3/runtime.js",
       version: "1.2.3"
     },
+    runtimeArtifactRevision,
     runtimeCapabilities: withPreferences.runtimeCapabilities
   })
   assert.equal(installedUtility.context.dataIdentity.kind, "available")
@@ -782,10 +815,43 @@ test("utility execution lease only exposes preferences to entitled runtimes", ()
     throw new Error("Expected installed utility data identity to be available")
   }
   assert.deepEqual(installedUtility.context.dataIdentity.cache, {
-    kind: "unavailable",
-    reason: "artifact-revision-unavailable"
+    commandConfigGeneration: 5,
+    connectionConfigGeneration: 4,
+    extensionConfigGeneration: 2,
+    kind: "available",
+    runtimeArtifactRevision: runtimeArtifactRevision.revision,
+    runtimePackageRevision: "1.2.3"
+  })
+  assert.deepEqual(installedUtility.context.dataIdentity.localStorage, {
+    connectionId: "default",
+    credentialGeneration: 3
   })
   assert.equal(JSON.stringify(installedUtility.context.dataIdentity).includes("/immutable/"), false)
+  assert.equal(Object.hasOwn(installedUtility.runtime, "runtimeArtifactRevision"), false)
+
+  const legacyInstalledUtility = createExtensionRuntimeUtilityExecutionLease({
+    intent,
+    invokeContext: installedInvokeContext,
+    locale: "zh-CN",
+    mode: "view",
+    runtime: installedUtility.runtime as Extract<
+      typeof installedUtility.runtime,
+      { kind: "module" }
+    >,
+    runtimeArtifactRevision: { kind: "unavailable", reason: "legacy-descriptor" },
+    runtimeCapabilities: withPreferences.runtimeCapabilities
+  })
+  assert.deepEqual(legacyInstalledUtility.context.dataIdentity, {
+    cache: {
+      kind: "unavailable",
+      reason: "artifact-revision-unavailable"
+    },
+    kind: "available",
+    localStorage: {
+      connectionId: "default",
+      credentialGeneration: 3
+    }
+  })
 })
 
 test("foreground launch intent projection ignores renderer preference and locale facts", () => {
@@ -1177,6 +1243,231 @@ test("runtime manager starts and stops a foreground utility session", async () =
   })
   assert.equal(launcher.processes[0]?.killed, true)
   assert.equal(manager.getForegroundSession(), null)
+})
+
+test("runtime manager retains a stopping session until the utility confirms its cache flush", async () => {
+  const stoppedSessions: string[] = []
+  const { launcher, manager } = createManager({ autoAcknowledgeStops: false })
+  manager.onSessionStopped((session) => stoppedSessions.push(session.sessionId))
+  await manager.startForeground(createLaunchIntent())
+  const process = launcher.processes[0]
+  assert.ok(process)
+
+  assert.equal(manager.stopForeground("session-1"), true)
+  assert.equal(manager.getForegroundSession(), null)
+  assert.equal(process.killed, false)
+  assert.deepEqual(stoppedSessions, [])
+  assert.deepEqual(process.messages[1], { sessionId: "session-1", type: "stop" })
+
+  process.emitMessage({
+    result: { kind: "flushed" },
+    sessionId: "session-1",
+    type: "stopped"
+  })
+
+  assert.equal(process.killed, true)
+  assert.deepEqual(stoppedSessions, ["session-1"])
+  assert.equal(manager.getLastError(), null)
+})
+
+test("runtime manager projects a typed cache failure without duplicating its stop result", async () => {
+  const errors: ExtensionRuntimeSessionError[] = []
+  const { launcher, manager } = createManager({
+    autoAcknowledgeStops: false,
+    onError: (error) => errors.push(error)
+  })
+  await manager.startForeground(createLaunchIntent())
+  const process = launcher.processes[0]
+  assert.ok(process)
+
+  process.emitMessage({ sessionId: "session-1", type: "cache-persistence-failed" })
+
+  assert.equal(process.killed, false)
+  assert.equal(process.messages[1]?.type, "stop")
+  assert.equal(errors.length, 1)
+  assert.equal(errors[0]?.error.code, "runtime_cache_persistence_failed")
+
+  process.emitMessage({
+    result: { kind: "cache-persistence-failed" },
+    sessionId: "session-1",
+    type: "stopped"
+  })
+
+  assert.equal(process.killed, true)
+  assert.equal(errors.length, 1)
+})
+
+test("runtime manager turns a normal-stop flush failure into a typed terminal error", async () => {
+  const { launcher, manager } = createManager({ autoAcknowledgeStops: false })
+  await manager.startForeground(createLaunchIntent())
+  const process = launcher.processes[0]
+  assert.ok(process)
+  manager.stopForeground("session-1")
+
+  process.emitMessage({
+    result: { kind: "cache-persistence-failed" },
+    sessionId: "session-1",
+    type: "stopped"
+  })
+
+  assert.equal(process.killed, true)
+  assert.equal(manager.getLastError()?.error.code, "runtime_cache_persistence_failed")
+})
+
+test("runtime manager preserves a primary runtime error when cache close also fails", async () => {
+  const errors: ExtensionRuntimeSessionError[] = []
+  const { launcher, manager } = createManager({
+    autoAcknowledgeStops: false,
+    onError: (error) => errors.push(error)
+  })
+  await manager.startForeground(createLaunchIntent())
+  const process = launcher.processes[0]
+  assert.ok(process)
+
+  process.emitMessage({
+    error: { code: "runtime_error", message: "Primary command failure." },
+    sessionId: "session-1",
+    type: "error"
+  })
+  process.emitMessage({
+    result: { kind: "cache-persistence-failed" },
+    sessionId: "session-1",
+    type: "stopped"
+  })
+
+  assert.equal(process.killCalls, 1)
+  assert.deepEqual(
+    errors.map((error) => error.error),
+    [{ code: "runtime_error", message: "Primary command failure." }]
+  )
+  assert.equal(manager.getLastError()?.error.code, "runtime_error")
+})
+
+test("runtime manager retains a stopping cache failure ahead of a later flushed acknowledgement", async () => {
+  const { launcher, manager } = createManager({ autoAcknowledgeStops: false })
+  await manager.startForeground(createLaunchIntent())
+  const process = launcher.processes[0]
+  assert.ok(process)
+  manager.stopForeground("session-1")
+
+  process.emitMessage({ sessionId: "session-1", type: "cache-persistence-failed" })
+  process.emitMessage({
+    result: { kind: "flushed" },
+    sessionId: "session-1",
+    type: "stopped"
+  })
+
+  assert.equal(process.killed, true)
+  assert.equal(manager.getLastError()?.error.code, "runtime_cache_persistence_failed")
+})
+
+test("runtime manager rejects a malformed graceful stop acknowledgement", async () => {
+  const { launcher, manager } = createManager({ autoAcknowledgeStops: false })
+  await manager.startForeground(createLaunchIntent())
+  const process = launcher.processes[0]
+  assert.ok(process)
+  manager.stopForeground("session-1")
+
+  process.emitMessage({
+    result: { kind: "forged" },
+    sessionId: "session-1",
+    type: "stopped"
+  } as unknown as ExtensionRuntimeToHostMessage)
+
+  assert.equal(process.killed, true)
+  assert.equal(manager.getLastError()?.error.code, "runtime_stop_response_invalid")
+})
+
+test("runtime manager fails closed when graceful stop acknowledgement times out", async () => {
+  let cancelCount = 0
+  const timeout = { fire: null as (() => void) | null }
+  const { launcher, manager } = createManager({
+    autoAcknowledgeStops: false,
+    scheduleStopTimeout: (listener) => {
+      timeout.fire = listener
+      return () => {
+        cancelCount++
+      }
+    }
+  })
+  await manager.startForeground(createLaunchIntent())
+  const process = launcher.processes[0]
+  assert.ok(process)
+  manager.stopForeground("session-1")
+  assert.ok(timeout.fire)
+
+  timeout.fire()
+
+  assert.equal(process.killed, true)
+  assert.equal(cancelCount, 1)
+  assert.equal(manager.getLastError()?.error.code, "runtime_stop_timeout")
+})
+
+test("runtime manager preserves a primary cache failure when its stop acknowledgement times out", async () => {
+  const timeout = { fire: null as (() => void) | null }
+  const { launcher, manager } = createManager({
+    autoAcknowledgeStops: false,
+    scheduleStopTimeout: (listener) => {
+      timeout.fire = listener
+      return () => undefined
+    }
+  })
+  await manager.startForeground(createLaunchIntent())
+  const process = launcher.processes[0]
+  assert.ok(process)
+
+  process.emitMessage({ sessionId: "session-1", type: "cache-persistence-failed" })
+  assert.ok(timeout.fire)
+  timeout.fire()
+
+  assert.equal(process.killed, true)
+  assert.equal(manager.getLastError()?.error.code, "runtime_cache_persistence_failed")
+})
+
+test("runtime manager reports utility exit before graceful stop acknowledgement", async () => {
+  const stoppedSessions: string[] = []
+  const { launcher, manager } = createManager({ autoAcknowledgeStops: false })
+  manager.onSessionStopped((session) => stoppedSessions.push(session.sessionId))
+  await manager.startForeground(createLaunchIntent())
+  const process = launcher.processes[0]
+  assert.ok(process)
+  manager.stopForeground("session-1")
+
+  process.emitExit(1)
+
+  assert.equal(process.killed, false)
+  assert.deepEqual(stoppedSessions, ["session-1"])
+  assert.equal(manager.getLastError()?.error.code, "runtime_stop_ack_missing")
+})
+
+test("runtime manager dispose waits for cache flush acknowledgement before releasing sessions", async () => {
+  const stoppedSessions: string[] = []
+  const { launcher, manager } = createManager({ autoAcknowledgeStops: false })
+  manager.onSessionStopped((session) => stoppedSessions.push(session.sessionId))
+  await manager.startForeground(createLaunchIntent())
+  const process = launcher.processes[0]
+  assert.ok(process)
+  let disposed = false
+
+  const disposePromise = manager.dispose().then(() => {
+    disposed = true
+  })
+  await flushPromises()
+
+  assert.equal(disposed, false)
+  assert.equal(process.killed, false)
+  assert.deepEqual(stoppedSessions, [])
+
+  process.emitMessage({
+    result: { kind: "flushed" },
+    sessionId: "session-1",
+    type: "stopped"
+  })
+  await disposePromise
+
+  assert.equal(disposed, true)
+  assert.equal(process.killed, true)
+  assert.deepEqual(stoppedSessions, ["session-1"])
 })
 
 test("runtime manager owns a normal terminal transition before issue projection reentrancy", async () => {
@@ -3080,8 +3371,12 @@ test("runtime manager rejects cross-extension host capability requests", async (
 })
 
 test("runtime manager stops run-once sessions after ready", async () => {
-  const { launcher, manager } = createManager()
+  const { launcher, manager } = createManager({ autoAcknowledgeStops: false })
   const resultPromise = manager.runOnce(createLaunchIntent())
+  let settled = false
+  void resultPromise.then(() => {
+    settled = true
+  })
   await flushPromises()
 
   launcher.processes[0]?.emitMessage({
@@ -3089,11 +3384,97 @@ test("runtime manager stops run-once sessions after ready", async () => {
     type: "ready"
   })
 
+  await flushPromises()
+  assert.equal(settled, false)
+  assert.equal(launcher.processes[0]?.killed, false)
+  assert.equal(launcher.processes[0]?.messages[1]?.type, "stop")
+
+  launcher.processes[0]?.emitMessage({
+    result: { kind: "flushed" },
+    sessionId: "session-1",
+    type: "stopped"
+  })
+
   assert.deepEqual(await resultPromise, {
     sessionId: "session-1",
     status: "ready"
   })
   assert.equal(launcher.processes[0]?.killed, true)
+})
+
+test("runtime manager fails pending run-once success when cache close fails", async () => {
+  const { launcher, manager } = createManager({ autoAcknowledgeStops: false })
+  const resultPromise = manager.runOnce(createLaunchIntent())
+  await flushPromises()
+  const process = launcher.processes[0]
+  assert.ok(process)
+
+  process.emitMessage({ sessionId: "session-1", type: "ready" })
+  process.emitMessage({
+    result: { kind: "cache-persistence-failed" },
+    sessionId: "session-1",
+    type: "stopped"
+  })
+
+  assert.deepEqual(await resultPromise, {
+    error: {
+      code: "runtime_cache_persistence_failed",
+      message: "Extension runtime cache persistence failed."
+    },
+    sessionId: "session-1",
+    status: "error"
+  })
+  assert.equal(process.killed, true)
+})
+
+test("runtime manager fails pending run-once success when graceful stop times out", async () => {
+  const timeout = { fire: null as (() => void) | null }
+  const { launcher, manager } = createManager({
+    autoAcknowledgeStops: false,
+    scheduleStopTimeout: (listener) => {
+      timeout.fire = listener
+      return () => undefined
+    }
+  })
+  const resultPromise = manager.runOnce(createLaunchIntent())
+  await flushPromises()
+  const process = launcher.processes[0]
+  assert.ok(process)
+
+  process.emitMessage({ sessionId: "session-1", type: "ready" })
+  assert.ok(timeout.fire)
+  timeout.fire()
+
+  assert.deepEqual(await resultPromise, {
+    error: {
+      code: "runtime_stop_timeout",
+      message: "Extension runtime did not confirm graceful shutdown in time."
+    },
+    sessionId: "session-1",
+    status: "error"
+  })
+  assert.equal(process.killed, true)
+})
+
+test("runtime manager fails pending run-once success when the utility exits before acknowledgement", async () => {
+  const { launcher, manager } = createManager({ autoAcknowledgeStops: false })
+  const resultPromise = manager.runOnce(createLaunchIntent())
+  await flushPromises()
+  const process = launcher.processes[0]
+  assert.ok(process)
+
+  process.emitMessage({ sessionId: "session-1", type: "ready" })
+  process.emitExit(1)
+
+  assert.deepEqual(await resultPromise, {
+    error: {
+      code: "runtime_stop_ack_missing",
+      message: "Extension runtime exited before confirming its cache was flushed."
+    },
+    sessionId: "session-1",
+    status: "error"
+  })
+  assert.equal(process.killed, false)
 })
 
 test("runtime manager reports run-once sessions when started", async () => {

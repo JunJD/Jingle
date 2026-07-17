@@ -818,6 +818,8 @@ export type ExtensionHostResponse =
   | { error: ExtensionRuntimeError; id: string; ok: false }
   | { id: string; ok: true; result: unknown }
 
+export type ExtensionRuntimeStopResult = { kind: "cache-persistence-failed" } | { kind: "flushed" }
+
 export type ExtensionRuntimeToHostMessage =
   | { sessionId: string; type: "ready" }
   | { sessionId: string; surface: ExtensionSurfaceSnapshot; type: "surface" }
@@ -825,6 +827,8 @@ export type ExtensionRuntimeToHostMessage =
   | { request: ExtensionHostRequest; sessionId: string; type: "host-request" }
   | { error: ExtensionRuntimeError; sessionId: string; type: "error" }
   | { metrics: ExtensionRuntimeMetrics; sessionId: string; type: "metrics" }
+  | { sessionId: string; type: "cache-persistence-failed" }
+  | { result: ExtensionRuntimeStopResult; sessionId: string; type: "stopped" }
 
 export interface ExtensionRuntimeError {
   readonly code: string

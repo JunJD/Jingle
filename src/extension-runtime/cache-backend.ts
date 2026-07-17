@@ -41,16 +41,58 @@ export function createFileExtensionRuntimeCacheBackend(
   options: RuntimeCacheFileBackendOptions = {}
 ): RuntimeCacheBackend {
   const failureListeners = new Set<RuntimeCacheBackendFailureListener>()
+  let closeViolation: Error | null = null
   let failure: Error | null = null
+  let failureReported = false
+  let acceptingWrites = true
   let writeQueue = Promise.resolve()
 
+  const drainWrites = async (): Promise<void> => {
+    let pendingWrites: Promise<void>
+    do {
+      pendingWrites = writeQueue
+      await pendingWrites
+    } while (pendingWrites !== writeQueue)
+    const terminalFailure = failure ?? closeViolation
+    if (terminalFailure) {
+      throw terminalFailure
+    }
+  }
+
+  const reportFailure = (error: Error): void => {
+    if (failureReported) {
+      return
+    }
+    failureReported = true
+    for (const listener of failureListeners) {
+      notifyFailureListener(listener, error)
+    }
+  }
+
+  const recordFailure = (error: unknown): Error => {
+    if (!failure) {
+      failure = toCachePersistenceError(error)
+      reportFailure(failure)
+    }
+    return failure
+  }
+
+  const recordCloseViolation = (): Error => {
+    if (!closeViolation) {
+      closeViolation = toCachePersistenceError(
+        new Error("Extension runtime cache backend is closed.")
+      )
+      reportFailure(closeViolation)
+    }
+    return closeViolation
+  }
+
   return {
-    async flush() {
-      await writeQueue
-      if (failure) {
-        throw failure
-      }
+    async close() {
+      acceptingWrites = false
+      await drainWrites()
     },
+    flush: drainWrites,
     loadStore(scope) {
       const cacheFilePath = getStoreFilePath(cacheDir, scope)
       try {
@@ -60,6 +102,9 @@ export function createFileExtensionRuntimeCacheBackend(
       }
     },
     mutateStore(scope, mutation) {
+      if (!acceptingWrites) {
+        throw failure ?? recordCloseViolation()
+      }
       if (failure) {
         throw failure
       }
@@ -80,20 +125,15 @@ export function createFileExtensionRuntimeCacheBackend(
           )
         })
         .catch((error: unknown) => {
-          if (!failure) {
-            failure = toCachePersistenceError(error)
-            for (const listener of failureListeners) {
-              notifyFailureListener(listener, failure)
-            }
-          }
-          throw failure
+          throw recordFailure(error)
         })
       void writeQueue.catch(() => undefined)
     },
     onFailure(listener) {
       failureListeners.add(listener)
-      if (failure) {
-        notifyFailureListener(listener, failure)
+      const terminalFailure = failure ?? closeViolation
+      if (terminalFailure) {
+        notifyFailureListener(listener, terminalFailure)
       }
       return () => {
         failureListeners.delete(listener)

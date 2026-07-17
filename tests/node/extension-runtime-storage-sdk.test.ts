@@ -623,8 +623,9 @@ function createAvailableDataIdentity(
   }
 }
 
-function createBackendLifecycle(): Pick<RuntimeCacheBackend, "flush" | "onFailure"> {
+function createBackendLifecycle(): Pick<RuntimeCacheBackend, "close" | "flush" | "onFailure"> {
   return {
+    close: async () => undefined,
     flush: async () => undefined,
     onFailure: () => () => undefined
   }

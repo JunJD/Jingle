@@ -179,6 +179,27 @@ test("file runtime cache backend applies remove and clear mutations", async () =
   })
 })
 
+test("file runtime cache backend closes its mutation gate before draining accepted writes", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    const failures: Error[] = []
+    backend.onFailure((error) => failures.push(error))
+    writeEntries(backend, notionScope, [["accepted", "before-close"]])
+
+    const closePromise = backend.close()
+    assert.throws(
+      () => writeEntries(backend, notionScope, [["rejected", "after-close"]]),
+      /Extension runtime cache persistence failed/
+    )
+    await assert.rejects(closePromise, /Extension runtime cache persistence failed/)
+
+    assert.deepEqual(createFileExtensionRuntimeCacheBackend(cacheDir).loadStore(notionScope), [
+      ["accepted", "before-close"]
+    ])
+    assert.equal(failures.length, 1)
+  })
+})
+
 test("file runtime cache backend reports terminal persistence failures with a bounded message", async () => {
   const rootDir = mkdtempSync(join(tmpdir(), "jingle-runtime-cache-failure-"))
   try {
@@ -250,7 +271,7 @@ test("file runtime cache backend hashes disk path segments", async () => {
   })
 })
 
-test("file runtime cache backend recovers a fresh orphan lock after its stale boundary", async () => {
+test("file runtime cache backend recovers an orphan lock and drains writes queued during flush", async () => {
   await withCacheDirectory(async (cacheDir) => {
     const initialBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
     writeEntries(initialBackend, notionScope, [["page", "page-1"]])
@@ -269,12 +290,15 @@ test("file runtime cache backend recovers a fresh orphan lock after its stale bo
     })
     const startedAt = Date.now()
     writeEntries(recoveringBackend, notionSecondaryScope, [["notification", "notification-1"]])
-    await recoveringBackend.flush()
+    const flushPromise = recoveringBackend.flush()
+    writeEntries(recoveringBackend, notionScope, [["page", "page-2"]])
+    await flushPromise
 
     assert.ok(Date.now() - startedAt >= 1_500)
     assert.deepEqual(recoveringBackend.loadStore(notionSecondaryScope), [
       ["notification", "notification-1"]
     ])
+    assert.deepEqual(recoveringBackend.loadStore(notionScope), [["page", "page-2"]])
   })
 })
 

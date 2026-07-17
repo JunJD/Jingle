@@ -35,6 +35,7 @@ export type RuntimeCacheBackendMutation =
     }
 
 export interface RuntimeCacheBackend {
+  close: () => Promise<void>
   flush: () => Promise<void>
   loadStore: (scope: RuntimeCacheBackendScope) => readonly RuntimeCacheEntry[]
   mutateStore: (scope: RuntimeCacheBackendScope, mutation: RuntimeCacheBackendMutation) => void
