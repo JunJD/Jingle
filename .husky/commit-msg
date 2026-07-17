@@ -1,0 +1,45 @@
+#!/usr/bin/env sh
+
+repo_root=$(git rev-parse --show-toplevel)
+commitlint="$repo_root/node_modules/.bin/commitlint"
+
+if [ ! -x "$commitlint" ]; then
+  cat >&2 <<'EOF'
+Jingle commit message check could not start because commitlint is not installed.
+Run `pnpm install` from the repository root and retry the commit.
+EOF
+  exit 1
+fi
+
+"$commitlint" --edit "$1"
+status=$?
+
+if [ "$status" -ne 0 ]; then
+  cat >&2 <<'EOF'
+
+Jingle commit message check failed.
+
+Expected:
+  <type>(<scope>): <direct description>
+
+Examples:
+  fix(checkpoint): 原子保存运行现场
+  feat(extension-sdk): expose command storage identity
+  refactor(composer): 直接派生默认引用集合
+
+Use a narrow owner scope. In particular:
+  checkpoint  checkpoint persistence and serialization
+  runtime     run lifecycle, recovery, and durable terminal state
+  agent       prompt, context, tool, and model-loop policy
+  hitl        approval request and decision lifecycle
+  launcher    command, search, argument, and routing behavior
+  main-window main and session window lifecycle
+  extension   cross-extension registry, installation, and discovery
+  extension-host host process, lease, and reconciliation
+  extension-sdk  public extension API and package contract
+
+See CONTRIBUTING.md#commit-messages for the complete type and scope table.
+EOF
+fi
+
+exit "$status"

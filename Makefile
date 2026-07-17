@@ -1,12 +1,13 @@
 PNPM ?= pnpm
 EXTENSION ?= installable-extensions/coffee
 
-.PHONY: help setup dev use start build check doctor test test-node test-bdd-smoke db db-deploy db-status db-reset extensions extension-dev extension-build release-smoke
+.PHONY: help setup setup-hooks dev use start build check doctor test test-node test-bdd-smoke db db-deploy db-status db-reset extensions extension-dev extension-build release-smoke
 
 help:
 	@printf "\nJingle public development commands\n\n"
 	@printf "Setup:\n"
 	@printf "  make setup             Install dependencies, generate Prisma client, migrate the Jingle DB\n"
+	@printf "  make setup-hooks       Install the local commit message hook\n"
 	@printf "Develop:\n"
 	@printf "  make dev               Start Jingle in development mode\n"
 	@printf "  make check             Run lint, typecheck, and architecture guardrails\n"
@@ -28,6 +29,9 @@ setup:
 	$(PNPM) install
 	$(PNPM) exec prisma generate
 	$(MAKE) db-deploy
+
+setup-hooks:
+	$(PNPM) exec husky
 
 dev:
 	$(PNPM) run dev

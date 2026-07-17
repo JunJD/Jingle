@@ -77,3 +77,12 @@
 - 涉及前端运行时依赖增删时，至少执行一次 `npm run audit:frontend-packages`，再结合全仓 `rg` 复核，不要只凭局部 import 判断。
 - 涉及打包链路或运行时依赖调整时，至少验证 `npm run typecheck`；如果改动可能影响产物装配或 bundle 行为，再补跑 `npm run build`。
 - 通用 UI icon 库当前统一为 `lucide-react`。没有明确产品理由时，不要引入第二套通用 icon 库；品牌或 provider logo 这类专用图形应收口为局部 SVG 组件，而不是再加一套图标依赖。
+
+## Commit Message 约束
+
+- 提交 subject 使用 `<type>(<scope>): <直接描述>`，scope 必填，完整 header 不超过 72 个字符。描述可以使用中文或英文，但必须短、直接，不要写“完成”“优化”“修复问题”等无法证明边界的表述。
+- type 仅使用 `feat`、`fix`、`refactor`、`perf`、`test`、`docs`、`build`、`ci`、`chore`、`revert`。具体语义和允许的 scope 以 `CONTRIBUTING.md#commit-messages` 与 `commitlint.config.mjs` 为准。
+- scope 必须指向状态或行为的唯一 owner。`agent` 不能代指 runtime、checkpoint 或 HITL；`launcher` 不能代指主窗口生命周期；`extension` 不能代指 extension host 或公开 SDK。没有单一 scope 能准确描述时，先拆分提交。
+- 前置片和 partial commit 只描述本片成立的事实，并使用 `Refs:` 或 `Part-of:`；不要提前写 resolved、completed 或 `Fixes:`。只有 dependency-closed 的最终提交或 PR 才能关闭 Issue。
+- 创建提交前先运行或尊重 `.husky/commit-msg`。hook 失败时按输出修正 subject，不要使用 `--no-verify` 绕过。只允许以 `Merge` 开头的自动 merge subject 跳过校验；禁止人工 merge commit，优先用 rebase 或 squash 集成分支。
+- 裸 `Revert`、无 scope 的 revert、`fixup!`、`squash!` 和版本号 subject 都必须失败。revert 使用 `revert(<scope>): <直接描述>`，并在正文中添加 `Reverts: <原提交 SHA>`；依赖机器人使用 `build(deps): ...`，不得豁免；release tag 不是 subject，发布准备使用 `ci(release)`、`build(release)` 或 `docs(release)`。
