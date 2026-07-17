@@ -587,6 +587,38 @@ test("Cache get updates memory recency without synchronously persisting", async 
   }
 })
 
+test("Cache read and subscribe do not persist over-capacity backend snapshots", async () => {
+  let mutationCount = 0
+  const backend: RuntimeCacheBackend = {
+    ...createBackendLifecycle(),
+    loadStore: () => [
+      ["a", "1234"],
+      ["b", "1234"],
+      ["c", "1234"]
+    ],
+    mutateStore: () => {
+      mutationCount++
+    }
+  }
+  const uninstallBackend = installExtensionRuntimeCacheBackend(backend)
+
+  try {
+    await runWithCacheContext(async () => {
+      const cache = new Cache({ capacity: 10, namespace: "over-capacity-read" })
+      assert.equal(cache.get("a"), "1234")
+      const unsubscribe = cache.subscribe(() => undefined)
+      assert.equal(cache.has("b"), true)
+      unsubscribe()
+      assert.equal(mutationCount, 0)
+
+      cache.set("d", "1234")
+      assert.equal(mutationCount, 1)
+    })
+  } finally {
+    uninstallBackend()
+  }
+})
+
 function createLaunchContext(): ExtensionRuntimeLaunchContext {
   return {
     commandName: "search-page",

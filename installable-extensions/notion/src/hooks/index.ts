@@ -55,15 +55,19 @@ export function useDatabaseProperties(
   filter?: (value: DatabaseProperty) => boolean
 ) {
   const value = useCachedPromise(
-    (id): Promise<DatabaseProperty[]> =>
-      fetchDatabaseProperties(id).then((databaseProperties) => {
-        if (databaseProperties && filter) {
-          return databaseProperties.filter(filter)
-        }
-        return databaseProperties
-      }),
-    [databaseId],
-    { execute: !!databaseId }
+    async (
+      id: string | null,
+      propertyFilter: ((value: DatabaseProperty) => boolean) | undefined
+    ): Promise<DatabaseProperty[]> => {
+      if (id === null) {
+        return []
+      }
+
+      const databaseProperties = await fetchDatabaseProperties(id)
+      return propertyFilter ? databaseProperties.filter(propertyFilter) : databaseProperties
+    },
+    [databaseId, filter],
+    { execute: databaseId !== null }
   )
 
   return { ...value, data: value.data ?? [] }

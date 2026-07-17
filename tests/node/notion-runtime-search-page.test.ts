@@ -205,10 +205,14 @@ test("Notion search-page opens page detail and records the recent page", async (
 
   assert.deepEqual(fetchRequests.map((request) => request.url).sort(), [
     "https://api.notion.com/v1/blocks/page-generated-1/children?page_size=100",
-    "https://api.notion.com/v1/pages/page-generated-1",
     "https://api.notion.com/v1/search",
     "https://api.notion.com/v1/users"
   ])
+  assert.equal(
+    fetchRequests.filter((request) => request.url.includes("/blocks/page-generated-1/children"))
+      .length,
+    1
+  )
   assert.equal(
     hostRequests.some(
       (request) =>
@@ -3224,7 +3228,21 @@ function withRuntimeProvider(
   const value: Omit<ExtensionRuntimeHostContextValue, "navigation"> = {
     commandName: options.commandName ?? "search-page",
     commandPreferences: options.commandPreferences ?? {},
-    dataIdentity: { kind: "unavailable" },
+    dataIdentity: {
+      cache: {
+        commandConfigGeneration: 0,
+        connectionConfigGeneration: 0,
+        extensionConfigGeneration: 0,
+        kind: "available",
+        runtimeArtifactRevision: "sha256:notion-runtime-test",
+        runtimePackageRevision: "0.0.0"
+      },
+      kind: "available",
+      localStorage: {
+        connectionId: "notion-runtime-test",
+        credentialGeneration: 0
+      }
+    },
     extensionName: "notion",
     extensionPreferences: options.extensionPreferences ?? {
       accessToken: "secret-token"

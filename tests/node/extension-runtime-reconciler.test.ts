@@ -63,6 +63,8 @@ type _RuntimeFixtureFormValues = Form.Values
 type _RuntimeFixtureFormDatePickerType = Form.DatePickerType
 type _RuntimeFixtureFormItemProps = Form.ItemProps<string>
 
+let runtimeRendererIdentity = 0
+
 const runtimeFixtureTypeContract: {
   accessory: _RuntimeFixtureListAccessory
   datePickerType: _RuntimeFixtureFormDatePickerType
@@ -135,6 +137,25 @@ function createTestRenderer(params?: TestRendererParams) {
   )
 }
 
+function createTestRuntimeDataIdentity(): ExtensionRuntimeHostContextValue["dataIdentity"] {
+  runtimeRendererIdentity++
+  return {
+    cache: {
+      commandConfigGeneration: 0,
+      connectionConfigGeneration: 0,
+      extensionConfigGeneration: 0,
+      kind: "available",
+      runtimeArtifactRevision: `sha256:runtime-reconciler-${runtimeRendererIdentity}`,
+      runtimePackageRevision: "0.0.0"
+    },
+    kind: "available",
+    localStorage: {
+      connectionId: `runtime-reconciler-${runtimeRendererIdentity}`,
+      credentialGeneration: 0
+    }
+  }
+}
+
 function assertListSnapshot(
   snapshot: ReturnType<ReturnType<typeof createTestRenderer>["getSnapshot"]>
 ): asserts snapshot is ExtensionListSurfaceSnapshot {
@@ -204,7 +225,7 @@ function withRuntimeProvider(
       value: {
         commandName: "counter",
         commandPreferences: {},
-        dataIdentity: { kind: "unavailable" },
+        dataIdentity: createTestRuntimeDataIdentity(),
         extensionName: "runtime-fixture",
         extensionPreferences: {},
         initialAction: "open",
@@ -4203,7 +4224,7 @@ test("useCachedPromise exposes pagination to runtime lists", async () => {
   }
 
   const renderer = createTestRenderer()
-  renderer.render(createElement(PaginatedHookList))
+  renderer.render(withRuntimeProvider(createElement(PaginatedHookList)))
   await renderer.flushSnapshots()
 
   const firstSnapshot = renderer.getSnapshot()
@@ -4258,7 +4279,7 @@ test("useCachedPromise reports loading before the first promise resolves", async
   }
 
   const renderer = createTestRenderer()
-  renderer.render(createElement(LoadingList))
+  renderer.render(withRuntimeProvider(createElement(LoadingList)))
   await renderer.flushSnapshots()
 
   const loadingSnapshot = renderer.getSnapshot()
@@ -4333,7 +4354,7 @@ test("useCachedPromise supports initialData and data/error callbacks", async () 
   }
 
   const renderer = createTestRenderer()
-  renderer.render(createElement(CallbackList))
+  renderer.render(withRuntimeProvider(createElement(CallbackList)))
   await renderer.flushSnapshots()
 
   const initialSnapshot = renderer.getSnapshot()
@@ -4416,7 +4437,7 @@ test("useCachedPromise exposes abortable controllers", async () => {
   }
 
   const renderer = createTestRenderer()
-  renderer.render(createElement(AbortableList))
+  renderer.render(withRuntimeProvider(createElement(AbortableList)))
   await renderer.flushSnapshots()
   await renderer.flushSnapshots()
 
@@ -4505,7 +4526,7 @@ test("useFetch loads JSON data and applies mapResult callbacks", async () => {
     }
 
     const renderer = createTestRenderer()
-    renderer.render(createElement(FetchList))
+    renderer.render(withRuntimeProvider(createElement(FetchList)))
     await renderer.flushSnapshots()
 
     const initialSnapshot = renderer.getSnapshot()
@@ -4563,6 +4584,7 @@ test("useFetch exposes pagination", async () => {
         { nextCursor: string | null; results: string[] },
         string[]
       >(({ cursor }) => `https://api.notion.test/search${cursor ? `?cursor=${cursor}` : ""}`, {
+        dependencies: [],
         mapResult: (result) => ({
           cursor: result.nextCursor,
           data: result.results,
@@ -4587,7 +4609,7 @@ test("useFetch exposes pagination", async () => {
     }
 
     const renderer = createTestRenderer()
-    renderer.render(createElement(PaginatedFetchList))
+    renderer.render(withRuntimeProvider(createElement(PaginatedFetchList)))
     await renderer.flushSnapshots()
     await renderer.flushSnapshots()
 
@@ -4620,6 +4642,34 @@ test("useFetch exposes pagination", async () => {
   } finally {
     globalThis.fetch = originalFetch
   }
+})
+
+test("useFetch does not evaluate functional URLs while execution is disabled", async () => {
+  let requestFactoryCalls = 0
+
+  function DisabledFetchList() {
+    const { isLoading } = useFetch(
+      () => {
+        requestFactoryCalls++
+        return "https://api.notion.test/search"
+      },
+      { dependencies: [], execute: false }
+    )
+
+    return createElement(List, {
+      isLoading,
+      navigationTitle: "Disabled Fetch"
+    })
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(withRuntimeProvider(createElement(DisabledFetchList)))
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  assert.equal(snapshot.isLoading, false)
+  assert.equal(requestFactoryCalls, 0)
 })
 
 test("useFetch reports failed requests through failure toasts by default", async () => {

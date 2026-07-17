@@ -156,17 +156,7 @@ export class Cache {
   }
 
   #getStore(): RuntimeCacheStore {
-    const store = getCacheStore(this.#namespace)
-    if (store.totalBytes > this.#capacity) {
-      const evictedKeys = trimCacheStore(store, this.#capacity)
-      persistCacheMutation(store, {
-        kind: "update",
-        removeKeys: evictedKeys,
-        upsertEntries: []
-      })
-      notifyRemovedCacheEntries(store, evictedKeys)
-    }
-    return store
+    return getCacheStore(this.#namespace)
   }
 }
 

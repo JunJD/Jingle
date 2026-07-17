@@ -2,10 +2,12 @@ import {
   createElement,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
   useState,
+  useSyncExternalStore,
   type ComponentType,
   type Dispatch,
   type MutableRefObject,
@@ -25,6 +27,13 @@ import {
   type RuntimeToastOptions,
   type LocalStorageValue
 } from "@jingle/extension-api"
+import {
+  createPromiseArgumentsIdentity,
+  createPromiseCacheBinding,
+  createPromiseCacheIdentity,
+  type PromiseCacheFailure,
+  type PromiseCacheValue
+} from "./promise-cache"
 
 export interface PaginationPage<TResult> {
   cursor?: string | null
@@ -111,6 +120,7 @@ export interface FetchResult<TResult> {
 export type FetchRequestInfo = RequestInfo | ((request: PaginationRequest) => RequestInfo)
 
 export interface UseFetchOptions<TRaw = unknown, TResult = TRaw> extends RequestInit {
+  dependencies?: readonly unknown[]
   execute?: boolean
   failureToastOptions?: FailureToastOptions
   initialData?: TResult
@@ -128,10 +138,16 @@ export interface UseFetchMutateOptions<TResult> {
   shouldRevalidateAfter?: boolean
 }
 
-export type UseFetchMutate<TResult> = (
-  asyncUpdate?: Promise<unknown>,
-  options?: UseFetchMutateOptions<TResult>
-) => Promise<unknown>
+export interface CachedPromiseMutate<TResult> {
+  (): Promise<void>
+  <TUpdate>(
+    asyncUpdate: Promise<TUpdate>,
+    options?: UseFetchMutateOptions<TResult>
+  ): Promise<TUpdate>
+  (asyncUpdate: undefined, options: UseFetchMutateOptions<TResult>): Promise<void>
+}
+
+export type UseFetchMutate<TResult> = CachedPromiseMutate<TResult>
 
 export type UseFetchResult<TResult> = Omit<PromiseState<TResult>, "mutate"> & {
   mutate: UseFetchMutate<TResult>
@@ -143,10 +159,11 @@ export interface UsePromiseOptions<
 > {
   abortable?: AbortablePromiseRef
   execute?: boolean
+  failureToastOptions?: FailureToastOptions
   keepPreviousData?: boolean
   initialData?: TResult
-  onData?: (data: TResult) => void
-  onError?: (error: Error) => void
+  onData?: (data: TResult, pagination?: PromisePageResult) => void
+  onError?: (error: Error) => Promise<void> | void
   onWillExecute?: (args: TArgs) => void
 }
 
@@ -157,191 +174,116 @@ type AbortablePromiseRef = {
 type PromiseExecution = {
   abortable?: AbortablePromiseRef
   abortController: AbortController
+  cacheToken: unknown
+  generation: number
+  identity: string
+  tracksCacheToken: boolean
+}
+
+interface PromisePageResult {
+  cursor: string | null
+  hasMore: boolean
+  page: number
+}
+
+interface PromiseMachineState<TResult> {
+  cacheCommitToken: unknown
+  cachePersisted: boolean
+  cursor: string | null
+  data: TResult | undefined
+  error: Error | undefined
+  hasData: boolean
+  hasMore: boolean
+  hasResolvedData: boolean
+  identity: string
+  isLoading: boolean
+  isLoadingMore: boolean
+  isPaginated: boolean
+  page: number
+}
+
+interface PromiseMachineResult<TResult> extends PromiseState<TResult> {
+  beginMutation: (expectedIdentity?: string) => PromiseMachineLease | null
+  cachePagination: PromiseCacheValue<TResult>["pagination"]
+  cacheCommitToken: unknown
+  cachePersisted: boolean
+  commitMutation: (
+    lease: PromiseMachineLease,
+    data: TResult | undefined,
+    commit?: PromiseMachineMutationCommit
+  ) => boolean
+  hasData: boolean
+  hasResolvedData: boolean
+  identity: string
+  isMutationCurrent: (lease: PromiseMachineLease) => boolean
+  loadMore: () => Promise<void>
+  page: number
+}
+
+interface PromiseMachineLease {
+  generation: number
+  identity: string
+}
+
+interface PromiseMachineMutationCommit {
+  cache?: { persisted: boolean; token: unknown }
+  pagination?: PromiseCacheValue<unknown>["pagination"]
+}
+
+interface PromiseMachineDriver<TResult> {
+  commitPageZero?: (
+    data: TResult,
+    pagination: PromisePageResult | undefined
+  ) => { persisted: boolean; token: unknown }
+}
+
+interface PromiseMachineInput<TResult, TArgs extends readonly unknown[]> {
+  args: TArgs
+  driver?: PromiseMachineDriver<TResult>
+  fn: MaybePaginatedAsyncFunction<TResult, TArgs>
+  identity: string
+  options: UsePromiseOptions<TResult, TArgs>
+  seed?: PromiseCacheValue<TResult>
+  seedCommit?: { persisted: boolean; token: unknown }
+}
+
+interface PromiseMachineRuntimeOwner<TResult, TArgs extends readonly unknown[]> {
+  activeIdentity: string
+  input: PromiseMachineInput<TResult, TArgs>
+  state: PromiseMachineState<TResult>
 }
 
 type AwaitedReturn<TFn extends (...args: any[]) => unknown> = Awaited<ReturnType<TFn>>
 type PromiseData<TFn extends (...args: any[]) => unknown> =
   AwaitedReturn<TFn> extends AnyPaginationLoader<infer TResult> ? TResult : AwaitedReturn<TFn>
-type PromiseStateData<TFn extends (...args: any[]) => unknown> =
-  PromiseData<TFn> extends PaginatedResult<infer TResult> ? TResult : PromiseData<TFn>
+type PromiseStateData<TFn extends (...args: any[]) => unknown> = PromiseData<TFn>
 type PromiseStateFor<TFn extends (...args: any[]) => unknown> =
   AwaitedReturn<TFn> extends AnyPaginationLoader<infer TResult>
     ? PromiseState<TResult> & { pagination: PaginationState | undefined }
     : PromiseState<PromiseStateData<TFn>>
+
+type CachedPromiseStateFor<TFn extends (...args: any[]) => unknown> = Omit<
+  PromiseStateFor<TFn>,
+  "mutate"
+> & {
+  mutate: CachedPromiseMutate<PromiseStateData<TFn>>
+}
 
 export function usePromise<TResult, TArgs extends readonly unknown[]>(
   fn: MaybePaginatedAsyncFunction<TResult, TArgs>,
   args = [] as unknown as TArgs,
   options: UsePromiseOptions<TResult, TArgs> = {}
 ): PromiseState<TResult> {
-  const shouldExecute = options.execute ?? true
-  const argsKey = JSON.stringify(args)
-  const initialResult = options.initialData
-  const fnRef = useRef(fn)
-  const argsRef = useRef(args)
-  const optionsRef = useRef(options)
-  const requestIdRef = useRef(0)
-  const [state, setState] = useState<{
-    cursor: string | null
-    data: TResult | undefined
-    error: Error | undefined
-    hasMore: boolean
-    isLoadingMore: boolean
-    isPaginated: boolean
-    isLoading: boolean
-    page: number
-  }>({
-    cursor: null,
-    data: initialResult,
-    error: undefined,
-    hasMore: false,
-    isLoadingMore: false,
-    isPaginated: false,
-    isLoading: shouldExecute,
-    page: 0
-  })
-
-  useEffect(() => {
-    fnRef.current = fn
-    argsRef.current = args
-    optionsRef.current = options
-  }, [args, fn, options])
-
-  const run = useCallback(async (): Promise<TResult | undefined> => {
-    const requestId = requestIdRef.current + 1
-    requestIdRef.current = requestId
-    const execution = beginPromiseExecution(optionsRef.current, argsRef.current)
-    setState((current) => ({
-      ...current,
-      data: optionsRef.current.keepPreviousData ? current.data : optionsRef.current.initialData,
-      error: undefined,
-      isLoading: true,
-      isLoadingMore: false
-    }))
-
-    try {
-      const result = await resolveInitialPromiseResult(fnRef.current, argsRef.current)
-      if (requestIdRef.current === requestId) {
-        setState({
-          cursor: result.cursor,
-          data: result.data,
-          error: undefined,
-          hasMore: result.hasMore,
-          isLoading: false,
-          isLoadingMore: false,
-          isPaginated: result.isPaginated,
-          page: 0
-        })
-        optionsRef.current.onData?.(result.data)
-      }
-      return result.data
-    } catch (cause) {
-      const nextError = cause instanceof Error ? cause : new Error(String(cause))
-      if (requestIdRef.current === requestId) {
-        setState((current) => ({
-          ...current,
-          error: nextError,
-          isLoading: false
-        }))
-        optionsRef.current.onError?.(nextError)
-      }
-      return undefined
-    } finally {
-      clearAbortController(execution)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!shouldExecute) {
-      return
-    }
-
-    void Promise.resolve().then(() => run())
-  }, [argsKey, run, shouldExecute])
-
-  const loadMore = useCallback(async (): Promise<void> => {
-    if (!state.isPaginated || !state.hasMore || state.isLoadingMore) {
-      return
-    }
-
-    setState((current) => ({
-      ...current,
-      error: undefined,
-      isLoadingMore: true
-    }))
-
-    const execution = beginPromiseExecution(optionsRef.current, argsRef.current)
-    try {
-      const result = await resolveNextPageResult(
-        fnRef.current,
-        argsRef.current,
-        state.cursor,
-        state.page,
-        state.data
-      )
-      const nextData = mergePaginatedData(state.data, result.data)
-      setState((current) => ({
-        ...current,
-        cursor: result.cursor,
-        data: nextData,
-        error: undefined,
-        hasMore: result.hasMore,
-        isLoading: false,
-        isLoadingMore: false,
-        isPaginated: true,
-        page: current.page + 1
-      }))
-      optionsRef.current.onData?.(nextData)
-    } catch (cause) {
-      const nextError = cause instanceof Error ? cause : new Error(String(cause))
-      setState((current) => ({
-        ...current,
-        error: nextError,
-        isLoadingMore: false
-      }))
-      optionsRef.current.onError?.(nextError)
-    } finally {
-      clearAbortController(execution)
-    }
-  }, [state.cursor, state.data, state.hasMore, state.isLoadingMore, state.isPaginated, state.page])
-
-  const mutate = useCallback(
-    async (nextValue?: TResult | Promise<TResult>): Promise<void> => {
-      if (nextValue === undefined) {
-        await run()
-        return
-      }
-
-      const resolvedValue = await nextValue
-      setState((current) => ({
-        ...current,
-        cursor: null,
-        data: resolvedValue,
-        error: undefined,
-        hasMore: false,
-        isLoading: false,
-        isLoadingMore: false,
-        isPaginated: false,
-        page: 0
-      }))
-      optionsRef.current.onData?.(resolvedValue)
-    },
-    [run]
-  )
+  const identity = createTransientPromiseArgumentsIdentity(args)
+  const state = usePromiseMachine(fn, args, options, identity)
 
   return {
     data: state.data,
     error: state.error,
     isLoading: state.isLoading,
-    mutate,
-    pagination: state.isPaginated
-      ? {
-          hasMore: state.hasMore,
-          isLoading: state.isLoadingMore,
-          onLoadMore: loadMore
-        }
-      : undefined,
-    revalidate: run
+    mutate: state.mutate,
+    pagination: state.pagination,
+    revalidate: state.revalidate
   }
 }
 
@@ -349,24 +291,721 @@ export function useCachedPromise<TFn extends (...args: any[]) => unknown>(
   fn: TFn,
   args?: Parameters<TFn>,
   options?: UsePromiseOptions<PromiseData<TFn>, Parameters<TFn>>
-): PromiseStateFor<TFn> {
+): CachedPromiseStateFor<TFn> {
   const resolvedArgs = (args ?? []) as Parameters<TFn>
-
-  const state = usePromise<PromiseData<TFn>, Parameters<TFn>>(
+  const resolvedOptions = options ?? {}
+  const {
+    identity: cacheIdentity,
+    key: cacheKey,
+    namespace: cacheNamespace
+  } = createPromiseCacheIdentity(fn, resolvedArgs)
+  const cacheBinding = useMemo(
+    () =>
+      createPromiseCacheBinding<PromiseData<TFn>>(
+        {
+          identity: cacheIdentity,
+          key: cacheKey,
+          namespace: cacheNamespace
+        },
+        {
+          onFailure: reportPromiseCacheFailure
+        }
+      ),
+    [cacheIdentity, cacheKey, cacheNamespace]
+  )
+  const cacheSnapshot = useSyncExternalStore(
+    cacheBinding.subscribe,
+    cacheBinding.getSnapshot,
+    cacheBinding.getSnapshot
+  )
+  const cacheDriver = useMemo<PromiseMachineDriver<PromiseData<TFn>>>(
+    () => ({
+      commitPageZero(data, pagination) {
+        const persisted = cacheBinding.write({
+          data,
+          pagination: pagination
+            ? {
+                cursor: pagination.cursor,
+                hasMore: pagination.hasMore,
+                kind: "page-zero"
+              }
+            : { kind: "none" }
+        })
+        return {
+          persisted,
+          token: cacheBinding.getSnapshot()
+        }
+      }
+    }),
+    [cacheBinding]
+  )
+  const state = usePromiseMachine<PromiseData<TFn>, Parameters<TFn>>(
     fn as MaybePaginatedAsyncFunction<PromiseData<TFn>, Parameters<TFn>>,
     resolvedArgs,
-    options
+    resolvedOptions,
+    cacheIdentity,
+    cacheSnapshot.kind === "value" ? cacheSnapshot.value : undefined,
+    cacheDriver,
+    { persisted: cacheSnapshot.kind === "value", token: cacheSnapshot }
   )
+  const hasAccumulatedPages =
+    state.identity === cacheIdentity && state.page > 0 && state.cacheCommitToken === cacheSnapshot
+  const hasUncachedSuccess =
+    state.identity === cacheIdentity &&
+    state.hasResolvedData &&
+    !state.cachePersisted &&
+    state.cacheCommitToken === cacheSnapshot
 
-  if (isPaginatedResult(state.data)) {
-    return {
-      ...state,
-      data: state.data.data,
-      pagination: state.data.pagination
-    } as PromiseStateFor<TFn>
+  let returnedData: PromiseData<TFn> | undefined
+  let returnedSource: "cache" | "initial" | "machine" | "previous"
+  if (hasAccumulatedPages || hasUncachedSuccess) {
+    returnedData = state.data
+    returnedSource = "machine"
+  } else if (cacheSnapshot.kind === "value") {
+    returnedData = cacheSnapshot.value.data
+    returnedSource = "cache"
+  } else if (resolvedOptions.keepPreviousData && state.hasData) {
+    returnedData = state.data
+    returnedSource = "previous"
+  } else {
+    returnedData = resolvedOptions.initialData
+    returnedSource = "initial"
   }
 
-  return state as PromiseStateFor<TFn>
+  const cachedPagination =
+    cacheSnapshot.kind === "value" && cacheSnapshot.value.pagination.kind === "page-zero"
+      ? {
+          hasMore: cacheSnapshot.value.pagination.hasMore,
+          isLoading:
+            state.cacheCommitToken === cacheSnapshot
+              ? (state.pagination?.isLoading ?? false)
+              : false,
+          onLoadMore: state.loadMore
+        }
+      : undefined
+  const returnedPagination =
+    returnedSource === "machine"
+      ? state.pagination
+      : returnedSource === "cache"
+        ? cachedPagination
+        : undefined
+  const cacheTimelineChanged =
+    state.identity === cacheIdentity && state.cacheCommitToken !== cacheSnapshot
+
+  const mutate = useCallback<CachedPromiseMutate<PromiseData<TFn>>>(
+    async <TUpdate>(
+      asyncUpdate?: Promise<TUpdate>,
+      mutateOptions: UseFetchMutateOptions<PromiseData<TFn>> = {}
+    ): Promise<TUpdate | void> => {
+      const lease = state.beginMutation(cacheIdentity)
+      if (!lease) {
+        return await asyncUpdate
+      }
+      const liveCacheSnapshot = cacheBinding.getSnapshot()
+      const page =
+        liveCacheSnapshot === cacheSnapshot && returnedSource === "machine" ? state.page : 0
+      const previousData =
+        page === 0 && liveCacheSnapshot.kind === "value"
+          ? liveCacheSnapshot.value.data
+          : returnedData
+      let expectedCacheToken = liveCacheSnapshot
+      const mutationPagination =
+        page === 0 && liveCacheSnapshot.kind === "value"
+          ? liveCacheSnapshot.value.pagination
+          : returnedSource === "machine"
+            ? state.cachePagination
+            : ({ kind: "none" } as const)
+
+      const isCurrentMutation = () =>
+        state.isMutationCurrent(lease) && cacheBinding.getSnapshot() === expectedCacheToken
+      const replaceMutationData = (nextData: PromiseData<TFn> | undefined) => {
+        if (!isCurrentMutation()) {
+          return
+        }
+
+        if (page > 0) {
+          state.commitMutation(lease, nextData)
+          return
+        }
+
+        const persisted = cacheBinding.write({
+          data: nextData as PromiseData<TFn>,
+          pagination: mutationPagination
+        })
+        expectedCacheToken = cacheBinding.getSnapshot()
+        state.commitMutation(lease, nextData, {
+          cache: {
+            persisted,
+            token: expectedCacheToken
+          },
+          pagination: mutationPagination
+        })
+      }
+
+      try {
+        if (mutateOptions.optimisticUpdate) {
+          replaceMutationData(mutateOptions.optimisticUpdate(previousData))
+        }
+
+        return await asyncUpdate
+      } catch (error) {
+        if (mutateOptions.optimisticUpdate && isCurrentMutation()) {
+          if (typeof mutateOptions.rollbackOnError === "function") {
+            replaceMutationData(mutateOptions.rollbackOnError(previousData))
+          } else if (mutateOptions.rollbackOnError !== false) {
+            replaceMutationData(previousData)
+          }
+        }
+        throw error
+      } finally {
+        if (mutateOptions.shouldRevalidateAfter !== false && isCurrentMutation()) {
+          await state.revalidate()
+        }
+      }
+    },
+    [
+      cacheBinding,
+      cacheIdentity,
+      cacheSnapshot,
+      returnedData,
+      returnedSource,
+      state.beginMutation,
+      state.cachePagination,
+      state.commitMutation,
+      state.isMutationCurrent,
+      state.page,
+      state.revalidate
+    ]
+  )
+
+  return {
+    data: returnedData,
+    error: cacheTimelineChanged ? undefined : state.error,
+    isLoading:
+      resolvedOptions.execute === false || cacheTimelineChanged ? false : state.isLoading,
+    mutate,
+    pagination: returnedPagination,
+    revalidate: state.revalidate
+  } as CachedPromiseStateFor<TFn>
+}
+
+function usePromiseMachine<TResult, TArgs extends readonly unknown[]>(
+  fn: MaybePaginatedAsyncFunction<TResult, TArgs>,
+  args: TArgs,
+  options: UsePromiseOptions<TResult, TArgs>,
+  identity: string,
+  seed?: PromiseCacheValue<TResult>,
+  driver?: PromiseMachineDriver<TResult>,
+  seedCommit?: { persisted: boolean; token: unknown }
+): PromiseMachineResult<TResult> {
+  const shouldExecute = options.execute ?? true
+  const activeExecutionRef = useRef<PromiseExecution | null>(null)
+  const generationRef = useRef(0)
+  const mountedRef = useRef(true)
+  const [state, setReactState] = useState<PromiseMachineState<TResult>>(() =>
+    createInitialPromiseMachineState(identity, options, seed, seedCommit, shouldExecute)
+  )
+  const [runtimeOwner] = useState<PromiseMachineRuntimeOwner<TResult, TArgs>>(() => ({
+    activeIdentity: identity,
+    input: {
+      args,
+      driver,
+      fn,
+      identity,
+      options,
+      seed,
+      seedCommit
+    },
+    state
+  }))
+  const commitState = useCallback(
+    (update: SetStateAction<PromiseMachineState<TResult>>): void => {
+      const nextState = typeof update === "function" ? update(runtimeOwner.state) : update
+      runtimeOwner.state = nextState
+      setReactState(nextState)
+    },
+    [runtimeOwner]
+  )
+
+  useLayoutEffect(() => {
+    runtimeOwner.input = {
+      args,
+      driver,
+      fn,
+      identity,
+      options,
+      seed,
+      seedCommit
+    }
+  })
+
+  const invalidate = useCallback(() => {
+    generationRef.current += 1
+    const execution = activeExecutionRef.current
+    activeExecutionRef.current = null
+    if (!execution) {
+      return
+    }
+
+    execution.abortController.abort()
+    clearAbortController(execution)
+  }, [])
+
+  useLayoutEffect(() => {
+    runtimeOwner.activeIdentity = identity
+    if (!shouldExecute) {
+      invalidate()
+    }
+
+    return invalidate
+  }, [identity, invalidate, runtimeOwner, shouldExecute])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      invalidate()
+    }
+  }, [invalidate])
+
+  const isExecutionLeaseCurrent = useCallback(
+    (execution: PromiseExecution) => {
+      const currentInput = runtimeOwner.input
+      return (
+        mountedRef.current &&
+        runtimeOwner.activeIdentity === execution.identity &&
+        currentInput.identity === execution.identity &&
+        generationRef.current === execution.generation &&
+        (!execution.tracksCacheToken || currentInput.seedCommit?.token === execution.cacheToken)
+      )
+    },
+    [runtimeOwner]
+  )
+
+  const isCurrentExecution = useCallback(
+    (execution: PromiseExecution) =>
+      activeExecutionRef.current === execution && isExecutionLeaseCurrent(execution),
+    [isExecutionLeaseCurrent]
+  )
+
+  const startPageZero = useCallback(
+    async (input: PromiseMachineInput<TResult, TArgs>): Promise<TResult | undefined> => {
+      if (
+        !mountedRef.current ||
+        runtimeOwner.activeIdentity !== input.identity ||
+        runtimeOwner.input.identity !== input.identity
+      ) {
+        return undefined
+      }
+
+      const execution = beginPromiseExecution(
+        input.identity,
+        input.options,
+        input.args,
+        activeExecutionRef,
+        generationRef,
+        invalidate,
+        input.seedCommit
+      )
+      const initialState = createInitialPromiseMachineState(
+        input.identity,
+        input.options,
+        input.seed,
+        input.seedCommit,
+        true
+      )
+      commitState((current) => ({
+        ...initialState,
+        data:
+          input.seed !== undefined
+            ? input.seed.data
+            : input.options.keepPreviousData
+              ? current.data
+              : input.options.initialData,
+        hasData:
+          input.seed !== undefined
+            ? true
+            : input.options.keepPreviousData
+              ? current.hasData
+              : input.options.initialData !== undefined
+      }))
+
+      try {
+        const result = await resolveInitialPromiseResult(input.fn, input.args)
+        if (!isCurrentExecution(execution)) {
+          return result.data
+        }
+
+        const pagination = result.isPaginated
+          ? {
+              cursor: result.cursor,
+              hasMore: result.hasMore,
+              page: 0
+            }
+          : undefined
+        const cacheCommit = input.driver?.commitPageZero?.(result.data, pagination) ?? {
+          persisted: false,
+          token: null
+        }
+
+        if (!isCurrentExecution(execution)) {
+          return result.data
+        }
+
+        commitState({
+          cacheCommitToken: cacheCommit.token,
+          cachePersisted: cacheCommit.persisted,
+          cursor: result.cursor,
+          data: result.data,
+          error: undefined,
+          hasData: true,
+          hasMore: result.hasMore,
+          hasResolvedData: true,
+          identity: input.identity,
+          isLoading: false,
+          isLoadingMore: false,
+          isPaginated: result.isPaginated,
+          page: 0
+        })
+        invokePromiseCallback(input.options.onData, result.data, pagination)
+        return result.data
+      } catch (cause) {
+        if (!isCurrentExecution(execution)) {
+          return undefined
+        }
+
+        if (isAbortError(cause)) {
+          commitState((current) => ({ ...current, isLoading: false, isLoadingMore: false }))
+          return undefined
+        }
+
+        const error = toError(cause)
+        commitState((current) => ({
+          ...current,
+          error,
+          identity: input.identity,
+          isLoading: false,
+          isLoadingMore: false
+        }))
+        handlePromiseError(error, input.options, () => {
+          if (!isExecutionLeaseCurrent(execution)) {
+            return Promise.resolve(undefined)
+          }
+
+          return startPageZero(runtimeOwner.input)
+        })
+        return undefined
+      } finally {
+        if (activeExecutionRef.current === execution) {
+          activeExecutionRef.current = null
+        }
+        clearAbortController(execution)
+      }
+    },
+    [commitState, invalidate, isCurrentExecution, isExecutionLeaseCurrent, runtimeOwner]
+  )
+
+  useEffect(() => {
+    if (!shouldExecute) {
+      return
+    }
+
+    let canceled = false
+    const input = runtimeOwner.input
+    queueMicrotask(() => {
+      if (!canceled) {
+        void startPageZero(input)
+      }
+    })
+
+    return () => {
+      canceled = true
+      invalidate()
+    }
+  }, [identity, invalidate, runtimeOwner, shouldExecute, startPageZero])
+
+  const revalidate = useCallback(async (): Promise<TResult | undefined> => {
+    return startPageZero(runtimeOwner.input)
+  }, [runtimeOwner, startPageZero])
+
+  const loadMore = useCallback(async (): Promise<void> => {
+    const input = runtimeOwner.input
+    if (!mountedRef.current || runtimeOwner.activeIdentity !== input.identity) {
+      return
+    }
+
+    let current = runtimeOwner.state
+
+    if (
+      input.seedCommit !== undefined &&
+      (!current ||
+        current.identity !== input.identity ||
+        current.cacheCommitToken !== input.seedCommit.token)
+    ) {
+      if (input.seed === undefined) {
+        return
+      }
+
+      const adoptedState = createInitialPromiseMachineState(
+        input.identity,
+        input.options,
+        input.seed,
+        input.seedCommit,
+        false
+      )
+      commitState(adoptedState)
+      current = adoptedState
+    }
+
+    if (
+      input.options.execute === false ||
+      !current ||
+      current.identity !== input.identity ||
+      !current.isPaginated ||
+      !current.hasMore ||
+      current.isLoadingMore
+    ) {
+      return
+    }
+
+    const basePage = current.page
+    const execution = beginPromiseExecution(
+      input.identity,
+      input.options,
+      input.args,
+      activeExecutionRef,
+      generationRef,
+      invalidate,
+      input.seedCommit
+    )
+    commitState((candidate) =>
+      candidate.identity === input.identity && candidate.page === basePage
+        ? { ...candidate, error: undefined, isLoading: false, isLoadingMore: true }
+        : candidate
+    )
+
+    try {
+      const result = await resolveNextPageResult(
+        input.fn,
+        input.args,
+        current.cursor,
+        current.page,
+        current.data
+      )
+      if (!isCurrentExecution(execution)) {
+        return
+      }
+
+      const nextData = mergePaginatedData(current.data, result.data)
+      const nextPage = basePage + 1
+      commitState((candidate) =>
+        candidate.identity === input.identity && candidate.page === basePage
+          ? {
+              ...candidate,
+              cursor: result.cursor,
+              data: nextData,
+              error: undefined,
+              hasData: true,
+              hasMore: result.hasMore,
+              hasResolvedData: true,
+              isLoading: false,
+              isLoadingMore: false,
+              isPaginated: true,
+              page: nextPage
+            }
+          : candidate
+      )
+      invokePromiseCallback(input.options.onData, nextData, {
+        cursor: result.cursor,
+        hasMore: result.hasMore,
+        page: nextPage
+      })
+    } catch (cause) {
+      if (!isCurrentExecution(execution)) {
+        return
+      }
+
+      if (isAbortError(cause)) {
+        commitState((currentState) => ({
+          ...currentState,
+          isLoading: false,
+          isLoadingMore: false
+        }))
+        return
+      }
+
+      const error = toError(cause)
+      commitState((currentState) => ({
+        ...currentState,
+        error,
+        isLoading: false,
+        isLoadingMore: false
+      }))
+      handlePromiseError(error, input.options, () => {
+        if (!isExecutionLeaseCurrent(execution)) {
+          return Promise.resolve(undefined)
+        }
+
+        return loadMore()
+      })
+    } finally {
+      if (activeExecutionRef.current === execution) {
+        activeExecutionRef.current = null
+      }
+      clearAbortController(execution)
+    }
+  }, [commitState, invalidate, isCurrentExecution, isExecutionLeaseCurrent, runtimeOwner])
+
+  const beginMutation = useCallback(
+    (expectedIdentity?: string): PromiseMachineLease | null => {
+      if (
+        !mountedRef.current ||
+        (expectedIdentity !== undefined && runtimeOwner.activeIdentity !== expectedIdentity)
+      ) {
+        return null
+      }
+
+      invalidate()
+      const lease = {
+        generation: generationRef.current,
+        identity: runtimeOwner.activeIdentity
+      }
+      commitState((current) =>
+        current.identity === lease.identity
+          ? { ...current, isLoading: false, isLoadingMore: false }
+          : current
+      )
+      return lease
+    },
+    [commitState, invalidate, runtimeOwner]
+  )
+
+  const isMutationCurrent = useCallback(
+    (lease: PromiseMachineLease): boolean => {
+      return (
+        mountedRef.current &&
+        runtimeOwner.activeIdentity === lease.identity &&
+        generationRef.current === lease.generation
+      )
+    },
+    [runtimeOwner]
+  )
+
+  const commitMutation = useCallback(
+    (
+      lease: PromiseMachineLease,
+      data: TResult | undefined,
+      commit: PromiseMachineMutationCommit = {}
+    ): boolean => {
+      if (!isMutationCurrent(lease)) {
+        return false
+      }
+
+      commitState((current) => {
+        const pagination = commit.pagination
+        return {
+          ...current,
+          cacheCommitToken: commit.cache ? commit.cache.token : current.cacheCommitToken,
+          cachePersisted: commit.cache ? commit.cache.persisted : current.cachePersisted,
+          cursor:
+            pagination === undefined
+              ? current.cursor
+              : pagination.kind === "page-zero"
+                ? pagination.cursor
+                : null,
+          data,
+          error: undefined,
+          hasData: true,
+          hasMore:
+            pagination === undefined
+              ? current.hasMore
+              : pagination.kind === "page-zero"
+                ? pagination.hasMore
+                : false,
+          hasResolvedData: true,
+          identity: lease.identity,
+          isLoading: false,
+          isLoadingMore: false,
+          isPaginated:
+            pagination !== undefined ? pagination.kind === "page-zero" : current.isPaginated,
+          page: pagination !== undefined ? 0 : current.page
+        }
+      })
+      return true
+    },
+    [commitState, isMutationCurrent]
+  )
+
+  const mutate = useCallback(
+    async (nextValue?: TResult | Promise<TResult>): Promise<void> => {
+      if (nextValue === undefined) {
+        await revalidate()
+        return
+      }
+
+      const lease = beginMutation()
+      if (!lease) {
+        return
+      }
+      const data = await nextValue
+      if (
+        commitMutation(lease, data, {
+          cache: { persisted: false, token: null },
+          pagination: { kind: "none" }
+        })
+      ) {
+        invokePromiseCallback(runtimeOwner.input.options.onData, data)
+      }
+    },
+    [beginMutation, commitMutation, revalidate, runtimeOwner]
+  )
+
+  const stateMatchesIdentity = state.identity === identity
+  const projectedData = stateMatchesIdentity
+    ? state.data
+    : options.keepPreviousData
+      ? state.data
+      : options.initialData
+  const projectedHasData = stateMatchesIdentity
+    ? state.hasData
+    : options.keepPreviousData
+      ? state.hasData
+      : options.initialData !== undefined
+  const projectedPagination =
+    stateMatchesIdentity && state.isPaginated
+      ? {
+          hasMore: state.hasMore,
+          isLoading: state.isLoadingMore,
+          onLoadMore: loadMore
+        }
+      : undefined
+
+  return {
+    beginMutation,
+    cacheCommitToken: stateMatchesIdentity ? state.cacheCommitToken : null,
+    cachePagination:
+      stateMatchesIdentity && state.isPaginated
+        ? {
+            cursor: state.cursor,
+            hasMore: state.hasMore,
+            kind: "page-zero"
+          }
+        : { kind: "none" },
+    cachePersisted: stateMatchesIdentity && state.cachePersisted,
+    commitMutation,
+    data: projectedData,
+    error: stateMatchesIdentity ? state.error : undefined,
+    hasData: projectedHasData,
+    hasResolvedData: stateMatchesIdentity && state.hasResolvedData,
+    identity: state.identity,
+    isMutationCurrent,
+    isLoading: shouldExecute ? (stateMatchesIdentity ? state.isLoading : true) : false,
+    loadMore,
+    mutate,
+    page: stateMatchesIdentity ? state.page : 0,
+    pagination: projectedPagination,
+    revalidate
+  }
 }
 
 function refreshableDataReducer<TData>(
@@ -404,10 +1043,7 @@ export function useRefreshableData<TData>(
   })
   const { data, error, isLoading } = state
   const mountedRef = useRef(true)
-  const optionsRef = useRef({ emptyData, enabled, failureMessage, load })
   const requestIdRef = useRef(0)
-
-  optionsRef.current = { emptyData, enabled, failureMessage, load }
 
   useEffect(
     () => () => {
@@ -418,23 +1054,17 @@ export function useRefreshableData<TData>(
   )
 
   const refresh = useCallback(() => {
-    const {
-      emptyData: currentEmptyData,
-      enabled: currentEnabled,
-      failureMessage: currentFailureMessage,
-      load: currentLoad
-    } = optionsRef.current
     const requestId = requestIdRef.current + 1
     requestIdRef.current = requestId
 
-    if (!currentEnabled) {
-      dispatch({ type: "disabled", emptyData: currentEmptyData })
+    if (!enabled) {
+      dispatch({ type: "disabled", emptyData })
       return
     }
 
     dispatch({ type: "loading" })
 
-    void currentLoad()
+    void load()
       .then((nextData) => {
         if (!mountedRef.current || requestIdRef.current !== requestId) {
           return
@@ -449,11 +1079,11 @@ export function useRefreshableData<TData>(
 
         dispatch({
           type: "failure",
-          emptyData: currentEmptyData,
-          error: nextError instanceof Error ? nextError.message : currentFailureMessage
+          emptyData,
+          error: nextError instanceof Error ? nextError.message : failureMessage
         })
       })
-  }, [])
+  }, [emptyData, enabled, failureMessage, load])
 
   useEffect(() => {
     const timeoutId = globalThis.setTimeout(refresh, 0)
@@ -473,10 +1103,19 @@ export function useRefreshableData<TData>(
 }
 
 export function useFetch<TRaw = unknown, TResult = TRaw>(
+  url: (request: PaginationRequest) => RequestInfo,
+  options: UseFetchOptions<TRaw, TResult> & { dependencies: readonly unknown[] }
+): UseFetchResult<TResult>
+export function useFetch<TRaw = unknown, TResult = TRaw>(
+  url: RequestInfo,
+  options?: UseFetchOptions<TRaw, TResult>
+): UseFetchResult<TResult>
+export function useFetch<TRaw = unknown, TResult = TRaw>(
   url: FetchRequestInfo,
   options: UseFetchOptions<TRaw, TResult> = {}
 ): UseFetchResult<TResult> {
   const {
+    dependencies = [],
     execute,
     failureToastOptions,
     initialData,
@@ -488,97 +1127,55 @@ export function useFetch<TRaw = unknown, TResult = TRaw>(
     parseResponse,
     ...requestInit
   } = options
-  const requestKey = getFetchRequestKey(url, requestInit)
-  const requestInitKey = stableStringifyRequestInit(requestInit)
+  const pageZeroRequestInfo = typeof url === "function" ? undefined : url
+  const cacheIdentity = createPromiseArgumentsIdentity([
+    pageZeroRequestInfo === undefined ? undefined : getFetchRequestIdentity(pageZeroRequestInfo),
+    getFetchRequestInitIdentity(requestInit),
+    typeof url === "function" ? url : undefined,
+    mapResult,
+    parseResponse,
+    dependencies
+  ])
   const abortable = useRef<AbortController | null>(null)
-  const fetcher = useCallback(
-    (_requestKey: string, _requestInitKey: string) => {
-      if (typeof url === "function") {
-        return async (request: PaginationRequest): Promise<PaginationPage<TResult>> => {
-          const result = await fetchAndMapResult(url(request), requestInit, {
-            abortable,
-            mapResult,
-            onWillExecute,
-            parseResponse
-          })
+  const fetcher = (_cacheIdentity: string) => {
+    if (typeof url === "function") {
+      return async (request: PaginationRequest): Promise<PaginationPage<TResult>> => {
+        const requestInfo = url(request)
+        const result = await fetchAndMapResult(requestInfo, requestInit, {
+          abortable,
+          mapResult,
+          onWillExecute,
+          parseResponse
+        })
 
-          return {
-            cursor: result.cursor,
-            data: result.data,
-            hasMore: result.hasMore
-          }
+        return {
+          cursor: result.cursor,
+          data: result.data,
+          hasMore: result.hasMore
         }
       }
+    }
 
-      return fetchAndMapResult(url, requestInit, {
-        abortable,
-        mapResult,
-        onWillExecute,
-        parseResponse
-      }).then((result) => result.data)
-    },
-    [mapResult, onWillExecute, parseResponse, requestInit, url]
-  )
-  const handleError = useCallback(
-    (error: Error) => {
-      if (onError) {
-        onError(error)
-        return
-      }
-
-      void showFailureToast(error, failureToastOptions)
-    },
-    [failureToastOptions, onError]
-  )
-  const state = usePromise<TResult, [string, string]>(fetcher, [requestKey, requestInitKey], {
+    return fetchAndMapResult(url, requestInit, {
+      abortable,
+      mapResult,
+      onWillExecute,
+      parseResponse
+    }).then((result) => result.data)
+  }
+  // The shared machine detects the pagination loader at runtime; useFetch still exposes TResult.
+  const cachedFetcher = fetcher as (_cacheIdentity: string) => Promise<unknown>
+  const state = useCachedPromise(cachedFetcher, [cacheIdentity], {
     abortable,
     execute,
+    failureToastOptions,
     initialData,
     keepPreviousData,
-    onData,
-    onError: handleError
-  })
-  const mutate = useCallback<UseFetchMutate<TResult>>(
-    async (asyncUpdate, mutateOptions = {}) => {
-      if (!asyncUpdate) {
-        return state.revalidate()
-      }
+    onData: onData as ((data: unknown) => void) | undefined,
+    onError
+  }) as unknown as UseFetchResult<TResult>
 
-      const previousData = state.data
-      if (mutateOptions.optimisticUpdate) {
-        await state.mutate(mutateOptions.optimisticUpdate(previousData))
-      }
-
-      try {
-        const result = await asyncUpdate
-        if (mutateOptions.shouldRevalidateAfter !== false) {
-          await state.revalidate()
-        }
-        return result
-      } catch (error) {
-        if (mutateOptions.optimisticUpdate && mutateOptions.rollbackOnError !== false) {
-          const rollbackData =
-            typeof mutateOptions.rollbackOnError === "function"
-              ? mutateOptions.rollbackOnError(previousData)
-              : previousData
-          if (rollbackData !== undefined) {
-            await state.mutate(rollbackData)
-          }
-        }
-        throw error
-      }
-    },
-    [state]
-  )
-
-  return {
-    data: state.data,
-    error: state.error,
-    isLoading: state.isLoading,
-    mutate,
-    pagination: state.pagination,
-    revalidate: state.revalidate
-  }
+  return state
 }
 
 export async function showFailureToast(
@@ -653,26 +1250,145 @@ async function resolveNextPageResult<TResult, TArgs extends readonly unknown[]>(
   }
 }
 
-function beginPromiseExecution<TResult, TArgs extends readonly unknown[]>(
+function createInitialPromiseMachineState<TResult, TArgs extends readonly unknown[]>(
+  identity: string,
   options: UsePromiseOptions<TResult, TArgs>,
-  args: TArgs
+  seed: PromiseCacheValue<TResult> | undefined,
+  seedCommit: { persisted: boolean; token: unknown } | undefined,
+  isLoading: boolean
+): PromiseMachineState<TResult> {
+  const pagination = seed?.pagination
+  const isPaginated = pagination?.kind === "page-zero"
+  return {
+    cacheCommitToken: seedCommit?.token ?? null,
+    cachePersisted: seedCommit?.persisted ?? false,
+    cursor: isPaginated ? pagination.cursor : null,
+    data: seed !== undefined ? seed.data : options.initialData,
+    error: undefined,
+    hasData: seed !== undefined || options.initialData !== undefined,
+    hasMore: isPaginated ? pagination.hasMore : false,
+    hasResolvedData: false,
+    identity,
+    isLoading,
+    isLoadingMore: false,
+    isPaginated,
+    page: 0
+  }
+}
+
+function createTransientPromiseArgumentsIdentity(args: readonly unknown[]): string {
+  return JSON.stringify(args) ?? "transient:undefined"
+}
+
+function beginPromiseExecution<TResult, TArgs extends readonly unknown[]>(
+  identity: string,
+  options: UsePromiseOptions<TResult, TArgs>,
+  args: TArgs,
+  activeExecutionRef: MutableRefObject<PromiseExecution | null>,
+  generationRef: MutableRefObject<number>,
+  invalidate: () => void,
+  seedCommit: { persisted: boolean; token: unknown } | undefined
 ): PromiseExecution {
+  invalidate()
   options.abortable?.current?.abort()
   const abortController = new AbortController()
   if (options.abortable) {
     options.abortable.current = abortController
   }
-  options.onWillExecute?.(args)
-  return {
+
+  invokePromiseLifecycleCallback(options.onWillExecute, args)
+  const execution: PromiseExecution = {
     abortable: options.abortable,
-    abortController
+    abortController,
+    cacheToken: seedCommit?.token,
+    generation: generationRef.current,
+    identity,
+    tracksCacheToken: seedCommit !== undefined
   }
+  activeExecutionRef.current = execution
+  return execution
 }
 
 function clearAbortController(execution: PromiseExecution): void {
   if (execution.abortable?.current === execution.abortController) {
     execution.abortable.current = null
   }
+}
+
+function handlePromiseError<TResult, TArgs extends readonly unknown[]>(
+  error: Error,
+  options: UsePromiseOptions<TResult, TArgs>,
+  retry: () => Promise<unknown>
+): void {
+  if (options.onError) {
+    invokePromiseLifecycleCallback(options.onError, error)
+    return
+  }
+
+  console.error("[jingle:extension-utils] Promise execution failed", error)
+  void showFailureToast(error, {
+    primaryAction: {
+      onAction: () => {
+        void retry()
+      },
+      title: "Retry"
+    },
+    title: "Failed to fetch latest data",
+    ...options.failureToastOptions
+  }).catch((toastError) => {
+    console.error("[jingle:extension-utils] Failure toast could not be shown", toastError)
+  })
+}
+
+function reportPromiseCacheFailure(failure: PromiseCacheFailure): void {
+  console.error(`[jingle:extension-utils] ${failure.code}`, failure.cause)
+  void showFailureToast(failure, {
+    message: failure.message,
+    title: "Latest data could not be cached"
+  }).catch((toastError) => {
+    console.error("[jingle:extension-utils] Cache failure toast could not be shown", toastError)
+  })
+}
+
+function invokePromiseCallback<TResult>(
+  callback: ((data: TResult, pagination?: PromisePageResult) => void) | undefined,
+  data: TResult,
+  pagination?: PromisePageResult
+): void {
+  invokePromiseLifecycleCallback(callback, data, pagination)
+}
+
+function invokePromiseLifecycleCallback(
+  callback: ((...args: any[]) => unknown) | undefined,
+  ...args: unknown[]
+): void {
+  if (!callback) {
+    return
+  }
+
+  try {
+    const result = callback(...args)
+    if (result instanceof Promise) {
+      void result.catch((error) => {
+        console.error("[jingle:extension-utils] Promise lifecycle callback failed", error)
+      })
+    }
+  } catch (error) {
+    console.error("[jingle:extension-utils] Promise lifecycle callback failed", error)
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === "object" &&
+    "name" in error &&
+    (error as { name?: unknown }).name === "AbortError"
+  )
+}
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error))
 }
 
 function getFailureToastMessage(error: unknown): string | undefined {
@@ -701,7 +1417,10 @@ async function fetchAndMapResult<TRaw, TResult>(
     ...requestInit,
     signal: requestInit.signal ?? options.abortable.current?.signal
   }
-  options.onWillExecute?.([getRequestInfoKey(requestInfo), nextRequestInit])
+  invokePromiseLifecycleCallback(options.onWillExecute, [
+    getRequestInfoKey(requestInfo),
+    nextRequestInit
+  ])
   const response = await fetch(requestInfo, nextRequestInit)
   if (!response.ok) {
     throw new Error(`Request failed with status ${response.status}`)
@@ -727,11 +1446,6 @@ async function parseFetchResponse<TResult>(response: Response): Promise<TResult>
   return (await response.text()) as TResult
 }
 
-function getFetchRequestKey(url: FetchRequestInfo, requestInit: RequestInit): string {
-  const requestInfoKey = typeof url === "function" ? String(url) : getRequestInfoKey(url)
-  return `${requestInfoKey}:${stableStringifyRequestInit(requestInit)}`
-}
-
 function getRequestInfoKey(requestInfo: RequestInfo): string {
   if (typeof requestInfo === "string") {
     return requestInfo
@@ -744,26 +1458,66 @@ function getRequestInfoKey(requestInfo: RequestInfo): string {
   return String(requestInfo)
 }
 
-function stableStringifyRequestInit(requestInit: RequestInit): string {
-  return JSON.stringify(
-    {
-      ...requestInit,
-      headers: normalizeFetchHeaders(requestInit.headers)
-    },
-    (_key, value) => (typeof value === "function" ? String(value) : value)
-  )
+function getFetchRequestIdentity(requestInfo: RequestInfo): unknown {
+  if (typeof requestInfo === "string") {
+    return { kind: "url", url: requestInfo }
+  }
+
+  if (requestInfo.body !== null) {
+    throw new TypeError(
+      "useFetch cannot create a durable cache identity for a Request object with a body"
+    )
+  }
+
+  return {
+    cache: requestInfo.cache,
+    credentials: requestInfo.credentials,
+    headers: normalizeFetchHeaders(requestInfo.headers),
+    integrity: requestInfo.integrity,
+    keepalive: requestInfo.keepalive,
+    kind: "request",
+    method: requestInfo.method,
+    mode: requestInfo.mode,
+    redirect: requestInfo.redirect,
+    referrer: requestInfo.referrer,
+    referrerPolicy: requestInfo.referrerPolicy,
+    url: requestInfo.url
+  }
 }
 
-function normalizeFetchHeaders(headers: HeadersInit | undefined): unknown {
+function getFetchRequestInitIdentity(requestInit: RequestInit): unknown {
+  const { headers, signal: _signal, ...identity } = requestInit
+  return {
+    ...identity,
+    body: normalizeFetchBodyForIdentity(requestInit.body),
+    headers: normalizeFetchHeaders(headers)
+  }
+}
+
+function normalizeFetchHeaders(headers: HeadersInit | undefined): readonly (readonly string[])[] {
   if (!headers) {
-    return undefined
+    return []
   }
 
-  if (headers instanceof Headers) {
-    return Array.from(headers.entries())
+  return Array.from(new Headers(headers).entries())
+}
+
+function normalizeFetchBodyForIdentity(body: BodyInit | null | undefined): unknown {
+  if (body === undefined || body === null || typeof body === "string") {
+    return body
   }
 
-  return headers
+  if (body instanceof URLSearchParams) {
+    return { kind: "url-search-params", value: body.toString() }
+  }
+
+  if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
+    return body
+  }
+
+  throw new TypeError(
+    `useFetch cannot create a durable cache identity for ${body.constructor.name || "this body type"}`
+  )
 }
 
 function isPaginationLoader<TResult>(
@@ -772,10 +1526,6 @@ function isPaginationLoader<TResult>(
   request: PaginationRequest
 ) => Promise<PaginationPage<TResult>> | PaginationPage<TResult> {
   return typeof value === "function"
-}
-
-function isPaginatedResult<TResult>(value: unknown): value is PaginatedResult<TResult> {
-  return value !== null && typeof value === "object" && "data" in value && "pagination" in value
 }
 
 function mergePaginatedData<TResult>(current: TResult | undefined, nextPage: TResult): TResult {
