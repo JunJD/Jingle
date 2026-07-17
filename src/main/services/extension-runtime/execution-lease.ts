@@ -127,11 +127,13 @@ export function createExtensionRuntimeUtilityExecutionLease(input: {
   runtimeCapabilities: readonly ExtensionRuntimeHostCapability[]
 }): ExtensionRuntimeUtilityExecutionLease {
   const canReadPreferences = input.runtimeCapabilities.includes("preferences")
+  const dataIdentity = createExtensionRuntimeDataIdentity(input.invokeContext)
   const context: ExtensionRuntimeLaunchContext = {
     commandName: input.intent.commandName,
     commandPreferences: canReadPreferences
       ? (input.invokeContext.commandPreferences ?? input.invokeContext.extensionPreferences)
       : {},
+    dataIdentity,
     extensionName: input.intent.extensionName,
     extensionPreferences: canReadPreferences ? input.invokeContext.extensionPreferences : {},
     initialAction: input.intent.initialAction,
@@ -145,6 +147,25 @@ export function createExtensionRuntimeUtilityExecutionLease(input: {
     context,
     runtime: input.runtime
   })
+}
+
+function createExtensionRuntimeDataIdentity(
+  context: NativeExtensionExecutionContextSnapshot
+): ExtensionRuntimeLaunchContext["dataIdentity"] {
+  const revisions = context.configurationToken.revisions
+  const localStorage = {
+    connectionId: context.configurationToken.connectionId,
+    credentialGeneration: revisions.credentialRevision
+  }
+
+  return {
+    kind: "available",
+    cache: {
+      kind: "unavailable",
+      reason: "artifact-revision-unavailable"
+    },
+    localStorage
+  }
 }
 
 function getExpectedCommandMode(

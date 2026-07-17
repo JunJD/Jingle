@@ -10,6 +10,8 @@ import type {
   ExtensionRuntimeEvent,
   ExtensionRuntimeEventAck,
   ExtensionRuntimeLaunchIntent,
+  ExtensionRuntimeRecoverableIssue,
+  ExtensionRuntimeSessionIssueSnapshot,
   ExtensionSurfaceSnapshot,
   ExtensionToastPayload
 } from "@shared/extension-runtime-protocol"
@@ -82,6 +84,16 @@ interface RuntimeSurfaceState {
   snapshot: ExtensionSurfaceSnapshot | null
 }
 
+export interface RuntimeSessionIssueState {
+  issues: ReadonlyMap<string, ExtensionRuntimeRecoverableIssue>
+  revision: number
+}
+
+export interface RuntimeAdmissionAttempt {
+  readonly sessionId: string
+  terminal: boolean
+}
+
 interface RuntimeFormState {
   localValues: RuntimeFormLocalValues
   pendingValues: ReadonlyMap<string, RuntimeFormPendingValue>
@@ -94,6 +106,7 @@ type RuntimeFormStateAction =
   | { type: "reset" }
 
 export interface RuntimeExtensionController {
+  discardRuntimeIssue: (issueId: string) => void
   dismissToast: () => void
   executeAction: (action: ExtensionActionNode) => void
   executeToastAction: (actionId: string) => void
@@ -103,12 +116,52 @@ export interface RuntimeExtensionController {
   listDropdownProjection: RuntimeListDropdownProjection
   navigateBack: () => void
   runtimeState: RuntimeSurfaceState
+  runtimeIssues: readonly ExtensionRuntimeRecoverableIssue[]
   runtimeToast: RuntimeToastState | null
   sendEvent: (event: ExtensionRuntimeEvent) => void
   setFormDropdownSearch: (fieldId: string, query: string) => void
   setFormFieldValue: (fieldId: string, value: RuntimeFormValue) => void
   setInputText: (value: string, throttle: boolean) => void
   surfaceError: string | null
+}
+
+export function reduceRuntimeSessionIssues(
+  current: RuntimeSessionIssueState,
+  snapshot: ExtensionRuntimeSessionIssueSnapshot
+): RuntimeSessionIssueState {
+  if (snapshot.revision <= current.revision) {
+    return current
+  }
+  return {
+    issues: new Map(snapshot.issues.map((issue) => [issue.id, issue])),
+    revision: snapshot.revision
+  }
+}
+
+export function clearRuntimeSessionIssues(): RuntimeSessionIssueState {
+  return { issues: new Map(), revision: -1 }
+}
+
+export function createRuntimeAdmissionAttempt(sessionId: string): RuntimeAdmissionAttempt {
+  return { sessionId, terminal: false }
+}
+
+export function markRuntimeAdmissionTerminal(
+  attempt: RuntimeAdmissionAttempt | null,
+  sessionId: string
+): boolean {
+  if (!attempt || attempt.sessionId !== sessionId) {
+    return false
+  }
+  attempt.terminal = true
+  return true
+}
+
+export function shouldCommitRuntimeAdmission(
+  currentAttempt: RuntimeAdmissionAttempt | null,
+  settledAttempt: RuntimeAdmissionAttempt
+): boolean {
+  return currentAttempt === settledAttempt && !settledAttempt.terminal
 }
 
 export function projectRuntimeListDropdown(
@@ -287,6 +340,7 @@ export function useRuntimeExtensionController(params: {
   const hasReceivedListSurfaceRef = useRef(false)
   const listQueryThrottleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const nextFormChangeIdRef = useRef(0)
+  const admissionAttemptRef = useRef<RuntimeAdmissionAttempt | null>(null)
   const syncInputAfterActionRef = useRef(false)
   const toastDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const nextToastIdRef = useRef(0)
@@ -296,6 +350,8 @@ export function useRuntimeExtensionController(params: {
     createRuntimeFormState
   )
   const [inputText, setInputTextState] = useState(host.seedQuery)
+  const [runtimeIssues, setRuntimeIssues] =
+    useState<RuntimeSessionIssueState>(clearRuntimeSessionIssues)
   const [runtimeToast, setRuntimeToast] = useState<RuntimeToastState | null>(null)
   const [runtimeState, setRuntimeState] = useState<RuntimeSurfaceState>({
     error: null,
@@ -336,6 +392,26 @@ export function useRuntimeExtensionController(params: {
     clearToastDismissTimer()
     setRuntimeToast(null)
   }, [clearToastDismissTimer])
+
+  const discardRuntimeIssue = useCallback(
+    (issueId: string): void => {
+      const sessionId = runtimeState.sessionId
+      if (!sessionId) {
+        return
+      }
+      void window.api.extensionRuntime.discardStorageIssue(sessionId, issueId).catch((error) => {
+        if (activeSessionIdRef.current !== sessionId) {
+          return
+        }
+        setRuntimeIssues(clearRuntimeSessionIssues())
+        setRuntimeState((current) => ({
+          ...current,
+          error: getRuntimeRequestErrorMessage(error)
+        }))
+      })
+    },
+    [activeSessionIdRef, runtimeState.sessionId]
+  )
 
   const showToast = useCallback(
     (toast: ExtensionToastPayload): void => {
@@ -487,10 +563,23 @@ export function useRuntimeExtensionController(params: {
           return
         }
 
-        setRuntimeState((current) => ({
-          ...current,
-          error: error.error.message
-        }))
+        markRuntimeAdmissionTerminal(admissionAttemptRef.current, error.sessionId)
+        setRuntimeState({
+          error: error.error.message,
+          sessionId: error.sessionId,
+          snapshot: null
+        })
+        setRuntimeIssues(clearRuntimeSessionIssues())
+      },
+      (snapshot) => {
+        if (snapshot.sessionId !== activeSessionIdRef.current) {
+          return
+        }
+
+        if (snapshot.terminal) {
+          markRuntimeAdmissionTerminal(admissionAttemptRef.current, snapshot.sessionId)
+        }
+        setRuntimeIssues((current) => reduceRuntimeSessionIssues(current, snapshot))
       }
     )
   }, [activeSessionIdRef])
@@ -527,6 +616,7 @@ export function useRuntimeExtensionController(params: {
   useEffect(() => {
     let cancelled = false
     const sessionId = createRuntimeSessionId()
+    const admissionAttempt = createRuntimeAdmissionAttempt(sessionId)
     let launchIntent: ExtensionRuntimeLaunchIntent
 
     try {
@@ -555,6 +645,7 @@ export function useRuntimeExtensionController(params: {
     }
 
     hasReceivedListSurfaceRef.current = false
+    admissionAttemptRef.current = admissionAttempt
     activeSessionIdRef.current = sessionId
 
     void window.api.extensionRuntime
@@ -565,6 +656,9 @@ export function useRuntimeExtensionController(params: {
       .then((session) => {
         if (cancelled) {
           void window.api.extensionRuntime.stopForeground(session.sessionId)
+          return
+        }
+        if (!shouldCommitRuntimeAdmission(admissionAttemptRef.current, admissionAttempt)) {
           return
         }
 
@@ -584,7 +678,10 @@ export function useRuntimeExtensionController(params: {
         })
       })
       .catch((error) => {
-        if (!cancelled) {
+        if (
+          !cancelled &&
+          shouldCommitRuntimeAdmission(admissionAttemptRef.current, admissionAttempt)
+        ) {
           setRuntimeState({
             error: getRuntimeRequestErrorMessage(error),
             sessionId: null,
@@ -597,8 +694,12 @@ export function useRuntimeExtensionController(params: {
       cancelled = true
       clearListQueryThrottleTimer()
       clearToastDismissTimer()
+      setRuntimeIssues(clearRuntimeSessionIssues())
       setRuntimeToast(null)
       void window.api.extensionRuntime.stopForeground(sessionId)
+      if (admissionAttemptRef.current === admissionAttempt) {
+        admissionAttemptRef.current = null
+      }
       activeSessionIdRef.current = null
     }
   }, [
@@ -615,6 +716,7 @@ export function useRuntimeExtensionController(params: {
   const listDropdownProjection = projectRuntimeListDropdown(listSnapshot)
 
   return {
+    discardRuntimeIssue,
     dismissToast,
     executeAction,
     executeToastAction,
@@ -624,6 +726,7 @@ export function useRuntimeExtensionController(params: {
     listDropdownProjection,
     navigateBack,
     runtimeState,
+    runtimeIssues: Array.from(runtimeIssues.issues.values()),
     runtimeToast,
     sendEvent,
     setFormDropdownSearch,

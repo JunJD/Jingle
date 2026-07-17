@@ -19,14 +19,20 @@ import {
   getRuntimeSdkGlobalState,
   setActiveRuntimeSdkContextValue,
   type ExtensionRuntimeNavigation,
+  type ExtensionRuntimeHostContextValue,
   type ExtensionRuntimeSdkContextValue
 } from "./runtime-context"
+import {
+  handleCommandStorageFailure,
+  readCommandStorageValue,
+  writeCommandStorageValueAndDiscardLegacy
+} from "./command-storage"
 
-const extensionRuntimeSdkContext = createContext<ExtensionRuntimeSdkContextValue | null>(null)
+const extensionRuntimeSdkContext = createContext<ExtensionRuntimeHostContextValue | null>(null)
 
 export function ExtensionRuntimeSdkProvider(props: {
   children?: ReactNode
-  value: ExtensionRuntimeSdkContextValue
+  value: ExtensionRuntimeHostContextValue
 }): React.JSX.Element {
   setActiveRuntimeSdkContextValue(props.value)
 
@@ -53,6 +59,18 @@ export function useExtensionRuntimeSdk(): ExtensionRuntimeSdkContextValue {
 
 export function useExtensionRuntimeSdkOptional(): ExtensionRuntimeSdkContextValue | null {
   return use(extensionRuntimeSdkContext) ?? getActiveRuntimeSdkContextValue()
+}
+
+export function useExtensionRuntimeHostContext(): ExtensionRuntimeHostContextValue {
+  const context = use(extensionRuntimeSdkContext)
+  if (!context) {
+    throw new Error("Extension runtime host context is unavailable.")
+  }
+  return context
+}
+
+export function useExtensionRuntimeHostContextOptional(): ExtensionRuntimeHostContextValue | null {
+  return use(extensionRuntimeSdkContext)
 }
 
 export function useCommandSeedQuery(): string {
@@ -92,7 +110,7 @@ export function useRuntimeSurfaceNavigationProps(): {
 
 export function ExtensionRuntimeNavigationProvider(props: {
   children?: ReactElement
-  value: Omit<ExtensionRuntimeSdkContextValue, "navigation">
+  value: Omit<ExtensionRuntimeHostContextValue, "navigation">
 }): React.JSX.Element {
   const { children, value } = props
   const [stack, setStack] = useState<ReactNode[]>([])
@@ -133,95 +151,82 @@ export function useExtensionStorageState<TValue>(
   initialValue: TValue,
   options: { legacyKey?: string } = {}
 ): [TValue, Dispatch<SetStateAction<TValue>>] {
-  const { requestHost } = useExtensionRuntimeSdk()
+  const sdk = useExtensionRuntimeHostContext()
   const { legacyKey } = options
   const [value, setValue] = useState<TValue>(initialValue)
+  const durableOperationsRef = useRef<Promise<void>>(Promise.resolve())
   const localWriteVersionRef = useRef(0)
+  const valueRef = useRef(initialValue)
+  const enqueueDurableOperation = useCallback((operation: () => Promise<void>): Promise<void> => {
+    const result = durableOperationsRef.current.then(operation)
+    durableOperationsRef.current = result.catch(() => undefined)
+    return result
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     const loadVersion = localWriteVersionRef.current
 
     const loadStorageValue = async (): Promise<TValue | undefined> => {
-      const response = await requestHost({
-        capability: "storage",
-        method: "get",
-        payload: {
-          key,
-          scope: "command"
-        }
-      })
-
-      if (!response.ok || response.result !== undefined) {
-        return response.ok ? (response.result as TValue | undefined) : undefined
+      const storedValue = await readCommandStorageValue(sdk.requestHost, key)
+      if (storedValue !== undefined) {
+        return storedValue as TValue
       }
 
       if (!legacyKey) {
         return undefined
       }
 
-      const legacyResponse = await requestHost({
-        capability: "storage",
-        method: "get",
-        payload: {
-          key: legacyKey,
-          scope: "command"
-        }
-      })
-
-      if (!legacyResponse.ok || legacyResponse.result === undefined) {
+      const legacyValue = await readCommandStorageValue(sdk.requestHost, legacyKey)
+      if (legacyValue === undefined) {
         return undefined
       }
 
-      await requestHost({
-        capability: "storage",
-        method: "set",
-        payload: {
-          key,
-          scope: "command",
-          value: legacyResponse.result
+      await enqueueDurableOperation(async () => {
+        if (cancelled || localWriteVersionRef.current !== loadVersion) {
+          return
         }
+        await writeCommandStorageValueAndDiscardLegacy(sdk.requestHost, key, legacyKey, legacyValue)
       })
 
-      return legacyResponse.result as TValue
+      return legacyValue as TValue
     }
 
-    void loadStorageValue().then((loadedValue) => {
-      if (
-        cancelled ||
-        localWriteVersionRef.current !== loadVersion ||
-        loadedValue === undefined
-      ) {
-        return
-      }
+    void loadStorageValue()
+      .then((loadedValue) => {
+        if (
+          cancelled ||
+          localWriteVersionRef.current !== loadVersion ||
+          loadedValue === undefined
+        ) {
+          return
+        }
 
-      setValue(loadedValue)
-    })
+        valueRef.current = loadedValue
+        setValue(loadedValue)
+      })
+      .catch((error: unknown) => {
+        handleCommandStorageFailure(sdk.reportFatalError, error)
+      })
 
     return () => {
       cancelled = true
     }
-  }, [key, legacyKey, requestHost])
+  }, [enqueueDurableOperation, key, legacyKey, sdk.reportFatalError, sdk.requestHost])
 
   const setStoredValue: Dispatch<SetStateAction<TValue>> = (nextValue) => {
-    setValue((currentValue) => {
-      localWriteVersionRef.current += 1
-      const resolvedValue =
-        typeof nextValue === "function"
-          ? (nextValue as (currentValue: TValue) => TValue)(currentValue)
-          : nextValue
+    localWriteVersionRef.current += 1
+    const resolvedValue =
+      typeof nextValue === "function"
+        ? (nextValue as (currentValue: TValue) => TValue)(valueRef.current)
+        : nextValue
+    valueRef.current = resolvedValue
+    setValue(resolvedValue)
 
-      void requestHost({
-        capability: "storage",
-        method: "set",
-        payload: {
-          key,
-          scope: "command",
-          value: resolvedValue
-        }
-      })
-
-      return resolvedValue
+    void enqueueDurableOperation(() =>
+      writeCommandStorageValueAndDiscardLegacy(sdk.requestHost, key, legacyKey, resolvedValue)
+    ).catch((error: unknown) => {
+      handleCommandStorageFailure(sdk.reportFatalError, error)
     })
   }
 

@@ -60,6 +60,7 @@ function createLaunchContext(): ExtensionRuntimeLaunchContext {
   return {
     commandName: "index",
     commandPreferences: {},
+    dataIdentity: { kind: "unavailable" },
     extensionName: "figma-files",
     extensionPreferences: {},
     initialAction: "open",

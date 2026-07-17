@@ -14,6 +14,7 @@ import { ExtensionRuntimeManager } from "./runtime-manager"
 
 const SURFACE_CHANNEL = "extensionRuntime:surface"
 const ERROR_CHANNEL = "extensionRuntime:error"
+const ISSUE_SNAPSHOT_CHANNEL = "extensionRuntime:issueSnapshot"
 const EVENT_ACK_CHANNEL = "extensionRuntime:eventAck"
 
 export class ExtensionRuntimeController {
@@ -37,6 +38,14 @@ export class ExtensionRuntimeController {
     this.runtimeManager.onError((error) => {
       this.sendSessionProjection(error.sessionId, ERROR_CHANNEL, error, false)
     })
+    this.runtimeManager.onIssueSnapshot((snapshot) => {
+      this.sendSessionProjection(
+        snapshot.sessionId,
+        ISSUE_SNAPSHOT_CHANNEL,
+        snapshot,
+        !snapshot.terminal
+      )
+    })
     this.runtimeManager.onSessionStopped((session) => {
       this.rendererBridge.releaseSession(session.sessionId)
     })
@@ -58,6 +67,9 @@ export class ExtensionRuntimeController {
         this.surfaceSubscriberDestroyCleanups.set(senderId, cleanup)
         event.sender.once("destroyed", cleanup)
       }
+      return this.runtimeManager
+        .getIssueSnapshots()
+        .filter((snapshot) => this.rendererBridge.isSessionOwner(snapshot.sessionId, event.sender))
     })
 
     registerIpcHandle(ipcMain, "extensionRuntime:unsubscribeSurfaces", (event) => {
@@ -130,6 +142,23 @@ export class ExtensionRuntimeController {
 
     registerIpcHandle(
       ipcMain,
+      "extensionRuntime:discardStorageIssue",
+      (event, sessionId: string, issueId: string) => {
+        this.assertAuthorizedRenderer(event)
+        if (
+          typeof sessionId !== "string" ||
+          typeof issueId !== "string" ||
+          !/^storage-legacy-unowned:[a-f0-9]{64}$/.test(issueId) ||
+          !this.rendererBridge.isSessionOwner(sessionId, event.sender)
+        ) {
+          return false
+        }
+        return this.runtimeManager.discardStorageIssue(sessionId, issueId)
+      }
+    )
+
+    registerIpcHandle(
+      ipcMain,
       "extensionRuntime:completeNavigationRequest",
       (event, response: ExtensionRuntimeNavigationResponse) => {
         this.assertAuthorizedRenderer(event)
@@ -161,6 +190,7 @@ export class ExtensionRuntimeController {
     try {
       owner.send(channel, payload)
     } catch (error) {
+      console.error("[jingle:extension-runtime] Renderer projection failed", error)
       this.rendererBridge.releaseSession(sessionId)
       if (stopOnFailure) {
         this.runtimeManager.stopSessionById(sessionId, {

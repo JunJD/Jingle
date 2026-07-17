@@ -1,15 +1,20 @@
 import type { ExtensionRuntimeLaunchIntent } from "@shared/extension-runtime-protocol"
 import type { NativeMenuBarState } from "@shared/native-menu-bar"
 import { getDefaultExtensionRegistryService } from "../../extensions/registry/default-registry"
-import type { NativeMenuBarService } from "../../native-menu-bar/service"
+import type {
+  NativeMenuBarActionHandlers,
+  NativeMenuBarService
+} from "../../native-menu-bar/service"
 import { ExtensionRuntimeLifecycleError, type ExtensionRuntimeManager } from "./runtime-manager"
 
 interface RuntimeMenuBarCommandState {
   activeLeaseGeneration: number
   attempt: number
   intent: ExtensionRuntimeLaunchIntent
+  lastNativeActionHandlers?: NativeMenuBarActionHandlers
+  lastNativeState?: NativeMenuBarState
   ownerGeneration: number
-  phase: "active" | "starting"
+  phase: "active" | "recovering" | "starting" | "unavailable"
   remainingRevocationRetries: number
   sessionId: string | null
 }
@@ -43,47 +48,137 @@ export class ExtensionRuntimeMenuBarService {
         if (this.commandStatesByKey.get(commandKey)?.sessionId !== session.sessionId) {
           return
         }
-        this.nativeMenuBarService.setState(
-          {
-            commandKey,
-            extensionIcon: this.getPackageMenuBarIcon(
-              surface.extensionName,
-              surface.icon ?? this.manifestByName.get(surface.extensionName)?.icon
-            ),
-            iconName: surface.iconName,
-            isLoading: surface.isLoading,
-            sections: surface.sections.map((section) => ({
-              items: section.items.map((item) => {
-                const { icon, ...nativeItem } = item
-                return {
-                  ...nativeItem,
-                  extensionIcon: this.getPackageMenuBarIcon(surface.extensionName, icon)
-                }
-              }),
-              title: section.title
-            })),
-            title: surface.title,
-            tooltip: surface.tooltip
-          } satisfies NativeMenuBarState,
-          Object.fromEntries(
-            surface.sections.flatMap((section) =>
-              section.items
-                .filter((item) => !item.disabled)
-                .map(
-                  (item) =>
-                    [
-                      item.id,
-                      () => {
-                        this.runtimeManager.sendEvent(session.sessionId, {
-                          itemId: item.id,
-                          type: "menu-bar.item.execute"
-                        })
-                      }
-                    ] as const
-                )
-            )
+        const nativeState = {
+          commandKey,
+          extensionIcon: this.getPackageMenuBarIcon(
+            surface.extensionName,
+            surface.icon ?? this.manifestByName.get(surface.extensionName)?.icon
+          ),
+          iconName: surface.iconName,
+          isLoading: surface.isLoading,
+          sections: surface.sections.map((section) => ({
+            items: section.items.map((item) => {
+              const { icon, ...nativeItem } = item
+              return {
+                ...nativeItem,
+                extensionIcon: this.getPackageMenuBarIcon(surface.extensionName, icon)
+              }
+            }),
+            title: section.title
+          })),
+          title: surface.title,
+          tooltip: surface.tooltip
+        } satisfies NativeMenuBarState
+        const nativeActionHandlers = Object.fromEntries(
+          surface.sections.flatMap((section) =>
+            section.items
+              .filter((item) => !item.disabled)
+              .map(
+                (item) =>
+                  [
+                    item.id,
+                    () => {
+                      this.runtimeManager.sendEvent(session.sessionId, {
+                        itemId: item.id,
+                        type: "menu-bar.item.execute"
+                      })
+                    }
+                  ] as const
+              )
           )
         )
+        const state = this.commandStatesByKey.get(commandKey)
+        if (!state) {
+          return
+        }
+        state.lastNativeState = nativeState
+        state.lastNativeActionHandlers = nativeActionHandlers
+        if (state.phase !== "recovering") {
+          this.nativeMenuBarService.setState(nativeState, nativeActionHandlers)
+        }
+      }),
+      this.runtimeManager.onIssueSnapshot((snapshot) => {
+        for (const [commandKey, state] of this.commandStatesByKey) {
+          if (state.sessionId !== snapshot.sessionId || snapshot.terminal) {
+            continue
+          }
+          if (snapshot.issues.length === 0) {
+            if (state.phase === "recovering") {
+              state.phase = "active"
+              if (state.lastNativeState) {
+                this.nativeMenuBarService.setState(
+                  state.lastNativeState,
+                  state.lastNativeActionHandlers
+                )
+              } else {
+                this.nativeMenuBarService.clearState(commandKey)
+              }
+            }
+            return
+          }
+
+          const discardIssues = snapshot.issues.filter(
+            (issue) => issue.recovery.strategy === "discard-value"
+          )
+          if (discardIssues.length !== snapshot.issues.length) {
+            this.showRecoveryFailure(
+              commandKey,
+              state,
+              "Stored values require a recovery action that is unavailable in the menu bar."
+            )
+            return
+          }
+
+          state.phase = "recovering"
+          this.nativeMenuBarService.setState(
+            {
+              commandKey,
+              iconName: "bell",
+              sections: [
+                {
+                  items: discardIssues.map((issue) => ({
+                    id: issue.id,
+                    subtitle: issue.recovery.key,
+                    title: "Discard stored value"
+                  }))
+                }
+              ],
+              title: state.intent.commandName,
+              tooltip: "Stored values need attention"
+            },
+            Object.fromEntries(
+              discardIssues.map(
+                (issue) =>
+                  [
+                    issue.id,
+                    () => {
+                      void this.discardStorageIssue(commandKey, state, snapshot.sessionId, issue.id)
+                    }
+                  ] as const
+              )
+            )
+          )
+          return
+        }
+      }),
+      this.runtimeManager.onError(({ error, sessionId }) => {
+        if (error.code === "runtime_configuration_revoked") {
+          return
+        }
+        for (const [commandKey, state] of this.commandStatesByKey) {
+          if (state.sessionId === sessionId) {
+            const isStorageRecoveryFailure = error.code === "storage_issue_discard_failed"
+            this.showRecoveryFailure(
+              commandKey,
+              state,
+              isStorageRecoveryFailure
+                ? "The stored value could not be discarded."
+                : "The extension menu bar stopped unexpectedly. Reload the extension to continue.",
+              isStorageRecoveryFailure ? "Storage recovery unavailable" : "Extension unavailable"
+            )
+            return
+          }
+        }
       }),
       this.runtimeManager.onSessionStopped((session, reason) => {
         for (const [commandKey, state] of this.commandStatesByKey) {
@@ -92,6 +187,9 @@ export class ExtensionRuntimeMenuBarService {
           }
 
           state.sessionId = null
+          if (state.phase === "unavailable") {
+            return
+          }
           this.nativeMenuBarService.clearState(commandKey)
           if (reason === "configuration-revoked") {
             if (!this.retryRevokedCommand(commandKey, state, state.attempt)) {
@@ -147,6 +245,60 @@ export class ExtensionRuntimeMenuBarService {
           seedQuery: ""
         }))
     )
+  }
+
+  private async discardStorageIssue(
+    commandKey: string,
+    state: RuntimeMenuBarCommandState,
+    sessionId: string,
+    issueId: string
+  ): Promise<void> {
+    let discarded = false
+    try {
+      discarded = await this.runtimeManager.discardStorageIssue(sessionId, issueId)
+    } catch {
+      discarded = false
+    }
+    if (
+      discarded ||
+      this.commandStatesByKey.get(commandKey) !== state ||
+      state.sessionId !== sessionId ||
+      state.phase !== "recovering"
+    ) {
+      return
+    }
+    this.showRecoveryFailure(
+      commandKey,
+      state,
+      "The stored value could not be discarded. Reload the extension to try again."
+    )
+  }
+
+  private showRecoveryFailure(
+    commandKey: string,
+    state: RuntimeMenuBarCommandState,
+    message: string,
+    title = "Storage recovery unavailable"
+  ): void {
+    state.phase = "unavailable"
+    this.nativeMenuBarService.setState({
+      commandKey,
+      iconName: "bell",
+      sections: [
+        {
+          items: [
+            {
+              disabled: true,
+              id: "runtime-unavailable",
+              subtitle: message,
+              title
+            }
+          ]
+        }
+      ],
+      title: state.intent.commandName,
+      tooltip: message
+    })
   }
 
   private startCommand(intent: ExtensionRuntimeLaunchIntent): void {

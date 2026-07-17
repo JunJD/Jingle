@@ -7,7 +7,12 @@ import {
   type ReactNode
 } from "react"
 import { ExtensionHostElement } from "./host-elements"
-import { useExtensionRuntimeSdkOptional, useRuntimeSurfaceNavigationProps } from "./context"
+import {
+  handleCommandStorageFailure,
+  readCommandStorageValue,
+  writeCommandStorageValue
+} from "./command-storage"
+import { useExtensionRuntimeHostContextOptional, useRuntimeSurfaceNavigationProps } from "./context"
 import { createVisualElement, normalizeVisual, type ColorLike, type IconLike } from "./visual"
 
 const LIST_DROPDOWN_STORE_VALUE_KEY = "list-dropdown"
@@ -139,7 +144,7 @@ function ListEmptyView(props: RuntimeListEmptyViewProps): ReactElement {
 
 function ListDropdown(props: RuntimeListDropdownProps): ReactElement {
   const { children, onChange, storeValue, value, ...hostProps } = props
-  const sdk = useExtensionRuntimeSdkOptional()
+  const sdk = useExtensionRuntimeHostContextOptional()
   const hasLoadedRef = useRef(false)
   const onChangeRef = useRef(onChange)
   const pendingUserValueRef = useRef<string | undefined>(undefined)
@@ -156,14 +161,12 @@ function ListDropdown(props: RuntimeListDropdownProps): ReactElement {
         return
       }
 
-      void sdk.requestHost({
-        capability: "storage",
-        method: "set",
-        payload: {
-          key: LIST_DROPDOWN_STORE_VALUE_KEY,
-          scope: "command",
-          value: nextValue
-        }
+      void writeCommandStorageValue(
+        sdk.requestHost,
+        LIST_DROPDOWN_STORE_VALUE_KEY,
+        nextValue
+      ).catch((error: unknown) => {
+        handleCommandStorageFailure(sdk.reportFatalError, error)
       })
     },
     [sdk]
@@ -178,36 +181,41 @@ function ListDropdown(props: RuntimeListDropdownProps): ReactElement {
 
     let cancelled = false
 
-    void Promise.resolve(
-      sdk.requestHost({
-        capability: "storage",
-        method: "get",
-        payload: {
-          key: LIST_DROPDOWN_STORE_VALUE_KEY,
-          scope: "command"
+    void readCommandStorageValue(sdk.requestHost, LIST_DROPDOWN_STORE_VALUE_KEY)
+      .then((storedValue) => {
+        if (cancelled) {
+          return
+        }
+
+        hasLoadedRef.current = true
+        const pendingUserValue = pendingUserValueRef.current
+        if (pendingUserValue !== undefined) {
+          pendingUserValueRef.current = undefined
+          persistStoredValue(pendingUserValue)
+          return
+        }
+
+        if (typeof storedValue !== "string") {
+          return
+        }
+
+        if (storedValue !== valueRef.current) {
+          void onChangeRef.current?.(storedValue)
         }
       })
-    ).then((response) => {
-      if (cancelled || !response.ok) {
-        return
-      }
-
-      hasLoadedRef.current = true
-      const pendingUserValue = pendingUserValueRef.current
-      if (pendingUserValue !== undefined) {
-        pendingUserValueRef.current = undefined
-        persistStoredValue(pendingUserValue)
-        return
-      }
-
-      if (typeof response.result !== "string") {
-        return
-      }
-
-      if (response.result !== valueRef.current) {
-        void onChangeRef.current?.(response.result)
-      }
-    })
+      .catch((error: unknown) => {
+        if (!handleCommandStorageFailure(sdk.reportFatalError, error)) {
+          return
+        }
+        if (!cancelled) {
+          hasLoadedRef.current = true
+          const pendingUserValue = pendingUserValueRef.current
+          if (pendingUserValue !== undefined) {
+            pendingUserValueRef.current = undefined
+            persistStoredValue(pendingUserValue)
+          }
+        }
+      })
 
     return () => {
       cancelled = true

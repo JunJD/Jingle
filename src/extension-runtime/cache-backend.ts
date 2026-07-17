@@ -1,9 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
-import type {
-  RuntimeCacheBackend,
-  RuntimeCacheBackendScope,
-  RuntimeCacheEntry
+import {
+  encodeRuntimeCacheBackendScopeKey,
+  type RuntimeCacheBackend,
+  type RuntimeCacheBackendScope,
+  type RuntimeCacheEntry
 } from "@jingle/extension-api/host-runtime"
 
 interface RuntimeCacheFileShape {
@@ -16,7 +17,7 @@ export function createFileExtensionRuntimeCacheBackend(cacheDir: string): Runtim
   return {
     loadStore(scope) {
       const cacheFilePath = getStoreFilePath(cacheDir, scope)
-      return readCacheFile(cacheFilePath).stores[getStoreKey(scope)] ?? []
+      return readCacheFile(cacheFilePath).stores[encodeRuntimeCacheBackendScopeKey(scope)] ?? []
     },
     saveStore(scope, entries) {
       const cacheFilePath = getStoreFilePath(cacheDir, scope)
@@ -24,7 +25,7 @@ export function createFileExtensionRuntimeCacheBackend(cacheDir: string): Runtim
       const nextCacheFile = {
         stores: {
           ...cacheFile.stores,
-          [getStoreKey(scope)]: [...entries]
+          [encodeRuntimeCacheBackendScopeKey(scope)]: [...entries]
         }
       }
       writeCacheFile(cacheFilePath, nextCacheFile)
@@ -43,10 +44,6 @@ function readCacheFile(cacheFilePath: string): RuntimeCacheFileShape {
 function writeCacheFile(cacheFilePath: string, cacheFile: RuntimeCacheFileShape): void {
   mkdirSync(dirname(cacheFilePath), { recursive: true })
   writeFileSync(cacheFilePath, `${JSON.stringify(cacheFile, null, 2)}\n`)
-}
-
-function getStoreKey(scope: RuntimeCacheBackendScope): string {
-  return JSON.stringify([scope.extensionName, scope.namespace])
 }
 
 function getStoreFilePath(cacheDir: string, scope: RuntimeCacheBackendScope): string {

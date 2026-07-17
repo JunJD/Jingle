@@ -304,6 +304,7 @@ function createLaunchContext(): ExtensionRuntimeLaunchContext {
   return {
     commandName: "search-page",
     commandPreferences: {},
+    dataIdentity: { kind: "unavailable" },
     extensionName: "notion",
     extensionPreferences: {},
     initialAction: "open",

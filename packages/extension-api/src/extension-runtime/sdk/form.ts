@@ -1,6 +1,11 @@
 import { createElement, useEffect, useRef, type ReactElement, type ReactNode } from "react"
 import { ExtensionHostElement } from "./host-elements"
-import { useExtensionRuntimeSdkOptional, useRuntimeSurfaceNavigationProps } from "./context"
+import {
+  handleCommandStorageFailure,
+  readCommandStorageValue,
+  writeCommandStorageValue
+} from "./command-storage"
+import { useExtensionRuntimeHostContextOptional, useRuntimeSurfaceNavigationProps } from "./context"
 import { createVisualElement, type IconLike } from "./visual"
 
 type RuntimeFormFieldChangeHandler<TValue> = {
@@ -9,6 +14,7 @@ type RuntimeFormFieldChangeHandler<TValue> = {
 
 type RuntimeStoredFormValue = boolean | Date | null | string | string[] | undefined
 export type RuntimeFormDatePickerType = "date" | "datetime"
+const NO_PENDING_FORM_VALUE = Symbol("no-pending-form-value")
 
 function getStoredFormValueKey(id: string): string {
   return `form-field:${id}`
@@ -30,48 +36,81 @@ function useStoredFormValue<TValue extends RuntimeStoredFormValue>(params: {
   value: TValue
 }): void {
   const { id, onChange, storeValue, value } = params
-  const sdk = useExtensionRuntimeSdkOptional()
+  const sdk = useExtensionRuntimeHostContextOptional()
   const onChangeRef = useRef(onChange)
   const valueRef = useRef(value)
   const hasLoadedRef = useRef(false)
   const hasHydratedRef = useRef(false)
+  const loadValueVersionRef = useRef(0)
+  const pendingUserValueRef = useRef<TValue | typeof NO_PENDING_FORM_VALUE>(NO_PENDING_FORM_VALUE)
+  const valueVersionRef = useRef(0)
 
   useEffect(() => {
     onChangeRef.current = onChange
+  }, [onChange])
+
+  useEffect(() => {
     valueRef.current = value
-  }, [onChange, value])
+    valueVersionRef.current += 1
+  }, [value])
 
   useEffect(() => {
     if (!storeValue || !id || !sdk) {
       hasLoadedRef.current = false
       hasHydratedRef.current = false
+      pendingUserValueRef.current = NO_PENDING_FORM_VALUE
       return
     }
 
     let cancelled = false
+    loadValueVersionRef.current = valueVersionRef.current
 
-    void Promise.resolve(
-      sdk.requestHost({
-        capability: "storage",
-        method: "get",
-        payload: {
-          key: getStoredFormValueKey(id),
-          scope: "command"
+    void readCommandStorageValue(sdk.requestHost, getStoredFormValueKey(id))
+      .then((storedValue) => {
+        if (cancelled) {
+          return
+        }
+
+        hasLoadedRef.current = true
+        const pendingUserValue = pendingUserValueRef.current
+        if (pendingUserValue !== NO_PENDING_FORM_VALUE) {
+          pendingUserValueRef.current = NO_PENDING_FORM_VALUE
+          void writeCommandStorageValue(
+            sdk.requestHost,
+            getStoredFormValueKey(id),
+            pendingUserValue
+          ).catch((error: unknown) => {
+            handleCommandStorageFailure(sdk.reportFatalError, error)
+          })
+          return
+        }
+
+        if (storedValue === undefined || !isEmptyFormValue(valueRef.current)) {
+          return
+        }
+
+        hasHydratedRef.current = true
+        void onChangeRef.current(storedValue as TValue)
+      })
+      .catch((error: unknown) => {
+        if (!handleCommandStorageFailure(sdk.reportFatalError, error)) {
+          return
+        }
+        if (!cancelled) {
+          hasLoadedRef.current = true
+          const pendingUserValue = pendingUserValueRef.current
+          if (pendingUserValue !== NO_PENDING_FORM_VALUE) {
+            pendingUserValueRef.current = NO_PENDING_FORM_VALUE
+            void writeCommandStorageValue(
+              sdk.requestHost,
+              getStoredFormValueKey(id),
+              pendingUserValue
+            ).catch((writeError: unknown) => {
+              handleCommandStorageFailure(sdk.reportFatalError, writeError)
+            })
+          }
         }
       })
-    ).then((response) => {
-      if (cancelled || !response.ok) {
-        return
-      }
-
-      hasLoadedRef.current = true
-      if (response.result === undefined || !isEmptyFormValue(valueRef.current)) {
-        return
-      }
-
-      hasHydratedRef.current = true
-      void onChangeRef.current(response.result as TValue)
-    })
 
     return () => {
       cancelled = true
@@ -79,7 +118,14 @@ function useStoredFormValue<TValue extends RuntimeStoredFormValue>(params: {
   }, [id, sdk, storeValue])
 
   useEffect(() => {
-    if (!storeValue || !id || !sdk || !hasLoadedRef.current) {
+    if (!storeValue || !id || !sdk) {
+      return
+    }
+
+    if (!hasLoadedRef.current) {
+      if (valueVersionRef.current !== loadValueVersionRef.current) {
+        pendingUserValueRef.current = value
+      }
       return
     }
 
@@ -88,15 +134,11 @@ function useStoredFormValue<TValue extends RuntimeStoredFormValue>(params: {
       return
     }
 
-    void sdk.requestHost({
-      capability: "storage",
-      method: "set",
-      payload: {
-        key: getStoredFormValueKey(id),
-        scope: "command",
-        value
+    void writeCommandStorageValue(sdk.requestHost, getStoredFormValueKey(id), value).catch(
+      (error: unknown) => {
+        handleCommandStorageFailure(sdk.reportFatalError, error)
       }
-    })
+    )
   }, [id, sdk, storeValue, value])
 }
 

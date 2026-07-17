@@ -9,6 +9,7 @@ export {
   type ExtensionRuntimeHostCapabilities,
   type ExtensionRuntimeRunResult,
   type ExtensionRuntimeSessionError,
+  type ExtensionRuntimeSessionIssueSnapshot,
   type ExtensionRuntimeSessionInfo
 } from "./runtime-manager"
 export { resolveExtensionRuntimeEntryPath } from "./utility-process-launcher"

@@ -3,12 +3,14 @@ import type {
   ExtensionHostRequest,
   ExtensionHostResponse,
   ExtensionRuntimeError,
+  ExtensionRuntimeErrorDetails,
   ExtensionRuntimeJsonObject,
   ExtensionRuntimeJsonValue,
   ExtensionRuntimeLaunchContext,
   ExtensionRuntimeLaunchProps
 } from "../../shared/extension-runtime-protocol"
 import {
+  normalizeExtensionRuntimeErrorDetails,
   normalizeExtensionRuntimeJsonFact,
   normalizeExtensionRuntimeLaunchProps,
   normalizeExtensionRuntimeNavigationHostRequest
@@ -26,13 +28,38 @@ export interface ExtensionRuntimeSdkContextValue extends ExtensionRuntimeLaunchC
   registerToastAction?: (handler: RuntimeToastActionHandler) => RuntimeToastActionRegistration
 }
 
+export interface ExtensionRuntimeHostContextValue extends ExtensionRuntimeSdkContextValue {
+  reportFatalError: (error: unknown) => void
+}
+
 export class ExtensionRuntimeRequestError extends Error {
   readonly code: string
+  readonly details: ExtensionRuntimeErrorDetails | undefined
 
   constructor(error: ExtensionRuntimeError) {
-    super(error.message)
-    this.code = error.code
+    const details = tryNormalizeRuntimeRequestErrorDetails(error.details)
+    const invalidStorageRecovery = error.code === "storage_legacy_unowned" && !details
+    super(
+      invalidStorageRecovery
+        ? "Extension runtime returned invalid storage recovery details."
+        : error.message
+    )
+    this.code = invalidStorageRecovery ? "runtime_response_invalid" : error.code
+    this.details = details
     this.name = "ExtensionRuntimeRequestError"
+  }
+}
+
+function tryNormalizeRuntimeRequestErrorDetails(
+  details: unknown
+): ExtensionRuntimeErrorDetails | undefined {
+  if (details === undefined) {
+    return undefined
+  }
+  try {
+    return normalizeExtensionRuntimeErrorDetails(details)
+  } catch {
+    return undefined
   }
 }
 

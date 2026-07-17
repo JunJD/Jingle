@@ -7,8 +7,6 @@ export {
   defineNativeExtensionClientMethod
 } from "./client"
 export {
-  ExtensionRuntimeNavigationProvider,
-  ExtensionRuntimeSdkProvider,
   useCommandSeedQuery,
   useExtensionRuntimeSdk,
   useExtensionStorageState,
@@ -76,14 +74,10 @@ export { open, openExternal } from "./shell"
 export type { RuntimeOpenApplication } from "./shell"
 export {
   Cache,
-  installExtensionRuntimeCacheBackend,
   LocalStorage,
   type LocalStorageValue
 } from "./storage"
 export type {
-  RuntimeCacheBackend,
-  RuntimeCacheBackendScope,
-  RuntimeCacheEntry,
   RuntimeCacheOptions,
   RuntimeCacheSubscriber,
   RuntimeCacheSubscription

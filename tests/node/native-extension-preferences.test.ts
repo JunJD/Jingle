@@ -7,6 +7,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 import { promisify } from "node:util"
+import Store from "electron-store"
 import { notionManifest } from "../../installable-extensions/notion/manifest"
 
 const figmaPlatformSupported = process.platform === "darwin" || process.platform === "win32"
@@ -1357,6 +1358,230 @@ test("extension runtime host resolves preferences with secrets through main-side
   assert.deepEqual(publicReadCalls, [])
 })
 
+test("extension runtime host isolates legacy conflicts without blocking typed storage", () => {
+  const storageStore = new Store<{ values: Record<string, unknown> }>({
+    cwd: jingleHome,
+    defaults: { values: {} },
+    name: "extension-runtime-storage"
+  })
+  const host = createRuntimeStorageHost()
+  const legacyDiscardKey = JSON.stringify(["notion", "discardOnly"])
+  const legacyRecentPageKey = JSON.stringify(["notion", "recentPage"])
+  const legacyFilterKey = JSON.stringify(["notion", "filter"])
+  const context = createRuntimeStorageContext(0)
+
+  storageStore.set("values", {
+    [legacyDiscardKey]: "legacy-discard",
+    [legacyFilterKey]: "legacy-filter",
+    [legacyRecentPageKey]: "page-1"
+  })
+  assert.throws(
+    () => host.getStorageValue({ context, key: "recentPage", scope: "extension" }),
+    (error) => {
+      assert.equal((error as { code?: unknown }).code, "storage_legacy_unowned")
+      assert.deepEqual((error as { details?: unknown }).details, {
+        keys: ["recentPage"],
+        kind: "storage-legacy-unowned",
+        scope: "extension"
+      })
+      assert.match((error as Error).message, /key "recentPage"/)
+      assert.match((error as Error).message, /LocalStorage\.setItem\("recentPage", value\)/)
+      assert.match((error as Error).message, /LocalStorage\.removeItem\("recentPage"\)/)
+      return true
+    }
+  )
+  assert.deepEqual(storageStore.get("values"), {
+    [JSON.stringify(["jingle:legacy-unowned:v1", "notion", "extension", "discardOnly"])]:
+      "legacy-discard",
+    [JSON.stringify(["jingle:legacy-unowned:v1", "notion", "extension", "filter"])]:
+      "legacy-filter",
+    [JSON.stringify(["jingle:legacy-unowned:v1", "notion", "extension", "recentPage"])]: "page-1"
+  })
+
+  host.removeStorageValue({ context, key: "discardOnly", scope: "extension" })
+  assert.equal(host.getStorageValue({ context, key: "discardOnly", scope: "extension" }), undefined)
+  assert.equal(
+    Object.hasOwn(
+      storageStore.get("values"),
+      JSON.stringify(["jingle:legacy-unowned:v1", "notion", "extension", "discardOnly"])
+    ),
+    false
+  )
+  assert.throws(
+    () => host.getStorageValue({ context, key: "recentPage", scope: "extension" }),
+    /key "recentPage"/
+  )
+
+  host.setStorageValue({ context, key: "draft", scope: "extension", value: "new-draft" })
+  assert.equal(host.getStorageValue({ context, key: "draft", scope: "extension" }), "new-draft")
+  host.removeStorageValue({ context, key: "draft", scope: "extension" })
+  assert.equal(host.getStorageValue({ context, key: "draft", scope: "extension" }), undefined)
+
+  host.setStorageValue({ context, key: "recentPage", scope: "extension", value: "current-page" })
+  assert.equal(
+    host.getStorageValue({ context, key: "recentPage", scope: "extension" }),
+    "current-page"
+  )
+  assert.throws(
+    () => host.listStorageValues({ context, scope: "extension" }),
+    (error) => {
+      assert.equal((error as { code?: unknown }).code, "storage_legacy_unowned")
+      assert.deepEqual((error as { details?: unknown }).details, {
+        keys: ["filter"],
+        kind: "storage-legacy-unowned",
+        scope: "extension"
+      })
+      assert.doesNotMatch((error as Error).message, /"recentPage"/)
+      assert.match((error as Error).message, /"filter"/)
+      return true
+    }
+  )
+
+  host.setStorageValue({ context, key: "filter", scope: "extension", value: "current-filter" })
+  assert.deepEqual(host.listStorageValues({ context, scope: "extension" }), {
+    filter: "current-filter",
+    recentPage: "current-page"
+  })
+  assert.equal(
+    storageStore.get("values")[
+      JSON.stringify(["jingle:legacy-unowned:v1", "notion", "extension", "recentPage"])
+    ],
+    "page-1"
+  )
+
+  host.removeStorageValue({ context, key: "recentPage", scope: "extension" })
+  assert.equal(host.getStorageValue({ context, key: "recentPage", scope: "extension" }), undefined)
+  assert.deepEqual(host.listStorageValues({ context, scope: "extension" }), {
+    filter: "current-filter"
+  })
+
+  const changedCredentialContext = createRuntimeStorageContext(2)
+  assert.throws(
+    () =>
+      host.getStorageValue({
+        context: changedCredentialContext,
+        key: "filter",
+        scope: "extension"
+      }),
+    /connection "default"/
+  )
+  host.setStorageValue({
+    context: changedCredentialContext,
+    key: "filter",
+    scope: "extension",
+    value: "owner-two"
+  })
+  assert.equal(
+    host.getStorageValue({
+      context: changedCredentialContext,
+      key: "filter",
+      scope: "extension"
+    }),
+    "owner-two"
+  )
+  assert.equal(
+    host.getStorageValue({ context, key: "filter", scope: "extension" }),
+    "current-filter"
+  )
+
+  host.clearStorageValues({ context: changedCredentialContext, scope: "extension" })
+  assert.equal(
+    host.getStorageValue({ context, key: "filter", scope: "extension" }),
+    "current-filter"
+  )
+  host.clearStorageValues({ context, scope: "extension" })
+  assert.deepEqual(storageStore.get("values"), {})
+  assert.deepEqual(host.listStorageValues({ context, scope: "extension" }), {})
+})
+
+test("extension runtime host exposes command storage recovery through its typed owner", () => {
+  const storageStore = new Store<{ values: Record<string, unknown> }>({
+    cwd: jingleHome,
+    defaults: { values: {} },
+    name: "extension-runtime-storage"
+  })
+  const host = createRuntimeStorageHost()
+  const context = createRuntimeStorageContext(0)
+  const logicalKey = "form-field:title"
+
+  storageStore.set("values", {
+    [JSON.stringify(["notion", "search-page", logicalKey])]: "legacy-title"
+  })
+
+  assert.throws(
+    () => host.getStorageValue({ context, key: logicalKey, scope: "command" }),
+    (error) => {
+      assert.equal((error as { code?: unknown }).code, "storage_legacy_unowned")
+      assert.deepEqual((error as { details?: unknown }).details, {
+        keys: [logicalKey],
+        kind: "storage-legacy-unowned",
+        scope: "command"
+      })
+      assert.match((error as Error).message, /command component or hook/)
+      assert.doesNotMatch((error as Error).message, /LocalStorage/)
+      return true
+    }
+  )
+
+  host.setStorageValue({ context, key: logicalKey, scope: "command", value: "current-title" })
+  assert.equal(
+    host.getStorageValue({ context, key: logicalKey, scope: "command" }),
+    "current-title"
+  )
+  assert.equal(
+    storageStore.get("values")[
+      JSON.stringify(["jingle:legacy-unowned:v1", "notion", "command", "search-page", logicalKey])
+    ],
+    "legacy-title"
+  )
+})
+
+function createRuntimeStorageContext(credentialGeneration: number) {
+  return {
+    commandName: "search-page",
+    commandPreferences: {},
+    dataIdentity: {
+      cache: {
+        kind: "unavailable" as const,
+        reason: "artifact-revision-unavailable" as const
+      },
+      kind: "available" as const,
+      localStorage: {
+        connectionId: "default",
+        credentialGeneration
+      }
+    },
+    extensionName: "notion",
+    extensionPreferences: {},
+    initialAction: "open" as const,
+    locale: "zh-CN" as const,
+    mode: "view" as const,
+    seedQuery: ""
+  }
+}
+
+function createRuntimeStorageHost() {
+  const nativeExtensionsService = {
+    getManifest: () => ({ commands: [], name: "notion" }),
+    getResolvedCommandPreferences: () => ({}),
+    getResolvedPreferences: () => ({}),
+    invoke: async () => null
+  } as unknown as ConstructorParameters<typeof DefaultExtensionRuntimeHostCapabilities>[0]
+  return new DefaultExtensionRuntimeHostCapabilities(
+    nativeExtensionsService,
+    { openExternal: async () => undefined } as ConstructorParameters<
+      typeof DefaultExtensionRuntimeHostCapabilities
+    >[1],
+    createRuntimeHostQuicklinkServiceMock(),
+    { openWindow: () => undefined } as ConstructorParameters<
+      typeof DefaultExtensionRuntimeHostCapabilities
+    >[3],
+    { handleNavigationRequest: async () => undefined } as unknown as ConstructorParameters<
+      typeof DefaultExtensionRuntimeHostCapabilities
+    >[4]
+  )
+}
+
 test("extension runtime shell host only opens declared desktop URL schemes", async () => {
   const publicOpenedUrls: string[] = []
   const shellOpenedUrls: string[] = []
@@ -1397,6 +1622,7 @@ test("extension runtime shell host only opens declared desktop URL schemes", asy
     context: {
       commandName: "search-page",
       commandPreferences: {},
+      dataIdentity: { kind: "unavailable" },
       extensionName: "notion",
       extensionPreferences: {},
       initialAction: "open",
@@ -1414,6 +1640,7 @@ test("extension runtime shell host only opens declared desktop URL schemes", asy
         context: {
           commandName: "search-page",
           commandPreferences: {},
+          dataIdentity: { kind: "unavailable" },
           extensionName: "github",
           extensionPreferences: {},
           initialAction: "open",
@@ -1431,6 +1658,7 @@ test("extension runtime shell host only opens declared desktop URL schemes", asy
     context: {
       commandName: "search-page",
       commandPreferences: {},
+      dataIdentity: { kind: "unavailable" },
       extensionName: "notion",
       extensionPreferences: {},
       initialAction: "open",
@@ -1489,6 +1717,7 @@ test("extension runtime shell host opens URLs with a requested desktop applicati
     context: {
       commandName: "search-page",
       commandPreferences: {},
+      dataIdentity: { kind: "unavailable" },
       extensionName: "notion",
       extensionPreferences: {},
       initialAction: "open",
@@ -1508,6 +1737,7 @@ test("extension runtime shell host opens URLs with a requested desktop applicati
     context: {
       commandName: "search-page",
       commandPreferences: {},
+      dataIdentity: { kind: "unavailable" },
       extensionName: "notion",
       extensionPreferences: {},
       initialAction: "open",

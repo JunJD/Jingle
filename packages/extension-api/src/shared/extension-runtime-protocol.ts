@@ -56,8 +56,46 @@ export type ExtensionRuntimeHostCapability =
 
 export type ExtensionRuntimeStorageScope = "command" | "extension"
 
+export interface ExtensionRuntimeLocalStorageIdentity {
+  connectionId: string
+  credentialGeneration: number
+}
+
+export interface ExtensionRuntimeAvailableCacheIdentity {
+  commandConfigGeneration: number
+  connectionConfigGeneration: number
+  extensionConfigGeneration: number
+  kind: "available"
+  runtimeArtifactRevision: string
+  runtimePackageRevision: string
+}
+
+export interface ExtensionRuntimeUnavailableCacheIdentity {
+  kind: "unavailable"
+  reason: "artifact-revision-unavailable"
+}
+
+export type ExtensionRuntimeCacheIdentity =
+  | ExtensionRuntimeAvailableCacheIdentity
+  | ExtensionRuntimeUnavailableCacheIdentity
+
+export interface ExtensionRuntimeDataIdentity {
+  kind: "available"
+  cache: ExtensionRuntimeCacheIdentity
+  localStorage: ExtensionRuntimeLocalStorageIdentity
+}
+
+export interface ExtensionRuntimeUnavailableDataIdentity {
+  kind: "unavailable"
+}
+
+export type ExtensionRuntimeDataIdentityState =
+  | ExtensionRuntimeDataIdentity
+  | ExtensionRuntimeUnavailableDataIdentity
+
 export interface ExtensionRuntimeLaunchContext extends ExtensionRuntimeLaunchIntent {
   commandPreferences: Record<string, unknown>
+  dataIdentity: ExtensionRuntimeDataIdentityState
   extensionPreferences: Record<string, unknown>
   locale: AppLocale
   mode: ExtensionRuntimeCommandMode
@@ -67,7 +105,42 @@ export type ExtensionRuntimeSessionKind = "ambient" | "foreground" | "run-once"
 
 export interface ExtensionRuntimeSessionError {
   error: ExtensionRuntimeError
+  issueRevision: number
   sessionId: string
+}
+
+export interface ExtensionRuntimeStorageLegacyUnownedErrorDetails {
+  readonly kind: "storage-legacy-unowned"
+  readonly keys: readonly string[]
+  readonly scope: ExtensionRuntimeStorageScope
+}
+
+export type ExtensionRuntimeErrorDetails = ExtensionRuntimeStorageLegacyUnownedErrorDetails
+
+export type ExtensionRuntimeStorageIssueRecovery =
+  | {
+      key: string
+      scope: "command"
+      strategy: "replace-value"
+    }
+  | {
+      key: string
+      scope: ExtensionRuntimeStorageScope
+      strategy: "discard-value"
+    }
+
+export interface ExtensionRuntimeRecoverableIssue {
+  code: "storage_legacy_unowned"
+  id: string
+  message: string
+  recovery: ExtensionRuntimeStorageIssueRecovery
+}
+
+export interface ExtensionRuntimeSessionIssueSnapshot {
+  readonly issues: readonly ExtensionRuntimeRecoverableIssue[]
+  readonly revision: number
+  readonly sessionId: string
+  readonly terminal: boolean
 }
 
 export type ExtensionRuntimeRunResult =
@@ -754,8 +827,9 @@ export type ExtensionRuntimeToHostMessage =
   | { metrics: ExtensionRuntimeMetrics; sessionId: string; type: "metrics" }
 
 export interface ExtensionRuntimeError {
-  code: string
-  message: string
+  readonly code: string
+  readonly details?: ExtensionRuntimeErrorDetails
+  readonly message: string
 }
 
 export interface ExtensionRuntimeMetrics {
@@ -764,6 +838,54 @@ export interface ExtensionRuntimeMetrics {
   rendererApplyDurationMs?: number
   snapshotBytes?: number
   snapshotRevision?: number
+}
+
+const MAX_EXTENSION_RUNTIME_ERROR_DETAIL_KEYS = 64
+const MAX_EXTENSION_RUNTIME_ERROR_DETAIL_KEY_LENGTH = 1024
+
+export function normalizeExtensionRuntimeErrorDetails(
+  value: unknown,
+  path = "extension runtime error details"
+): ExtensionRuntimeErrorDetails {
+  const normalized = normalizeExtensionRuntimeJsonFact(value, path)
+  const details = assertNormalizedRecord(normalized, path)
+  assertExactKeys(details, path, ["keys", "kind", "scope"])
+  if (details.kind !== "storage-legacy-unowned") {
+    throw new TypeError(`${path}.kind must be "storage-legacy-unowned"`)
+  }
+  if (details.scope !== "command" && details.scope !== "extension") {
+    throw new TypeError(`${path}.scope must be "command" or "extension"`)
+  }
+  if (!Array.isArray(details.keys)) {
+    throw new TypeError(`${path}.keys must be an array`)
+  }
+  if (details.keys.length === 0 || details.keys.length > MAX_EXTENSION_RUNTIME_ERROR_DETAIL_KEYS) {
+    throw new TypeError(
+      `${path}.keys must contain between 1 and ${MAX_EXTENSION_RUNTIME_ERROR_DETAIL_KEYS} entries`
+    )
+  }
+  const keys: string[] = []
+  const seen = new Set<string>()
+  for (const [index, key] of details.keys.entries()) {
+    if (typeof key !== "string") {
+      throw new TypeError(`${path}.keys[${index}] must be a string`)
+    }
+    if (key.length > MAX_EXTENSION_RUNTIME_ERROR_DETAIL_KEY_LENGTH) {
+      throw new TypeError(
+        `${path}.keys[${index}] must not exceed ${MAX_EXTENSION_RUNTIME_ERROR_DETAIL_KEY_LENGTH} characters`
+      )
+    }
+    if (seen.has(key)) {
+      throw new TypeError(`${path}.keys must not contain duplicate entries`)
+    }
+    seen.add(key)
+    keys.push(key)
+  }
+  return Object.freeze({
+    keys: Object.freeze(keys),
+    kind: "storage-legacy-unowned",
+    scope: details.scope
+  })
 }
 
 export function normalizeExtensionRuntimeJsonFact(

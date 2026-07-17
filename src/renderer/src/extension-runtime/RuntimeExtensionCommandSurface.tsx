@@ -71,7 +71,7 @@ import {
   type RuntimeListDropdownViewModel,
   type RuntimeOpenExternalCommand
 } from "./runtime-extension-controller"
-import { RuntimeToastOverlay } from "./runtime-toast-overlay"
+import { RuntimeIssueSurfaceLayout, RuntimeToastOverlay } from "./runtime-toast-overlay"
 import { resolveRuntimeVisualImageSource } from "./runtime-visual-assets"
 import { RuntimeRunBotAgentRequestLifecycle } from "./run-bot-agent-request-lifecycle"
 
@@ -952,7 +952,11 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
 
   if (!surfaceError && detailSnapshot) {
     return (
-      <div className="relative h-full">
+      <RuntimeIssueSurfaceLayout
+        issues={controller.runtimeIssues}
+        onDiscardIssue={controller.discardRuntimeIssue}
+        surface="runtime-detail"
+      >
         <RuntimeDetailSurface
           createActionDescriptor={createActionDescriptor}
           onGoHome={controller.goHome}
@@ -965,13 +969,17 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
           onDismiss={controller.dismissToast}
           toast={controller.runtimeToast}
         />
-      </div>
+      </RuntimeIssueSurfaceLayout>
     )
   }
 
   if (!surfaceError && formSnapshot) {
     return (
-      <div className="relative h-full">
+      <RuntimeIssueSurfaceLayout
+        issues={controller.runtimeIssues}
+        onDiscardIssue={controller.discardRuntimeIssue}
+        surface="runtime-form"
+      >
         <RuntimeFormSurface
           createActionDescriptor={createActionDescriptor}
           localValues={controller.formLocalValues}
@@ -986,12 +994,16 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
           onDismiss={controller.dismissToast}
           toast={controller.runtimeToast}
         />
-      </div>
+      </RuntimeIssueSurfaceLayout>
     )
   }
 
   return (
-    <div className="relative h-full">
+    <RuntimeIssueSurfaceLayout
+      issues={controller.runtimeIssues}
+      onDiscardIssue={controller.discardRuntimeIssue}
+      surface="runtime-list"
+    >
       <LauncherChrome
         footer={surfaceController.footer}
         headerLeading={
@@ -1059,6 +1071,6 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
         onDismiss={controller.dismissToast}
         toast={controller.runtimeToast}
       />
-    </div>
+    </RuntimeIssueSurfaceLayout>
   )
 }

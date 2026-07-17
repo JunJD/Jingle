@@ -10,6 +10,7 @@ import type {
   ExtensionRuntimeRunResult,
   ExtensionRuntimeSessionError,
   ExtensionRuntimeSessionInfo,
+  ExtensionRuntimeSessionIssueSnapshot,
   ExtensionRuntimeToastRequestEvent,
   ExtensionSurfaceSnapshot
 } from "@shared/extension-runtime-protocol"
@@ -18,6 +19,7 @@ import {
   normalizeExtensionRuntimeStartRequest
 } from "@shared/extension-runtime-protocol"
 import { invokeIpc, ipcRenderer } from "../ipc"
+import { ExtensionRuntimeIssueSnapshotCache } from "./extension-runtime-issue-snapshots"
 
 export interface ExtensionRuntimeSurfaceEvent {
   session: ExtensionRuntimeSessionInfo
@@ -32,9 +34,11 @@ export interface ExtensionRuntimeEventAckEvent {
 interface SurfaceSubscription {
   callback: (event: ExtensionRuntimeSurfaceEvent) => void
   onError?: (error: ExtensionRuntimeSessionError) => void
+  onIssueSnapshot?: (snapshot: ExtensionRuntimeSessionIssueSnapshot) => void
 }
 
 const surfaceSubscriptions = new Set<SurfaceSubscription>()
+const issueSnapshotCache = new ExtensionRuntimeIssueSnapshotCache()
 
 function handleSurfaceEvent(_event: unknown, payload: ExtensionRuntimeSurfaceEvent): void {
   for (const subscription of surfaceSubscriptions) {
@@ -43,14 +47,49 @@ function handleSurfaceEvent(_event: unknown, payload: ExtensionRuntimeSurfaceEve
 }
 
 function handleSurfaceError(_event: unknown, payload: ExtensionRuntimeSessionError): void {
+  applyTerminalIssueSnapshot(payload)
   for (const subscription of surfaceSubscriptions) {
     subscription.onError?.(payload)
   }
 }
 
+function applyIssueSnapshot(payload: ExtensionRuntimeSessionIssueSnapshot): void {
+  if (!issueSnapshotCache.apply(payload)) {
+    return
+  }
+  for (const subscription of surfaceSubscriptions) {
+    subscription.onIssueSnapshot?.(payload)
+  }
+}
+
+function applyTerminalIssueSnapshot(error: ExtensionRuntimeSessionError): void {
+  if (!issueSnapshotCache.applyTerminal(error)) {
+    return
+  }
+  const snapshot = issueSnapshotCache
+    .values()
+    .find((candidate) => candidate.sessionId === error.sessionId)
+  if (!snapshot) {
+    return
+  }
+  for (const subscription of surfaceSubscriptions) {
+    subscription.onIssueSnapshot?.(snapshot)
+  }
+}
+
+function handleSurfaceIssueSnapshot(
+  _event: unknown,
+  payload: ExtensionRuntimeSessionIssueSnapshot
+): void {
+  applyIssueSnapshot(payload)
+}
+
 function addSurfaceSubscription(subscription: SurfaceSubscription): void {
   const shouldSubscribeMain = surfaceSubscriptions.size === 0
   surfaceSubscriptions.add(subscription)
+  for (const snapshot of issueSnapshotCache.values()) {
+    subscription.onIssueSnapshot?.(snapshot)
+  }
 
   if (!shouldSubscribeMain) {
     return
@@ -58,10 +97,24 @@ function addSurfaceSubscription(subscription: SurfaceSubscription): void {
 
   ipcRenderer.on("extensionRuntime:surface", handleSurfaceEvent)
   ipcRenderer.on("extensionRuntime:error", handleSurfaceError)
+  ipcRenderer.on("extensionRuntime:issueSnapshot", handleSurfaceIssueSnapshot)
 
-  void invokeIpc("extensionRuntime:subscribeSurfaces").catch((error) => {
-    console.error("[ExtensionRuntime] Failed to subscribe surfaces:", error)
-  })
+  const subscriptionGeneration = issueSnapshotCache.beginSubscription()
+  void invokeIpc<ExtensionRuntimeSessionIssueSnapshot[]>("extensionRuntime:subscribeSurfaces")
+    .then((snapshots) => {
+      for (const snapshot of snapshots) {
+        if (issueSnapshotCache.applySubscriptionSnapshot(subscriptionGeneration, snapshot)) {
+          for (const currentSubscription of surfaceSubscriptions) {
+            currentSubscription.onIssueSnapshot?.(snapshot)
+          }
+        }
+      }
+    })
+    .catch((error) => {
+      if (issueSnapshotCache.isSubscriptionCurrent(subscriptionGeneration)) {
+        console.error("[ExtensionRuntime] Failed to subscribe surfaces:", error)
+      }
+    })
 }
 
 function removeSurfaceSubscription(subscription: SurfaceSubscription): void {
@@ -71,6 +124,8 @@ function removeSurfaceSubscription(subscription: SurfaceSubscription): void {
 
   ipcRenderer.removeListener("extensionRuntime:surface", handleSurfaceEvent)
   ipcRenderer.removeListener("extensionRuntime:error", handleSurfaceError)
+  ipcRenderer.removeListener("extensionRuntime:issueSnapshot", handleSurfaceIssueSnapshot)
+  issueSnapshotCache.endSubscription()
   void invokeIpc("extensionRuntime:unsubscribeSurfaces").catch((error) => {
     console.error("[ExtensionRuntime] Failed to unsubscribe surfaces:", error)
   })
@@ -80,7 +135,8 @@ export const extensionRuntimeApi = {
   startForeground: async (
     request: ExtensionRuntimeForegroundStartRequest
   ): Promise<ExtensionRuntimeSessionInfo> => {
-    return invokeIpc(
+    issueSnapshotCache.beginSessionAdmission(request.sessionId)
+    return invokeIpc<ExtensionRuntimeSessionInfo>(
       "extensionRuntime:startForeground",
       normalizeExtensionRuntimeStartRequest(request)
     )
@@ -88,11 +144,18 @@ export const extensionRuntimeApi = {
   runOnce: async (request: ExtensionRuntimeRunOnceRequest): Promise<ExtensionRuntimeRunResult> => {
     return invokeIpc("extensionRuntime:runOnce", normalizeExtensionRuntimeStartRequest(request))
   },
-  stopForeground: (sessionId?: string): Promise<boolean> => {
-    return invokeIpc("extensionRuntime:stopForeground", sessionId)
+  stopForeground: async (sessionId?: string): Promise<boolean> => {
+    const stopped = await invokeIpc<boolean>("extensionRuntime:stopForeground", sessionId)
+    if (stopped && sessionId) {
+      issueSnapshotCache.endSession(sessionId)
+    }
+    return stopped
   },
   sendEvent: (sessionId: string, event: ExtensionRuntimeEvent): Promise<boolean> => {
     return invokeIpc("extensionRuntime:sendEvent", sessionId, event)
+  },
+  discardStorageIssue: (sessionId: string, issueId: string): Promise<boolean> => {
+    return invokeIpc("extensionRuntime:discardStorageIssue", sessionId, issueId)
   },
   completeNavigationRequest: (response: ExtensionRuntimeNavigationResponse): Promise<boolean> => {
     return invokeIpc("extensionRuntime:completeNavigationRequest", response)
@@ -209,10 +272,11 @@ export const extensionRuntimeApi = {
   },
   subscribeSurfaces: (
     callback: (event: ExtensionRuntimeSurfaceEvent) => void,
-    onError?: (error: ExtensionRuntimeSessionError) => void
+    onError?: (error: ExtensionRuntimeSessionError) => void,
+    onIssueSnapshot?: (snapshot: ExtensionRuntimeSessionIssueSnapshot) => void
   ): (() => void) => {
     let disposed = false
-    const subscription = { callback, onError }
+    const subscription = { callback, onError, onIssueSnapshot }
     addSurfaceSubscription(subscription)
 
     return () => {

@@ -354,6 +354,7 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
         titleType: "count",
         view: "all"
       },
+      dataIdentity: { kind: "unavailable" },
       extensionName: "apple-reminders",
       extensionPreferences: {},
       initialAction: "open",
@@ -390,6 +391,7 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
         {
           value: {
             ...launchContext,
+            reportFatalError: () => {},
             requestHost
           }
         },

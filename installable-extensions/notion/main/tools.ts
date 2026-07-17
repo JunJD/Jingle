@@ -200,6 +200,7 @@ function createMigratedToolSdkContext(ctx: ExtensionToolContext): ExtensionRunti
   return {
     commandName: ctx.toolName,
     commandPreferences: {},
+    dataIdentity: { kind: "unavailable" },
     extensionName: ctx.extensionName,
     extensionPreferences: ctx.extensionPreferences,
     initialAction: "open",

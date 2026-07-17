@@ -51,6 +51,7 @@ function createLaunchContext(): ExtensionRuntimeLaunchContext {
   return {
     commandName: "translate",
     commandPreferences: {},
+    dataIdentity: { kind: "unavailable" },
     extensionName: "translate",
     extensionPreferences: {},
     initialAction: "open",

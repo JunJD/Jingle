@@ -4,6 +4,7 @@ import { createElement, type ReactElement } from "react"
 import {
   createExtensionRuntimeLaunchProps,
   ExtensionRuntimeNavigationProvider,
+  type ExtensionRuntimeHostContextValue,
   type ExtensionRuntimeHostRequestInput,
   type ExtensionRuntimeSdkContextValue
 } from "@jingle/extension-api/host-runtime"
@@ -11,6 +12,7 @@ import { notionRuntime } from "../../installable-extensions/notion/runtime"
 import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
 import type {
   ExtensionHostResponse,
+  ExtensionRuntimeLaunchContext,
   ExtensionRuntimeLaunchProps,
   ExtensionDetailSurfaceSnapshot,
   ExtensionFormSurfaceSnapshot,
@@ -3206,7 +3208,7 @@ for (const commandName of NOTION_VIEW_COMMAND_NAMES) {
 }
 
 function withRuntimeProvider(
-  element: ReactElement | ((context: ExtensionRuntimeSdkContextValue) => ReactElement),
+  element: ReactElement | ((context: ExtensionRuntimeLaunchContext) => ReactElement),
   hostRequests: ExtensionRuntimeHostRequestInput[],
   storage: Map<string, unknown>,
   options: {
@@ -3219,9 +3221,10 @@ function withRuntimeProvider(
 ): ReactElement {
   const requestHost: ExtensionRuntimeSdkContextValue["requestHost"] = (request) =>
     resolveNotionHostRequest(request, hostRequests, storage)
-  const value: Omit<ExtensionRuntimeSdkContextValue, "navigation"> = {
+  const value: Omit<ExtensionRuntimeHostContextValue, "navigation"> = {
     commandName: options.commandName ?? "search-page",
     commandPreferences: options.commandPreferences ?? {},
+    dataIdentity: { kind: "unavailable" },
     extensionName: "notion",
     extensionPreferences: options.extensionPreferences ?? {
       accessToken: "secret-token"
@@ -3230,6 +3233,7 @@ function withRuntimeProvider(
     launchProps: options.launchProps,
     locale: "zh-CN",
     mode: "view",
+    reportFatalError: () => {},
     registerToastAction: options.registerToastAction,
     requestHost,
     seedQuery: ""
@@ -3240,7 +3244,7 @@ function withRuntimeProvider(
     {
       value
     },
-    typeof element === "function" ? element(value as ExtensionRuntimeSdkContextValue) : element
+    typeof element === "function" ? element(value) : element
   )
 }
 

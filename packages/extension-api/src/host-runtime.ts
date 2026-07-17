@@ -1,11 +1,14 @@
 export {
-  installExtensionRuntimeCacheBackend,
   createExtensionRuntimeLaunchProps,
   createExtensionRuntimeNavigation,
   runWithExtensionRuntimeSdk,
   type ExtensionRuntimeHostRequestInput,
   type ExtensionRuntimeSdkContextValue
 } from "./extension-runtime/sdk"
+export {
+  encodeRuntimeCacheBackendScopeKey,
+  installExtensionRuntimeCacheBackend
+} from "./extension-runtime/sdk/storage"
 export { ExtensionRuntimeNavigationProvider } from "./extension-runtime/sdk/context"
 export {
   getExtensionRuntimeReactBridge,
@@ -17,6 +20,7 @@ export {
 export {
   getActiveExtensionRuntimeSdk,
   sendExtensionRuntimeHostRequest,
+  type ExtensionRuntimeHostContextValue,
   type RuntimeToastActionHandler,
   type RuntimeToastActionRegistration
 } from "./extension-runtime/sdk/runtime-context"
@@ -29,6 +33,7 @@ export type { RuntimeSubmitFormValues } from "./extension-runtime/sdk/actions"
 export { resolveColorLike, type ColorLike } from "./extension-runtime/sdk/visual"
 export type {
   RuntimeCacheBackend,
+  RuntimeCacheBackendIdentity,
   RuntimeCacheBackendScope,
   RuntimeCacheEntry
 } from "./extension-runtime/sdk/storage"

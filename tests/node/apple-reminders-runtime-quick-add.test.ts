@@ -91,6 +91,7 @@ function createLaunchContext(seedQuery: string): ExtensionRuntimeLaunchContext {
   return {
     commandName: "quick-add-reminder",
     commandPreferences: {},
+    dataIdentity: { kind: "unavailable" },
     extensionName: "apple-reminders",
     extensionPreferences: {},
     initialAction: "submit",

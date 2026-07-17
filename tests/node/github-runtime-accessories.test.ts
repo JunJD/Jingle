@@ -4,7 +4,7 @@ import { createElement } from "react"
 import { List } from "@jingle/extension-api"
 import {
   ExtensionRuntimeNavigationProvider,
-  type ExtensionRuntimeSdkContextValue
+  type ExtensionRuntimeHostContextValue
 } from "@jingle/extension-api/host-runtime"
 import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
 import GitHubSearchRepositories from "../../installable-extensions/github/src/search-repositories"
@@ -65,7 +65,7 @@ test("GitHub runtime accessories serialize as stable text visuals", async () => 
   renderer.render(
     createElement(
       List,
-      null,
+      { navigationTitle: "GitHub Issues" },
       createElement(List.Item, {
         accessories: issueAccessories,
         id: "issue-1",
@@ -134,7 +134,7 @@ function createGitHubRuntimeContext(options: {
   commandName: string
   commandPreferences: Record<string, unknown>
   extensionPreferences: Record<string, unknown>
-}): Omit<ExtensionRuntimeSdkContextValue, "navigation"> {
+}): Omit<ExtensionRuntimeHostContextValue, "navigation"> {
   const requestHost = async (): Promise<ExtensionHostResponse> => ({
     id: "github-test-host-response",
     ok: true,
@@ -144,11 +144,13 @@ function createGitHubRuntimeContext(options: {
   return {
     commandName: options.commandName,
     commandPreferences: options.commandPreferences,
+    dataIdentity: { kind: "unavailable" },
     extensionName: "github",
     extensionPreferences: options.extensionPreferences,
     initialAction: "open",
     locale: "zh-CN",
     mode: "view",
+    reportFatalError: () => {},
     requestHost,
     seedQuery: ""
   }

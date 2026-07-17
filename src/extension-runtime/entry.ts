@@ -175,6 +175,7 @@ async function startRuntime(
         {
           value: {
             ...resolvedContext,
+            reportFatalError,
             requestHost: requestHostWithId,
             registerToastAction: renderer.registerToastAction
           }
@@ -243,6 +244,7 @@ function toRuntimeError(code: string, error: unknown): ExtensionRuntimeError {
   if (error instanceof ExtensionRuntimeRequestError) {
     return {
       code: error.code,
+      ...(error.details ? { details: error.details } : {}),
       message: error.message
     }
   }

@@ -2,7 +2,10 @@ import Store from "electron-store"
 import { spawn } from "node:child_process"
 import { dialog, shell } from "electron"
 import { HumanMessage, SystemMessage } from "@langchain/core/messages"
-import type { ExtensionAiAskPayload } from "@shared/extension-runtime-protocol"
+import type {
+  ExtensionAiAskPayload,
+  ExtensionRuntimeLaunchContext
+} from "@shared/extension-runtime-protocol"
 import type { ExtensionConfirmAlertPayload } from "@shared/extension-runtime-protocol"
 import type { ExtensionToastPayload } from "@shared/extension-runtime-protocol"
 import { getChatModelInstance } from "../../llm/get-chat-model"
@@ -12,14 +15,21 @@ import type { ExtensionQuicklinkService } from "../../extension-quicklinks/servi
 import type { NativeExtensionsService } from "../../native-extensions/service"
 import { getJingleHomeDir } from "../../storage"
 import { readClipboardText, writeClipboardTextContent } from "../clipboard"
-import type {
-  ExtensionRuntimeHostCapabilities,
-  ExtensionRuntimeOpenExternalParams,
-  ExtensionRuntimeStorageScopeParams,
-  ExtensionRuntimeStorageParams
+import {
+  ExtensionRuntimeHostError,
+  type ExtensionRuntimeHostCapabilities,
+  type ExtensionRuntimeOpenExternalParams,
+  type ExtensionRuntimeStorageScopeParams,
+  type ExtensionRuntimeStorageParams
 } from "./runtime-manager"
 import type { ExtensionRuntimeRendererBridge } from "./renderer-bridge"
-import { encodeRuntimeStorageKey, readRuntimeStorageItemKey } from "./storage-codec"
+import {
+  discardQuarantinedLegacyRuntimeStorageValue,
+  encodeRuntimeStorageKey,
+  migrateLegacyRuntimeStorageValues,
+  readRuntimeStorageItemKey,
+  type RuntimeStorageMigrationResult
+} from "./storage-codec"
 
 interface RuntimeStorageStoreShape {
   values: Record<string, unknown>
@@ -105,29 +115,56 @@ export class DefaultExtensionRuntimeHostCapabilities implements ExtensionRuntime
   }
 
   getStorageValue(params: ExtensionRuntimeStorageParams): unknown {
-    return runtimeStorageStore.get("values", {})[getRuntimeStorageKey(params)]
+    const prepared = prepareRuntimeStorageValues(params)
+    const storageKey = getRuntimeStorageKey(params)
+    if (Object.hasOwn(prepared.values, storageKey)) {
+      return prepared.values[storageKey]
+    }
+    assertNoLegacyStorageConflict(
+      params,
+      prepared.quarantinedKeys.includes(params.key) ? [params.key] : []
+    )
+    return undefined
   }
 
   listStorageValues(params: ExtensionRuntimeStorageScopeParams): Record<string, unknown> {
-    return Object.fromEntries(
-      Object.entries(runtimeStorageStore.get("values", {}))
+    const prepared = prepareRuntimeStorageValues(params)
+    const items = Object.fromEntries(
+      Object.entries(prepared.values)
         .map(([key, value]) => [readRuntimeStorageStoreItemKey(key, params), value] as const)
         .filter((entry): entry is readonly [string, unknown] => entry[0] !== null)
     )
+    assertNoLegacyStorageConflict(
+      params,
+      prepared.quarantinedKeys.filter((key) => !Object.hasOwn(items, key))
+    )
+    return items
   }
 
   removeStorageValue(params: ExtensionRuntimeStorageParams): void {
     const key = getRuntimeStorageKey(params)
-    const values = runtimeStorageStore.get("values", {})
-    const { [key]: _removed, ...nextValues } = values
+    const prepared = prepareRuntimeStorageValues(params)
+    const dataIdentity = requireRuntimeDataIdentity(params.context)
+    const valuesWithoutLegacy = discardQuarantinedLegacyRuntimeStorageValue(
+      prepared.values,
+      {
+        commandName: params.context.commandName,
+        extensionName: params.context.extensionName,
+        identity: dataIdentity.localStorage,
+        scope: params.scope
+      },
+      params.key
+    )
+    const { [key]: _removed, ...nextValues } = valuesWithoutLegacy
     runtimeStorageStore.set("values", nextValues)
   }
 
   clearStorageValues(params: ExtensionRuntimeStorageScopeParams): void {
+    const prepared = prepareRuntimeStorageValues(params, { discardBlockedLegacy: true })
     runtimeStorageStore.set(
       "values",
       Object.fromEntries(
-        Object.entries(runtimeStorageStore.get("values", {})).filter(
+        Object.entries(prepared.values).filter(
           ([key]) => readRuntimeStorageStoreItemKey(key, params) === null
         )
       )
@@ -205,8 +242,9 @@ export class DefaultExtensionRuntimeHostCapabilities implements ExtensionRuntime
   }
 
   setStorageValue(params: ExtensionRuntimeStorageParams & { value: unknown }): void {
+    const prepared = prepareRuntimeStorageValues(params)
     runtimeStorageStore.set("values", {
-      ...runtimeStorageStore.get("values", {}),
+      ...prepared.values,
       [getRuntimeStorageKey(params)]: params.value
     })
   }
@@ -226,6 +264,67 @@ export class DefaultExtensionRuntimeHostCapabilities implements ExtensionRuntime
   writeClipboardText(content: { html?: string; text: string }): void {
     writeClipboardTextContent(content)
   }
+}
+
+function prepareRuntimeStorageValues(
+  params: ExtensionRuntimeStorageScopeParams,
+  options: { discardBlockedLegacy?: boolean } = {}
+): RuntimeStorageMigrationResult {
+  const dataIdentity = requireRuntimeDataIdentity(params.context)
+  const currentValues = runtimeStorageStore.get("values", {})
+  const migration = migrateLegacyRuntimeStorageValues(
+    currentValues,
+    {
+      commandName: params.context.commandName,
+      extensionName: params.context.extensionName,
+      identity: dataIdentity.localStorage,
+      scope: params.scope
+    },
+    options
+  )
+  if (migration.changed) {
+    runtimeStorageStore.set("values", migration.values)
+  }
+  return migration
+}
+
+function assertNoLegacyStorageConflict(
+  params: ExtensionRuntimeStorageScopeParams,
+  quarantinedKeys: readonly string[]
+): void {
+  if (quarantinedKeys.length === 0) {
+    return
+  }
+
+  const dataIdentity = requireRuntimeDataIdentity(params.context)
+  const details = {
+    keys: [...quarantinedKeys],
+    kind: "storage-legacy-unowned" as const,
+    scope: params.scope
+  }
+  const keys = quarantinedKeys.map((key) => JSON.stringify(key)).join(", ")
+  const noun = quarantinedKeys.length === 1 ? "key" : "keys"
+  const verb = quarantinedKeys.length === 1 ? "has" : "have"
+  if (params.scope === "command") {
+    throw new ExtensionRuntimeHostError(
+      "storage_legacy_unowned",
+      `Legacy command storage ${noun} ${keys} for extension "${params.context.extensionName}" ${verb} no owner for connection "${dataIdentity.localStorage.connectionId}". Update the stored value through the command component or hook that owns this key to establish the current typed owner.`,
+      details
+    )
+  }
+
+  const prefix = `Legacy LocalStorage ${noun} ${keys} for extension "${params.context.extensionName}" in the "${params.scope}" scope ${verb} no owner for connection "${dataIdentity.localStorage.connectionId}".`
+  const recoveryCalls = quarantinedKeys
+    .map((key) => `LocalStorage.setItem(${JSON.stringify(key)}, value)`)
+    .join(", ")
+  const discardCalls = quarantinedKeys
+    .map((key) => `LocalStorage.removeItem(${JSON.stringify(key)})`)
+    .join(", ")
+  throw new ExtensionRuntimeHostError(
+    "storage_legacy_unowned",
+    `${prefix} Call ${recoveryCalls} to establish the current typed owner, ${discardCalls} to discard only the conflicting legacy data, or LocalStorage.clear() to discard all quarantined legacy data in this scope.`,
+    details
+  )
 }
 
 async function openUrlWithDesktopApplication(
@@ -262,9 +361,11 @@ async function openUrlWithDesktopApplication(
 }
 
 function getRuntimeStorageKey(params: ExtensionRuntimeStorageParams): string {
+  const dataIdentity = requireRuntimeDataIdentity(params.context)
   return encodeRuntimeStorageKey({
     commandName: params.context.commandName,
     extensionName: params.context.extensionName,
+    identity: dataIdentity.localStorage,
     key: params.key,
     scope: params.scope
   })
@@ -274,11 +375,22 @@ function readRuntimeStorageStoreItemKey(
   storageKey: string,
   params: ExtensionRuntimeStorageScopeParams
 ): string | null {
+  const dataIdentity = requireRuntimeDataIdentity(params.context)
   return readRuntimeStorageItemKey(storageKey, {
     commandName: params.context.commandName,
     extensionName: params.context.extensionName,
+    identity: dataIdentity.localStorage,
     scope: params.scope
   })
+}
+
+function requireRuntimeDataIdentity(
+  context: ExtensionRuntimeLaunchContext
+): Extract<ExtensionRuntimeLaunchContext["dataIdentity"], { kind: "available" }> {
+  if (context.dataIdentity.kind !== "available") {
+    throw new Error("Extension runtime storage requires an available data identity.")
+  }
+  return context.dataIdentity
 }
 
 function extractTextContent(content: unknown): string {

@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto"
+import { createHash, randomUUID } from "crypto"
 import type {
   ExtensionAiAskPayload,
   ExtensionAgentHostRequest,
@@ -8,22 +8,28 @@ import type {
   ExtensionNavigationHostRequest,
   ExtensionQuicklinksHostRequest,
   ExtensionRuntimeError,
+  ExtensionRuntimeErrorDetails,
   ExtensionRuntimeEvent,
   ExtensionRuntimeEventAck,
   ExtensionRuntimeHostCapability,
   ExtensionRuntimeLaunchContext,
   ExtensionRuntimeLaunchIntent,
   ExtensionRuntimeMetrics,
+  ExtensionRuntimeRecoverableIssue,
   ExtensionRuntimeRunResult,
   ExtensionRuntimeSessionError,
   ExtensionRuntimeSessionInfo,
+  ExtensionRuntimeSessionIssueSnapshot,
   ExtensionRuntimeSessionKind,
   ExtensionRuntimeStorageScope,
   ExtensionRuntimeToHostMessage,
   ExtensionSurfaceSnapshot,
   ExtensionToastPayload
 } from "@shared/extension-runtime-protocol"
-import { normalizeExtensionRuntimeNavigationHostRequest } from "@shared/extension-runtime-protocol"
+import {
+  normalizeExtensionRuntimeErrorDetails,
+  normalizeExtensionRuntimeNavigationHostRequest
+} from "@shared/extension-runtime-protocol"
 import type { NativeExtensionInvokeRequest } from "@shared/native-extensions"
 import type { NativeExtensionExecutionContextSnapshot } from "../../native-extensions/execution-context"
 import type {
@@ -36,6 +42,7 @@ export type {
   ExtensionRuntimeRunResult,
   ExtensionRuntimeSessionError,
   ExtensionRuntimeSessionInfo,
+  ExtensionRuntimeSessionIssueSnapshot,
   ExtensionRuntimeSessionKind
 } from "@shared/extension-runtime-protocol"
 
@@ -111,6 +118,9 @@ export type ExtensionRuntimeSurfaceListener = (
 ) => void
 
 export type ExtensionRuntimeErrorListener = (error: ExtensionRuntimeSessionError) => void
+export type ExtensionRuntimeIssueSnapshotListener = (
+  snapshot: ExtensionRuntimeSessionIssueSnapshot
+) => void
 
 export type ExtensionRuntimeEventAckListener = (
   ack: ExtensionRuntimeEventAck,
@@ -130,19 +140,33 @@ export interface ExtensionRuntimeManagerOptions {
   host: ExtensionRuntimeHostCapabilities
   onEventAck?: (ack: ExtensionRuntimeEventAck, session: ExtensionRuntimeSessionInfo) => void
   onError?: (error: ExtensionRuntimeSessionError) => void
+  onIssueSnapshot?: (snapshot: ExtensionRuntimeSessionIssueSnapshot) => void
   onMetrics?: (metrics: ExtensionRuntimeMetrics, session: ExtensionRuntimeSessionInfo) => void
   onSurface?: (surface: ExtensionSurfaceSnapshot, session: ExtensionRuntimeSessionInfo) => void
   processLauncher: ExtensionRuntimeProcessLauncher
   subscribeConfigurationCommits?: (listener: () => void) => () => void
 }
 
+interface RuntimeStorageIssueAddress {
+  id: string
+  key: string
+  scope: ExtensionRuntimeStorageScope
+}
+
+interface ActiveRuntimeStorageIssue extends RuntimeStorageIssueAddress {
+  issue: ExtensionRuntimeRecoverableIssue
+}
+
 interface RuntimeSession {
+  activeStorageIssues: Map<string, ActiveRuntimeStorageIssue>
   disposeListeners: Array<() => void>
   kind: ExtensionRuntimeSessionKind
   lease: ExtensionRuntimeExecutionLease
   process: ExtensionRuntimeProcess
   resolveRunOnce?: (result: ExtensionRuntimeRunResult) => void
   sessionId: string
+  storageIssueTerminal: boolean
+  storageIssueRevision: number
   stopping: boolean
 }
 
@@ -155,6 +179,8 @@ const CONFIGURATION_REVOKED_ERROR: ExtensionRuntimeError = Object.freeze({
   code: "runtime_configuration_revoked",
   message: "Extension runtime configuration changed. Reload the command to continue."
 })
+const MAX_RECOVERABLE_ISSUE_MESSAGE_LENGTH = 512
+const MAX_TRACKED_RECOVERABLE_STORAGE_ISSUES = 64
 
 export class ExtensionRuntimeManager {
   private disposed = false
@@ -162,6 +188,8 @@ export class ExtensionRuntimeManager {
   private lastError: ExtensionRuntimeSessionError | null = null
   private readonly eventAckListeners = new Set<ExtensionRuntimeEventAckListener>()
   private readonly errorListeners = new Set<ExtensionRuntimeErrorListener>()
+  private readonly issueSnapshotListeners = new Set<ExtensionRuntimeIssueSnapshotListener>()
+  private issueRevision = 0
   private readonly sessions = new Map<string, RuntimeSession>()
   private readonly sessionStoppedListeners = new Set<ExtensionRuntimeSessionStoppedListener>()
   private readonly stopConfigurationSubscription: () => void
@@ -221,6 +249,19 @@ export class ExtensionRuntimeManager {
     this.errorListeners.add(listener)
     return () => {
       this.errorListeners.delete(listener)
+    }
+  }
+
+  getIssueSnapshots(): ExtensionRuntimeSessionIssueSnapshot[] {
+    return Array.from(this.sessions.values())
+      .filter((session) => session.storageIssueRevision > 0)
+      .map(toStorageIssueSnapshot)
+  }
+
+  onIssueSnapshot(listener: ExtensionRuntimeIssueSnapshotListener): () => void {
+    this.issueSnapshotListeners.add(listener)
+    return () => {
+      this.issueSnapshotListeners.delete(listener)
     }
   }
 
@@ -333,6 +374,41 @@ export class ExtensionRuntimeManager {
     return toSessionInfo(session)
   }
 
+  async discardStorageIssue(sessionId: string, issueId: string): Promise<boolean> {
+    const session = this.sessions.get(sessionId)
+    const issue = session?.activeStorageIssues.get(issueId)
+    if (
+      !session ||
+      !issue ||
+      issue.issue.recovery.strategy !== "discard-value" ||
+      session.kind === "run-once"
+    ) {
+      return false
+    }
+
+    try {
+      this.assertHostRequestAdmission(session, "storage")
+      await this.options.host.removeStorageValue({
+        context: session.lease.utility.context,
+        key: issue.key,
+        scope: issue.scope
+      })
+      if (this.sessions.get(sessionId) !== session || session.stopping) {
+        return false
+      }
+      if (this.resolveIssue(session, issueId)) {
+        this.emitIssueSnapshot(session)
+      }
+      return true
+    } catch {
+      this.stopSessionWithError(session, {
+        code: "storage_issue_discard_failed",
+        message: "The stored value could not be discarded."
+      })
+      return false
+    }
+  }
+
   stopForeground(sessionId = this.foregroundSession?.sessionId): boolean {
     if (!sessionId) {
       return false
@@ -349,14 +425,15 @@ export class ExtensionRuntimeManager {
 
   stopSessionById(sessionId: string, error?: ExtensionRuntimeError): boolean {
     const session = this.sessions.get(sessionId)
-    if (!session) {
+    if (!session || session.stopping) {
       return false
     }
 
     if (error) {
-      this.recordError(session, error)
+      this.stopSessionWithError(session, error)
+    } else {
+      this.stopSession(session)
     }
-    this.stopSession(session, error)
     return true
   }
 
@@ -377,6 +454,13 @@ export class ExtensionRuntimeManager {
       this.revokeSession(session)
       return
     }
+    if (isRecoverableStorageResponse(response) && session.kind === "run-once") {
+      this.stopSessionWithError(session, {
+        code: "runtime_storage_recovery_unavailable",
+        message: "Stored values need user recovery, but this runtime mode has no recovery surface."
+      })
+      return
+    }
 
     try {
       session.process.postMessage({
@@ -384,6 +468,7 @@ export class ExtensionRuntimeManager {
         sessionId: session.sessionId,
         type: "host-response"
       })
+      this.updateStorageIssue(session, request, response)
     } catch (error) {
       this.stopSessionWithError(session, toRuntimeError("runtime_transport_failed", error))
     }
@@ -401,8 +486,9 @@ export class ExtensionRuntimeManager {
         result
       }
     } catch (error) {
+      const runtimeError = toRuntimeError(getRuntimeErrorCode(error, "host_request_failed"), error)
       return {
-        error: toRuntimeError(getRuntimeErrorCode(error, "host_request_failed"), error),
+        error: validateHostRequestError(request, runtimeError),
         id: request.id,
         ok: false
       }
@@ -422,6 +508,7 @@ export class ExtensionRuntimeManager {
       code: "runtime_crashed",
       message: `Extension runtime exited with code ${code}.`
     }
+    session.stopping = true
     this.recordError(session, error)
     this.emitSessionStopped(this.detachSession(session), "other")
   }
@@ -459,8 +546,7 @@ export class ExtensionRuntimeManager {
         void this.answerHostRequest(session, message.request)
         return
       case "error":
-        this.recordError(session, message.error)
-        this.stopSession(session)
+        this.stopSessionWithError(session, message.error)
         return
       case "metrics":
         try {
@@ -480,8 +566,10 @@ export class ExtensionRuntimeManager {
       return
     }
 
+    this.terminateIssueState(session)
     const sessionError: ExtensionRuntimeSessionError = {
       error,
+      issueRevision: session.storageIssueRevision,
       sessionId: session.sessionId
     }
     this.lastError = sessionError
@@ -501,6 +589,138 @@ export class ExtensionRuntimeManager {
       } catch (listenerError) {
         console.error("[jingle:extension-runtime] Error listener failed", listenerError)
       }
+    }
+  }
+
+  private recordIssue(
+    session: RuntimeSession,
+    issue: ExtensionRuntimeRecoverableIssue,
+    address: RuntimeStorageIssueAddress
+  ): boolean {
+    if (this.sessions.get(session.sessionId) !== session) {
+      return false
+    }
+
+    if (
+      !session.activeStorageIssues.has(address.id) &&
+      session.activeStorageIssues.size >= MAX_TRACKED_RECOVERABLE_STORAGE_ISSUES
+    ) {
+      this.stopSessionWithError(session, {
+        code: "runtime_storage_issue_limit_exceeded",
+        message:
+          "Too many legacy storage conflicts were reported safely. Reload the command after clearing its stored values."
+      })
+      return false
+    }
+
+    const current = session.activeStorageIssues.get(address.id)
+    if (current?.issue.message === issue.message) {
+      return false
+    }
+    session.activeStorageIssues.set(address.id, {
+      ...address,
+      issue
+    })
+
+    return true
+  }
+
+  private resolveIssue(session: RuntimeSession, issueId: string): boolean {
+    return session.activeStorageIssues.delete(issueId)
+  }
+
+  private resolveStorageIssues(
+    session: RuntimeSession,
+    predicate: (issue: ActiveRuntimeStorageIssue) => boolean
+  ): void {
+    let changed = false
+    for (const issue of Array.from(session.activeStorageIssues.values())) {
+      if (predicate(issue)) {
+        changed = this.resolveIssue(session, issue.id) || changed
+      }
+    }
+    if (changed) {
+      this.emitIssueSnapshot(session)
+    }
+  }
+
+  private emitIssueSnapshot(session: RuntimeSession): void {
+    session.storageIssueRevision = ++this.issueRevision
+    const snapshot = toStorageIssueSnapshot(session)
+    try {
+      this.options.onIssueSnapshot?.(snapshot)
+    } catch (listenerError) {
+      console.error("[jingle:extension-runtime] Issue projection listener failed", listenerError)
+    }
+    for (const listener of this.issueSnapshotListeners) {
+      try {
+        listener(snapshot)
+      } catch (listenerError) {
+        console.error("[jingle:extension-runtime] Issue listener failed", listenerError)
+      }
+    }
+  }
+
+  private terminateIssueState(session: RuntimeSession): void {
+    if (session.storageIssueTerminal) {
+      return
+    }
+    session.activeStorageIssues.clear()
+    session.storageIssueTerminal = true
+    this.emitIssueSnapshot(session)
+  }
+
+  private updateStorageIssue(
+    session: RuntimeSession,
+    request: ExtensionHostRequest,
+    response: ExtensionHostResponse
+  ): void {
+    if (request.capability !== "storage") {
+      return
+    }
+
+    const scope = request.payload.scope ?? "command"
+    if (!response.ok) {
+      if (response.error.code !== "storage_legacy_unowned") {
+        return
+      }
+      const details = tryNormalizeStorageLegacyUnownedDetails(response.error.details)
+      if (!details || details.scope !== scope) {
+        return
+      }
+      let changed = false
+      for (const key of details.keys) {
+        const issueId = createStorageIssueId(scope, key)
+        changed =
+          this.recordIssue(
+            session,
+            {
+              code: "storage_legacy_unowned",
+              id: issueId,
+              message: createStorageIssueMessage(scope, key),
+              recovery:
+                scope === "command" && session.kind === "foreground"
+                  ? { key, scope, strategy: "replace-value" }
+                  : { key, scope, strategy: "discard-value" }
+            },
+            { id: issueId, key, scope }
+          ) || changed
+      }
+      if (changed && this.sessions.get(session.sessionId) === session && !session.stopping) {
+        this.emitIssueSnapshot(session)
+      }
+      return
+    }
+
+    if (request.method === "all-items" || request.method === "clear") {
+      this.resolveStorageIssues(session, (issue) => issue.scope === scope)
+      return
+    }
+    if (request.method === "get" || request.method === "set" || request.method === "remove") {
+      this.resolveStorageIssues(
+        session,
+        (issue) => issue.scope === scope && issue.key === request.payload.key
+      )
     }
   }
 
@@ -726,11 +946,14 @@ export class ExtensionRuntimeManager {
 
     const process = this.options.processLauncher.launch()
     const session: RuntimeSession = {
+      activeStorageIssues: new Map(),
       disposeListeners: [],
       kind,
       lease,
       process,
       sessionId,
+      storageIssueTerminal: false,
+      storageIssueRevision: 0,
       stopping: false
     }
 
@@ -757,8 +980,7 @@ export class ExtensionRuntimeManager {
       return session
     } catch (error) {
       const runtimeError = toRuntimeError(getRuntimeErrorCode(error, "runtime_start_failed"), error)
-      this.recordError(session, runtimeError)
-      this.stopSession(
+      this.stopSessionWithError(
         session,
         runtimeError,
         configurationRevoked ? "configuration-revoked" : "other"
@@ -843,16 +1065,20 @@ export class ExtensionRuntimeManager {
       return
     }
 
-    this.recordError(session, CONFIGURATION_REVOKED_ERROR)
-    this.stopSession(session, CONFIGURATION_REVOKED_ERROR, "configuration-revoked")
+    this.stopSessionWithError(session, CONFIGURATION_REVOKED_ERROR, "configuration-revoked")
   }
 
-  private stopSessionWithError(session: RuntimeSession, error: ExtensionRuntimeError): void {
+  private stopSessionWithError(
+    session: RuntimeSession,
+    error: ExtensionRuntimeError,
+    reason: ExtensionRuntimeSessionStopReason = "other"
+  ): void {
     if (this.sessions.get(session.sessionId) !== session || session.stopping) {
       return
     }
+    session.stopping = true
     this.recordError(session, error)
-    this.stopSession(session, error)
+    this.finishStopSession(session, error, reason)
   }
 
   private settleRunOnce(session: RuntimeSession, result: ExtensionRuntimeRunResult): boolean {
@@ -876,6 +1102,15 @@ export class ExtensionRuntimeManager {
     }
 
     session.stopping = true
+    this.terminateIssueState(session)
+    this.finishStopSession(session, runOnceError, reason)
+  }
+
+  private finishStopSession(
+    session: RuntimeSession,
+    runOnceError: ExtensionRuntimeError | undefined,
+    reason: ExtensionRuntimeSessionStopReason
+  ): void {
     if (runOnceError) {
       this.settleRunOnce(session, {
         error: runOnceError,
@@ -972,14 +1207,132 @@ function assertRuntimeCapability(
 }
 
 function getRuntimeErrorCode(error: unknown, fallback: string): string {
-  return error instanceof ExtensionRuntimeLifecycleError ? error.code : fallback
+  return error instanceof ExtensionRuntimeLifecycleError ||
+    error instanceof ExtensionRuntimeHostError
+    ? error.code
+    : fallback
 }
 
 function toRuntimeError(code: string, error: unknown): ExtensionRuntimeError {
+  const message = error instanceof Error ? error.message : String(error)
+  if (code === "storage_legacy_unowned") {
+    const details =
+      error instanceof ExtensionRuntimeHostError
+        ? tryNormalizeStorageLegacyUnownedDetails(error.details)
+        : null
+    if (!details) {
+      return {
+        code: "host_request_failed",
+        message: "The storage host returned an invalid legacy conflict response."
+      }
+    }
+    return {
+      code,
+      details,
+      message: message.slice(0, MAX_RECOVERABLE_ISSUE_MESSAGE_LENGTH)
+    }
+  }
   return {
     code,
-    message: error instanceof Error ? error.message : String(error)
+    message
   }
+}
+
+function validateHostRequestError(
+  request: ExtensionHostRequest,
+  error: ExtensionRuntimeError
+): ExtensionRuntimeError {
+  if (request.capability === "storage" && error.code !== "storage_legacy_unowned") {
+    if (error.code === "runtime_response_invalid") {
+      return error
+    }
+    if (error.code === "host_request_unsupported") {
+      return {
+        code: error.code,
+        message: "Unsupported extension storage request."
+      }
+    }
+    return {
+      code: "host_request_failed",
+      message: "Extension storage request failed."
+    }
+  }
+  if (error.code !== "storage_legacy_unowned") {
+    return error
+  }
+  if (request.capability !== "storage") {
+    return invalidStorageRecoveryResponse()
+  }
+  const details = tryNormalizeStorageLegacyUnownedDetails(error.details)
+  const scope = request.payload.scope ?? "command"
+  if (!details || details.scope !== scope) {
+    return invalidStorageRecoveryResponse()
+  }
+  const matchesRequest =
+    request.method === "all-items" ||
+    (request.method === "get" &&
+      details.keys.length === 1 &&
+      details.keys[0] === request.payload.key)
+  if (!matchesRequest) {
+    return invalidStorageRecoveryResponse()
+  }
+  return {
+    ...error,
+    details
+  }
+}
+
+function invalidStorageRecoveryResponse(): ExtensionRuntimeError {
+  return {
+    code: "runtime_response_invalid",
+    message: "The storage host returned recovery details that do not match the request."
+  }
+}
+
+function isRecoverableStorageResponse(response: ExtensionHostResponse): boolean {
+  return !response.ok && response.error.code === "storage_legacy_unowned"
+}
+
+function tryNormalizeStorageLegacyUnownedDetails(
+  details: unknown
+): Extract<ExtensionRuntimeErrorDetails, { kind: "storage-legacy-unowned" }> | null {
+  try {
+    return normalizeExtensionRuntimeErrorDetails(details)
+  } catch {
+    return null
+  }
+}
+
+function createStorageIssueMessage(scope: ExtensionRuntimeStorageScope, key: string): string {
+  const quotedKey = JSON.stringify(key)
+  const message =
+    scope === "command"
+      ? `Legacy command storage key ${quotedKey} has no current owner. Update the form, list, or storage hook value that owns this key to recover.`
+      : `Legacy stored value ${quotedKey} has no current owner. Discard it with the recovery action below to continue.`
+  return message.slice(0, MAX_RECOVERABLE_ISSUE_MESSAGE_LENGTH)
+}
+
+function createStorageIssueId(scope: ExtensionRuntimeStorageScope, key: string): string {
+  const digest = createHash("sha256")
+    .update(JSON.stringify([scope, key]))
+    .digest("hex")
+  return `storage-legacy-unowned:${digest}`
+}
+
+function toStorageIssueSnapshot(session: RuntimeSession): ExtensionRuntimeSessionIssueSnapshot {
+  return Object.freeze({
+    issues: Object.freeze(
+      Array.from(session.activeStorageIssues.values(), ({ issue }) =>
+        Object.freeze({
+          ...issue,
+          recovery: Object.freeze({ ...issue.recovery })
+        })
+      )
+    ),
+    revision: session.storageIssueRevision,
+    sessionId: session.sessionId,
+    terminal: session.storageIssueTerminal
+  })
 }
 
 function toSessionInfo(session: RuntimeSession): ExtensionRuntimeSessionInfo {
@@ -997,5 +1350,16 @@ export class ExtensionRuntimeLifecycleError extends Error {
   ) {
     super(message)
     this.name = "ExtensionRuntimeLifecycleError"
+  }
+}
+
+export class ExtensionRuntimeHostError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly details?: ExtensionRuntimeErrorDetails
+  ) {
+    super(message)
+    this.name = "ExtensionRuntimeHostError"
   }
 }

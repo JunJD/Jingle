@@ -1,4 +1,8 @@
 import { getActiveExtensionRuntimeSdk, throwExtensionRuntimeRequestError } from "./runtime-context"
+import type {
+  ExtensionRuntimeAvailableCacheIdentity,
+  ExtensionRuntimeLocalStorageIdentity
+} from "../../shared/extension-runtime-protocol"
 
 export type LocalStorageValue = boolean | number | object | string | null
 
@@ -11,18 +15,35 @@ export interface RuntimeCacheOptions {
 }
 
 export interface RuntimeCacheBackendScope {
+  commandName: string
   extensionName: string
+  identity: RuntimeCacheBackendIdentity
   namespace: string
 }
+
+export type RuntimeCacheBackendIdentity = ExtensionRuntimeAvailableCacheIdentity &
+  ExtensionRuntimeLocalStorageIdentity
 
 export type RuntimeCacheEntry = readonly [key: string, data: string]
 
 export interface RuntimeCacheBackend {
   loadStore: (scope: RuntimeCacheBackendScope) => readonly RuntimeCacheEntry[]
-  saveStore: (
-    scope: RuntimeCacheBackendScope,
-    entries: readonly RuntimeCacheEntry[]
-  ) => void
+  saveStore: (scope: RuntimeCacheBackendScope, entries: readonly RuntimeCacheEntry[]) => void
+}
+
+export function encodeRuntimeCacheBackendScopeKey(scope: RuntimeCacheBackendScope): string {
+  return JSON.stringify([
+    scope.extensionName,
+    scope.commandName,
+    scope.identity.connectionId,
+    scope.identity.credentialGeneration,
+    scope.identity.connectionConfigGeneration,
+    scope.identity.extensionConfigGeneration,
+    scope.identity.commandConfigGeneration,
+    scope.identity.runtimePackageRevision,
+    scope.identity.runtimeArtifactRevision,
+    scope.namespace
+  ])
 }
 
 export type RuntimeCacheSubscriber = (key: string | undefined, data?: string) => void
@@ -229,7 +250,7 @@ export function installExtensionRuntimeCacheBackend(
 
 function getCacheStore(namespace: string): RuntimeCacheStore {
   const scope = resolveCacheScope(namespace)
-  const storeKey = getCacheStoreKey(scope)
+  const storeKey = encodeRuntimeCacheBackendScopeKey(scope)
   const existing = cacheStores.get(storeKey)
   const backend = readRuntimeCacheBackend()
   if (existing && existing.backend === backend && existing.backendVersion === cacheBackendVersion) {
@@ -255,22 +276,23 @@ function getCacheStore(namespace: string): RuntimeCacheStore {
 }
 
 function resolveCacheScope(namespace: string): RuntimeCacheBackendScope {
+  const context = getActiveExtensionRuntimeSdk()
+  if (context.dataIdentity.kind !== "available") {
+    throw new Error("Extension runtime Cache requires an available data identity.")
+  }
+  if (context.dataIdentity.cache.kind !== "available") {
+    throw new Error(`Extension runtime Cache is unavailable: ${context.dataIdentity.cache.reason}.`)
+  }
+
   return {
-    extensionName: readActiveExtensionName(),
+    commandName: context.commandName,
+    extensionName: context.extensionName,
+    identity: {
+      ...context.dataIdentity.localStorage,
+      ...context.dataIdentity.cache
+    },
     namespace
   }
-}
-
-function readActiveExtensionName(): string {
-  try {
-    return getActiveExtensionRuntimeSdk().extensionName
-  } catch {
-    return "global"
-  }
-}
-
-function getCacheStoreKey(scope: RuntimeCacheBackendScope): string {
-  return JSON.stringify([scope.extensionName, scope.namespace])
 }
 
 function readRuntimeCacheBackend(): RuntimeCacheBackend | undefined {

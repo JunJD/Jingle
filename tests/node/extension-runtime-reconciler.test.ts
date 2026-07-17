@@ -7,12 +7,12 @@ import {
   Alert,
   Color,
   Detail,
+  ExtensionRuntimeRequestError,
   Form,
   Icon,
   Image,
   Keyboard,
   List,
-  ExtensionRuntimeRequestError,
   confirmAlert,
   createNativeExtensionClient,
   defineNativeExtensionClientMethod,
@@ -21,6 +21,7 @@ import {
   openNativeCommandSettings,
   openNativeExtensionSettings,
   showToast,
+  useExtensionStorageState,
   useNavigation,
   type LaunchProps,
   type RuntimeFormFieldProps
@@ -30,6 +31,7 @@ import {
   createExtensionRuntimeLaunchProps,
   createExtensionRuntimeNavigation,
   runWithExtensionRuntimeSdk,
+  type ExtensionRuntimeHostContextValue,
   type ExtensionRuntimeHostRequestInput,
   type ExtensionRuntimeSdkContextValue,
   type RuntimeSubmitFormValues
@@ -163,6 +165,7 @@ function runWithTestRuntimePreferences<T>(
     {
       commandName: "counter",
       commandPreferences,
+      dataIdentity: { kind: "unavailable" },
       extensionName: "runtime-fixture",
       extensionPreferences,
       initialAction: "open",
@@ -192,7 +195,8 @@ function withRuntimeProvider(
     id: "host-response",
     ok: true as const,
     result: null
-  })
+  }),
+  reportFatalError: ExtensionRuntimeHostContextValue["reportFatalError"] = () => {}
 ): ReactElement {
   return createElement(
     ExtensionRuntimeNavigationProvider,
@@ -200,11 +204,13 @@ function withRuntimeProvider(
       value: {
         commandName: "counter",
         commandPreferences: {},
+        dataIdentity: { kind: "unavailable" },
         extensionName: "runtime-fixture",
         extensionPreferences: {},
         initialAction: "open",
         locale: "zh-CN",
         mode: "view",
+        reportFatalError,
         requestHost,
         seedQuery: ""
       }
@@ -350,11 +356,13 @@ test("runtime reconciler executes registered toast actions", async () => {
         value: {
           commandName: "counter",
           commandPreferences: {},
+          dataIdentity: { kind: "unavailable" },
           extensionName: "runtime-fixture",
           extensionPreferences: {},
           initialAction: "open",
           locale: "zh-CN",
           mode: "view",
+          reportFatalError: () => {},
           registerToastAction: renderer.registerToastAction,
           requestHost: async (request) => {
             requests.push(request)
@@ -423,11 +431,13 @@ test("runtime toast actions fail closed for an invalid current-platform shortcut
         value: {
           commandName: "counter",
           commandPreferences: {},
+          dataIdentity: { kind: "unavailable" },
           extensionName: "runtime-fixture",
           extensionPreferences: {},
           initialAction: "open",
           locale: "zh-CN",
           mode: "view",
+          reportFatalError: () => {},
           registerToastAction: renderer.registerToastAction,
           requestHost: async (request) => {
             requests.push(request)
@@ -523,11 +533,13 @@ test("runtime SDK client is available to first passive effects", async () => {
         value: {
           commandName: "counter",
           commandPreferences: {},
+          dataIdentity: { kind: "unavailable" },
           extensionName: "runtime-fixture",
           extensionPreferences: {},
           initialAction: "open",
           locale: "zh-CN",
           mode: "view",
+          reportFatalError: () => {},
           requestHost: async () => ({
             id: "effect-response",
             ok: true as const,
@@ -573,6 +585,7 @@ test("runtime SDK exposes merged command preference values", async () => {
             open_in: "browser",
             primaryAction: "open"
           },
+          dataIdentity: { kind: "unavailable" },
           extensionName: "runtime-fixture",
           extensionPreferences: {
             workspace_id: "workspace-1",
@@ -581,6 +594,7 @@ test("runtime SDK exposes merged command preference values", async () => {
           initialAction: "open",
           locale: "zh-CN",
           mode: "view",
+          reportFatalError: () => {},
           requestHost: async () => ({
             id: "host-response",
             ok: true as const,
@@ -2523,6 +2537,59 @@ test("runtime Form storeValue hydrates empty values and persists changes", async
   assert.equal(storage.get("form-field:title"), "Updated title")
 })
 
+test("runtime Form keeps legacy command storage conflicts recoverable", async () => {
+  const fatalErrors: unknown[] = []
+  const requests: ExtensionRuntimeHostRequestInput[] = []
+  const storage = new Map<string, unknown>()
+
+  function StoredForm() {
+    const [title, setTitle] = useState("")
+
+    return createElement(
+      Form,
+      { navigationTitle: "Test Form" },
+      createElement(Form.TextField, {
+        id: "title",
+        onChange: setTitle,
+        storeValue: true,
+        title: "Title",
+        value: title
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    withRuntimeProvider(
+      createElement(StoredForm),
+      async (request) => {
+        if (request.capability === "storage" && request.method === "get") {
+          return createLegacyCommandStorageConflictResponse(request.payload.key)
+        }
+        return resolveStorageRequest(request, requests, storage)
+      },
+      (error) => fatalErrors.push(error)
+    )
+  )
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  assert.deepEqual(fatalErrors, [])
+  assert.equal(
+    await renderer.dispatchEvent({
+      changeId: "recover-title",
+      fieldId: "title",
+      type: "form.field.change",
+      value: "Current title"
+    }),
+    true
+  )
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  assert.equal(storage.get("form-field:title"), "Current title")
+})
+
 test("runtime List.Dropdown storeValue hydrates and persists command scoped values", async () => {
   const storage = new Map<string, unknown>([["list-dropdown", "created_time"]])
   const requests: ExtensionRuntimeHostRequestInput[] = []
@@ -2662,6 +2729,456 @@ test("runtime List.Dropdown storeValue preserves a pre-hydration user change", a
     assertListSnapshot(snapshot)
     assert.equal(snapshot.searchBarAccessory?.value, "created_time")
     assert.equal(storage.get("list-dropdown"), "created_time")
+  }
+})
+
+test("runtime List.Dropdown keeps legacy command storage conflicts recoverable", async () => {
+  const fatalErrors: unknown[] = []
+  const requests: ExtensionRuntimeHostRequestInput[] = []
+  const storage = new Map<string, unknown>()
+
+  function StoredDropdownList() {
+    const [sort, setSort] = useState("last_edited_time")
+
+    return createElement(
+      List,
+      {
+        navigationTitle: "Test List",
+        searchBarAccessory: createElement(
+          List.Dropdown,
+          {
+            onChange: setSort,
+            storeValue: true,
+            value: sort,
+            tooltip: "Sort by"
+          },
+          createElement(List.Dropdown.Item, {
+            title: "Last Edited",
+            value: "last_edited_time"
+          }),
+          createElement(List.Dropdown.Item, {
+            title: "Created",
+            value: "created_time"
+          })
+        )
+      },
+      createElement(List.Item, {
+        id: "sort",
+        title: `Sort ${sort}`
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    withRuntimeProvider(
+      createElement(StoredDropdownList),
+      async (request) => {
+        if (request.capability === "storage" && request.method === "get") {
+          return createLegacyCommandStorageConflictResponse(request.payload.key)
+        }
+        return resolveStorageRequest(request, requests, storage)
+      },
+      (error) => fatalErrors.push(error)
+    )
+  )
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  assert.deepEqual(fatalErrors, [])
+  assert.equal(
+    await renderer.dispatchEvent({
+      type: "list.dropdown.change",
+      value: "created_time"
+    }),
+    true
+  )
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  assert.equal(storage.get("list-dropdown"), "created_time")
+})
+
+test("useExtensionStorageState keeps legacy command storage conflicts recoverable", async () => {
+  const fatalErrors: unknown[] = []
+  const requests: ExtensionRuntimeHostRequestInput[] = []
+  const storage = new Map<string, unknown>()
+
+  function StoredHookList() {
+    const [value, setValue] = useExtensionStorageState("hook-value", "initial")
+
+    return createElement(
+      List,
+      { navigationTitle: "Test List" },
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            onAction: () => setValue("current"),
+            title: "Store Current Value"
+          })
+        ),
+        id: "value",
+        title: value
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    withRuntimeProvider(
+      createElement(StoredHookList),
+      async (request) => {
+        if (request.capability === "storage" && request.method === "get") {
+          return createLegacyCommandStorageConflictResponse(request.payload.key)
+        }
+        return resolveStorageRequest(request, requests, storage)
+      },
+      (error) => fatalErrors.push(error)
+    )
+  )
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  assert.deepEqual(fatalErrors, [])
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const storeAction = snapshot.sections[0]?.items[0]?.actions.find(
+    (action) => action.title === "Store Current Value"
+  )
+  assert.ok(storeAction)
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: storeAction.id,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  assert.equal(storage.get("hook-value"), "current")
+})
+
+test("useExtensionStorageState discards a conflicting legacy key after writing its primary key", async () => {
+  const fatalErrors: unknown[] = []
+  const requests: ExtensionRuntimeHostRequestInput[] = []
+  const storage = new Map<string, unknown>()
+  let legacyConflict = true
+
+  function MigratedHookList() {
+    const [value, setValue] = useExtensionStorageState("primary-value", "initial", {
+      legacyKey: "legacy-value"
+    })
+    return createElement(
+      List,
+      { navigationTitle: "Migrated List" },
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            onAction: () => setValue("current"),
+            title: "Store Current Value"
+          })
+        ),
+        id: "value",
+        title: value
+      })
+    )
+  }
+
+  const requestHost = async (request: ExtensionRuntimeHostRequestInput) => {
+    if (
+      request.capability === "storage" &&
+      request.method === "get" &&
+      request.payload.key === "legacy-value" &&
+      legacyConflict
+    ) {
+      requests.push(request)
+      return createLegacyCommandStorageConflictResponse(request.payload.key)
+    }
+    if (
+      request.capability === "storage" &&
+      request.method === "remove" &&
+      request.payload.key === "legacy-value"
+    ) {
+      legacyConflict = false
+    }
+    return resolveStorageRequest(request, requests, storage)
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    withRuntimeProvider(createElement(MigratedHookList), requestHost, (error) =>
+      fatalErrors.push(error)
+    )
+  )
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const action = snapshot.sections[0]?.items[0]?.actions[0]
+  assert.ok(action)
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: action.id,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  assert.equal(storage.get("primary-value"), "current")
+  assert.equal(legacyConflict, false)
+  assert.deepEqual(
+    requests.map((request) =>
+      request.capability === "storage" && "key" in request.payload
+        ? [request.method, request.payload.key]
+        : [request.method, null]
+    ),
+    [
+      ["get", "primary-value"],
+      ["get", "legacy-value"],
+      ["set", "primary-value"],
+      ["remove", "legacy-value"]
+    ]
+  )
+
+  const reloaded = createTestRenderer()
+  reloaded.render(
+    withRuntimeProvider(createElement(MigratedHookList), requestHost, (error) =>
+      fatalErrors.push(error)
+    )
+  )
+  await reloaded.flushSnapshots()
+  await reloaded.flushSnapshots()
+  const reloadedSnapshot = reloaded.getSnapshot()
+  assertListSnapshot(reloadedSnapshot)
+  assert.equal(reloadedSnapshot.sections[0]?.items[0]?.title, "current")
+  assert.deepEqual(
+    requests.slice(4).map((request) => request.method),
+    ["get"]
+  )
+  assert.deepEqual(fatalErrors, [])
+})
+
+test("useExtensionStorageState keeps the user write last when legacy migration resolves late", async () => {
+  const fatalErrors: unknown[] = []
+  const requests: Array<[string, string]> = []
+  const storage = new Map<string, unknown>()
+  let legacyDiscarded = false
+  let releaseLegacyRead: (() => void) | undefined
+  const legacyReadGate = new Promise<void>((resolve) => {
+    releaseLegacyRead = resolve
+  })
+
+  function MigratedHookList() {
+    const [value, setValue] = useExtensionStorageState("primary-value", "initial", {
+      legacyKey: "legacy-value"
+    })
+    return createElement(
+      List,
+      { navigationTitle: "Migrated List" },
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            onAction: () => setValue("current"),
+            title: "Store Current Value"
+          })
+        ),
+        id: "value",
+        title: value
+      })
+    )
+  }
+
+  const requestHost = async (request: ExtensionRuntimeHostRequestInput) => {
+    if (request.capability !== "storage" || !("key" in request.payload)) {
+      throw new Error("Unexpected non-key storage request")
+    }
+    requests.push([request.method, request.payload.key])
+    if (request.method === "get" && request.payload.key === "primary-value") {
+      return { id: "primary-get", ok: true as const, result: storage.get("primary-value") }
+    }
+    if (request.method === "get" && request.payload.key === "legacy-value") {
+      await legacyReadGate
+      return { id: "legacy-get", ok: true as const, result: "legacy" }
+    }
+    if (request.method === "set") {
+      storage.set(request.payload.key, request.payload.value)
+      return { id: "storage-set", ok: true as const, result: null }
+    }
+    if (request.method === "remove") {
+      legacyDiscarded = true
+      return { id: "legacy-remove", ok: true as const, result: null }
+    }
+    throw new Error(`Unexpected storage method ${request.method}`)
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    withRuntimeProvider(createElement(MigratedHookList), requestHost, (error) =>
+      fatalErrors.push(error)
+    )
+  )
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+  assert.deepEqual(requests.slice(0, 2), [
+    ["get", "primary-value"],
+    ["get", "legacy-value"]
+  ])
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const action = snapshot.sections[0]?.items[0]?.actions[0]
+  assert.ok(action)
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: action.id,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+  await renderer.flushSnapshots()
+  assert.equal(storage.get("primary-value"), "current")
+  assert.equal(legacyDiscarded, true)
+
+  releaseLegacyRead?.()
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+  assert.equal(storage.get("primary-value"), "current")
+
+  const reloaded = createTestRenderer()
+  reloaded.render(
+    withRuntimeProvider(createElement(MigratedHookList), requestHost, (error) =>
+      fatalErrors.push(error)
+    )
+  )
+  await reloaded.flushSnapshots()
+  await reloaded.flushSnapshots()
+  const reloadedSnapshot = reloaded.getSnapshot()
+  assertListSnapshot(reloadedSnapshot)
+  assert.equal(reloadedSnapshot.sections[0]?.items[0]?.title, "current")
+  assert.equal(storage.get("primary-value"), "current")
+  assert.deepEqual(fatalErrors, [])
+})
+
+test("useExtensionStorageState treats context-mismatched recovery as fatal", async () => {
+  const fatalErrors: unknown[] = []
+
+  function StoredHookList() {
+    const [value] = useExtensionStorageState("requested", "initial")
+    return createElement(
+      List,
+      { navigationTitle: "Test List" },
+      createElement(List.Item, { id: "value", title: value })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    withRuntimeProvider(
+      createElement(StoredHookList),
+      async () => ({
+        error: {
+          code: "runtime_response_invalid",
+          message: "Storage recovery details did not match the request."
+        },
+        id: "storage-mismatch",
+        ok: false
+      }),
+      (error) => fatalErrors.push(error)
+    )
+  )
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  assert.equal(fatalErrors.length, 1)
+  const [error] = fatalErrors
+  assert.ok(error instanceof ExtensionRuntimeRequestError)
+  assert.equal(error.code, "runtime_response_invalid")
+})
+
+test("useExtensionStorageState reports unexpected read and write failures as fatal", async () => {
+  for (const failingMethod of ["get", "set"] as const) {
+    const fatalErrors: unknown[] = []
+
+    function StoredHookList() {
+      const [value, setValue] = useExtensionStorageState("hook-value", "initial")
+
+      return createElement(
+        List,
+        { navigationTitle: "Test List" },
+        createElement(List.Item, {
+          actions: createElement(
+            ActionPanel,
+            null,
+            createElement(Action, {
+              onAction: () => setValue("current"),
+              title: "Store Current Value"
+            })
+          ),
+          id: "value",
+          title: value
+        })
+      )
+    }
+
+    const renderer = createTestRenderer()
+    renderer.render(
+      withRuntimeProvider(
+        createElement(StoredHookList),
+        async (request) => {
+          if (request.capability === "storage" && request.method === failingMethod) {
+            return {
+              error: {
+                code: `storage_${failingMethod}_failed`,
+                message: `Storage ${failingMethod} failed.`
+              },
+              id: `storage-${failingMethod}-failure`,
+              ok: false
+            }
+          }
+          return {
+            id: "storage-success",
+            ok: true,
+            result: undefined
+          }
+        },
+        (error) => fatalErrors.push(error)
+      )
+    )
+    await renderer.flushSnapshots()
+    await renderer.flushSnapshots()
+
+    if (failingMethod === "set") {
+      const snapshot = renderer.getSnapshot()
+      assertListSnapshot(snapshot)
+      const action = snapshot.sections[0]?.items[0]?.actions[0]
+      assert.ok(action)
+      assert.equal(
+        await renderer.dispatchEvent({
+          actionId: action.id,
+          revision: snapshot.revision,
+          type: "action.execute"
+        }),
+        true
+      )
+      await renderer.flushSnapshots()
+    }
+
+    assert.equal(fatalErrors.length, 1)
+    const [error] = fatalErrors
+    assert.ok(error instanceof ExtensionRuntimeRequestError)
+    assert.equal(error.code, `storage_${failingMethod}_failed`)
+    assert.equal(error.message, `Storage ${failingMethod} failed.`)
   }
 })
 
@@ -3310,11 +3827,13 @@ test("runtime SDK opens native extension and command settings", async () => {
         value: {
           commandName: "search-page",
           commandPreferences: {},
+          dataIdentity: { kind: "unavailable" },
           extensionName: "notion",
           extensionPreferences: {},
           initialAction: "open",
           locale: "zh-CN",
           mode: "view",
+          reportFatalError: () => {},
           requestHost: async (request) => {
             requests.push(request)
             return {
@@ -4294,6 +4813,11 @@ test("useLocalStorage keeps main issue snapshots as the only legacy recovery sta
         return {
           error: {
             code: "storage_legacy_unowned",
+            details: {
+              keys: [request.payload.key],
+              kind: "storage-legacy-unowned" as const,
+              scope: "extension" as const
+            },
             message: "Legacy LocalStorage key has no typed owner."
           },
           id: "storage-conflict",
@@ -4402,6 +4926,22 @@ function resolveStorageRequest(
       message: `Unexpected ${request.capability} request`
     },
     id: "unexpected-response",
+    ok: false as const
+  }
+}
+
+function createLegacyCommandStorageConflictResponse(key: string) {
+  return {
+    error: {
+      code: "storage_legacy_unowned",
+      details: {
+        keys: [key],
+        kind: "storage-legacy-unowned" as const,
+        scope: "command" as const
+      },
+      message: "Legacy command storage key has no typed owner."
+    },
+    id: "storage-conflict",
     ok: false as const
   }
 }

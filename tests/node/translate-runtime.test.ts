@@ -69,6 +69,7 @@ test("Translate asks the same fast model preference used by title generation", a
     {
       commandName: "translate",
       commandPreferences: {},
+      dataIdentity: { kind: "unavailable" },
       extensionName: "translate",
       extensionPreferences: {},
       initialAction: "open",

@@ -2,6 +2,7 @@ import type * as CommonProtocol from "@jingle/extension-api/host-runtime"
 
 export {
   normalizeExtensionRuntimeJsonFact,
+  normalizeExtensionRuntimeErrorDetails,
   normalizeExtensionRuntimeLaunchIntent,
   normalizeExtensionRuntimeLaunchProps,
   normalizeExtensionRuntimeNavigationHostRequest,
@@ -19,6 +20,17 @@ export type ExtensionRuntimeLaunchProps = CommonProtocol.ExtensionRuntimeLaunchP
 export type ExtensionRuntimeLaunchIntent = CommonProtocol.ExtensionRuntimeLaunchIntent
 export type ExtensionRuntimeHostCapability = CommonProtocol.ExtensionRuntimeHostCapability
 export type ExtensionRuntimeStorageScope = CommonProtocol.ExtensionRuntimeStorageScope
+export type ExtensionRuntimeLocalStorageIdentity =
+  CommonProtocol.ExtensionRuntimeLocalStorageIdentity
+export type ExtensionRuntimeAvailableCacheIdentity =
+  CommonProtocol.ExtensionRuntimeAvailableCacheIdentity
+export type ExtensionRuntimeCacheIdentity = CommonProtocol.ExtensionRuntimeCacheIdentity
+export type ExtensionRuntimeUnavailableCacheIdentity =
+  CommonProtocol.ExtensionRuntimeUnavailableCacheIdentity
+export type ExtensionRuntimeDataIdentity = CommonProtocol.ExtensionRuntimeDataIdentity
+export type ExtensionRuntimeDataIdentityState = CommonProtocol.ExtensionRuntimeDataIdentityState
+export type ExtensionRuntimeUnavailableDataIdentity =
+  CommonProtocol.ExtensionRuntimeUnavailableDataIdentity
 export type ExtensionRuntimeLaunchContext = CommonProtocol.ExtensionRuntimeLaunchContext
 
 export type ExtensionRuntimeLaunchPackageRef =
@@ -47,6 +59,14 @@ export interface ExtensionRuntimeSessionInfo {
 }
 
 export type ExtensionRuntimeSessionError = CommonProtocol.ExtensionRuntimeSessionError
+export type ExtensionRuntimeErrorDetails = CommonProtocol.ExtensionRuntimeErrorDetails
+export type ExtensionRuntimeStorageLegacyUnownedErrorDetails =
+  CommonProtocol.ExtensionRuntimeStorageLegacyUnownedErrorDetails
+export type ExtensionRuntimeStorageIssueRecovery =
+  CommonProtocol.ExtensionRuntimeStorageIssueRecovery
+export type ExtensionRuntimeRecoverableIssue = CommonProtocol.ExtensionRuntimeRecoverableIssue
+export type ExtensionRuntimeSessionIssueSnapshot =
+  CommonProtocol.ExtensionRuntimeSessionIssueSnapshot
 export type ExtensionRuntimeRunResult = CommonProtocol.ExtensionRuntimeRunResult
 export type ExtensionSurfaceSnapshot = CommonProtocol.ExtensionSurfaceSnapshot
 export type ExtensionSurfaceBase = CommonProtocol.ExtensionSurfaceBase

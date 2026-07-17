@@ -167,6 +167,7 @@ function createLaunchContext(
   return {
     commandName: "index",
     commandPreferences: options.commandPreferences ?? {},
+    dataIdentity: { kind: "unavailable" },
     extensionName,
     extensionPreferences: options.extensionPreferences ?? {},
     initialAction: "open",
