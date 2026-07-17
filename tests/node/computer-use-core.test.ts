@@ -14,10 +14,13 @@ import {
   computerUseResultAllowsForegroundRetry,
   type ComputerUseBackend,
   type ComputerUseBackendEnvironment,
+  type ComputerUseActionAttempt,
+  type ComputerUseActionLedgerPort,
   type ComputerUseCapability,
   type ComputerUseCapabilityMatrix,
   type ComputerUseObservation,
   type ComputerUseBackendExecutionResult,
+  type ComputerUseTransactionResult,
   type JingleComputerUseNativeBridge,
   type JingleComputerUseNativeRequest
 } from "../../packages/computer-use-core/src"
@@ -50,6 +53,83 @@ function typeTextObservation(): ComputerUseObservation {
 
 function resolvedVoid(): Promise<void> {
   return Promise.resolve()
+}
+
+function actionLedgerPort(
+  input: {
+    attempts?: Map<string, ComputerUseActionAttempt>
+    beforeTransition?: (
+      transition: Parameters<ComputerUseActionLedgerPort["transition"]>[0]
+    ) => Promise<void>
+    onReserve?: (attempt: ComputerUseActionAttempt) => void
+    onWrite?: (attempt: ComputerUseActionAttempt) => void
+  } = {}
+): ComputerUseActionLedgerPort {
+  const attempts = input.attempts ?? new Map<string, ComputerUseActionAttempt>()
+  return {
+    read(attemptId) {
+      return Promise.resolve(attempts.get(attemptId))
+    },
+    reserve(attempt) {
+      input.onReserve?.(attempt)
+      const existing = attempts.get(attempt.attemptId)
+      if (existing) return Promise.resolve({ attempt: existing, status: "exists" })
+      attempts.set(attempt.attemptId, attempt)
+      return Promise.resolve({ status: "reserved" })
+    },
+    async transition(transition) {
+      await input.beforeTransition?.(transition)
+      const current = attempts.get(transition.attempt.attemptId)
+      if (!current) throw new Error("transitioned attempt is missing")
+      if (
+        current.phase !== transition.expectedPhase ||
+        current.revision !== transition.expectedRevision
+      ) {
+        return { current, status: "conflict" }
+      }
+      attempts.set(transition.attempt.attemptId, transition.attempt)
+      input.onWrite?.(transition.attempt)
+      return { status: "applied" }
+    }
+  }
+}
+
+function actionAttemptInput(transactionId: string) {
+  return {
+    actions: [{ kind: "type_text", ref: "@e1", value: "hello" }] as const,
+    authorization: {
+      expiresAt: Date.now() + 60_000,
+      runId: "run-1",
+      sessionId: "session-1",
+      threadId: "thread-1",
+      window: { generation: "g1", nativeId: "w1", pid: 42, platform: "macos" as const }
+    },
+    baseStateId: "state-0",
+    target: {
+      applicationId: "com.example.fixture",
+      resourceKey: "desktop-pid:42",
+      window: { generation: "g1", nativeId: "w1", pid: 42, platform: "macos" as const }
+    },
+    transactionId
+  }
+}
+
+function unreachableComputerUseBackend(calls: {
+  execute: number
+  observe: number
+}): ComputerUseBackend {
+  return {
+    matrix: computerUseCapabilityMatrix("macos-quartz"),
+    disposeSession: resolvedVoid,
+    execute() {
+      calls.execute += 1
+      return Promise.reject(new Error("durable recovery must not execute the backend"))
+    },
+    observe() {
+      calls.observe += 1
+      return Promise.reject(new Error("durable recovery must not observe the backend"))
+    }
+  }
 }
 
 interface RecordedNativeInvocation {
@@ -354,10 +434,7 @@ test("coordinator never replays an ambiguous background outcome", async () => {
     }
   }
   const sessions = new ComputerUseSessionManager(backend)
-  const ledger = new ComputerUseActionLedger({
-    async reserve() { return "reserved" },
-    write: resolvedVoid
-  })
+  const ledger = new ComputerUseActionLedger(actionLedgerPort())
   const coordinator = new ComputerUseTransactionCoordinator(
     backend,
     new ComputerUseResourceScheduler(),
@@ -432,19 +509,16 @@ test("settings off revokes sessions before backend disposal completes", async ()
 
 test("cancel after native dispatch is recorded as unknown, never cancelled", async () => {
   const writes: string[] = []
-  const ledger = new ComputerUseActionLedger({
-    async reserve() { return "reserved" },
-    async write(attempt) {
-      writes.push(`${attempt.phase}:${attempt.outcome ?? "pending"}`)
-    }
-  })
-  const attempt = await ledger.begin({
-    runId: "run-1",
-    sessionId: "session-1",
-    transactionId: "transaction-1"
-  })
+  const ledger = new ComputerUseActionLedger(
+    actionLedgerPort({
+      onWrite(attempt) {
+        writes.push(`${attempt.phase}:${attempt.result?.outcome ?? "pending"}`)
+      }
+    })
+  )
+  const { attempt } = await ledger.begin(actionAttemptInput("transaction-1"))
   await ledger.dispatched(attempt.attemptId)
-  assert.equal(await ledger.cancel(attempt.attemptId), "unknown")
+  assert.equal((await ledger.cancel(attempt.attemptId)).outcome, "unknown")
   assert.deepEqual(writes, ["dispatched:pending", "settled:unknown"])
 })
 
@@ -481,10 +555,7 @@ test("settings off aborts a queued transaction before native dispatch", async ()
   }
   const scheduler = new ComputerUseResourceScheduler()
   const sessions = new ComputerUseSessionManager(backend)
-  const ledger = new ComputerUseActionLedger({
-    async reserve() { return "reserved" },
-    write: resolvedVoid
-  })
+  const ledger = new ComputerUseActionLedger(actionLedgerPort())
   const coordinator = new ComputerUseTransactionCoordinator(backend, scheduler, sessions, ledger)
   const canonicalBase = await coordinator.observe({ applicationId: "com.example.fixture" })
   await sessions.setEnabled(true)
@@ -510,34 +581,618 @@ test("settings off aborts a queued transaction before native dispatch", async ()
   assert.equal(nativeDispatches, 0)
 })
 
-test("transaction ids are single-use even after a result is lost", async () => {
-  const reserved = new Set<string>()
-  const ledger = new ComputerUseActionLedger({
-    async reserve(attempt) {
-      if (reserved.has(attempt.attemptId)) return "exists"
-      reserved.add(attempt.attemptId)
-      return "reserved"
-    },
-    write: resolvedVoid
-  })
-  await ledger.begin({ runId: "r", sessionId: "s", transactionId: "tx" })
-  await assert.rejects(
-    ledger.begin({ runId: "r", sessionId: "s", transactionId: "tx" }),
-    /already attempted/
+test("transaction ids claim one local attempt without reserving twice", async () => {
+  let reserves = 0
+  const ledger = new ComputerUseActionLedger(
+    actionLedgerPort({
+      onReserve() {
+        reserves += 1
+      }
+    })
   )
+  const first = await ledger.begin(actionAttemptInput("tx"))
+  const duplicate = await ledger.begin(actionAttemptInput("tx"))
+  assert.equal(first.status, "reserved")
+  assert.equal(duplicate.status, "existing")
+  assert.equal(duplicate.source, "local")
+  assert.equal(duplicate.attempt, first.attempt)
+  assert.equal(reserves, 1)
 })
 
 test("empty transaction ids are rejected before durable reserve", async () => {
   let reserves = 0
-  const ledger = new ComputerUseActionLedger({
-    async reserve() {
-      reserves += 1
-      return "reserved"
-    },
-    write: resolvedVoid
-  })
-  await assert.rejects(ledger.begin({ runId: "r", sessionId: "s", transactionId: "   " }))
+  const ledger = new ComputerUseActionLedger(
+    actionLedgerPort({
+      onReserve() {
+        reserves += 1
+      }
+    })
+  )
+  await assert.rejects(ledger.begin(actionAttemptInput("   ")))
   assert.equal(reserves, 0)
+})
+
+test("settled durable attempts replay their complete immutable result after restart", async () => {
+  const attempts = new Map<string, ComputerUseActionAttempt>()
+  const firstLedger = new ComputerUseActionLedger(actionLedgerPort({ attempts }))
+  const { attempt } = await firstLedger.begin(actionAttemptInput("settled-restart"))
+  await firstLedger.dispatched(attempt.attemptId)
+  const original: ComputerUseTransactionResult = {
+    baseStateId: "state-0",
+    outcome: "worked",
+    steps: [
+      {
+        action: { kind: "type_text", ref: "@e1", value: "hello" },
+        evidence: {
+          delivery: "semantic",
+          noSideEffectProof: false,
+          route: "ax_value",
+          verification: "verified"
+        },
+        outcome: "worked"
+      }
+    ],
+    successor: observation({
+      elements: typeTextObservation().elements,
+      epoch: 1,
+      stateId: "state-1"
+    })
+  }
+  const persisted = await firstLedger.settle(attempt.attemptId, original)
+  original.steps[0]!.evidence.route = "mutated"
+  original.successor!.window.nativeId = "mutated"
+
+  const calls = { execute: 0, observe: 0 }
+  const backend = unreachableComputerUseBackend(calls)
+  const coordinator = new ComputerUseTransactionCoordinator(
+    backend,
+    new ComputerUseResourceScheduler(),
+    new ComputerUseSessionManager(backend),
+    new ComputerUseActionLedger(actionLedgerPort({ attempts }))
+  )
+  const replayed = await coordinator.execute({
+    actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
+    baseStateId: "state-0",
+    runId: "run-1",
+    sessionId: "replacement-session",
+    threadId: "thread-1",
+    transactionId: "settled-restart"
+  })
+
+  assert.deepEqual(replayed, persisted)
+  assert.equal(replayed.steps[0]!.evidence.route, "ax_value")
+  assert.equal(replayed.successor!.window.nativeId, "w1")
+  assert.equal(Object.isFrozen(replayed), true)
+  assert.equal(Object.isFrozen(replayed.steps[0]!.evidence), true)
+  assert.equal(Object.isFrozen(replayed.successor!.window), true)
+  assert.deepEqual(calls, { execute: 0, observe: 0 })
+
+  await assert.rejects(
+    coordinator.execute({
+      actions: [{ kind: "type_text", ref: "@e1", value: "again" }],
+      baseStateId: replayed.successor!.stateId,
+      runId: "run-1",
+      sessionId: "replacement-session",
+      threadId: "thread-1",
+      transactionId: "new-after-restart"
+    }),
+    /state is missing or was evicted/
+  )
+  assert.deepEqual(calls, { execute: 0, observe: 0 })
+})
+
+test("durable replay rejects corrupt authorization, action, evidence, and successor facts", async () => {
+  const sourceAttempts = new Map<string, ComputerUseActionAttempt>()
+  const sourceLedger = new ComputerUseActionLedger(actionLedgerPort({ attempts: sourceAttempts }))
+  const { attempt } = await sourceLedger.begin(actionAttemptInput("corrupt-restart"))
+  await sourceLedger.dispatched(attempt.attemptId)
+  await sourceLedger.settle(attempt.attemptId, {
+    baseStateId: "state-0",
+    outcome: "worked",
+    steps: [
+      {
+        action: { kind: "type_text", ref: "@e1", value: "hello" },
+        evidence: {
+          delivery: "semantic",
+          noSideEffectProof: false,
+          route: "ax_value",
+          verification: "verified"
+        },
+        outcome: "worked"
+      }
+    ],
+    successor: observation({ epoch: 1, stateId: "state-1" })
+  })
+  const durable = sourceAttempts.get("corrupt-restart")!
+  const corruptions: Array<{
+    mutate(attempt: ComputerUseActionAttempt): void
+    pattern: RegExp
+  }> = [
+    {
+      mutate(attempt) {
+        attempt.phase = "invalid" as ComputerUseActionAttempt["phase"]
+      },
+      pattern: /invalid phase/
+    },
+    {
+      mutate(attempt) {
+        attempt.authorization.window.pid = 0
+      },
+      pattern: /pid must be a positive integer/
+    },
+    {
+      mutate(attempt) {
+        attempt.result!.steps[0]!.action.value = "changed"
+      },
+      pattern: /not an ordered action prefix/
+    },
+    {
+      mutate(attempt) {
+        attempt.result!.steps[0]!.evidence.verification = "unverifiable"
+      },
+      pattern: /worked step lacks verified evidence/
+    },
+    {
+      mutate(attempt) {
+        delete attempt.result!.successor
+      },
+      pattern: /worked result requires a successor state/
+    },
+    {
+      mutate(attempt) {
+        attempt.result!.successor!.window.nativeId = "another-window"
+      },
+      pattern: /successor belongs to another window generation/
+    },
+    {
+      mutate(attempt) {
+        attempt.result!.successor!.resourceKey = "another-resource"
+      },
+      pattern: /successor belongs to another target resource/
+    },
+    {
+      mutate(attempt) {
+        attempt.result!.successor!.stateId = attempt.baseStateId
+      },
+      pattern: /successor reused its base state identity/
+    },
+    {
+      mutate(attempt) {
+        delete attempt.dispatchedAt
+        attempt.revision = 1
+      },
+      pattern: /undispatched computer-use action attempt has an executed terminal outcome/i
+    },
+    {
+      mutate(attempt) {
+        attempt.result = {
+          baseStateId: attempt.baseStateId,
+          outcome: "cancelled_before_dispatch",
+          steps: []
+        }
+      },
+      pattern: /dispatched computer-use action attempt cannot be cancelled before dispatch/i
+    }
+  ]
+  const calls = { execute: 0, observe: 0 }
+  const backend = unreachableComputerUseBackend(calls)
+  for (const corruption of corruptions) {
+    const corrupted = structuredClone(durable)
+    corruption.mutate(corrupted)
+    const attempts = new Map([[corrupted.attemptId, corrupted]])
+    const coordinator = new ComputerUseTransactionCoordinator(
+      backend,
+      new ComputerUseResourceScheduler(),
+      new ComputerUseSessionManager(backend),
+      new ComputerUseActionLedger(actionLedgerPort({ attempts }))
+    )
+    await assert.rejects(
+      coordinator.execute({
+        actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
+        baseStateId: "state-0",
+        runId: "run-1",
+        sessionId: "replacement-session",
+        threadId: "thread-1",
+        transactionId: "corrupt-restart"
+      }),
+      corruption.pattern
+    )
+  }
+  assert.deepEqual(calls, { execute: 0, observe: 0 })
+})
+
+test("durable queued and dispatched attempts settle without replay after restart", async () => {
+  for (const phase of ["queued", "dispatched"] as const) {
+    const attempts = new Map<string, ComputerUseActionAttempt>()
+    const transactionId = `${phase}-restart`
+    const firstLedger = new ComputerUseActionLedger(actionLedgerPort({ attempts }))
+    const { attempt } = await firstLedger.begin(actionAttemptInput(transactionId))
+    if (phase === "dispatched") await firstLedger.dispatched(attempt.attemptId)
+    const calls = { execute: 0, observe: 0 }
+    const backend = unreachableComputerUseBackend(calls)
+    const coordinator = new ComputerUseTransactionCoordinator(
+      backend,
+      new ComputerUseResourceScheduler(),
+      new ComputerUseSessionManager(backend),
+      new ComputerUseActionLedger(actionLedgerPort({ attempts }))
+    )
+
+    const result = await coordinator.execute({
+      actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
+      baseStateId: "state-0",
+      runId: "run-1",
+      sessionId: "replacement-session",
+      threadId: "thread-1",
+      transactionId
+    })
+
+    assert.deepEqual(result, {
+      baseStateId: "state-0",
+      outcome: phase === "queued" ? "cancelled_before_dispatch" : "unknown",
+      steps: []
+    })
+    assert.equal(attempts.get(transactionId)?.phase, "settled")
+    assert.deepEqual(attempts.get(transactionId)?.result, result)
+    assert.deepEqual(calls, { execute: 0, observe: 0 })
+  }
+})
+
+test("durable identity mismatches refuse without rewriting or poisoning later recovery", async () => {
+  const attempts = new Map<string, ComputerUseActionAttempt>()
+  const firstLedger = new ComputerUseActionLedger(actionLedgerPort({ attempts }))
+  await firstLedger.begin(actionAttemptInput("identity-mismatch"))
+  let writes = 0
+  const calls = { execute: 0, observe: 0 }
+  const backend = unreachableComputerUseBackend(calls)
+  const baseInput = {
+    actions: [{ kind: "type_text", ref: "@e1", value: "hello" }] as const,
+    baseStateId: "state-0",
+    runId: "run-1",
+    sessionId: "replacement-session",
+    threadId: "thread-1",
+    transactionId: "identity-mismatch"
+  }
+  const mismatches = [
+    { ...baseInput, runId: "another-run" },
+    { ...baseInput, threadId: "another-thread" },
+    { ...baseInput, baseStateId: "another-state" },
+    { ...baseInput, actions: [{ kind: "type_text", ref: "@e1", value: "changed" }] as const }
+  ]
+  for (const mismatch of mismatches) {
+    const coordinator = new ComputerUseTransactionCoordinator(
+      backend,
+      new ComputerUseResourceScheduler(),
+      new ComputerUseSessionManager(backend),
+      new ComputerUseActionLedger(
+        actionLedgerPort({
+          attempts,
+          onWrite() {
+            writes += 1
+          }
+        })
+      )
+    )
+    assert.deepEqual(await coordinator.execute(mismatch), {
+      baseStateId: mismatch.baseStateId,
+      outcome: "refused",
+      steps: []
+    })
+  }
+
+  assert.equal(attempts.get("identity-mismatch")?.phase, "queued")
+  assert.equal(writes, 0)
+  assert.deepEqual(calls, { execute: 0, observe: 0 })
+
+  const recoveryCoordinator = new ComputerUseTransactionCoordinator(
+    backend,
+    new ComputerUseResourceScheduler(),
+    new ComputerUseSessionManager(backend),
+    new ComputerUseActionLedger(
+      actionLedgerPort({
+        attempts,
+        onWrite() {
+          writes += 1
+        }
+      })
+    )
+  )
+  assert.deepEqual(await recoveryCoordinator.execute(baseInput), {
+    baseStateId: "state-0",
+    outcome: "cancelled_before_dispatch",
+    steps: []
+  })
+  assert.equal(attempts.get("identity-mismatch")?.phase, "settled")
+  assert.equal(writes, 1)
+  assert.deepEqual(calls, { execute: 0, observe: 0 })
+})
+
+test("a local duplicate cannot cancel an in-flight queued attempt", async () => {
+  const attempts = new Map<string, ComputerUseActionAttempt>()
+  let writes = 0
+  const ledger = new ComputerUseActionLedger(
+    actionLedgerPort({
+      attempts,
+      onWrite() {
+        writes += 1
+      }
+    })
+  )
+  await ledger.begin(actionAttemptInput("local-duplicate"))
+  const calls = { execute: 0, observe: 0 }
+  const backend = unreachableComputerUseBackend(calls)
+  const coordinator = new ComputerUseTransactionCoordinator(
+    backend,
+    new ComputerUseResourceScheduler(),
+    new ComputerUseSessionManager(backend),
+    ledger
+  )
+  const result = await coordinator.execute({
+    actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
+    baseStateId: "state-0",
+    runId: "run-1",
+    sessionId: "session-1",
+    threadId: "thread-1",
+    transactionId: "local-duplicate"
+  })
+
+  assert.deepEqual(result, { baseStateId: "state-0", outcome: "refused", steps: [] })
+  assert.equal(attempts.get("local-duplicate")?.phase, "queued")
+  assert.equal(writes, 0)
+  assert.deepEqual(calls, { execute: 0, observe: 0 })
+})
+
+test("failed durable transitions do not advance the in-memory attempt", async () => {
+  const ledger = new ComputerUseActionLedger({
+    read() {
+      return Promise.resolve(undefined)
+    },
+    reserve() {
+      return Promise.resolve({ status: "reserved" })
+    },
+    transition() {
+      return Promise.reject(new Error("durable write failed"))
+    }
+  })
+  const { attempt } = await ledger.begin(actionAttemptInput("failed-transition"))
+
+  await assert.rejects(ledger.dispatched(attempt.attemptId), /durable write failed/)
+  assert.equal(ledger.get(attempt.attemptId)?.phase, "queued")
+  assert.equal(ledger.get(attempt.attemptId)?.result, undefined)
+})
+
+test("ledger rejects terminal outcomes that contradict durable dispatch evidence", async () => {
+  let writes = 0
+  const ledger = new ComputerUseActionLedger(
+    actionLedgerPort({
+      onWrite() {
+        writes += 1
+      }
+    })
+  )
+  const queued = await ledger.begin(actionAttemptInput("queued-worked"))
+  await assert.rejects(
+    ledger.settle(queued.attempt.attemptId, {
+      baseStateId: "state-0",
+      outcome: "worked",
+      steps: [
+        {
+          action: { kind: "type_text", ref: "@e1", value: "hello" },
+          evidence: {
+            delivery: "semantic",
+            noSideEffectProof: false,
+            route: "ax_value",
+            verification: "verified"
+          },
+          outcome: "worked"
+        }
+      ],
+      successor: observation({ epoch: 1, stateId: "state-1" })
+    }),
+    /undispatched computer-use action attempt has an executed terminal outcome/i
+  )
+  assert.equal(ledger.get(queued.attempt.attemptId)?.phase, "queued")
+
+  const dispatched = await ledger.begin(actionAttemptInput("dispatched-cancelled"))
+  await ledger.dispatched(dispatched.attempt.attemptId)
+  await assert.rejects(
+    ledger.settle(dispatched.attempt.attemptId, {
+      baseStateId: "state-0",
+      outcome: "cancelled_before_dispatch",
+      steps: []
+    }),
+    /dispatched computer-use action attempt cannot be cancelled before dispatch/i
+  )
+  assert.equal(ledger.get(dispatched.attempt.attemptId)?.phase, "dispatched")
+  assert.equal(writes, 1)
+})
+
+test("cancelled CAS winner prevents a stale coordinator from dispatching", async () => {
+  const attempts = new Map<string, ComputerUseActionAttempt>()
+  let interceptDispatch = true
+  const port = actionLedgerPort({
+    attempts,
+    async beforeTransition(transition) {
+      if (!interceptDispatch || transition.attempt.phase !== "dispatched") return
+      interceptDispatch = false
+      const claim = await competingLedger.find(transition.attempt.attemptId)
+      assert.equal(claim?.attempt.phase, "queued")
+      assert.equal(
+        (await competingLedger.cancel(transition.attempt.attemptId)).outcome,
+        "cancelled_before_dispatch"
+      )
+    }
+  })
+  const primaryLedger = new ComputerUseActionLedger(port)
+  const competingLedger = new ComputerUseActionLedger(port)
+  const raw = typeTextObservation()
+  let backendDispatches = 0
+  const backend: ComputerUseBackend = {
+    matrix: {
+      capabilities: [
+        {
+          action: "type_text",
+          background: "verified",
+          foreground: "unavailable",
+          route: "ax_value"
+        }
+      ],
+      environment: "macos-quartz",
+      platform: "macos",
+      protocolVersion: 1
+    },
+    disposeSession: resolvedVoid,
+    execute(request) {
+      backendDispatches += 1
+      return Promise.resolve({
+        baseStateId: request.base.stateId,
+        outcome: "worked",
+        steps: [
+          {
+            action: request.actions[0]!,
+            evidence: {
+              delivery: "semantic",
+              noSideEffectProof: false,
+              route: "ax_value",
+              verification: "verified"
+            },
+            outcome: "worked"
+          }
+        ]
+      })
+    },
+    observe() {
+      const { epoch: _epoch, stateId: _stateId, ...value } = raw
+      return Promise.resolve(value)
+    }
+  }
+  const scheduler = new ComputerUseResourceScheduler()
+  const sessions = new ComputerUseSessionManager(backend)
+  const coordinator = new ComputerUseTransactionCoordinator(
+    backend,
+    scheduler,
+    sessions,
+    primaryLedger
+  )
+  const base = await coordinator.observe({})
+  await sessions.setEnabled(true)
+  const grant = sessions.openSession({ observation: base, runId: "run", threadId: "thread" })
+
+  const result = await coordinator.execute({
+    actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
+    baseStateId: base.stateId,
+    runId: "run",
+    sessionId: grant.sessionId,
+    threadId: "thread",
+    transactionId: "cancel-wins-cas"
+  })
+
+  assert.equal(result.outcome, "cancelled_before_dispatch")
+  assert.equal(backendDispatches, 0)
+  assert.equal(scheduler.epoch(base.resourceKey), 0)
+  assert.equal(attempts.get("cancel-wins-cas")?.phase, "settled")
+  assert.equal(attempts.get("cancel-wins-cas")?.revision, 1)
+})
+
+test("dispatch CAS winner converts a stale queued cancellation to unknown", async () => {
+  const attempts = new Map<string, ComputerUseActionAttempt>()
+  const port = actionLedgerPort({ attempts })
+  const dispatchOwner = new ComputerUseActionLedger(port)
+  const staleOwner = new ComputerUseActionLedger(port)
+  const { attempt } = await dispatchOwner.begin(actionAttemptInput("dispatch-wins-cas"))
+  assert.equal((await staleOwner.find(attempt.attemptId))?.attempt.phase, "queued")
+
+  const dispatch = await dispatchOwner.dispatched(attempt.attemptId)
+  assert.equal(dispatch.status, "applied")
+  assert.equal(dispatch.attempt.revision, 1)
+  const cancellation = await staleOwner.cancel(attempt.attemptId)
+  assert.equal(cancellation.outcome, "unknown")
+  assert.equal(attempts.get(attempt.attemptId)?.revision, 2)
+  assert.equal(attempts.get(attempt.attemptId)?.result?.outcome, "unknown")
+
+  const staleSettlement = await dispatchOwner.settle(attempt.attemptId, {
+    baseStateId: "state-0",
+    outcome: "worked",
+    steps: [
+      {
+        action: { kind: "type_text", ref: "@e1", value: "hello" },
+        evidence: {
+          delivery: "semantic",
+          noSideEffectProof: false,
+          route: "ax_value",
+          verification: "verified"
+        },
+        outcome: "worked"
+      }
+    ],
+    successor: observation({ epoch: 1, stateId: "state-1" })
+  })
+  assert.equal(staleSettlement.outcome, "unknown")
+  assert.equal(attempts.get(attempt.attemptId)?.result?.outcome, "unknown")
+  assert.equal(Object.isFrozen(dispatchOwner.get(attempt.attemptId)), true)
+})
+
+test("the first dispatched terminal CAS result is immutable", async () => {
+  const attempts = new Map<string, ComputerUseActionAttempt>()
+  const port = actionLedgerPort({ attempts })
+  const firstOwner = new ComputerUseActionLedger(port)
+  const staleOwner = new ComputerUseActionLedger(port)
+  const { attempt } = await firstOwner.begin(actionAttemptInput("terminal-cas"))
+  await firstOwner.dispatched(attempt.attemptId)
+  assert.equal((await staleOwner.find(attempt.attemptId))?.attempt.phase, "dispatched")
+  const worked: ComputerUseTransactionResult = {
+    baseStateId: "state-0",
+    outcome: "worked",
+    steps: [
+      {
+        action: { kind: "type_text", ref: "@e1", value: "hello" },
+        evidence: {
+          delivery: "semantic",
+          noSideEffectProof: false,
+          route: "ax_value",
+          verification: "verified"
+        },
+        outcome: "worked"
+      }
+    ],
+    successor: observation({ epoch: 1, stateId: "state-1" })
+  }
+  const [winner, stale] = await Promise.all([
+    firstOwner.settle(attempt.attemptId, worked),
+    staleOwner.settle(attempt.attemptId, {
+      baseStateId: "state-0",
+      outcome: "unknown",
+      steps: []
+    })
+  ])
+
+  assert.equal(winner.outcome, "worked")
+  assert.equal(stale.outcome, "worked")
+  assert.equal(attempts.get(attempt.attemptId)?.result?.outcome, "worked")
+  assert.equal(attempts.get(attempt.attemptId)?.revision, 2)
+})
+
+test("CAS conflict cannot replace immutable attempt identity", async () => {
+  let reserved!: ComputerUseActionAttempt
+  const ledger = new ComputerUseActionLedger({
+    read() {
+      return Promise.resolve(undefined)
+    },
+    reserve(attempt) {
+      reserved = attempt
+      return Promise.resolve({ status: "reserved" })
+    },
+    transition(input) {
+      const corrupt = structuredClone(input.attempt)
+      corrupt.target.resourceKey = "another-resource"
+      return Promise.resolve({ current: corrupt, status: "conflict" })
+    }
+  })
+  const { attempt } = await ledger.begin(actionAttemptInput("corrupt-cas-conflict"))
+
+  await assert.rejects(ledger.dispatched(attempt.attemptId), /changed immutable attempt identity/)
+  assert.equal(ledger.get(attempt.attemptId), reserved)
+  assert.equal(ledger.get(attempt.attemptId)?.phase, "queued")
+  assert.equal(ledger.get(attempt.attemptId)?.revision, 0)
 })
 
 test("observation store rejects duplicate semantic refs", () => {
@@ -773,14 +1428,13 @@ test("backend cannot report pre-dispatch cancellation after dispatch", async () 
     backend,
     new ComputerUseResourceScheduler(),
     sessions,
-    new ComputerUseActionLedger({
-      async reserve() {
-        return "reserved"
-      },
-      async write(attempt) {
-        writes.push(`${attempt.phase}:${attempt.outcome ?? "pending"}`)
-      }
-    })
+    new ComputerUseActionLedger(
+      actionLedgerPort({
+        onWrite(attempt) {
+          writes.push(`${attempt.phase}:${attempt.result?.outcome ?? "pending"}`)
+        }
+      })
+    )
   )
   const base = await coordinator.observe({})
   await sessions.setEnabled(true)
@@ -849,12 +1503,7 @@ test("successor identity changes never publish an observation with the old epoch
       backend,
       scheduler,
       sessions,
-      new ComputerUseActionLedger({
-        async reserve() {
-          return "reserved"
-        },
-        write: resolvedVoid
-      })
+      new ComputerUseActionLedger(actionLedgerPort())
     )
     const base = await coordinator.observe({})
     await sessions.setEnabled(true)
@@ -938,14 +1587,13 @@ test("coordinator preserves typed stale-state failure before dispatch", async ()
     backend,
     new ComputerUseResourceScheduler(),
     sessions,
-    new ComputerUseActionLedger({
-      async reserve() {
-        return "reserved"
-      },
-      async write(attempt) {
-        writes.push(`${attempt.phase}:${attempt.outcome ?? "pending"}`)
-      }
-    })
+    new ComputerUseActionLedger(
+      actionLedgerPort({
+        onWrite(attempt) {
+          writes.push(`${attempt.phase}:${attempt.result?.outcome ?? "pending"}`)
+        }
+      })
+    )
   )
   const base = await coordinator.observe({})
   await sessions.setEnabled(true)
@@ -1049,12 +1697,7 @@ test("backend actions are compared by fields rather than object property order",
     backend,
     new ComputerUseResourceScheduler(),
     sessions,
-    new ComputerUseActionLedger({
-      async reserve() {
-        return "reserved"
-      },
-      write: resolvedVoid
-    })
+    new ComputerUseActionLedger(actionLedgerPort())
   )
   const base = await coordinator.observe({})
   await sessions.setEnabled(true)
@@ -1367,14 +2010,15 @@ test("coordinator preflight settles first and later unsupported actions without 
     }
   }
   const ledgerWrites: string[] = []
-  const ledger = new ComputerUseActionLedger({
-    async reserve() {
-      return "reserved"
-    },
-    async write(attempt) {
-      ledgerWrites.push(`${attempt.attemptId}:${attempt.phase}:${attempt.outcome ?? "pending"}`)
-    }
-  })
+  const ledger = new ComputerUseActionLedger(
+    actionLedgerPort({
+      onWrite(attempt) {
+        ledgerWrites.push(
+          `${attempt.attemptId}:${attempt.phase}:${attempt.result?.outcome ?? "pending"}`
+        )
+      }
+    })
+  )
   const scheduler = new ComputerUseResourceScheduler()
   const sessions = new ComputerUseSessionManager(backend)
   const coordinator = new ComputerUseTransactionCoordinator(backend, scheduler, sessions, ledger)
@@ -1460,14 +2104,15 @@ test("pre-aborted unsupported transactions settle as cancelled before dispatch",
     }
   }
   const ledgerWrites: string[] = []
-  const ledger = new ComputerUseActionLedger({
-    async reserve() {
-      return "reserved"
-    },
-    async write(attempt) {
-      ledgerWrites.push(`${attempt.attemptId}:${attempt.phase}:${attempt.outcome ?? "pending"}`)
-    }
-  })
+  const ledger = new ComputerUseActionLedger(
+    actionLedgerPort({
+      onWrite(attempt) {
+        ledgerWrites.push(
+          `${attempt.attemptId}:${attempt.phase}:${attempt.result?.outcome ?? "pending"}`
+        )
+      }
+    })
+  )
   const sessions = new ComputerUseSessionManager(backend)
   const coordinator = new ComputerUseTransactionCoordinator(
     backend,

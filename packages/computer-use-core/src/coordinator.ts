@@ -7,29 +7,14 @@ import type {
   ComputerUseTransactionResult
 } from "./contract"
 import { sameComputerUseWindowIdentity } from "./authorization"
-import { ComputerUseActionLedger } from "./action-ledger"
+import {
+  ComputerUseActionLedger,
+  sameComputerUseSemanticAction,
+  type ComputerUseActionAttemptClaim
+} from "./action-ledger"
 import { ComputerUseResourceScheduler } from "./scheduler"
 import { ComputerUseSessionManager } from "./session-manager"
 import { ComputerUseObservationStore } from "./state-store"
-
-function sameAction(left: ComputerUseSemanticAction, right: ComputerUseSemanticAction): boolean {
-  return (
-    left.kind === right.kind &&
-    left.ref === right.ref &&
-    left.value === right.value &&
-    left.scrollAmount === right.scrollAmount &&
-    sameKeys(left.keys, right.keys)
-  )
-}
-
-function sameKeys(
-  left: readonly string[] | undefined,
-  right: readonly string[] | undefined
-): boolean {
-  if (left === right) return true
-  if (!left || !right || left.length !== right.length) return false
-  return left.every((key, index) => key === right[index])
-}
 
 function mayRetryForeground(
   result: ComputerUseBackendExecutionResult,
@@ -41,7 +26,7 @@ function mayRetryForeground(
     result.stoppedAt === undefined &&
     result.steps.every(
       (step, index) =>
-        sameAction(step.action, actions[index]!) &&
+        sameComputerUseSemanticAction(step.action, actions[index]!) &&
         step.outcome === "didnt" &&
         step.evidence.noSideEffectProof &&
         step.evidence.verification === "failed"
@@ -89,31 +74,50 @@ export class ComputerUseTransactionCoordinator {
   }): Promise<ComputerUseTransactionResult> {
     const actions = freeze(structuredClone(input.actions))
     const base = this.observations.get(input.baseStateId)
+    let sessionSignal: AbortSignal | undefined
+    let authorization: ReturnType<ComputerUseSessionManager["assertAuthorized"]> | undefined
+    let authorizationError: unknown
+    if (base) {
+      try {
+        sessionSignal = this.sessions.signal(input.sessionId)
+        authorization = this.sessions.assertAuthorized({
+          observation: base,
+          runId: input.runId,
+          sessionId: input.sessionId,
+          threadId: input.threadId
+        })
+      } catch (error) {
+        authorizationError = error
+      }
+    }
+    const existing = await this.ledger.find(input.transactionId)
+    if (existing) return this.recover(existing, input, actions, base)
     if (!base) throw new Error("Computer-use state is missing or was evicted. Observe again.")
+    if (authorizationError) throw authorizationError
+    if (!authorization || !sessionSignal) {
+      throw new Error("Computer-use authorization was not captured for this transaction.")
+    }
     this.validateActions(actions, base)
-    const sessionSignal = this.sessions.signal(input.sessionId)
-    this.sessions.assertAuthorized({
-      observation: base,
-      runId: input.runId,
-      sessionId: input.sessionId,
-      threadId: input.threadId
-    })
-    const attempt = await this.ledger.begin({
-      runId: input.runId,
-      sessionId: input.sessionId,
+    const claim = await this.ledger.begin({
+      actions,
+      authorization,
+      baseStateId: base.stateId,
+      target: {
+        applicationId: base.application.id,
+        resourceKey: base.resourceKey,
+        window: base.window
+      },
       transactionId: input.transactionId
     })
-    const signal = input.signal
-      ? AbortSignal.any([input.signal, sessionSignal])
-      : sessionSignal
+    if (claim.status === "existing") return this.recover(claim, input, actions, base)
+    const attempt = claim.attempt
+    const signal = input.signal ? AbortSignal.any([input.signal, sessionSignal]) : sessionSignal
     if (signal.aborted) {
-      const outcome = await this.ledger.cancel(attempt.attemptId)
-      return { baseStateId: base.stateId, outcome, steps: [] }
+      return this.ledger.cancel(attempt.attemptId)
     }
     const unsupported = this.preflight(actions, base.stateId, "background")
     if (unsupported) {
-      await this.ledger.settle(attempt.attemptId, unsupported.outcome)
-      return unsupported
+      return this.ledger.settle(attempt.attemptId, unsupported)
     }
     let execution: ComputerUseBackendExecutionResult | undefined
 
@@ -133,7 +137,15 @@ export class ComputerUseTransactionCoordinator {
             threadId: input.threadId
           })
           signal.throwIfAborted()
-          await this.ledger.dispatched(attempt.attemptId)
+          const dispatch = await this.ledger.dispatched(attempt.attemptId)
+          if (dispatch.status === "conflict") {
+            return this.recover(
+              { attempt: dispatch.attempt, source: "durable", status: "existing" },
+              input,
+              actions,
+              base
+            )
+          }
           const nextEpoch = commit()
           execution = this.validateExecution(
             await this.backend.execute({
@@ -190,8 +202,7 @@ export class ComputerUseTransactionCoordinator {
                 ...execution,
                 successor: this.observations.create({ ...successor, epoch: nextEpoch })
               }
-          await this.ledger.settle(attempt.attemptId, result.outcome)
-          return result
+          return this.ledger.settle(attempt.attemptId, result)
         }
       })
     } catch (error) {
@@ -199,19 +210,63 @@ export class ComputerUseTransactionCoordinator {
       const cancelled =
         signal.aborted || (error instanceof DOMException && error.name === "AbortError")
       if (!cancelled && current?.phase === "queued") {
-        await this.ledger.settle(attempt.attemptId, "unavailable")
+        await this.ledger.settle(attempt.attemptId, {
+          baseStateId: base.stateId,
+          outcome: "unavailable",
+          steps: []
+        })
         throw error
       }
-      const outcome = await this.ledger.cancel(attempt.attemptId)
-      if (outcome !== "unknown") return { baseStateId: base.stateId, outcome, steps: [] }
+      if (current?.phase === "queued") return this.ledger.cancel(attempt.attemptId)
       const successor = await this.observeAfterUnknown(base)
-      return {
+      return this.ledger.settle(attempt.attemptId, {
         baseStateId: base.stateId,
-        outcome,
+        outcome: "unknown",
         steps: execution?.steps ?? [],
         successor
-      }
+      })
     }
+  }
+
+  private async recover(
+    claim: ComputerUseActionAttemptClaim,
+    input: {
+      baseStateId: string
+      runId: string
+      threadId: string
+    },
+    actions: readonly ComputerUseSemanticAction[],
+    base: ComputerUseObservation | undefined
+  ): Promise<ComputerUseTransactionResult> {
+    const { attempt } = claim
+    const matches =
+      attempt.baseStateId === input.baseStateId &&
+      attempt.authorization.runId === input.runId &&
+      attempt.authorization.threadId === input.threadId &&
+      (!base ||
+        (attempt.target.applicationId === base.application.id &&
+          attempt.target.resourceKey === base.resourceKey &&
+          sameComputerUseWindowIdentity(attempt.target.window, base.window))) &&
+      attempt.actions.length === actions.length &&
+      attempt.actions.every((action, index) =>
+        sameComputerUseSemanticAction(action, actions[index]!)
+      )
+    if (!matches) {
+      return freeze({ baseStateId: input.baseStateId, outcome: "refused", steps: [] })
+    }
+    if (attempt.phase === "settled") {
+      if (!attempt.result)
+        throw new Error(`Computer-use action attempt ${attempt.attemptId} lost its result.`)
+      return attempt.result
+    }
+    if (claim.source === "local") {
+      return freeze({
+        baseStateId: input.baseStateId,
+        outcome: attempt.phase === "queued" ? "refused" : "unknown",
+        steps: []
+      })
+    }
+    return this.ledger.cancel(attempt.attemptId)
   }
 
   private async observeAfterUnknown(
@@ -297,7 +352,7 @@ export class ComputerUseTransactionCoordinator {
     }
     result.steps.forEach((step, index) => {
       const action = actions[index]
-      if (!action || !sameAction(step.action, action)) {
+      if (!action || !sameComputerUseSemanticAction(step.action, action)) {
         throw new Error("Computer-use backend returned steps out of order.")
       }
       const capability = this.backend.matrix.capabilities.find(
