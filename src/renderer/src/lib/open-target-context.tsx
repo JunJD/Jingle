@@ -1,12 +1,4 @@
-import {
-  createContext,
-  use,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode
-} from "react"
+import { createContext, use, useEffect, useMemo, useState, type ReactNode } from "react"
 import type { OpenTarget } from "@shared/open-targets"
 
 const EMPTY_TARGETS: OpenTarget[] = []
@@ -28,6 +20,21 @@ function getPrimaryTarget(
   )
 }
 
+interface OpenTargetSelection {
+  folderPath: string
+  targetId: string | null
+}
+
+export function resolveOpenTargetSelection(input: {
+  folderPath: string | null
+  selection: OpenTargetSelection | null
+  targets: readonly OpenTarget[]
+}): OpenTarget | null {
+  const selectedTargetId =
+    input.selection?.folderPath === input.folderPath ? input.selection.targetId : null
+  return getPrimaryTarget(input.targets, selectedTargetId)
+}
+
 export interface OpenTargetContextValue {
   folderPath: string | null
   openFile: (filePath: string) => void
@@ -45,21 +52,17 @@ export function OpenTargetProvider(props: {
   folderPath: string | null
 }): React.JSX.Element {
   const { children, folderPath } = props
-  const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null)
-  const selectedTargetIdRef = useRef<string | null>(selectedTargetId)
+  const [selection, setSelection] = useState<OpenTargetSelection | null>(null)
   const [targetState, setTargetState] = useState<{
     folderPath: string
     targets: OpenTarget[]
   } | null>(null)
   const targets = targetState?.folderPath === folderPath ? targetState.targets : EMPTY_TARGETS
   const primaryTarget = useMemo(
-    () => getPrimaryTarget(targets, selectedTargetId),
-    [selectedTargetId, targets]
+    () => resolveOpenTargetSelection({ folderPath, selection, targets }),
+    [folderPath, selection, targets]
   )
-
-  useEffect(() => {
-    selectedTargetIdRef.current = selectedTargetId
-  }, [selectedTargetId])
+  const selectedTargetId = primaryTarget?.id ?? null
 
   useEffect(() => {
     if (!folderPath) {
@@ -76,16 +79,15 @@ export function OpenTargetProvider(props: {
         }
 
         setTargetState({ folderPath, targets: response.targets })
-        const currentTargetId = selectedTargetIdRef.current
-        const hasCurrentTarget =
-          currentTargetId !== null &&
-          response.targets.some((target) => target.id === currentTargetId)
-        if (!hasCurrentTarget) {
-          const nextPrimaryTarget = getPrimaryTarget(response.targets, null)
-          if (nextPrimaryTarget) {
-            setSelectedTargetId(nextPrimaryTarget.id)
-          }
-        }
+        setSelection((currentSelection) => ({
+          folderPath,
+          targetId:
+            resolveOpenTargetSelection({
+              folderPath,
+              selection: currentSelection,
+              targets: response.targets
+            })?.id ?? null
+        }))
       })
       .catch((error: unknown) => {
         console.error("[OpenTargetProvider] Failed to list open targets.", error)
@@ -100,14 +102,14 @@ export function OpenTargetProvider(props: {
     () => ({
       folderPath,
       openFile(filePath) {
-        if (!folderPath || !selectedTargetId) {
+        if (!folderPath || !primaryTarget) {
           return
         }
 
-        void window.api.openTargets.open({ filePath, folderPath, targetId: selectedTargetId })
+        void window.api.openTargets.open({ filePath, folderPath, targetId: primaryTarget.id })
       },
       openTarget(targetId, filePath) {
-        if (!folderPath) {
+        if (!folderPath || !targets.some((target) => target.id === targetId)) {
           return
         }
 
@@ -115,7 +117,12 @@ export function OpenTargetProvider(props: {
       },
       primaryTarget,
       selectedTargetId,
-      setSelectedTargetId,
+      setSelectedTargetId(targetId) {
+        if (!folderPath || !targets.some((target) => target.id === targetId)) {
+          return
+        }
+        setSelection({ folderPath, targetId })
+      },
       targets
     }),
     [folderPath, primaryTarget, selectedTargetId, targets]
