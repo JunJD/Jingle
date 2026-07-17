@@ -1,4 +1,4 @@
-import { getActiveExtensionRuntimeSdk } from "./runtime-context"
+import { getActiveExtensionRuntimeSdk, throwExtensionRuntimeRequestError } from "./runtime-context"
 
 export function openNativeExtensionSettings(params: {
   commandName?: string
@@ -17,7 +17,7 @@ export function openNativeExtensionSettings(params: {
     })
     .then((response) => {
       if (!response.ok) {
-        throw new Error(response.error.message)
+        throwExtensionRuntimeRequestError(response.error)
       }
     })
 }

@@ -1,4 +1,4 @@
-import { getActiveExtensionRuntimeSdk } from "./runtime-context"
+import { getActiveExtensionRuntimeSdk, throwExtensionRuntimeRequestError } from "./runtime-context"
 
 export interface RuntimeNativeExtensionClientMethod<TPayload, TResult> {
   payload?: TPayload
@@ -48,7 +48,7 @@ export function createNativeExtensionClient<
         })
 
         if (!response.ok) {
-          throw new Error(response.error.message)
+          throwExtensionRuntimeRequestError(response.error)
         }
 
         return response.result

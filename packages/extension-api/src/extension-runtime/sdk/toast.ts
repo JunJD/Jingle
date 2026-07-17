@@ -1,5 +1,6 @@
 import {
   getActiveExtensionRuntimeSdk,
+  throwExtensionRuntimeRequestError,
   type ExtensionRuntimeSdkContextValue
 } from "./runtime-context"
 import type {
@@ -48,7 +49,7 @@ export async function showToast(options: RuntimeToastOptions): Promise<void> {
   })
 
   if (!response.ok) {
-    throw new Error(response.error.message)
+    throwExtensionRuntimeRequestError(response.error)
   }
 }
 

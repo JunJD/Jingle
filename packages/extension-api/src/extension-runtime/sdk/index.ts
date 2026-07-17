@@ -22,6 +22,7 @@ export {
   closeMainWindow,
   createExtensionRuntimeLaunchProps,
   createExtensionRuntimeNavigation,
+  ExtensionRuntimeRequestError,
   getConnectionSecret,
   getPreferenceValues,
   launchCommand,

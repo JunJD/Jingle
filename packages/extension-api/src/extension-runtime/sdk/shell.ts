@@ -1,4 +1,4 @@
-import { getActiveExtensionRuntimeSdk } from "./runtime-context"
+import { getActiveExtensionRuntimeSdk, throwExtensionRuntimeRequestError } from "./runtime-context"
 
 export interface RuntimeOpenApplication {
   bundleId?: string
@@ -30,7 +30,7 @@ export async function openExternal(
   })
 
   if (!response.ok) {
-    throw new Error(response.error.message)
+    throwExtensionRuntimeRequestError(response.error)
   }
 }
 

@@ -1,4 +1,4 @@
-import { getActiveExtensionRuntimeSdk } from "./runtime-context"
+import { getActiveExtensionRuntimeSdk, throwExtensionRuntimeRequestError } from "./runtime-context"
 import type { RuntimeClipboardContent } from "./actions"
 
 export const Clipboard = {
@@ -13,7 +13,7 @@ export const Clipboard = {
     })
 
     if (!response.ok) {
-      throw new Error(response.error.message)
+      throwExtensionRuntimeRequestError(response.error)
     }
 
     return response.result as string
@@ -29,7 +29,7 @@ export async function writeClipboardText(content: RuntimeClipboardContent): Prom
   })
 
   if (!response.ok) {
-    throw new Error(response.error.message)
+    throwExtensionRuntimeRequestError(response.error)
   }
 }
 
@@ -45,7 +45,7 @@ export async function getSelectedText(): Promise<string> {
   })
 
   if (!response.ok) {
-    throw new Error(response.error.message)
+    throwExtensionRuntimeRequestError(response.error)
   }
 
   return response.result as string

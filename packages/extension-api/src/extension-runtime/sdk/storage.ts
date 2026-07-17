@@ -1,4 +1,4 @@
-import { getActiveExtensionRuntimeSdk } from "./runtime-context"
+import { getActiveExtensionRuntimeSdk, throwExtensionRuntimeRequestError } from "./runtime-context"
 
 export type LocalStorageValue = boolean | number | object | string | null
 
@@ -137,7 +137,7 @@ export const LocalStorage = {
     })
 
     if (!response.ok) {
-      throw new Error(response.error.message)
+      throwExtensionRuntimeRequestError(response.error)
     }
 
     return response.result as Record<string, LocalStorageValue>
@@ -153,7 +153,7 @@ export const LocalStorage = {
     })
 
     if (!response.ok) {
-      throw new Error(response.error.message)
+      throwExtensionRuntimeRequestError(response.error)
     }
   },
 
@@ -168,7 +168,7 @@ export const LocalStorage = {
     })
 
     if (!response.ok) {
-      throw new Error(response.error.message)
+      throwExtensionRuntimeRequestError(response.error)
     }
 
     return response.result as TValue | undefined
@@ -185,7 +185,7 @@ export const LocalStorage = {
     })
 
     if (!response.ok) {
-      throw new Error(response.error.message)
+      throwExtensionRuntimeRequestError(response.error)
     }
   },
 
@@ -201,7 +201,7 @@ export const LocalStorage = {
     })
 
     if (!response.ok) {
-      throw new Error(response.error.message)
+      throwExtensionRuntimeRequestError(response.error)
     }
   }
 }

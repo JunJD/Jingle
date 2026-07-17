@@ -1,4 +1,4 @@
-import { getActiveExtensionRuntimeSdk } from "./runtime-context"
+import { getActiveExtensionRuntimeSdk, throwExtensionRuntimeRequestError } from "./runtime-context"
 import type {
   ExtensionAlertActionPayload,
   ExtensionConfirmAlertPayload
@@ -36,7 +36,7 @@ export async function confirmAlert(options: RuntimeConfirmAlertOptions): Promise
   })
 
   if (!response.ok) {
-    throw new Error(response.error.message)
+    throwExtensionRuntimeRequestError(response.error)
   }
 
   return response.result === true

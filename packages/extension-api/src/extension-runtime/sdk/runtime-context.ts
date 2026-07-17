@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import type {
   ExtensionHostRequest,
   ExtensionHostResponse,
+  ExtensionRuntimeError,
   ExtensionRuntimeJsonObject,
   ExtensionRuntimeJsonValue,
   ExtensionRuntimeLaunchContext,
@@ -23,6 +24,20 @@ export interface ExtensionRuntimeSdkContextValue extends ExtensionRuntimeLaunchC
   navigation: ExtensionRuntimeNavigation
   requestHost: (request: ExtensionRuntimeHostRequestInput) => Promise<ExtensionHostResponse>
   registerToastAction?: (handler: RuntimeToastActionHandler) => RuntimeToastActionRegistration
+}
+
+export class ExtensionRuntimeRequestError extends Error {
+  readonly code: string
+
+  constructor(error: ExtensionRuntimeError) {
+    super(error.message)
+    this.code = error.code
+    this.name = "ExtensionRuntimeRequestError"
+  }
+}
+
+export function throwExtensionRuntimeRequestError(error: ExtensionRuntimeError): never {
+  throw new ExtensionRuntimeRequestError(error)
 }
 
 export type RuntimeToastActionHandler = () => Promise<void> | void
@@ -297,7 +312,7 @@ export function createExtensionRuntimeNavigation(params: {
         method: "hide-launcher"
       })
       if (!response.ok) {
-        throw new Error(response.error.message)
+        throwExtensionRuntimeRequestError(response.error)
       }
     },
     openCommand: async (address, options) => {
@@ -317,7 +332,7 @@ export function createExtensionRuntimeNavigation(params: {
         }
       })
       if (!response.ok) {
-        throw new Error(response.error.message)
+        throwExtensionRuntimeRequestError(response.error)
       }
     },
     pop: params.onPop ?? (() => {}),

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { Cache, LocalStorage } from "@jingle/extension-api"
+import { Cache, ExtensionRuntimeRequestError, LocalStorage } from "@jingle/extension-api"
 import {
   createExtensionRuntimeNavigation,
   installExtensionRuntimeCacheBackend,
@@ -88,6 +88,56 @@ test("LocalStorage uses extension-scoped runtime storage host requests", async (
       }
     }
   ])
+})
+
+test("LocalStorage preserves typed runtime request error codes", async () => {
+  const requests: ExtensionRuntimeHostRequestInput[] = []
+  const requestHost = async (
+    request: ExtensionRuntimeHostRequestInput
+  ): Promise<ExtensionHostResponse> => {
+    requests.push(request)
+    return {
+      error: {
+        code: "storage_legacy_unowned",
+        message: "Legacy LocalStorage key has no typed owner."
+      },
+      id: "storage-error",
+      ok: false
+    }
+  }
+  const navigation = createExtensionRuntimeNavigation({ requestHost })
+
+  await runWithExtensionRuntimeSdk(
+    {
+      ...createLaunchContext(),
+      navigation,
+      requestHost
+    },
+    async () => {
+      const operations: Array<() => Promise<unknown>> = [
+        () => LocalStorage.getItem("recentPage"),
+        () => LocalStorage.setItem("recentPage", "page-2"),
+        () => LocalStorage.allItems(),
+        () => LocalStorage.removeItem("recentPage"),
+        () => LocalStorage.clear()
+      ]
+
+      for (const operation of operations) {
+        await assert.rejects(operation, (error) => {
+          assert.ok(error instanceof ExtensionRuntimeRequestError)
+          assert.equal(error.name, "ExtensionRuntimeRequestError")
+          assert.equal(error.code, "storage_legacy_unowned")
+          assert.equal(error.message, "Legacy LocalStorage key has no typed owner.")
+          return true
+        })
+      }
+    }
+  )
+
+  assert.deepEqual(
+    requests.map((request) => request.method),
+    ["get", "set", "all-items", "remove", "clear"]
+  )
 })
 
 test("Cache provides synchronous namespaced in-memory string storage", async () => {

@@ -1,5 +1,5 @@
 import type { ExtensionAiAskPayload } from "../../shared/extension-runtime-protocol"
-import { getActiveExtensionRuntimeSdk } from "./runtime-context"
+import { getActiveExtensionRuntimeSdk, throwExtensionRuntimeRequestError } from "./runtime-context"
 
 export type RuntimeAiAskInput = ExtensionAiAskPayload
 
@@ -12,7 +12,7 @@ export const AI = {
     })
 
     if (!response.ok) {
-      throw new Error(response.error.message)
+      throwExtensionRuntimeRequestError(response.error)
     }
 
     return response.result as string
