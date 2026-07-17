@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -174,4 +174,63 @@ test("process diagnostics normalize fatal main process errors", () => {
       "Jingle will quit now. Please restart the app."
     ].join("\n")
   )
+})
+
+test("diagnostics singleton requires explicit Electron bootstrap initialization", async () => {
+  const { rootDir } = createTempLogPaths()
+  const originalJingleHome = process.env.JINGLE_HOME
+  process.env.JINGLE_HOME = rootDir
+
+  try {
+    const { diagnosticsGraph, diagnosticsLogger, initializeDiagnostics, startDiagnosticsSession } =
+      await import("../../src/main/diagnostics/instance")
+    const appLogPaths: string[] = []
+    const initialization = {
+      appVersion: "3.2.1",
+      electronVersion: "37.2.0",
+      isPackaged: true,
+      platform: process.platform,
+      setAppLogsPath: (path: string) => appLogPaths.push(path)
+    }
+    const expectedLogDir = join(realpathSync(rootDir), "logs")
+
+    assert.equal(diagnosticsLogger.getLogDir(), expectedLogDir)
+    assert.throws(
+      () => startDiagnosticsSession(),
+      new Error("Diagnostics must be initialized before starting a diagnostics session.")
+    )
+
+    initializeDiagnostics(initialization)
+    assert.deepEqual(appLogPaths, [expectedLogDir])
+    assert.throws(
+      () => initializeDiagnostics(initialization),
+      new Error("Diagnostics have already been initialized.")
+    )
+    assert.deepEqual(appLogPaths, [expectedLogDir])
+
+    const session = startDiagnosticsSession()
+    assert.equal(startDiagnosticsSession(), session)
+    await diagnosticsGraph.flush()
+
+    const records = readFileSync(diagnosticsLogger.getLogFilePath(), "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+    const sessionRecord = records.find(
+      (record) => record["eventCode"] === "diagnostics.session_started"
+    )
+    assert.deepEqual(sessionRecord?.["dimensions"], {
+      appVersion: "3.2.1",
+      electronVersion: "37.2.0",
+      isPackaged: true,
+      platform: process.platform
+    })
+  } finally {
+    if (originalJingleHome === undefined) {
+      delete process.env.JINGLE_HOME
+    } else {
+      process.env.JINGLE_HOME = originalJingleHome
+    }
+    rmSync(rootDir, { recursive: true, force: true })
+  }
 })

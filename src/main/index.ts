@@ -16,6 +16,7 @@ import { installProcessDiagnostics } from "./diagnostics/electron-events"
 import {
   diagnosticsGraph,
   diagnosticsLogger,
+  initializeDiagnostics,
   startDiagnosticsSession
 } from "./diagnostics/instance"
 import { disposeAppEntry, installAppEntry } from "./app-entry"
@@ -39,6 +40,14 @@ const APP_DISPLAY_NAME = "Jingle"
 const APP_USER_MODEL_ID = "com.jingle.desktop"
 const DEV_APP_USER_MODEL_ID = "com.jingle.desktop.dev"
 const DEFAULT_LINUX_OZONE_PLATFORM = "x11"
+
+initializeDiagnostics({
+  appVersion: app.getVersion(),
+  electronVersion: process.versions.electron,
+  isPackaged: app.isPackaged,
+  platform: process.platform,
+  setAppLogsPath: (path) => app.setAppLogsPath(path)
+})
 
 if (process.platform === "linux" && !app.commandLine.hasSwitch("ozone-platform")) {
   app.commandLine.appendSwitch("ozone-platform", DEFAULT_LINUX_OZONE_PLATFORM)

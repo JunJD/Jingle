@@ -1,4 +1,10 @@
-export { diagnosticsGraph, diagnosticsLogger, startDiagnosticsSession } from "./instance"
+export {
+  diagnosticsGraph,
+  diagnosticsLogger,
+  initializeDiagnostics,
+  startDiagnosticsSession
+} from "./instance"
+export type { DiagnosticsInitialization } from "./instance"
 export { attachWindowDiagnostics, installProcessDiagnostics } from "./electron-events"
 export { registerDiagnosticsIpcHandlers } from "./controller"
 export { normalizeRendererErrorReport } from "./renderer-report"
