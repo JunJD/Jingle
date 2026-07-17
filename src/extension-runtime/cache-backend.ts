@@ -1,8 +1,19 @@
-import { existsSync, readFileSync } from "node:fs"
-import { mkdir, open, readFile, rename, rm } from "node:fs/promises"
+import {
+  closeSync,
+  copyFileSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync
+} from "node:fs"
+import { copyFile, mkdir, open, readFile, rename, rm } from "node:fs/promises"
 import { createHash, randomUUID } from "node:crypto"
 import { dirname, join } from "node:path"
-import { lock } from "proper-lockfile"
+import * as properLockfile from "proper-lockfile"
 import {
   encodeRuntimeCacheBackendScopeKey,
   type RuntimeCacheBackend,
@@ -28,6 +39,8 @@ interface RuntimeCacheFileBackendOptions {
 export const EXTENSION_RUNTIME_CACHE_DIR_ENV = "JINGLE_EXTENSION_RUNTIME_CACHE_DIR"
 
 const CACHE_LOCK_STALE_MS = 30_000
+const CACHE_CORRUPTION_RECOVERY_DIAGNOSTIC =
+  "[jingle:extension-runtime] Extension runtime cache corruption was recovered."
 const CACHE_PERSISTENCE_ERROR_MESSAGE = "Extension runtime cache persistence failed."
 const DEFAULT_LOCK_OPTIONS = {
   retryCount: 400,
@@ -35,6 +48,21 @@ const DEFAULT_LOCK_OPTIONS = {
   staleMs: CACHE_LOCK_STALE_MS,
   updateMs: CACHE_LOCK_STALE_MS / 3
 } as const
+
+const lockSync = (
+  properLockfile as typeof properLockfile & {
+    lockSync: (
+      filePath: string,
+      options: {
+        onCompromised: (error: Error) => void
+        realpath: false
+        retries: 0
+        stale: number
+        update: number
+      }
+    ) => () => void
+  }
+).lockSync
 
 export function createFileExtensionRuntimeCacheBackend(
   cacheDir: string,
@@ -96,7 +124,14 @@ export function createFileExtensionRuntimeCacheBackend(
     loadStore(scope) {
       const cacheFilePath = getStoreFilePath(cacheDir, scope)
       try {
-        return readCacheFile(cacheFilePath).stores[encodeRuntimeCacheBackendScopeKey(scope)] ?? []
+        const result = readCacheFileWithRecoverySync(
+          cacheFilePath,
+          options.lock ?? DEFAULT_LOCK_OPTIONS
+        )
+        if (result.corruption) {
+          reportCacheCorruptionRecovery()
+        }
+        return result.cacheFile.stores[encodeRuntimeCacheBackendScopeKey(scope)] ?? []
       } catch (error) {
         throw toCachePersistenceError(error)
       }
@@ -121,7 +156,8 @@ export function createFileExtensionRuntimeCacheBackend(
             cacheFilePath,
             storeKey,
             mutationSnapshot,
-            options.lock ?? DEFAULT_LOCK_OPTIONS
+            options.lock ?? DEFAULT_LOCK_OPTIONS,
+            reportCacheCorruptionRecovery
           )
         })
         .catch((error: unknown) => {
@@ -131,9 +167,9 @@ export function createFileExtensionRuntimeCacheBackend(
     },
     onFailure(listener) {
       failureListeners.add(listener)
-      const terminalFailure = failure ?? closeViolation
-      if (terminalFailure) {
-        notifyFailureListener(listener, terminalFailure)
+      const currentDiagnostic = failure ?? closeViolation
+      if (currentDiagnostic) {
+        notifyFailureListener(listener, currentDiagnostic)
       }
       return () => {
         failureListeners.delete(listener)
@@ -146,11 +182,13 @@ async function updateCacheFile(
   cacheFilePath: string,
   storeKey: string,
   mutation: RuntimeCacheBackendMutation,
-  lockOptions: NonNullable<RuntimeCacheFileBackendOptions["lock"]>
+  lockOptions: NonNullable<RuntimeCacheFileBackendOptions["lock"]>,
+  reportRecovery: () => void
 ): Promise<void> {
   await mkdir(dirname(cacheFilePath), { recursive: true })
   let compromisedError: Error | null = null
-  const release = await lock(cacheFilePath, {
+  let recoveredCorruption: ExtensionRuntimeCacheCorruptionError | null = null
+  const release = await properLockfile.lock(cacheFilePath, {
     onCompromised: (error) => {
       compromisedError = error
     },
@@ -168,7 +206,9 @@ async function updateCacheFile(
 
   try {
     assertLockIsOwned(compromisedError)
-    const cacheFile = await readCacheFileAsync(cacheFilePath)
+    const result = await readCacheFileForUpdate(cacheFilePath)
+    recoveredCorruption = result.corruption
+    const cacheFile = result.cacheFile
     const currentEntries = cacheFile.stores[storeKey] ?? []
     await writeCacheFileAtomically(cacheFilePath, {
       stores: {
@@ -179,6 +219,10 @@ async function updateCacheFile(
     assertLockIsOwned(compromisedError)
   } finally {
     await release()
+  }
+
+  if (recoveredCorruption) {
+    reportRecovery()
   }
 }
 
@@ -217,15 +261,104 @@ function assertLockIsOwned(compromisedError: Error | null): void {
   }
 }
 
-async function readCacheFileAsync(cacheFilePath: string): Promise<RuntimeCacheFileShape> {
+async function readCacheFileForUpdate(cacheFilePath: string): Promise<{
+  cacheFile: RuntimeCacheFileShape
+  corruption: ExtensionRuntimeCacheCorruptionError | null
+}> {
   try {
-    return parseCacheFile(await readFile(cacheFilePath, "utf8"))
+    return {
+      cacheFile: parseCacheFile(await readFile(cacheFilePath, "utf8")),
+      corruption: null
+    }
   } catch (error) {
     if (isNodeErrorWithCode(error, "ENOENT")) {
-      return { stores: {} }
+      return { cacheFile: { stores: {} }, corruption: null }
+    }
+    if (error instanceof ExtensionRuntimeCacheCorruptionError) {
+      await quarantineCacheFile(cacheFilePath)
+      return { cacheFile: error.recoveredFile, corruption: error }
     }
     throw error
   }
+}
+
+function readCacheFileWithRecoverySync(
+  cacheFilePath: string,
+  lockOptions: NonNullable<RuntimeCacheFileBackendOptions["lock"]>
+): {
+  cacheFile: RuntimeCacheFileShape
+  corruption: ExtensionRuntimeCacheCorruptionError | null
+} {
+  try {
+    return { cacheFile: readCacheFile(cacheFilePath), corruption: null }
+  } catch (error) {
+    if (!(error instanceof ExtensionRuntimeCacheCorruptionError)) {
+      throw error
+    }
+  }
+
+  mkdirSync(dirname(cacheFilePath), { recursive: true })
+  let compromisedError: Error | null = null
+  const release = lockSync(cacheFilePath, {
+    onCompromised: (error) => {
+      compromisedError = error
+    },
+    realpath: false,
+    retries: 0,
+    stale: lockOptions.staleMs,
+    update: lockOptions.updateMs
+  })
+  let result: {
+    cacheFile: RuntimeCacheFileShape
+    corruption: ExtensionRuntimeCacheCorruptionError | null
+  }
+
+  try {
+    assertLockIsOwned(compromisedError)
+    try {
+      result = { cacheFile: readCacheFile(cacheFilePath), corruption: null }
+    } catch (error) {
+      if (!(error instanceof ExtensionRuntimeCacheCorruptionError)) {
+        throw error
+      }
+      quarantineCacheFileSync(cacheFilePath)
+      writeCacheFileAtomicallySync(cacheFilePath, error.recoveredFile)
+      assertLockIsOwned(compromisedError)
+      result = { cacheFile: error.recoveredFile, corruption: error }
+    }
+  } finally {
+    release()
+  }
+
+  return result
+}
+
+async function quarantineCacheFile(cacheFilePath: string): Promise<void> {
+  const cacheDirectory = dirname(cacheFilePath)
+  const quarantinePath = `${cacheFilePath}.corrupt`
+  await rm(quarantinePath, { force: true })
+  await copyFile(cacheFilePath, quarantinePath)
+  const quarantineFile = await open(quarantinePath, "r")
+  try {
+    await quarantineFile.sync()
+  } finally {
+    await quarantineFile.close()
+  }
+  await syncDirectory(cacheDirectory)
+}
+
+function quarantineCacheFileSync(cacheFilePath: string): void {
+  const cacheDirectory = dirname(cacheFilePath)
+  const quarantinePath = `${cacheFilePath}.corrupt`
+  rmSync(quarantinePath, { force: true })
+  copyFileSync(cacheFilePath, quarantinePath)
+  const quarantineFile = openSync(quarantinePath, "r")
+  try {
+    fsyncSync(quarantineFile)
+  } finally {
+    closeSync(quarantineFile)
+  }
+  syncDirectorySync(cacheDirectory)
 }
 
 async function writeCacheFileAtomically(
@@ -250,6 +383,38 @@ async function writeCacheFileAtomically(
   }
 }
 
+function writeCacheFileAtomicallySync(
+  cacheFilePath: string,
+  cacheFile: RuntimeCacheFileShape
+): void {
+  const cacheDirectory = dirname(cacheFilePath)
+  const temporaryPath = `${cacheFilePath}.${process.pid}.${randomUUID()}.tmp`
+  let temporaryFile: number | null = null
+
+  try {
+    temporaryFile = openSync(temporaryPath, "wx", 0o600)
+    writeFileSync(temporaryFile, `${JSON.stringify(cacheFile, null, 2)}\n`, "utf8")
+    fsyncSync(temporaryFile)
+    closeSync(temporaryFile)
+    temporaryFile = null
+    renameSync(temporaryPath, cacheFilePath)
+    syncDirectorySync(cacheDirectory)
+  } finally {
+    if (temporaryFile !== null) {
+      try {
+        closeSync(temporaryFile)
+      } catch {
+        // The original persistence error remains authoritative.
+      }
+    }
+    try {
+      rmSync(temporaryPath, { force: true })
+    } catch {
+      // Best-effort cleanup cannot replace the original persistence result.
+    }
+  }
+}
+
 async function syncDirectory(directoryPath: string): Promise<void> {
   if (process.platform === "win32") {
     return
@@ -260,6 +425,19 @@ async function syncDirectory(directoryPath: string): Promise<void> {
     await directory.sync()
   } finally {
     await directory.close()
+  }
+}
+
+function syncDirectorySync(directoryPath: string): void {
+  if (process.platform === "win32") {
+    return
+  }
+
+  const directory = openSync(directoryPath, "r")
+  try {
+    fsyncSync(directory)
+  } finally {
+    closeSync(directory)
   }
 }
 
@@ -285,6 +463,20 @@ class ExtensionRuntimeCachePersistenceError extends Error {
   }
 }
 
+class ExtensionRuntimeCacheCorruptionError extends Error {
+  constructor(
+    readonly recoveredFile: RuntimeCacheFileShape,
+    cause?: unknown
+  ) {
+    super("Extension runtime cache file is corrupt.", { cause })
+    this.name = "ExtensionRuntimeCacheCorruptionError"
+  }
+}
+
+function reportCacheCorruptionRecovery(): void {
+  console.error(CACHE_CORRUPTION_RECOVERY_DIAGNOSTIC)
+}
+
 function isNodeErrorWithCode(error: unknown, code: string): boolean {
   return error instanceof Error && "code" in error && error.code === code
 }
@@ -297,12 +489,22 @@ function readCacheFile(cacheFilePath: string): RuntimeCacheFileShape {
 }
 
 function parseCacheFile(raw: string): RuntimeCacheFileShape {
-  const parsed = JSON.parse(raw) as unknown
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw) as unknown
+  } catch (cause) {
+    if (!(cause instanceof SyntaxError)) {
+      throw cause
+    }
+    throw new ExtensionRuntimeCacheCorruptionError({ stores: {} }, cause)
+  }
+
   if (!isRecord(parsed) || !isRecord(parsed.stores)) {
-    throw new Error("Extension runtime cache file has an invalid shape.")
+    throw new ExtensionRuntimeCacheCorruptionError({ stores: {} })
   }
 
   const stores = Object.create(null) as Record<string, RuntimeCacheEntry[]>
+  let containsInvalidStore = false
   for (const [storeKey, entries] of Object.entries(parsed.stores)) {
     if (
       !Array.isArray(entries) ||
@@ -314,9 +516,14 @@ function parseCacheFile(raw: string): RuntimeCacheFileShape {
           typeof entry[1] !== "string"
       )
     ) {
-      throw new Error("Extension runtime cache file contains an invalid store.")
+      containsInvalidStore = true
+      continue
     }
     stores[storeKey] = entries as RuntimeCacheEntry[]
+  }
+
+  if (containsInvalidStore) {
+    throw new ExtensionRuntimeCacheCorruptionError({ stores })
   }
 
   return { stores }

@@ -1,12 +1,25 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import test from "node:test"
 import { promisify } from "node:util"
 import { createFileExtensionRuntimeCacheBackend } from "../../src/extension-runtime/cache-backend"
-import type { RuntimeCacheBackend } from "@jingle/extension-api/host-runtime"
+import { createExtensionRuntimeCacheLifecycle } from "../../src/extension-runtime/cache-lifecycle"
+import {
+  encodeRuntimeCacheBackendScopeKey,
+  type RuntimeCacheBackend
+} from "@jingle/extension-api/host-runtime"
 
 const cacheIdentity = {
   commandConfigGeneration: 1,
@@ -22,6 +35,8 @@ const cacheIdentity = {
 const notionScope = createScope("search-page")
 const notionSecondaryScope = createScope("notifications")
 const execFileAsync = promisify(execFile)
+const cacheCorruptionRecoveryDiagnostic =
+  "[jingle:extension-runtime] Extension runtime cache corruption was recovered."
 
 test("file runtime cache backend persists entries by exact scope", async () => {
   await withCacheDirectory(async (cacheDir) => {
@@ -232,24 +247,130 @@ test("file runtime cache backend reports terminal persistence failures with a bo
   }
 })
 
-test("file runtime cache backend rejects corrupt files with a bounded public error", async () => {
+test("file runtime cache backend quarantines a malformed envelope without terminating lifecycle", async () => {
   await withCacheDirectory(async (cacheDir) => {
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
     writeEntries(backend, notionScope, [["page", "page-1"]])
     await backend.flush()
-    const cacheFile = readdirSync(cacheDir).find((name) => name.endsWith(".json"))
-    assert.ok(cacheFile)
-    writeFileSync(join(cacheDir, cacheFile), '{"stores":')
+    const cacheFilePath = getCacheFilePath(cacheDir)
+    const corruptPayload = '{"stores":'
+    writeFileSync(cacheFilePath, corruptPayload)
+    const failures: Error[] = []
+    backend.onFailure((error) => failures.push(error))
+    const persistenceFailures: string[] = []
+    const lifecycle = createExtensionRuntimeCacheLifecycle(backend, {
+      onPersistenceFailure: (sessionId) => persistenceFailures.push(sessionId)
+    })
+    lifecycle.bindSession("corrupt-cache-session")
 
-    assert.throws(
-      () => backend.loadStore(notionScope),
-      (error) => {
-        assert.ok(error instanceof Error)
-        assert.equal(error.name, "ExtensionRuntimeCachePersistenceError")
-        assert.equal(error.message, "Extension runtime cache persistence failed.")
-        return true
-      }
-    )
+    const diagnostics: string[] = []
+    const originalConsoleError = console.error
+    console.error = (...args) => diagnostics.push(args.map(String).join(" "))
+    try {
+      assert.deepEqual(backend.loadStore(notionScope), [])
+      assert.deepEqual(diagnostics, [cacheCorruptionRecoveryDiagnostic])
+      assert.deepEqual(failures, [])
+      assert.deepEqual(persistenceFailures, [])
+      assert.deepEqual(await lifecycle.stop("corrupt-cache-session"), { kind: "flushed" })
+    } finally {
+      console.error = originalConsoleError
+    }
+    assert.equal(readFileSync(`${cacheFilePath}.corrupt`, "utf8"), corruptPayload)
+    assert.deepEqual(JSON.parse(readFileSync(cacheFilePath, "utf8")), { stores: {} })
+
+    const restartedBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    const restartFailures: Error[] = []
+    restartedBackend.onFailure((error) => restartFailures.push(error))
+    const restartDiagnostics: string[] = []
+    console.error = (...args) => restartDiagnostics.push(args.map(String).join(" "))
+    try {
+      assert.deepEqual(restartedBackend.loadStore(notionScope), [])
+    } finally {
+      console.error = originalConsoleError
+    }
+    assert.deepEqual(restartFailures, [])
+    assert.deepEqual(restartDiagnostics, [])
+  })
+})
+
+test("file runtime cache backend preserves valid stores while concurrent writers quarantine corruption", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const initialBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    writeEntries(initialBackend, notionScope, [["page", "page-1"]])
+    writeEntries(initialBackend, notionSecondaryScope, [["preserved", "notification-1"]])
+    await initialBackend.flush()
+
+    const cacheFilePath = getCacheFilePath(cacheDir)
+    const cacheFile = JSON.parse(readFileSync(cacheFilePath, "utf8")) as {
+      stores: Record<string, unknown>
+    }
+    cacheFile.stores[encodeRuntimeCacheBackendScopeKey(notionScope)] = [["corrupt-payload"]]
+    writeFileSync(cacheFilePath, `${JSON.stringify(cacheFile, null, 2)}\n`)
+
+    const failures: Error[] = []
+    const firstBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    const secondBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    firstBackend.onFailure((error) => failures.push(error))
+    secondBackend.onFailure((error) => failures.push(error))
+    const diagnostics: string[] = []
+    const originalConsoleError = console.error
+    console.error = (...args) => diagnostics.push(args.map(String).join(" "))
+    try {
+      writeEntries(firstBackend, notionScope, [["page", "page-2"]])
+      writeEntries(secondBackend, notionSecondaryScope, [["new", "notification-2"]])
+      await Promise.all([firstBackend.flush(), secondBackend.flush()])
+    } finally {
+      console.error = originalConsoleError
+    }
+
+    assert.deepEqual(failures, [])
+    assert.deepEqual(diagnostics, [cacheCorruptionRecoveryDiagnostic])
+    assert.match(readFileSync(`${cacheFilePath}.corrupt`, "utf8"), /corrupt-payload/)
+    assert.doesNotMatch(readFileSync(cacheFilePath, "utf8"), /corrupt-payload/)
+
+    const reloadedBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    assert.deepEqual(reloadedBackend.loadStore(notionScope), [["page", "page-2"]])
+    assert.deepEqual(reloadedBackend.loadStore(notionSecondaryScope), [
+      ["preserved", "notification-1"],
+      ["new", "notification-2"]
+    ])
+  })
+})
+
+test("file runtime cache backend does not misclassify lock failures as recovered corruption", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const initialBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    writeEntries(initialBackend, notionScope, [["page", "page-1"]])
+    await initialBackend.flush()
+    const cacheFilePath = getCacheFilePath(cacheDir)
+    const corruptPayload = '{"stores":'
+    writeFileSync(cacheFilePath, corruptPayload)
+    mkdirSync(`${cacheFilePath}.lock`)
+
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    const failures: Error[] = []
+    backend.onFailure((error) => failures.push(error))
+    const diagnostics: string[] = []
+    const originalConsoleError = console.error
+    console.error = (...args) => diagnostics.push(args.map(String).join(" "))
+    try {
+      assert.throws(
+        () => backend.loadStore(notionScope),
+        (error) => {
+          assert.ok(error instanceof Error)
+          assert.equal(error.name, "ExtensionRuntimeCachePersistenceError")
+          assert.equal(error.message, "Extension runtime cache persistence failed.")
+          return true
+        }
+      )
+    } finally {
+      console.error = originalConsoleError
+    }
+
+    assert.deepEqual(failures, [])
+    assert.deepEqual(diagnostics, [])
+    assert.equal(readFileSync(cacheFilePath, "utf8"), corruptPayload)
+    assert.equal(existsSync(`${cacheFilePath}.corrupt`), false)
   })
 })
 
@@ -318,6 +439,12 @@ async function withCacheDirectory(callback: (cacheDir: string) => Promise<void>)
   } finally {
     rmSync(cacheDir, { force: true, recursive: true })
   }
+}
+
+function getCacheFilePath(cacheDir: string): string {
+  const cacheFile = readdirSync(cacheDir).find((name) => name.endsWith(".json"))
+  assert.ok(cacheFile)
+  return join(cacheDir, cacheFile)
 }
 
 function writeEntries(
