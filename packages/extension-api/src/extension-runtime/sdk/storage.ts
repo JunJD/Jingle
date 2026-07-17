@@ -25,10 +25,20 @@ export type RuntimeCacheBackendIdentity = ExtensionRuntimeAvailableCacheIdentity
   ExtensionRuntimeLocalStorageIdentity
 
 export type RuntimeCacheEntry = readonly [key: string, data: string]
+export type RuntimeCacheBackendFailureListener = (error: Error) => void
+export type RuntimeCacheBackendMutation =
+  | { kind: "clear" }
+  | {
+      kind: "update"
+      removeKeys: readonly string[]
+      upsertEntries: readonly RuntimeCacheEntry[]
+    }
 
 export interface RuntimeCacheBackend {
+  flush: () => Promise<void>
   loadStore: (scope: RuntimeCacheBackendScope) => readonly RuntimeCacheEntry[]
-  saveStore: (scope: RuntimeCacheBackendScope, entries: readonly RuntimeCacheEntry[]) => void
+  mutateStore: (scope: RuntimeCacheBackendScope, mutation: RuntimeCacheBackendMutation) => void
+  onFailure: (listener: RuntimeCacheBackendFailureListener) => RuntimeCacheSubscription
 }
 
 export function encodeRuntimeCacheBackendScopeKey(scope: RuntimeCacheBackendScope): string {
@@ -86,7 +96,6 @@ export class Cache {
     }
     store.entries.delete(key)
     store.entries.set(key, value)
-    persistCacheStore(store)
     return value
   }
 
@@ -100,7 +109,12 @@ export class Cache {
     store.entries.set(key, data)
     store.totalBytes += measureCacheEntry(key, data)
     const evictedKeys = trimCacheStore(store, this.#capacity)
-    persistCacheStore(store)
+    const storedData = store.entries.get(key)
+    persistCacheMutation(store, {
+      kind: "update",
+      removeKeys: evictedKeys,
+      upsertEntries: storedData === undefined ? [] : [[key, storedData]]
+    })
     notifyCacheSubscribers(store, key, store.entries.get(key))
     notifyRemovedCacheEntries(
       store,
@@ -112,7 +126,11 @@ export class Cache {
     const store = this.#getStore()
     const removed = removeCacheEntry(store, key)
     if (removed) {
-      persistCacheStore(store)
+      persistCacheMutation(store, {
+        kind: "update",
+        removeKeys: [key],
+        upsertEntries: []
+      })
       notifyCacheSubscribers(store, key, undefined)
     }
     return removed
@@ -122,7 +140,7 @@ export class Cache {
     const store = this.#getStore()
     store.entries.clear()
     store.totalBytes = 0
-    persistCacheStore(store)
+    persistCacheMutation(store, { kind: "clear" })
     if (options.notifySubscribers ?? true) {
       notifyCacheSubscribers(store, undefined, undefined)
     }
@@ -140,7 +158,11 @@ export class Cache {
     const store = getCacheStore(this.#namespace)
     if (store.totalBytes > this.#capacity) {
       const evictedKeys = trimCacheStore(store, this.#capacity)
-      persistCacheStore(store)
+      persistCacheMutation(store, {
+        kind: "update",
+        removeKeys: evictedKeys,
+        upsertEntries: []
+      })
       notifyRemovedCacheEntries(store, evictedKeys)
     }
     return store
@@ -323,12 +345,15 @@ function trimCacheStore(store: RuntimeCacheStore, capacity: number): string[] {
   return evictedKeys
 }
 
-function persistCacheStore(store: RuntimeCacheStore): void {
+function persistCacheMutation(
+  store: RuntimeCacheStore,
+  mutation: RuntimeCacheBackendMutation
+): void {
   if (!store.backend || !store.scope) {
     return
   }
 
-  store.backend.saveStore(store.scope, Array.from(store.entries.entries()))
+  store.backend.mutateStore(store.scope, mutation)
 }
 
 function notifyCacheSubscribers(

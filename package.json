@@ -117,6 +117,7 @@
     "lucide-react": "^0.469.0",
     "partial-json": "^0.1.7",
     "pinyin-match": "1.2.4",
+    "proper-lockfile": "^4.1.2",
     "react-syntax-highlighter": "^16.1.1",
     "reflect-metadata": "^0.2.2",
     "streamdown": "^2.5.0",

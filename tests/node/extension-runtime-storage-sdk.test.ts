@@ -8,6 +8,7 @@ import {
   runWithExtensionRuntimeSdk,
   type ExtensionRuntimeHostRequestInput,
   type RuntimeCacheBackend,
+  type RuntimeCacheBackendMutation,
   type RuntimeCacheBackendScope,
   type RuntimeCacheEntry
 } from "@jingle/extension-api/host-runtime"
@@ -250,12 +251,13 @@ test("Cache uses extension-scoped runtime backend when installed", async () => {
   const savedStores = new Map<string, RuntimeCacheEntry[]>()
   const loads: RuntimeCacheBackendScope[] = []
   const backend: RuntimeCacheBackend = {
+    ...createBackendLifecycle(),
     loadStore(scope) {
       loads.push(scope)
       return savedStores.get(encodeRuntimeCacheBackendScopeKey(scope)) ?? []
     },
-    saveStore(scope, entries) {
-      savedStores.set(encodeRuntimeCacheBackendScopeKey(scope), [...entries])
+    mutateStore(scope, mutation) {
+      applyBackendMutation(savedStores, scope, mutation)
     }
   }
   const uninstallBackend = installExtensionRuntimeCacheBackend(backend)
@@ -310,11 +312,12 @@ test("Cache uses extension-scoped runtime backend when installed", async () => {
 test("Cache resolves backend connection identity from the wire LocalStorage owner", async () => {
   const loadedScopes: RuntimeCacheBackendScope[] = []
   const backend: RuntimeCacheBackend = {
+    ...createBackendLifecycle(),
     loadStore(scope) {
       loadedScopes.push(scope)
       return []
     },
-    saveStore: () => undefined
+    mutateStore: () => undefined
   }
   const uninstallBackend = installExtensionRuntimeCacheBackend(backend)
   const dataIdentity = createAvailableDataIdentity(
@@ -466,12 +469,12 @@ test("Cache scopes entries by command and every available identity fact", async 
   const savedStores = new Map<string, RuntimeCacheEntry[]>()
   const loadedScopes = new Set<string>()
   const backend: RuntimeCacheBackend = {
+    ...createBackendLifecycle(),
     loadStore: (scope) => {
       loadedScopes.add(encodeRuntimeCacheBackendScopeKey(scope))
       return savedStores.get(encodeRuntimeCacheBackendScopeKey(scope)) ?? []
     },
-    saveStore: (scope, entries) =>
-      savedStores.set(encodeRuntimeCacheBackendScopeKey(scope), [...entries])
+    mutateStore: (scope, mutation) => applyBackendMutation(savedStores, scope, mutation)
   }
   const uninstallBackend = installExtensionRuntimeCacheBackend(backend)
   try {
@@ -505,14 +508,15 @@ test("Cache scopes entries by command and every available identity fact", async 
   assert.equal(loadedScopes.size, 9)
 })
 
-test("Cache persists read recency to the installed backend", async () => {
+test("Cache does not synchronously persist read recency across backend reloads", async () => {
   const savedStores = new Map<string, RuntimeCacheEntry[]>()
   const backend: RuntimeCacheBackend = {
+    ...createBackendLifecycle(),
     loadStore(scope) {
       return savedStores.get(encodeRuntimeCacheBackendScopeKey(scope)) ?? []
     },
-    saveStore(scope, entries) {
-      savedStores.set(encodeRuntimeCacheBackendScopeKey(scope), [...entries])
+    mutateStore(scope, mutation) {
+      applyBackendMutation(savedStores, scope, mutation)
     }
   }
   let uninstallBackend = installExtensionRuntimeCacheBackend(backend)
@@ -548,11 +552,36 @@ test("Cache persists read recency to the installed backend", async () => {
       async () => {
         const cache = new Cache({ capacity: 10, namespace: "persistent-lru-test" })
         cache.set("c", "1234")
-        assert.equal(cache.has("b"), false)
-        assert.equal(cache.get("a"), "1234")
+        assert.equal(cache.has("a"), false)
+        assert.equal(cache.get("b"), "1234")
         assert.equal(cache.get("c"), "1234")
       }
     )
+  } finally {
+    uninstallBackend()
+  }
+})
+
+test("Cache get updates memory recency without synchronously persisting", async () => {
+  let mutationCount = 0
+  const backend: RuntimeCacheBackend = {
+    ...createBackendLifecycle(),
+    loadStore: () => [],
+    mutateStore: () => {
+      mutationCount++
+    }
+  }
+  const uninstallBackend = installExtensionRuntimeCacheBackend(backend)
+
+  try {
+    await runWithCacheContext(async () => {
+      const cache = new Cache({ namespace: "nonpersistent-read-recency" })
+      cache.set("page", "page-1")
+      const mutationCountBeforeGet = mutationCount
+
+      assert.equal(cache.get("page"), "page-1")
+      assert.equal(mutationCount, mutationCountBeforeGet)
+    })
   } finally {
     uninstallBackend()
   }
@@ -592,6 +621,35 @@ function createAvailableDataIdentity(
       ...localStorageOverrides
     }
   }
+}
+
+function createBackendLifecycle(): Pick<RuntimeCacheBackend, "flush" | "onFailure"> {
+  return {
+    flush: async () => undefined,
+    onFailure: () => () => undefined
+  }
+}
+
+function applyBackendMutation(
+  stores: Map<string, RuntimeCacheEntry[]>,
+  scope: RuntimeCacheBackendScope,
+  mutation: RuntimeCacheBackendMutation
+): void {
+  const scopeKey = encodeRuntimeCacheBackendScopeKey(scope)
+  if (mutation.kind === "clear") {
+    stores.set(scopeKey, [])
+    return
+  }
+
+  const entries = new Map(stores.get(scopeKey) ?? [])
+  for (const key of mutation.removeKeys) {
+    entries.delete(key)
+  }
+  for (const [key, data] of mutation.upsertEntries) {
+    entries.delete(key)
+    entries.set(key, data)
+  }
+  stores.set(scopeKey, Array.from(entries))
 }
 
 async function runWithCacheContext<T>(
