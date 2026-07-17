@@ -124,12 +124,17 @@ test("renderer i18n context is imported through one module identity", async () =
 })
 
 test("launcher AI sidebar search opens thread search overlay backed by launcher search", async () => {
-  const pageSource = await readWorkspaceFile("src/renderer/src/ai-core/LauncherAiPage.tsx")
+  const [pageSource, commandsSource] = await Promise.all([
+    readWorkspaceFile("src/renderer/src/ai-core/LauncherAiPage.tsx"),
+    readWorkspaceFile("src/renderer/src/ai-core/launcher-ai-commands.ts")
+  ])
 
   assert.doesNotMatch(pageSource, /handleOpenSidebarSearch/)
-  assert.match(pageSource, /window\.api\.launcher\s*\.\s*search/)
-  assert.match(pageSource, /sources:\s*\[\s*"threads"\s*\]/)
-  assert.match(pageSource, /threadMetadataSource:\s*AI_THREAD_SOURCE/)
+  assert.match(pageSource, /launcherAiCommands\s*\.\s*searchThreads/)
+  assert.doesNotMatch(pageSource, /window\.api\.launcher\s*\.\s*search/)
+  assert.match(commandsSource, /window\.api\.launcher\s*\.\s*search/)
+  assert.match(commandsSource, /sources:\s*\[\s*"threads"\s*\]/)
+  assert.match(commandsSource, /threadMetadataSource:\s*AI_THREAD_SOURCE/)
   assert.doesNotMatch(pageSource, /launcherThreadIdSet/)
   assert.match(pageSource, /LauncherAiThreadSearchOverlay/)
   assert.doesNotMatch(pageSource, /openThreadSearch[\s\S]*?setIsThreadSearchLoading\(true\)/)
@@ -203,10 +208,10 @@ test("launcher AI sidebar section headings keep clipping scoped to text", async 
   assert.match(titleRule, /overflow:\s*hidden/)
   assert.match(titleRule, /text-overflow:\s*ellipsis/)
   assert.match(itemChevronRule, /display:\s*block/)
-  assert.match(itemChevronRule, /width:\s*20px/)
-  assert.match(itemChevronRule, /height:\s*20px/)
+  assert.match(itemChevronRule, /width:\s*var\(--jingle-inline-disclosure-size\)/)
+  assert.match(itemChevronRule, /height:\s*var\(--jingle-inline-disclosure-size\)/)
   assert.match(itemChevronRule, /opacity:\s*0/)
-  assert.match(itemChevronRule, /stroke-width:\s*1\.85/)
+  assert.match(itemChevronRule, /stroke-width:\s*var\(--jingle-inline-disclosure-stroke-width\)/)
   assert.match(itemChevronRule, /transform-box:\s*fill-box/)
   assert.match(itemChevronRule, /transform-origin:\s*center/)
   assert.match(sectionChevronRule, /justify-self:\s*start/)
@@ -218,9 +223,10 @@ test("launcher AI sidebar section headings keep clipping scoped to text", async 
 })
 
 test("launcher AI sidebar thread context menu reuses owned actions and disables unowned items", async () => {
-  const [sidebarSource, pageSource] = await Promise.all([
+  const [sidebarSource, pageSource, commandsSource] = await Promise.all([
     readWorkspaceFile("src/renderer/src/ai-core/LauncherAiSidebarPanel.tsx"),
-    readWorkspaceFile("src/renderer/src/ai-core/LauncherAiPage.tsx")
+    readWorkspaceFile("src/renderer/src/ai-core/LauncherAiPage.tsx"),
+    readWorkspaceFile("src/renderer/src/ai-core/launcher-ai-commands.ts")
   ])
 
   assert.match(sidebarSource, /ContextMenuTrigger asChild/)
@@ -259,11 +265,13 @@ test("launcher AI sidebar thread context menu reuses owned actions and disables 
   assert.doesNotMatch(projectThreadAction[0], /createThread\(/)
   assert.match(pageSource, /projectActions=\{sidebarProjectActions\}/)
   assert.match(pageSource, /setThreadArchived\(nextThreadId, true\)/)
+  assert.match(pageSource, /launcherAiCommands\.openWorkspaceInFinder\(nextWorkspacePath\)/)
+  assert.match(pageSource, /launcherAiCommands\.openMainThread\(nextThreadId\)/)
   assert.match(
-    pageSource,
-    /window\.api\.openTargets\.open\(\{ folderPath: nextWorkspacePath, targetId: "finder" \}\)/
+    commandsSource,
+    /window\.api\.openTargets\.open\(\{ folderPath: workspacePath, targetId: "finder" \}\)/
   )
-  assert.match(pageSource, /window\.api\.durableWindow\.openPrimary\(\{ threadId: nextThreadId \}\)/)
+  assert.match(commandsSource, /window\.api\.durableWindow\.openPrimary\(\{ threadId \}\)/)
 })
 
 test("archived chats use a first-class thread column and settings archive view", async () => {
@@ -447,11 +455,19 @@ test("launcher AI thread loading copy distinguishes restore from opening", async
 
 test("launcher approval correction clears only after an accepted resume command", async () => {
   const pageSource = await readWorkspaceFile("src/renderer/src/ai-core/LauncherAiPage.tsx")
-
-  assert.match(
-    pageSource,
-    /handleApprovalDecision\(decision\)\.then\(\(accepted\) => \{[\s\S]*?if \([\s\S]*?!accepted[\s\S]*?setApprovalCorrection\(\(currentCorrection\) =>[\s\S]*?currentCorrection === submittedCorrection/
+  const submitDecisionBody = pageSource.match(
+    /const submitApprovalDecision = useCallback\([\s\S]*?const submitApprovalCorrection = useCallback/
   )
+
+  assert.ok(submitDecisionBody, "approval decision callback should exist")
+  const rejectedGuardIndex = submitDecisionBody[0].indexOf("if (!accepted)")
+  const revisionGuardIndex = submitDecisionBody[0].indexOf(
+    "approvalCorrectionRevisionsRef.current.get",
+    rejectedGuardIndex
+  )
+  const clearDraftIndex = submitDecisionBody[0].indexOf("clearLauncherApprovalCorrectionDraft")
+  assert.ok(rejectedGuardIndex >= 0 && rejectedGuardIndex < clearDraftIndex)
+  assert.ok(revisionGuardIndex >= 0 && revisionGuardIndex < clearDraftIndex)
   assert.doesNotMatch(
     pageSource,
     /void handleApprovalDecision\([^)]*\)[\s\S]{0,100}setApprovalCorrection\(""\)/
@@ -482,9 +498,17 @@ test("launcher composer invalidates submitted revisions before async input mutat
 })
 
 test("chat tool details stay out of the collapsed streaming render path", async () => {
-  const [actionMessageSource, actionViewSource, agentToolSource] = await Promise.all([
+  const [
+    actionMessageSource,
+    actionViewSource,
+    collapseSource,
+    contentCardSource,
+    agentToolSource
+  ] = await Promise.all([
     readWorkspaceFile("src/renderer/src/components/chat/ActionMessage.tsx"),
     readWorkspaceFile("src/renderer/src/components/chat/action-message-view.ts"),
+    readWorkspaceFile("src/renderer/src/components/chat/action-message-collapse.ts"),
+    readWorkspaceFile("src/renderer/src/components/chat/ContentCardFrame.tsx"),
     readWorkspaceFile("src/renderer/src/components/agent-ui/Tool.tsx")
   ])
 
@@ -493,19 +517,17 @@ test("chat tool details stay out of the collapsed streaming render path", async 
     actionViewSource,
     /renderDetail\(\) \{\s*return component\.renderDetail\(renderContext\)\s*\}/
   )
-  assert.match(actionMessageSource, /const canExpandDetail = hasDetail && !approvalRequest/)
-  assert.match(
-    actionMessageSource,
-    /if \(!canExpandDetail \|\| !isExpanded\) \{\s*return null\s*\}/
-  )
-  assert.match(actionMessageSource, /return renderDetail\(\)/)
+  assert.match(collapseSource, /const interactive = input\.hasDetail && !input\.approvalRequired/)
+  assert.match(actionMessageSource, /const collapse = projectActionMessageCollapse\(\{/)
+  assert.match(actionMessageSource, /collapsed=\{collapse\.collapsed\}/)
+  assert.match(actionMessageSource, /collapsible=\{collapse\.interactive\}/)
+  assert.match(contentCardSource, /\{!collapsed \? \(/)
   assert.ok(
-    actionMessageSource.indexOf("if (!canExpandDetail || !isExpanded)") <
-      actionMessageSource.indexOf("return renderDetail()"),
-    "detail render should be gated by expand state"
+    contentCardSource.indexOf("{!collapsed ? (") <
+      contentCardSource.indexOf('typeof children === "function"'),
+    "content card must gate child rendering by collapsed state"
   )
-  assert.match(actionMessageSource, /detail=\{detailContent\}/)
-  assert.match(actionMessageSource, /hasDetail=\{canExpandDetail\}/)
   assert.match(agentToolSource, /hasDetail,\s*icon,/)
+  assert.match(agentToolSource, /CollapsibleTrigger asChild disabled=\{!hasDetail\}/)
   assert.doesNotMatch(agentToolSource, /Boolean\(detail\)/)
 })
