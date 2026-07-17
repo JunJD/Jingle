@@ -115,6 +115,8 @@ export function applyRuntimeSnapshotToThreadState(
     modelRuntimeSelection,
     modelRuntimeSelectionRevision,
     pendingApproval: bootstrapState?.pendingApproval ?? sourceState.pendingApproval,
+    pendingApprovalRunModelRuntimeRecovery:
+      snapshot.runState.pendingApprovalRunModelRuntimeRecovery,
     permissionMode: isPermissionModeName(permissionMode) ? permissionMode : DEFAULT_PERMISSION_MODE,
     latestRunId: bootstrapState?.latestRunId ?? sourceState.latestRunId,
     status: bootstrapState?.status ?? sourceState.status,

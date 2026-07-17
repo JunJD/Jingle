@@ -101,7 +101,12 @@ function createAgentRuntimeInput(input: CreateAgentRuntimeInput): JingleRuntimeI
       if (start.executionDisposition !== "resume") {
         throw new Error("Terminal resume cannot bind model execution capabilities.")
       }
-      return createAgentExecutionCapabilities(input, resume, start.modelId, resume.selection)
+      return createAgentExecutionCapabilities(
+        input,
+        resume,
+        start.modelId,
+        resume.modelRuntimeSelectionAdmission?.selection
+      )
     }
   }
 

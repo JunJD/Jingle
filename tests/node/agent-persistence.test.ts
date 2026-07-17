@@ -32,13 +32,14 @@ import {
   readThreadModelRuntimeSelectionRevision
 } from "../../src/shared/model-runtime-selection"
 import { buildJingleSubmittedMessages } from "../../packages/langchain-agent-harness/src/submitted-messages"
+import type { ModelRuntimeSelection } from "../../src/shared/app-types"
 
 const repoRoot = process.cwd()
 const originalJingleHome = process.env.JINGLE_HOME
 const originalDeepSeekApiKey = process.env.DEEPSEEK_API_KEY
 let jingleHome = ""
 
-function createTestModelRuntimeSelection(modelId: string) {
+function createTestModelRuntimeSelection(modelId: string): ModelRuntimeSelection {
   return { modelId, thinkingEffort: "high" as const, version: 1 as const }
 }
 
@@ -48,6 +49,21 @@ function createTestRunMetadata(metadata: Record<string, unknown> = {}): Record<s
     [MODEL_RUNTIME_SELECTION_METADATA_KEY]: createTestModelRuntimeSelection(
       "deepseek:deepseek-v4-pro"
     )
+  }
+}
+
+function createTestPersistedResumeAdmission(modelId = "deepseek:deepseek-v4-pro") {
+  return {
+    kind: "persisted" as const,
+    selection: createTestModelRuntimeSelection(modelId)
+  }
+}
+
+function createTestLegacyResumeAdmission(modelId = "deepseek:deepseek-v4-pro") {
+  return {
+    expectedLegacyModelId: modelId,
+    kind: "legacy_upgrade" as const,
+    selection: createTestModelRuntimeSelection(modelId)
   }
 }
 
@@ -576,6 +592,251 @@ test("invalid runtime selections fail before core admission or durable run write
   }
 })
 
+test("legacy resume recovery rejects missing, mismatched, and unsupported pairs before writes", async () => {
+  const {
+    createRun,
+    createThread,
+    getHitlRequest,
+    getPrismaClient,
+    getRun,
+    getThread,
+    upsertHitlRequest
+  } = await loadDbModules()
+  const service = await createAgentServiceForTest()
+  const cases: Array<{
+    name: string
+    recovery?: ReturnType<typeof createTestModelRuntimeSelection>
+  }> = [
+    { name: "missing" },
+    {
+      name: "different-model",
+      recovery: createTestModelRuntimeSelection("deepseek:deepseek-v4-flash")
+    },
+    {
+      name: "unsupported-effort",
+      recovery: {
+        modelId: "deepseek:deepseek-v4-pro",
+        thinkingEffort: "low",
+        version: 1
+      }
+    }
+  ]
+
+  for (const testCase of cases) {
+    const threadId = `thread-legacy-resume-${testCase.name}`
+    const runId = `run-legacy-resume-${testCase.name}`
+    const requestId = `request-legacy-resume-${testCase.name}`
+    const toolCallId = `tool-legacy-resume-${testCase.name}`
+    await createThread(threadId)
+    await bindThreadWorkspace(threadId, repoRoot)
+    await createRun(runId, threadId, {
+      metadata: { modelId: "deepseek:deepseek-v4-pro", preserved: testCase.name },
+      status: "interrupted"
+    })
+    await upsertHitlRequest({
+      allowed_decisions: ["approve", "user_declined", "corrected"],
+      request_id: requestId,
+      run_id: runId,
+      status: "pending",
+      thread_id: threadId,
+      tool_args: {},
+      tool_call_id: toolCallId,
+      tool_name: "write_file"
+    })
+    let coreAdmissions = 0
+    const events: AgentStreamPayload[] = []
+    const outcome = await service.dispatchResume(
+      {
+        decision: { request_id: requestId, tool_call_id: toolCallId, type: "approve" },
+        ...(testCase.recovery ? { runModelRuntimeSelectionRecovery: testCase.recovery } : {}),
+        threadId
+      },
+      { send: (event) => events.push(event) },
+      { onCoreAdmitted: () => (coreAdmissions += 1) }
+    )
+
+    assert.equal(outcome.type, "rejected")
+    assert.equal(outcome.type === "rejected" ? outcome.error.code : null, "FAILED_PRECONDITION")
+    assert.equal(coreAdmissions, 0)
+    assert.deepEqual(events, [])
+    assert.equal((await getHitlRequest(requestId))?.status, "pending")
+    const run = await getRun(runId)
+    assert.equal(run?.status, "interrupted")
+    assert.deepEqual(JSON.parse(run?.metadata ?? "{}"), {
+      modelId: "deepseek:deepseek-v4-pro",
+      preserved: testCase.name
+    })
+    assert.equal(await getPrismaClient().agentEvent.count({ where: { runId } }), 0)
+    assert.equal((await getThread(threadId))?.status, "idle")
+  }
+})
+
+test("thread hydration projects recovery from the pending approval source run only", async () => {
+  const { createRun, createThread, updateRun, upsertHitlRequest } = await loadDbModules()
+  const threadId = "thread-hydrate-legacy-run-recovery"
+  const sourceRunId = "run-hydrate-legacy-source"
+  const newerRunId = "run-hydrate-newer-ready"
+  const requestId = "request-hydrate-legacy-source"
+  const toolCallId = "tool-hydrate-legacy-source"
+  await createThread(threadId)
+  await createRun(sourceRunId, threadId, {
+    metadata: { modelId: "deepseek:deepseek-v4-pro" },
+    status: "interrupted"
+  })
+  await createRun(newerRunId, threadId, {
+    metadata: createTestRunMetadata(),
+    status: "interrupted"
+  })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve", "user_declined", "corrected"],
+    request_id: requestId,
+    run_id: sourceRunId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: toolCallId,
+    tool_name: "write_file"
+  })
+  const service = await createThreadsServiceForTest()
+
+  const legacy = await service.getAgentThreadData(threadId)
+  assert.deepEqual(legacy.runState.pendingApprovalRunModelRuntimeRecovery, {
+    kind: "legacy_missing_effort",
+    modelId: "deepseek:deepseek-v4-pro",
+    requestId,
+    runId: sourceRunId,
+    toolCallId
+  })
+
+  await updateRun(sourceRunId, { metadata: createTestRunMetadata() })
+  const ready = await service.getAgentThreadData(threadId)
+  assert.equal(ready.runState.pendingApprovalRunModelRuntimeRecovery, null)
+
+  await updateRun(sourceRunId, {
+    metadata: { [MODEL_RUNTIME_SELECTION_METADATA_KEY]: { version: 2 } }
+  })
+  const invalid = await service.getAgentThreadData(threadId)
+  assert.deepEqual(invalid.runState.pendingApprovalRunModelRuntimeRecovery, {
+    kind: "invalid",
+    requestId,
+    runId: sourceRunId,
+    toolCallId
+  })
+
+  await updateRun(sourceRunId, { metadata: { preserved: true } })
+  const missing = await service.getAgentThreadData(threadId)
+  assert.deepEqual(missing.runState.pendingApprovalRunModelRuntimeRecovery, {
+    kind: "missing",
+    requestId,
+    runId: sourceRunId,
+    toolCallId
+  })
+})
+
+test("legacy pending HITL survives database restart and resumes after explicit same-model recovery", async () => {
+  const {
+    closeDatabase,
+    createRun,
+    createThread,
+    getHitlRequest,
+    getRun,
+    initializeDatabase,
+    upsertHitlRequest
+  } = await loadDbModules()
+  const threadId = "thread-restart-legacy-hitl-recovery"
+  const runId = "run-restart-legacy-hitl-recovery"
+  const requestId = "request-restart-legacy-hitl-recovery"
+  const toolCallId = "tool-restart-legacy-hitl-recovery"
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+  await createRun(runId, threadId, {
+    metadata: { modelId: "deepseek:deepseek-v4-pro", preservedAcrossRestart: true },
+    status: "interrupted"
+  })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve", "user_declined", "corrected"],
+    request_id: requestId,
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: toolCallId,
+    tool_name: "write_file"
+  })
+
+  await closeDatabase()
+  await initializeDatabase()
+
+  const snapshot = await (await createThreadsServiceForTest()).getAgentThreadData(threadId)
+  assert.deepEqual(snapshot.runState.pendingApprovalRunModelRuntimeRecovery, {
+    kind: "legacy_missing_effort",
+    modelId: "deepseek:deepseek-v4-pro",
+    requestId,
+    runId,
+    toolCallId
+  })
+
+  const previousRuntimeMode = process.env.JINGLE_BDD_AGENT_RUNTIME
+  const consoleLog = mock.method(console, "log", () => {})
+  const consoleError = mock.method(console, "error", () => {})
+  const events: AgentStreamPayload[] = []
+  let resolveTerminal!: () => void
+  const terminal = new Promise<void>((resolve) => {
+    resolveTerminal = resolve
+  })
+  process.env.JINGLE_BDD_AGENT_RUNTIME = "scripted"
+  try {
+    const outcome = await (
+      await createAgentServiceForTest()
+    ).dispatchResume(
+      {
+        decision: {
+          correction: "bdd:fail-before-first-chunk",
+          request_id: requestId,
+          tool_call_id: toolCallId,
+          type: "corrected"
+        },
+        runModelRuntimeSelectionRecovery: createTestModelRuntimeSelection(
+          "deepseek:deepseek-v4-pro"
+        ),
+        threadId
+      },
+      {
+        send: (event) => {
+          events.push(event)
+          if (event.type === "error") {
+            resolveTerminal()
+          }
+        }
+      }
+    )
+    assert.equal(outcome.type, "accepted")
+    await terminal
+  } finally {
+    if (previousRuntimeMode === undefined) {
+      delete process.env.JINGLE_BDD_AGENT_RUNTIME
+    } else {
+      process.env.JINGLE_BDD_AGENT_RUNTIME = previousRuntimeMode
+    }
+    consoleError.mock.restore()
+    consoleLog.mock.restore()
+  }
+
+  assert.equal((await getHitlRequest(requestId))?.status, "corrected")
+  const run = await getRun(runId)
+  const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+  assert.equal(metadata.preservedAcrossRestart, true)
+  assert.equal(Object.hasOwn(metadata, "modelId"), false)
+  assert.deepEqual(readRunModelRuntimeSelection(metadata), {
+    kind: "ready",
+    selection: createTestModelRuntimeSelection("deepseek:deepseek-v4-pro")
+  })
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["run_started", "error"]
+  )
+})
+
 test("database startup interrupts agent state left active by a previous process", async () => {
   const {
     closeDatabase,
@@ -638,8 +899,14 @@ test("resume primitives target the request's run instead of the latest active ru
   const latestRunId = "run-latest"
 
   await createThread(threadId)
-  await createRun(olderRunId, threadId, { status: "interrupted" })
-  await createRun(latestRunId, threadId, { status: "interrupted" })
+  await createRun(olderRunId, threadId, {
+    metadata: createTestRunMetadata(),
+    status: "interrupted"
+  })
+  await createRun(latestRunId, threadId, {
+    metadata: createTestRunMetadata(),
+    status: "interrupted"
+  })
   await upsertHitlRequest({
     request_id: "request-older",
     thread_id: threadId,
@@ -676,11 +943,7 @@ test("resume primitives target the request's run instead of the latest active ru
       requestId: request!.request_id,
       source: "resume"
     },
-    {
-      resumeEvent: {
-        modelId: "bdd"
-      }
-    }
+    { modelRuntimeSelectionAdmission: createTestPersistedResumeAdmission() }
   )
 
   const resumedRun = await getRun(olderRunId)
@@ -869,7 +1132,7 @@ test("user_declined atomically resolves HITL and cancels its run", async () => {
       type: "user_declined"
     },
     undefined,
-    { resumeEvent: { modelId: "bdd" } }
+    {}
   )
   assert.ok(committed)
   const run = await getRun(runId)
@@ -880,6 +1143,70 @@ test("user_declined atomically resolves HITL and cancels its run", async () => {
   assert.equal((await getThread(threadId))?.status, "idle")
   const threadsService = Object.create(ThreadsService.prototype) as ThreadsService
   assert.equal((await threadsService.getLatestRunSummary(threadId)).error, null)
+})
+
+test("user_declined bypasses corrupt run metadata and execution setup", async () => {
+  const { createRun, createThread, getHitlRequest, getPrismaClient, getRun, upsertHitlRequest } =
+    await loadDbModules()
+  const threadId = "thread-hitl-decline-corrupt-metadata"
+  const runId = "run-hitl-decline-corrupt-metadata"
+  const requestId = "request-hitl-decline-corrupt-metadata"
+  const toolCallId = "tool-hitl-decline-corrupt-metadata"
+  await createThread(threadId)
+  await createRun(runId, threadId, {
+    metadata: "{corrupt-run-metadata",
+    status: "interrupted"
+  })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve", "user_declined"],
+    request_id: requestId,
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: toolCallId,
+    tool_name: "write_file"
+  })
+  const service = await createAgentServiceForTest({
+    workspaceService: {
+      getWorkspacePath: async () => {
+        throw new Error("terminal decline must not read workspace execution state")
+      }
+    }
+  })
+  const consoleLog = mock.method(console, "log", () => {})
+  const events: AgentStreamPayload[] = []
+  let coreAdmissions = 0
+  try {
+    const outcome = await service.dispatchResume(
+      {
+        decision: { request_id: requestId, tool_call_id: toolCallId, type: "user_declined" },
+        threadId
+      },
+      { send: (event) => events.push(event) },
+      { onCoreAdmitted: () => (coreAdmissions += 1) }
+    )
+    assert.equal(outcome.type, "accepted")
+  } finally {
+    consoleLog.mock.restore()
+  }
+
+  assert.equal(coreAdmissions, 1)
+  assert.equal((await getHitlRequest(requestId))?.status, "user_declined")
+  assert.equal((await getRun(runId))?.status, "cancelled")
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["run_started", "cancelled"]
+  )
+  assert.deepEqual(
+    (
+      await getPrismaClient().agentEvent.findMany({
+        orderBy: { seq: "asc" },
+        where: { runId }
+      })
+    ).map((event) => event.type),
+    ["approval.resolved", "run.finished"]
+  )
 })
 
 test("HITL resume admission accepts exactly one decision and one event batch", async () => {
@@ -894,7 +1221,7 @@ test("HITL resume admission accepts exactly one decision and one event batch", a
 
   await createThread(threadId)
   await createRun(runId, threadId, {
-    metadata: createTestRunMetadata(),
+    metadata: { modelId: "deepseek:deepseek-v4-pro" },
     status: "interrupted"
   })
   await upsertHitlRequest({
@@ -913,7 +1240,9 @@ test("HITL resume admission accepts exactly one decision and one event batch", a
     controller.beginResumeRun({
       resume: {
         decision: { request_id: requestId, tool_call_id: toolCallId, type },
-        ...(type === "approve" ? { selection: createTestModelRuntimeSelection("bdd") } : {}),
+        ...(type === "approve"
+          ? { modelRuntimeSelectionAdmission: createTestLegacyResumeAdmission() }
+          : {}),
         runId,
         source: "resume"
       } as never,
@@ -932,11 +1261,18 @@ test("HITL resume admission accepts exactly one decision and one event batch", a
   const runMetadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
   assert.ok(request)
   assert.equal(run?.status, request.status === "user_declined" ? "cancelled" : "running")
-  assert.equal(Object.hasOwn(runMetadata, "modelId"), false)
-  assert.deepEqual(readRunModelRuntimeSelection(runMetadata), {
-    kind: "ready",
-    selection: createTestModelRuntimeSelection("deepseek:deepseek-v4-pro")
-  })
+  if (request.status === "approved") {
+    assert.equal(Object.hasOwn(runMetadata, "modelId"), false)
+    assert.deepEqual(readRunModelRuntimeSelection(runMetadata), {
+      kind: "ready",
+      selection: createTestModelRuntimeSelection("deepseek:deepseek-v4-pro")
+    })
+  } else {
+    assert.deepEqual(readRunModelRuntimeSelection(runMetadata), {
+      kind: "legacy_missing_effort",
+      modelId: "deepseek:deepseek-v4-pro"
+    })
+  }
   assert.equal(
     await getPrismaClient().agentEvent.count({
       where: { runId, threadId, type: "approval.resolved" }
@@ -978,7 +1314,7 @@ test("HITL resume admission rejects decisions outside the durable allowlist with
         type: "corrected"
       },
       undefined,
-      { resumeEvent: { modelId: "bdd" } }
+      {}
     ),
     /does not allow decision "corrected"/
   )
@@ -1000,7 +1336,10 @@ test("HITL resume admission rolls back CAS when the run transition fails", async
   const prisma = getPrismaClient()
 
   await createThread(threadId)
-  await createRun(runId, threadId, { status: "interrupted" })
+  await createRun(runId, threadId, {
+    metadata: { modelId: "deepseek:deepseek-v4-pro", preserved: true },
+    status: "interrupted"
+  })
   await upsertHitlRequest({
     allowed_decisions: ["approve"],
     request_id: requestId,
@@ -1027,7 +1366,7 @@ test("HITL resume admission rolls back CAS when the run transition fails", async
         runId,
         { request_id: requestId, tool_call_id: toolCallId, type: "approve" },
         undefined,
-        { resumeEvent: { modelId: "bdd" } }
+        { modelRuntimeSelectionAdmission: createTestLegacyResumeAdmission() }
       )
     )
   } finally {
@@ -1035,8 +1374,81 @@ test("HITL resume admission rolls back CAS when the run transition fails", async
   }
 
   assert.equal((await getHitlRequest(requestId))?.status, "pending")
-  assert.equal((await getRun(runId))?.status, "interrupted")
+  const run = await getRun(runId)
+  assert.equal(run?.status, "interrupted")
+  assert.deepEqual(JSON.parse(run?.metadata ?? "{}"), {
+    modelId: "deepseek:deepseek-v4-pro",
+    preserved: true
+  })
   assert.equal(await prisma.agentEvent.count({ where: { runId } }), 0)
+})
+
+test("legacy HITL approval atomically upgrades the source run and records admitted effort", async () => {
+  const {
+    createRun,
+    createThread,
+    flushAgentTraceProjection,
+    getHitlRequest,
+    getPrismaClient,
+    getRun,
+    upsertHitlRequest
+  } = await loadDbModules()
+  const { commitAgentResumeDecision } = await import("../../src/main/agent/persistence")
+  const threadId = "thread-hitl-legacy-effort-upgrade"
+  const runId = "run-hitl-legacy-effort-upgrade"
+  const requestId = "request-hitl-legacy-effort-upgrade"
+  const toolCallId = "tool-hitl-legacy-effort-upgrade"
+
+  await createThread(threadId)
+  await createRun(runId, threadId, {
+    metadata: {
+      keep: "durable",
+      modelId: "deepseek:deepseek-v4-pro"
+    },
+    status: "interrupted"
+  })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve", "user_declined", "corrected"],
+    request_id: requestId,
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: toolCallId,
+    tool_name: "write_file"
+  })
+
+  await commitAgentResumeDecision(
+    threadId,
+    runId,
+    { request_id: requestId, tool_call_id: toolCallId, type: "approve" },
+    { requestId, source: "resume" },
+    { modelRuntimeSelectionAdmission: createTestLegacyResumeAdmission() }
+  )
+
+  const run = await getRun(runId)
+  const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+  assert.equal(run?.status, "running")
+  assert.equal(metadata.keep, "durable")
+  assert.equal(Object.hasOwn(metadata, "modelId"), false)
+  assert.deepEqual(readRunModelRuntimeSelection(metadata), {
+    kind: "ready",
+    selection: createTestModelRuntimeSelection("deepseek:deepseek-v4-pro")
+  })
+  assert.equal((await getHitlRequest(requestId))?.status, "approved")
+  const resumed = await getPrismaClient().agentEvent.findFirstOrThrow({
+    where: { runId, type: "run.resumed" }
+  })
+  assert.deepEqual(JSON.parse(resumed.payload), {
+    model: "deepseek:deepseek-v4-pro",
+    requestId,
+    source: "resume",
+    thinkingEffort: "high"
+  })
+  await flushAgentTraceProjection()
+  const trace = await getPrismaClient().agentTrace.findUniqueOrThrow({ where: { runId } })
+  assert.equal(trace.model, "deepseek:deepseek-v4-pro")
+  assert.equal(trace.thinkingEffort, "high")
 })
 
 test("beginAgentRun rolls back the run row when marking the thread busy fails", async () => {
@@ -1548,7 +1960,7 @@ test("resume admission rolls back the decision and run when marking the thread b
 
   await createThread(threadId)
   await createRun(runId, threadId, {
-    metadata: { existing: true },
+    metadata: createTestRunMetadata({ existing: true }),
     status: "interrupted"
   })
   await upsertHitlRequest({
@@ -1581,11 +1993,7 @@ test("resume admission rolls back the decision and run when marking the thread b
           type: "approve"
         },
         { requestId: "request-rollback" },
-        {
-          resumeEvent: {
-            modelId: "gpt-test"
-          }
-        }
+        { modelRuntimeSelectionAdmission: createTestPersistedResumeAdmission() }
       )
     )
   } finally {
@@ -1594,7 +2002,7 @@ test("resume admission rolls back the decision and run when marking the thread b
 
   const run = await getRun(runId)
   assert.equal(run?.status, "interrupted")
-  assert.deepEqual(JSON.parse(run?.metadata ?? "{}"), { existing: true })
+  assert.deepEqual(JSON.parse(run?.metadata ?? "{}"), createTestRunMetadata({ existing: true }))
   assert.equal((await getHitlRequest("request-rollback"))?.status, "pending")
   assert.equal((await getThread(threadId))?.status, "idle")
   assert.equal(await prisma.agentEvent.count({ where: { runId } }), 0)
@@ -1759,7 +2167,10 @@ test("pending HITL is the sole interrupted failure classifier after resume", asy
   const requestId = "request-resumed-after-old-interrupt"
 
   await createThread(threadId)
-  await createRun(runId, threadId, { status: "interrupted" })
+  await createRun(runId, threadId, {
+    metadata: createTestRunMetadata(),
+    status: "interrupted"
+  })
   await upsertHitlRequest({
     allowed_decisions: ["approve"],
     request_id: requestId,
@@ -1788,7 +2199,7 @@ test("pending HITL is the sole interrupted failure classifier after resume", asy
       type: "approve"
     },
     undefined,
-    { resumeEvent: {} }
+    { modelRuntimeSelectionAdmission: createTestPersistedResumeAdmission() }
   )
   assert.equal((await getRun(runId))?.status, "running")
   assert.equal((await getHitlRequest(requestId))?.status, "approved")
@@ -1821,7 +2232,10 @@ test("a resumed attempt can append a new failure after an earlier interrupted fi
   const resumedFailure = toAgentRunFailure("agent:runtime", new Error("resumed attempt failed"))
 
   await createThread(threadId)
-  await createRun(runId, threadId, { status: "running" })
+  await createRun(runId, threadId, {
+    metadata: createTestRunMetadata(),
+    status: "running"
+  })
   await upsertHitlRequest({
     allowed_decisions: ["approve"],
     request_id: requestId,
@@ -1844,7 +2258,7 @@ test("a resumed attempt can append a new failure after an earlier interrupted fi
         type: "approve"
       },
       undefined,
-      { resumeEvent: {} }
+      { modelRuntimeSelectionAdmission: createTestPersistedResumeAdmission() }
     )
   )
   assert.equal((await getRun(runId))?.status, "running")
@@ -1893,7 +2307,7 @@ test("agent resume commits HITL before a resumed stream can fail on its first ch
   await createThread(threadId)
   await bindThreadWorkspace(threadId, repoRoot)
   await createRun(runId, threadId, {
-    metadata: createTestRunMetadata(),
+    metadata: { modelId: "deepseek:deepseek-v4-pro" },
     status: "interrupted"
   })
   await upsertHitlRequest({
@@ -1926,6 +2340,9 @@ test("agent resume commits HITL before a resumed stream can fail on its first ch
           tool_call_id: "tool-call-resume-failure",
           type: "corrected"
         },
+        runModelRuntimeSelectionRecovery: createTestModelRuntimeSelection(
+          "deepseek:deepseek-v4-pro"
+        ),
         threadId
       },
       {
@@ -1961,6 +2378,11 @@ test("agent resume commits HITL before a resumed stream can fail on its first ch
   const run = await getRun(runId)
   assert.equal(run?.status, "error")
   const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+  assert.equal(Object.hasOwn(metadata, "modelId"), false)
+  assert.deepEqual(readRunModelRuntimeSelection(metadata), {
+    kind: "ready",
+    selection: createTestModelRuntimeSelection("deepseek:deepseek-v4-pro")
+  })
   const persistedFailure = parseAgentRunFailure(metadata[AGENT_RUN_FAILURE_METADATA_KEY])
   assert.deepEqual(persistedFailure, liveTerminal.failure)
   assert.equal(liveTerminal.status, run?.status)
@@ -2067,7 +2489,7 @@ test("admission binding failures preserve invoke rejection and resume acceptance
         },
         startResume: async (resume: {
           decision: Parameters<typeof commitAgentResumeDecision>[2]
-          selection: ReturnType<typeof createTestModelRuntimeSelection>
+          modelRuntimeSelectionAdmission: ReturnType<typeof createTestPersistedResumeAdmission>
           runId: string
         }) => {
           const committed = await commitAgentResumeDecision(
@@ -2075,7 +2497,7 @@ test("admission binding failures preserve invoke rejection and resume acceptance
             resume.runId,
             resume.decision,
             undefined,
-            { resumeEvent: { modelId: resume.selection.modelId } }
+            { modelRuntimeSelectionAdmission: resume.modelRuntimeSelectionAdmission }
           )
           assert.ok(committed)
           const status = await markRunFailed(threadId, resume.runId, resumeFailure)
@@ -3108,7 +3530,10 @@ test("resume admission atomically records decision and resume events", async () 
   const requestId = "request-atomic-resume-admission"
 
   await createThread(threadId)
-  await createRun(runId, threadId, { status: "interrupted" })
+  await createRun(runId, threadId, {
+    metadata: createTestRunMetadata(),
+    status: "interrupted"
+  })
   await upsertHitlRequest({
     allowed_decisions: ["approve"],
     request_id: requestId,
@@ -3128,7 +3553,7 @@ test("resume admission atomically records decision and resume events", async () 
       type: "approve"
     },
     { requestId, source: "resume" },
-    { resumeEvent: { modelId: "gpt-test" } }
+    { modelRuntimeSelectionAdmission: createTestPersistedResumeAdmission() }
   )
 
   assert.equal((await getRun(runId))?.status, "running")
@@ -3142,9 +3567,10 @@ test("resume admission atomically records decision and resume events", async () 
     ["approval.resolved", "run.resumed"]
   )
   assert.deepEqual(JSON.parse(events[1]?.payload ?? "{}"), {
-    model: "gpt-test",
+    model: "deepseek:deepseek-v4-pro",
     requestId,
-    source: "resume"
+    source: "resume",
+    thinkingEffort: "high"
   })
 })
 
@@ -3566,13 +3992,13 @@ test("resume and successful completion clear a stale durable run failure", async
   const runId = "run-clears-stale-run-failure"
   await createThread(threadId)
   await createRun(runId, threadId, {
-    metadata: {
+    metadata: createTestRunMetadata({
       [AGENT_RUN_FAILURE_METADATA_KEY]: toAgentRunFailure(
         "agent:runtime",
         new Error("previous resume failed")
       ),
       error: "401 authentication_error"
-    },
+    }),
     status: "interrupted"
   })
   await upsertHitlRequest({
@@ -3595,7 +4021,7 @@ test("resume and successful completion clear a stale durable run failure", async
       type: "approve"
     },
     undefined,
-    { resumeEvent: {} }
+    { modelRuntimeSelectionAdmission: createTestPersistedResumeAdmission() }
   )
   const resumedMetadata = JSON.parse((await getRun(runId))?.metadata ?? "{}") as Record<
     string,
@@ -3722,9 +4148,7 @@ test("agent run metadata snapshots permission mode and preserves it through resu
       requestId: "request-1",
       source: "resume"
     },
-    {
-      resumeEvent: {}
-    }
+    { modelRuntimeSelectionAdmission: createTestPersistedResumeAdmission("gpt-test") }
   )
 
   const resumedRun = await getRun(runId)
@@ -4238,9 +4662,7 @@ test("run metadata updates preserve loaded extension snapshots and resume metada
         requestId: "request-loaded-extension",
         source: "resume"
       },
-      {
-        resumeEvent: {}
-      }
+      { modelRuntimeSelectionAdmission: createTestPersistedResumeAdmission("gpt-test") }
     )
   ])
 

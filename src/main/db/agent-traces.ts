@@ -2,6 +2,8 @@ import { createHash } from "crypto"
 import { getPrismaClient } from "./client"
 import { toNumber } from "./utils"
 import { parseAgentEventPayloadFromJson } from "../agent-events/schema"
+import type { ThinkingEffort } from "@shared/app-types"
+import { isThinkingEffort } from "@shared/model-runtime-selection"
 
 type TraceStatus =
   | "running"
@@ -89,6 +91,7 @@ export interface AgentTraceSummaryRow {
   started_at: number
   status: string
   thread_id: string
+  thinking_effort: ThinkingEffort | null
   total_input_tokens: number
   total_output_tokens: number
   total_steps: number
@@ -415,6 +418,7 @@ function mapTraceRow(row: {
   startedAt: bigint
   status: string
   threadId: string
+  thinkingEffort: string | null
   totalInputTokens: number
   totalOutputTokens: number
   totalSteps: number
@@ -434,6 +438,7 @@ function mapTraceRow(row: {
     started_at: toNumber(row.startedAt),
     status: row.status,
     thread_id: row.threadId,
+    thinking_effort: isThinkingEffort(row.thinkingEffort) ? row.thinkingEffort : null,
     total_input_tokens: row.totalInputTokens,
     total_output_tokens: row.totalOutputTokens,
     total_steps: row.totalSteps,
@@ -557,6 +562,7 @@ export async function projectAgentTraceForRun(runId: string): Promise<AgentTrace
   let errorMessage: string | null = null
   let model: string | null = null
   let provider: string | null = null
+  let thinkingEffort: ThinkingEffort | null = null
   let projectedThroughSeq = 0
 
   for (const event of events) {
@@ -565,6 +571,12 @@ export async function projectAgentTraceForRun(runId: string): Promise<AgentTrace
 
     model = readString(payload, "model") ?? model
     provider = readString(payload, "provider") ?? provider
+    if (Object.hasOwn(payload, "thinkingEffort")) {
+      const admittedThinkingEffort = payload.thinkingEffort
+      if (admittedThinkingEffort === null || isThinkingEffort(admittedThinkingEffort)) {
+        thinkingEffort = admittedThinkingEffort
+      }
+    }
 
     if (event.type === "run.started" || event.type === "run.resumed") {
       traceStatus = "running"
@@ -664,6 +676,7 @@ export async function projectAgentTraceForRun(runId: string): Promise<AgentTrace
           startedAt: BigInt(startedAt),
           status: traceStatus,
           threadId,
+          thinkingEffort,
           totalCost,
           totalInputTokens,
           totalOutputTokens,
@@ -683,6 +696,7 @@ export async function projectAgentTraceForRun(runId: string): Promise<AgentTrace
           projectionError: null,
           provider,
           status: traceStatus,
+          thinkingEffort,
           totalCost,
           totalInputTokens,
           totalOutputTokens,

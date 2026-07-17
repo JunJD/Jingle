@@ -474,6 +474,22 @@ test("launcher approval correction clears only after an accepted resume command"
   )
 })
 
+test("launcher shares one unconditional model setup controller with recovery and header", async () => {
+  const [pageSource, headerSource] = await Promise.all([
+    readWorkspaceFile("src/renderer/src/ai-core/LauncherAiPage.tsx"),
+    readWorkspaceFile("src/renderer/src/ai-core/LauncherAiHeaderModelPicker.tsx")
+  ])
+
+  assert.equal(
+    pageSource.match(/useLauncherAiModelPickerController\(\)/g)?.length,
+    1,
+    "LauncherAiPage should mount exactly one shared model setup controller"
+  )
+  assert.match(pageSource, /modelPickerController=\{modelPickerController\}/)
+  assert.doesNotMatch(headerSource, /useLauncherAiModelPickerController\(\)/)
+  assert.match(headerSource, /modelPickerController: LauncherAiModelPickerController/)
+})
+
 test("launcher composer invalidates submitted revisions before async input mutations", async () => {
   const pageSource = await readWorkspaceFile("src/renderer/src/ai-core/LauncherAiPage.tsx")
   const addSelectedFilesBody = pageSource.match(

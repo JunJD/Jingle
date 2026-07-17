@@ -1,7 +1,9 @@
 import { z } from "../ipc/schema"
+import { THINKING_EFFORT_VALUES } from "@shared/app-types"
 
 const nullableStringSchema = z.string().nullable()
 const optionalNullableStringSchema = nullableStringSchema.optional()
+const optionalNullableThinkingEffortSchema = z.enum(THINKING_EFFORT_VALUES).nullable().optional()
 const jsonRecordSchema = z.record(z.string(), z.unknown())
 
 export const agentEventTypeSchema = z.enum([
@@ -114,7 +116,8 @@ const eventPayloadSchemas = {
     .object({
       model: optionalNullableStringSchema,
       requestId: z.string(),
-      source: z.literal("resume")
+      source: z.literal("resume"),
+      thinkingEffort: optionalNullableThinkingEffortSchema
     })
     .strict(),
   "run.started": z
@@ -122,6 +125,7 @@ const eventPayloadSchemas = {
       model: optionalNullableStringSchema,
       permissionMode: z.string(),
       source: z.literal("invoke"),
+      thinkingEffort: optionalNullableThinkingEffortSchema,
       userMessageId: z.string()
     })
     .strict(),

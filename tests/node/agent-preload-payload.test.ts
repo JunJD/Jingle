@@ -88,6 +88,37 @@ test("agent preload payload builders omit optional undefined route fields", () =
   })
 })
 
+test("agent resume preload payload preserves an explicit run recovery pair", () => {
+  assert.deepEqual(
+    buildAgentResumeIpcPayload({
+      decision: {
+        request_id: "request-1",
+        tool_call_id: "tool-1",
+        type: "approve"
+      },
+      runModelRuntimeSelectionRecovery: {
+        modelId: "deepseek:deepseek-v4-pro",
+        thinkingEffort: "max",
+        version: 1
+      },
+      threadId: "thread-1"
+    }),
+    {
+      decision: {
+        request_id: "request-1",
+        tool_call_id: "tool-1",
+        type: "approve"
+      },
+      runModelRuntimeSelectionRecovery: {
+        modelId: "deepseek:deepseek-v4-pro",
+        thinkingEffort: "max",
+        version: 1
+      },
+      threadId: "thread-1"
+    }
+  )
+})
+
 test("agent preload stale cleanup cannot disconnect a newer thread event subscription", async () => {
   let releaseFirstConnect!: () => void
   const firstConnectGate = new Promise<void>((resolve) => {

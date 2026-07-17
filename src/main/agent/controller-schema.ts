@@ -14,6 +14,8 @@ import {
   optionalNormalizedTrimmedStringSchema
 } from "../ipc/schema-primitives"
 import { parseIpcPayloadWithSchema, z } from "../ipc/schema"
+import type { ModelRuntimeSelection } from "@shared/app-types"
+import { parseModelRuntimeSelection } from "@shared/model-runtime-selection"
 
 const messageFileSourceSchema = z.discriminatedUnion("kind", [
   z
@@ -200,12 +202,29 @@ const hitlDecisionSchema = z.union([
     .strict()
 ])
 
+const modelRuntimeSelectionSchema = z.preprocess(
+  (value) => parseModelRuntimeSelection(value),
+  z.custom<ModelRuntimeSelection>((value) => value !== null, {
+    message: "Invalid model runtime selection"
+  })
+)
+
 export const agentResumeParamsSchema = z
   .object({
     decision: hitlDecisionSchema,
+    runModelRuntimeSelectionRecovery: modelRuntimeSelectionSchema.optional(),
     threadId: nonEmptyTrimmedStringSchema
   })
   .strict()
+  .refine(
+    (params) =>
+      params.decision.type !== "user_declined" ||
+      params.runModelRuntimeSelectionRecovery === undefined,
+    {
+      message: "A declined approval cannot include model runtime selection recovery",
+      path: ["runModelRuntimeSelectionRecovery"]
+    }
+  )
 
 export const agentCancelParamsSchema = z
   .object({

@@ -2,7 +2,16 @@ import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "@shared/launcher-ai"
 import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
 import type { PermissionModeName } from "@shared/permission-mode"
 import type { ThreadWorkspaceKind } from "@shared/thread-workspace"
-import type { ModelRuntimeSelection, ThreadModelRuntimeSelectionState } from "@shared/app-types"
+import type {
+  ModelRuntimeSelection,
+  PendingApprovalRunModelRuntimeRecovery,
+  ThinkingEffort,
+  ThreadModelRuntimeSelectionState
+} from "@shared/app-types"
+import type {
+  ModelSelectionCatalogProjection,
+  ModelSelectionLoadState
+} from "@/features/model-selection/model-selection-projection"
 import type {
   AgentCommandActivity,
   AgentControl,
@@ -33,12 +42,127 @@ export interface LauncherApprovalActionsProjection {
 }
 
 export type LauncherApprovalCorrectionDrafts = ReadonlyMap<string, string>
+export type LauncherApprovalModelRecoveryDrafts = ReadonlyMap<string, ModelRuntimeSelection>
+
+export type LauncherApprovalModelRecoveryProjection =
+  | { kind: "not_required" }
+  | { kind: "loading" }
+  | {
+      kind: "blocked"
+      reason: "invalid" | "missing" | "model_unavailable" | "source_run_unavailable"
+    }
+  | {
+      allowedValues: readonly ThinkingEffort[]
+      kind: "required"
+      modelId: string
+      modelName: string
+      selection: ModelRuntimeSelection | null
+    }
 
 export function createLauncherApprovalCorrectionKey(
   threadId: string,
   approvalRequestId: string
 ): string {
   return JSON.stringify([threadId, approvalRequestId])
+}
+
+export function createLauncherApprovalModelRecoveryKey(input: {
+  requestId: string
+  runId: string
+  threadId: string
+}): string {
+  return JSON.stringify([input.threadId, input.requestId, input.runId])
+}
+
+export function setLauncherApprovalModelRecoveryDraft(
+  drafts: LauncherApprovalModelRecoveryDrafts,
+  key: string,
+  selection: ModelRuntimeSelection
+): LauncherApprovalModelRecoveryDrafts {
+  if (drafts.get(key) === selection) {
+    return drafts
+  }
+  const nextDrafts = new Map(drafts)
+  nextDrafts.set(key, selection)
+  return nextDrafts
+}
+
+export function clearLauncherApprovalModelRecoveryDraft(
+  drafts: LauncherApprovalModelRecoveryDrafts,
+  key: string
+): LauncherApprovalModelRecoveryDrafts {
+  if (!drafts.has(key)) {
+    return drafts
+  }
+  const nextDrafts = new Map(drafts)
+  nextDrafts.delete(key)
+  return nextDrafts
+}
+
+export function projectLauncherApprovalModelRecovery(input: {
+  catalog: ModelSelectionCatalogProjection
+  drafts: LauncherApprovalModelRecoveryDrafts
+  loadState: ModelSelectionLoadState
+  pendingApproval: HITLRequest | null
+  recovery: PendingApprovalRunModelRuntimeRecovery | null
+  threadId: string | null
+}): LauncherApprovalModelRecoveryProjection {
+  const { pendingApproval, recovery, threadId } = input
+  if (
+    !pendingApproval ||
+    !recovery ||
+    !threadId ||
+    recovery.requestId !== pendingApproval.id ||
+    recovery.toolCallId !== pendingApproval.tool_call.id
+  ) {
+    return { kind: "not_required" }
+  }
+
+  if (recovery.kind === "source_run_unavailable") {
+    return { kind: "blocked", reason: "source_run_unavailable" }
+  }
+  if (recovery.kind === "invalid" || recovery.kind === "missing") {
+    return { kind: "blocked", reason: recovery.kind }
+  }
+  if (input.loadState === "loading") {
+    return { kind: "loading" }
+  }
+
+  const model = input.catalog.models.find((candidate) => candidate.id === recovery.modelId)
+  const provider = model
+    ? input.catalog.providers.find((candidate) => candidate.id === model.providerId)
+    : null
+  if (
+    input.loadState === "error" ||
+    !model ||
+    model.status !== "active" ||
+    provider?.availability.kind !== "ready"
+  ) {
+    return { kind: "blocked", reason: "model_unavailable" }
+  }
+
+  const key = createLauncherApprovalModelRecoveryKey({
+    requestId: recovery.requestId,
+    runId: recovery.runId,
+    threadId
+  })
+  const draft = input.drafts.get(key) ?? null
+  const selection =
+    draft?.modelId === recovery.modelId &&
+    draft.version === 1 &&
+    (model.reasoningEfforts.length === 0
+      ? draft.thinkingEffort === null
+      : draft.thinkingEffort !== null && model.reasoningEfforts.includes(draft.thinkingEffort))
+      ? draft
+      : null
+
+  return {
+    allowedValues: model.reasoningEfforts,
+    kind: "required",
+    modelId: recovery.modelId,
+    modelName: model.name,
+    selection
+  }
 }
 
 export function getLauncherApprovalCorrectionDraft(
@@ -357,7 +481,10 @@ export interface LauncherAiController {
   editLastUserMessage: (input: EditLastUserMessageAndInvokeInput) => Promise<boolean>
   goToNextChat: () => Promise<string | null>
   goToPreviousChat: () => Promise<string | null>
-  handleApprovalDecision: (decision: HITLDecision) => Promise<boolean>
+  handleApprovalDecision: (
+    decision: HITLDecision,
+    runModelRuntimeSelectionRecovery?: ModelRuntimeSelection
+  ) => Promise<boolean>
   runPrimaryAction: (input: ComposerMessageInput) => void
   selectModel: (selection: ModelRuntimeSelection) => Promise<boolean>
   selectPermissionMode: (permissionMode: PermissionModeName) => Promise<boolean>
@@ -510,7 +637,7 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
         return null
       }
     },
-    async handleApprovalDecision(decision) {
+    async handleApprovalDecision(decision, runModelRuntimeSelectionRecovery) {
       if (input.hasPendingCommand) {
         return false
       }
@@ -523,7 +650,8 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
       try {
         return await input.agentControl.resume(decision, {
           onCommandAdmitted: input.onCommandAdmitted,
-          onCommandSettled: input.onCommandSettled
+          onCommandSettled: input.onCommandSettled,
+          runModelRuntimeSelectionRecovery
         })
       } finally {
         submissionLease.release()

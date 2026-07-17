@@ -229,9 +229,9 @@ test("run finished schedules trace projection", async () => {
   await createThread(threadId)
   await createRun(runId, threadId)
   await recordRunStarted({
-    modelId: "gpt-test",
     permissionMode: "default",
     runId,
+    selection: { modelId: "gpt-test", thinkingEffort: "high", version: 1 },
     threadId,
     userMessageId: "user-message-1"
   })
@@ -242,6 +242,8 @@ test("run finished schedules trace projection", async () => {
     threadId
   })
   await delay(650)
+
+  assert.equal((await getAgentTrace(runId))?.thinking_effort, "high")
 
   const trace = await getAgentTrace(runId)
   assert.equal(trace?.status, "completed")

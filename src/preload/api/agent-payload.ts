@@ -7,6 +7,7 @@ import type { AgentInvokeMessage } from "@shared/message-content"
 import type { PermissionModeName } from "@shared/permission-mode"
 import type { AgentThreadEventSubscriptionSurface } from "@shared/agent-thread-contract"
 import type { AgentThreadEventSubscriptionToken } from "@shared/agent-thread-contract"
+import type { ModelRuntimeSelection } from "@shared/app-types"
 
 export interface AgentInvokeIpcPayload {
   readonly expectedRunId?: string | null
@@ -20,6 +21,7 @@ export interface AgentInvokeIpcPayload {
 
 export interface AgentResumeIpcPayload {
   readonly decision: HITLDecision
+  readonly runModelRuntimeSelectionRecovery?: ModelRuntimeSelection
   readonly threadId: string
 }
 
@@ -88,12 +90,17 @@ export function buildAgentInvokeIpcPayload(input: {
 
 export function buildAgentResumeIpcPayload(input: {
   readonly decision: HITLDecision
+  readonly runModelRuntimeSelectionRecovery?: ModelRuntimeSelection
   readonly threadId: string
 }): AgentResumeIpcPayload {
-  return {
-    decision: input.decision,
-    threadId: input.threadId
-  }
+  return withOptionalProperty(
+    {
+      decision: input.decision,
+      threadId: input.threadId
+    },
+    "runModelRuntimeSelectionRecovery",
+    input.runModelRuntimeSelectionRecovery
+  )
 }
 
 export function buildAgentConnectThreadEventsIpcPayload(

@@ -6,6 +6,7 @@ import type { AgentContextInclusion } from "@shared/jingle-memory"
 import type { ResolvedExtensionAiCapability } from "@shared/extension-sources"
 import type { PermissionModeName } from "@shared/permission-mode"
 import type { ModelRuntimeSelection } from "@shared/app-types"
+import type { RunModelRuntimeSelectionResumeAdmission } from "../model-provider/runtime-selection-admission"
 import type {
   JingleMemoryContextPack,
   JingleMemoryContextSnapshot,
@@ -52,7 +53,7 @@ export interface JingleResumeRunLifecycleInput {
   extensionAiRuntime: ReturnType<typeof createExtensionAiRuntime>
   jingleMemoryContextPack: JingleMemoryContextPack | null
   jingleMemoryTemporaryMode: boolean
-  selection?: ModelRuntimeSelection
+  modelRuntimeSelectionAdmission?: RunModelRuntimeSelectionResumeAdmission
   permissionMode: PermissionModeName
   runId: string
   source: "resume"
@@ -64,6 +65,51 @@ export type JingleRuntimeRunLifecycleController = RuntimeRunLifecycleController<
   JingleInvokeRunLifecycleInput,
   JingleResumeRunLifecycleInput
 >
+
+export async function commitTerminalAgentResumeDecision(input: {
+  decision: Extract<HITLDecision, { type: "user_declined" }> & {
+    request_id: string
+    tool_call_id: string
+  }
+  runId: string
+  threadId: string
+}): Promise<{
+  scheduleProjection: () => void
+  recordingRefs: RuntimeRecordingRef[]
+  runId: string
+}> {
+  const committed = await commitAgentResumeDecision(
+    input.threadId,
+    input.runId,
+    input.decision,
+    {
+      requestId: input.decision.request_id,
+      source: "resume"
+    },
+    {}
+  )
+  if (!committed) {
+    throw new JingleIpcError({
+      channel: "agent:resume",
+      code: "CONFLICT",
+      message: `[Agent] HITL request "${input.decision.request_id}" was resolved by another resume request.`
+    })
+  }
+  const { run, runId } = committed
+  return {
+    recordingRefs: [
+      createJingleAgentTraceRecordingRef({
+        createdAt: new Date(run.created_at).toISOString(),
+        runId,
+        threadId: input.threadId
+      })
+    ],
+    runId,
+    scheduleProjection: () => {
+      void enqueueAssistantContentProjection({ runId })
+    }
+  }
+}
 
 export function createRuntimeRunLifecycleController(input: {
   jingleMemoryService?: JingleMemoryService | null
@@ -102,7 +148,7 @@ export function createRuntimeRunLifecycleController(input: {
     },
     beginResumeRun: async ({ resume, threadId }) => {
       const declinedDecision = resume.decision.type === "user_declined" ? resume.decision : null
-      if ((declinedDecision === null) !== (resume.selection !== undefined)) {
+      if ((declinedDecision === null) !== (resume.modelRuntimeSelectionAdmission !== undefined)) {
         throw new JingleIpcError({
           channel: "agent:resume",
           code: "FAILED_PRECONDITION",
@@ -111,7 +157,20 @@ export function createRuntimeRunLifecycleController(input: {
             : "The persisted run model runtime selection is missing."
         })
       }
-      const selection = resume.selection
+      if (declinedDecision) {
+        const terminal = await commitTerminalAgentResumeDecision({
+          decision: declinedDecision,
+          runId: resume.runId,
+          threadId
+        })
+        return {
+          cancelAfterDecision: terminal.scheduleProjection,
+          executionDisposition: "terminal",
+          recordingRefs: terminal.recordingRefs,
+          runId: terminal.runId
+        }
+      }
+      const selection = resume.modelRuntimeSelectionAdmission?.selection
       const committed = await commitAgentResumeDecision(
         threadId,
         resume.runId,
@@ -121,9 +180,7 @@ export function createRuntimeRunLifecycleController(input: {
           requestId: resume.decision.request_id
         },
         {
-          resumeEvent: {
-            modelId: selection?.modelId
-          }
+          modelRuntimeSelectionAdmission: resume.modelRuntimeSelectionAdmission
         }
       )
       if (!committed) {
@@ -141,16 +198,6 @@ export function createRuntimeRunLifecycleController(input: {
           threadId
         })
       ]
-      if (declinedDecision) {
-        return {
-          cancelAfterDecision: async () => {
-            void enqueueAssistantContentProjection({ runId })
-          },
-          executionDisposition: "terminal",
-          recordingRefs,
-          runId
-        }
-      }
       if (!selection) {
         throw new Error("Resume model runtime selection validation drifted after commit.")
       }

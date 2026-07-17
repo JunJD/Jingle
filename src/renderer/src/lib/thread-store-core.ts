@@ -2,6 +2,7 @@ import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permis
 import type { ArtifactRecord } from "@shared/artifacts"
 import type {
   AgentThreadDataSnapshot,
+  PendingApprovalRunModelRuntimeRecovery,
   ThreadModelRuntimeSelectionChangedEvent,
   ThreadModelRuntimeSelectionState
 } from "@shared/app-types"
@@ -45,6 +46,7 @@ export interface AgentSourceState extends AgentThreadRuntimeState {
   currentModel: string | null
   modelRuntimeSelection: ThreadModelRuntimeSelectionState
   modelRuntimeSelectionRevision: number
+  pendingApprovalRunModelRuntimeRecovery: PendingApprovalRunModelRuntimeRecovery | null
   permissionMode: PermissionModeName
 }
 
@@ -121,6 +123,7 @@ export function createDefaultThreadState(threadId = ""): ThreadState {
       currentModel: null,
       modelRuntimeSelection: { kind: "missing" },
       modelRuntimeSelectionRevision: 0,
+      pendingApprovalRunModelRuntimeRecovery: null,
       permissionMode: DEFAULT_PERMISSION_MODE
     },
     view: {

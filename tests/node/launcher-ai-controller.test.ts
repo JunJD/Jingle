@@ -7,13 +7,17 @@ import {
   canSubmitLauncherApprovalDecision,
   canSelectLauncherAiModel,
   clearLauncherApprovalCorrectionDraft,
+  clearLauncherApprovalModelRecoveryDraft,
   createLauncherApprovalCorrectionKey,
+  createLauncherApprovalModelRecoveryKey,
   isLauncherCommandTargetCurrent,
   getLauncherApprovalCorrectionDraft,
   projectLauncherApprovalActions,
+  projectLauncherApprovalModelRecovery,
   projectLauncherAiForkCapability,
   projectLauncherAiTargetConfiguration,
-  setLauncherApprovalCorrectionDraft
+  setLauncherApprovalCorrectionDraft,
+  setLauncherApprovalModelRecoveryDraft
 } from "../../src/renderer/src/ai-core/launcher-ai-controller"
 import type { AgentControl } from "../../src/renderer/src/lib/use-agent"
 import type { AiCoreThreadCreateInput } from "../../src/renderer/src/ai-core/AiCoreHost"
@@ -128,6 +132,172 @@ test("launcher clears only the submitted approval correction draft", () => {
   assert.equal(getLauncherApprovalCorrectionDraft(cleared, submittedKey), "")
   assert.equal(getLauncherApprovalCorrectionDraft(cleared, currentKey), "current correction")
   assert.equal(clearLauncherApprovalCorrectionDraft(cleared, submittedKey), cleared)
+})
+
+test("launcher binds legacy run recovery to the exact approval and original model", () => {
+  const pendingApproval = createApprovalRequest({
+    changes: [],
+    command: "echo ready",
+    kind: "execute_command",
+    predictionStatus: null,
+    profile: "read_only",
+    reason: null,
+    toolName: "execute"
+  })
+  const recovery = {
+    kind: "legacy_missing_effort" as const,
+    modelId: "deepseek:deepseek-v4-pro",
+    requestId: pendingApproval.id,
+    runId: "run-legacy",
+    toolCallId: pendingApproval.tool_call.id
+  }
+  const catalog = {
+    contractIssueCount: 0,
+    defaultModelId: null,
+    defaultSelection: null,
+    models: [
+      {
+        id: recovery.modelId,
+        modelCode: "deepseek-v4-pro",
+        name: "DeepSeek V4 Pro",
+        providerId: "deepseek" as const,
+        reasoningEfforts: ["off", "high", "max"] as const,
+        status: "active" as const
+      }
+    ],
+    providers: [
+      {
+        availability: { kind: "ready" as const },
+        id: "deepseek" as const,
+        name: "DeepSeek"
+      }
+    ]
+  }
+  const key = createLauncherApprovalModelRecoveryKey({
+    requestId: recovery.requestId,
+    runId: recovery.runId,
+    threadId: "thread-1"
+  })
+  let drafts: ReadonlyMap<string, ModelRuntimeSelection> = new Map()
+
+  assert.deepEqual(
+    projectLauncherApprovalModelRecovery({
+      catalog,
+      drafts,
+      loadState: "ready",
+      pendingApproval,
+      recovery,
+      threadId: "thread-1"
+    }),
+    {
+      allowedValues: ["off", "high", "max"],
+      kind: "required",
+      modelId: recovery.modelId,
+      modelName: "DeepSeek V4 Pro",
+      selection: null
+    }
+  )
+
+  const selection = runtimeSelection(recovery.modelId, "max")
+  drafts = setLauncherApprovalModelRecoveryDraft(drafts, key, selection)
+  assert.deepEqual(
+    projectLauncherApprovalModelRecovery({
+      catalog,
+      drafts,
+      loadState: "ready",
+      pendingApproval,
+      recovery,
+      threadId: "thread-1"
+    }),
+    {
+      allowedValues: ["off", "high", "max"],
+      kind: "required",
+      modelId: recovery.modelId,
+      modelName: "DeepSeek V4 Pro",
+      selection
+    }
+  )
+  assert.equal(clearLauncherApprovalModelRecoveryDraft(drafts, key).has(key), false)
+
+  assert.deepEqual(
+    projectLauncherApprovalModelRecovery({
+      catalog,
+      drafts,
+      loadState: "ready",
+      pendingApproval: { ...pendingApproval, id: "approval-replaced" },
+      recovery,
+      threadId: "thread-1"
+    }),
+    { kind: "not_required" }
+  )
+  assert.deepEqual(
+    projectLauncherApprovalModelRecovery({
+      catalog,
+      drafts,
+      loadState: "ready",
+      pendingApproval,
+      recovery: {
+        kind: "invalid",
+        requestId: recovery.requestId,
+        runId: recovery.runId,
+        toolCallId: recovery.toolCallId
+      },
+      threadId: "thread-1"
+    }),
+    { kind: "blocked", reason: "invalid" }
+  )
+  assert.deepEqual(
+    projectLauncherApprovalModelRecovery({
+      catalog,
+      drafts,
+      loadState: "ready",
+      pendingApproval,
+      recovery: {
+        kind: "source_run_unavailable",
+        requestId: recovery.requestId,
+        runId: recovery.runId,
+        toolCallId: recovery.toolCallId
+      },
+      threadId: "thread-1"
+    }),
+    { kind: "blocked", reason: "source_run_unavailable" }
+  )
+})
+
+test("launcher keeps decline available while legacy model recovery is blocked", () => {
+  const request = createApprovalRequest({
+    changes: [],
+    command: "echo ready",
+    kind: "execute_command",
+    predictionStatus: null,
+    profile: "read_only",
+    reason: null,
+    toolName: "execute"
+  })
+  assert.equal(canSubmitLauncherApprovalDecision(request, { type: "user_declined" }), true)
+  assert.deepEqual(
+    projectLauncherApprovalModelRecovery({
+      catalog: {
+        contractIssueCount: 0,
+        defaultModelId: null,
+        defaultSelection: null,
+        models: [],
+        providers: []
+      },
+      drafts: new Map(),
+      loadState: "ready",
+      pendingApproval: request,
+      recovery: {
+        kind: "legacy_missing_effort",
+        modelId: "deepseek:deepseek-v4-pro",
+        requestId: request.id,
+        runId: "run-legacy",
+        toolCallId: request.tool_call.id
+      },
+      threadId: "thread-1"
+    }),
+    { kind: "blocked", reason: "model_unavailable" }
+  )
 })
 
 test("launcher command acceptance stays bound to its submitted navigation target", () => {

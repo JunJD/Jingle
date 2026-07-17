@@ -67,6 +67,12 @@ export interface AppCopy {
     modelRuntimeSelectionInvalid: string
     modelRuntimeSelectionLegacyMissingEffort: string
     modelRuntimeSelectionMissing: string
+    pendingRunModelRecoveryBlocked: string
+    pendingRunModelRecoveryDescription: (modelName: string) => string
+    pendingRunModelRecoveryLoading: string
+    pendingRunModelRecoveryNoEffort: string
+    pendingRunModelRecoverySourceUnavailable: string
+    pendingRunModelRecoveryTitle: string
     contentCardSourceInvalidJson: string
     contentCardSourceNoncanonical: string
     contentCardSyncRetryableFailure: string
@@ -461,6 +467,15 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       modelRuntimeSelectionInvalid: "这个对话的模型运行配置无效，请重新选择模型。",
       modelRuntimeSelectionLegacyMissingEffort: "这个对话缺少推理强度，请重新选择模型。",
       modelRuntimeSelectionMissing: "这个对话尚未选择模型，请先选择模型。",
+      pendingRunModelRecoveryBlocked:
+        "这个待审批任务的历史模型配置无法安全恢复，你仍可拒绝本次操作。",
+      pendingRunModelRecoveryDescription: (modelName) =>
+        `继续使用 ${modelName}，并补选本次运行的推理强度。`,
+      pendingRunModelRecoveryLoading: "正在核对历史运行的模型能力…",
+      pendingRunModelRecoveryNoEffort: "不使用推理强度",
+      pendingRunModelRecoverySourceUnavailable:
+        "这个待审批任务的历史运行已不可用，无法安全处理本次操作。",
+      pendingRunModelRecoveryTitle: "补齐历史运行配置",
       contentCardSourceInvalidJson: "内容卡片无法生成：保存的回答内容已损坏",
       contentCardSourceNoncanonical: "内容卡片无法生成：保存的回答格式不受支持",
       contentCardSyncRetryableFailure: "内容卡片同步失败，系统将自动重试",
@@ -889,6 +904,15 @@ export const appCopy: Record<AppLocale, AppCopy> = {
         "This conversation has no saved reasoning effort. Select the model again.",
       modelRuntimeSelectionMissing:
         "This conversation has no model runtime selection. Select a model first.",
+      pendingRunModelRecoveryBlocked:
+        "This pending action's historical model configuration cannot be recovered safely. You can still decline it.",
+      pendingRunModelRecoveryDescription: (modelName) =>
+        `Continue with ${modelName} and choose the reasoning effort for this run.`,
+      pendingRunModelRecoveryLoading: "Checking the historical run's model capabilities…",
+      pendingRunModelRecoveryNoEffort: "Continue without reasoning effort",
+      pendingRunModelRecoverySourceUnavailable:
+        "This pending action's historical run is unavailable, so it cannot be resolved safely.",
+      pendingRunModelRecoveryTitle: "Complete historical run configuration",
       contentCardSourceInvalidJson:
         "Content cards cannot be generated because the saved response is corrupted.",
       contentCardSourceNoncanonical:

@@ -73,6 +73,7 @@ function createThreadDataSnapshot(input: {
       error: null,
       forkState: { canFork: true },
       pendingApproval: input.pendingApproval ?? null,
+      pendingApprovalRunModelRuntimeRecovery: null,
       recovery: input.recovery ?? null,
       runId: null,
       todos: [],

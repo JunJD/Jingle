@@ -16,6 +16,7 @@ import {
 import type { ComposerMessageInput } from "@shared/message-content"
 import { type PermissionModeName } from "@shared/permission-mode"
 import type { AgentCommandLifecycleEvent, AgentCommandOutcome } from "@shared/agent-command"
+import type { ModelRuntimeSelection } from "@shared/app-types"
 import type { ThreadContextValue } from "./thread-context"
 
 export type AgentRunValidationInput = JingleAgentRunValidationInput
@@ -45,7 +46,12 @@ export interface AgentControl {
       threadId?: string
     } & AgentCommandLifecycleCallbacks
   ) => Promise<boolean>
-  resume: (decision: HITLDecision, options?: AgentCommandLifecycleCallbacks) => Promise<boolean>
+  resume: (
+    decision: HITLDecision,
+    options?: AgentCommandLifecycleCallbacks & {
+      runModelRuntimeSelectionRecovery?: ModelRuntimeSelection
+    }
+  ) => Promise<boolean>
   stop: () => Promise<void>
 }
 
@@ -396,6 +402,7 @@ export async function stopAgentThread(threadId: string | null): Promise<void> {
 
 export async function resumeAgentThread(input: {
   decision: HITLDecision
+  runModelRuntimeSelectionRecovery?: ModelRuntimeSelection
   onCommandAdmitted?: (activity: AgentCommandActivity) => void
   onCommandSettled?: (activity: AgentCommandActivity) => void
   onLocalError?: (error: string | null) => void
@@ -436,7 +443,8 @@ export async function resumeAgentThread(input: {
         buildJingleAgentResumeDecision({
           decision: input.decision,
           pendingApproval: commandState.pendingApproval
-        })
+        }),
+        input.runModelRuntimeSelectionRecovery
       )
       if (!acceptAgentCommandOutcome(outcome, input.onLocalError)) {
         return false

@@ -66,6 +66,7 @@ test("agent runtime snapshot reducer applies messages, metadata, and non-runtime
       error: null,
       forkState: { canFork: true },
       pendingApproval: null,
+      pendingApprovalRunModelRuntimeRecovery: null,
       recovery: null,
       runId: "run-1",
       todos: [],
@@ -132,6 +133,7 @@ test("agent runtime snapshot reducer hydrates context inclusions from run state"
       error: null,
       forkState: { canFork: true },
       pendingApproval: null,
+      pendingApprovalRunModelRuntimeRecovery: null,
       recovery: null,
       runId: "run-1",
       todos: [],
@@ -185,6 +187,7 @@ test("agent runtime snapshot reducer does not produce runtime facts from snapsho
       error: null,
       forkState: { canFork: true },
       pendingApproval: null,
+      pendingApprovalRunModelRuntimeRecovery: null,
       recovery: null,
       runId: "snapshot-run",
       todos: [
@@ -235,6 +238,7 @@ test("agent runtime snapshot reducer clears missing metadata instead of keeping 
       error: null,
       forkState: { canFork: true },
       pendingApproval: null,
+      pendingApprovalRunModelRuntimeRecovery: null,
       recovery: null,
       runId: null,
       todos: [],
@@ -273,6 +277,7 @@ test("agent runtime snapshot reducer applies only metadata from busy snapshots",
       error: null,
       forkState: { canFork: false, reason: "busy" },
       pendingApproval: null,
+      pendingApprovalRunModelRuntimeRecovery: null,
       recovery: null,
       runId: "run-1",
       todos: [],
@@ -322,6 +327,13 @@ test("agent runtime snapshot reducer hydrates interrupted approval snapshots", (
       contextInclusions: [],
       error: null,
       forkState: { canFork: false, reason: "pending_hitl" },
+      pendingApprovalRunModelRuntimeRecovery: {
+        kind: "legacy_missing_effort",
+        modelId: "deepseek:deepseek-v4-pro",
+        requestId: "hitl:thread-1:run-1:tool-1",
+        runId: "run-1",
+        toolCallId: "tool-1"
+      },
       recovery: null,
       pendingApproval: {
         allowed_decisions: ["approve", "user_declined", "corrected"],
@@ -346,6 +358,13 @@ test("agent runtime snapshot reducer hydrates interrupted approval snapshots", (
   assert.equal(next.agent.activeRun?.assistantMessageId, "assistant-1")
   assert.equal(next.agent.activeRun?.turnId, "user-1")
   assert.equal(next.agent.pendingApproval?.id, "hitl:thread-1:run-1:tool-1")
+  assert.deepEqual(next.agent.pendingApprovalRunModelRuntimeRecovery, {
+    kind: "legacy_missing_effort",
+    modelId: "deepseek:deepseek-v4-pro",
+    requestId: "hitl:thread-1:run-1:tool-1",
+    runId: "run-1",
+    toolCallId: "tool-1"
+  })
   assert.equal(next.agent.latestRunId, "run-1")
   assert.deepEqual(
     next.agent.messagesPage.map((message) => message.id),

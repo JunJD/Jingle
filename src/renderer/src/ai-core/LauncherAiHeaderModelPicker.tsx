@@ -11,11 +11,12 @@ import { ModelQuickPickerContent } from "@/features/model-selection/ModelQuickPi
 import { useI18n } from "@/lib/i18n"
 import type { ProviderId } from "@/types"
 import type { ModelRuntimeSelection } from "@shared/app-types"
-import { useLauncherAiModelPickerController } from "./use-launcher-ai-model-picker-controller"
+import type { LauncherAiModelPickerController } from "./use-launcher-ai-model-picker-controller"
 
 interface LauncherAiHeaderModelPickerProps {
   currentSelection: ModelRuntimeSelection | null
   fallbackLabel: string
+  modelPickerController: LauncherAiModelPickerController
   onSelectSelection: (selection: ModelRuntimeSelection) => Promise<boolean>
   selectionRevision: number | null
 }
@@ -23,10 +24,16 @@ interface LauncherAiHeaderModelPickerProps {
 export function LauncherAiHeaderModelPicker(
   props: LauncherAiHeaderModelPickerProps
 ): React.JSX.Element {
-  const { currentSelection, fallbackLabel, onSelectSelection, selectionRevision } = props
+  const {
+    currentSelection,
+    fallbackLabel,
+    modelPickerController,
+    onSelectSelection,
+    selectionRevision
+  } = props
   const { copy } = useI18n()
   const [open, setOpen] = useState(false)
-  const { catalog, loadState, openProviderSettings, reload } = useLauncherAiModelPickerController()
+  const { catalog, loadState, openProviderSettings, reload } = modelPickerController
   const effectiveSelection = resolveModelSelection(catalog, currentSelection)
   const selectedModel = projectSelectedModelSummary(catalog, effectiveSelection?.modelId ?? null)
   const displayName =

@@ -30,6 +30,7 @@ import { LauncherAiHeaderLeadingActions } from "./LauncherAiHeaderLeadingActions
 import { LauncherAiHeaderModelPicker } from "./LauncherAiHeaderModelPicker"
 import { LauncherAiWorkflowAccessory } from "./LauncherAiWorkflowAccessory"
 import { LauncherAiModelPicker } from "./LauncherAiModelPicker"
+import { LauncherAiResumeModelRecovery } from "./LauncherAiResumeModelRecovery"
 import { LauncherAiSidebarPanel } from "./LauncherAiSidebarPanel"
 import { LauncherAiThreadSearchOverlay } from "./LauncherAiThreadSearchOverlay"
 import { useAiCoreHost, useAiCoreLifecycle } from "./AiCoreHost"
@@ -42,14 +43,18 @@ import {
   createLauncherCommandSubmissionGate,
   canSelectLauncherAiModel,
   canSubmitLauncherApprovalDecision,
+  clearLauncherApprovalModelRecoveryDraft,
   clearLauncherApprovalCorrectionDraft,
+  createLauncherApprovalModelRecoveryKey,
   createLauncherApprovalCorrectionKey,
   isLauncherCommandTargetCurrent,
   getLauncherApprovalCorrectionDraft,
   projectLauncherApprovalActions,
+  projectLauncherApprovalModelRecovery,
   projectLauncherAiForkCapability,
   projectLauncherAiTargetConfiguration,
-  setLauncherApprovalCorrectionDraft
+  setLauncherApprovalCorrectionDraft,
+  setLauncherApprovalModelRecoveryDraft
 } from "./launcher-ai-controller"
 import { useAiAttachments } from "./useAiAttachments"
 import { useAssistantSelectionRefs } from "@/components/chat/useAssistantSelectionRefs"
@@ -59,6 +64,7 @@ import {
   useLauncherAiModelDisplayProjection,
   useModelProviderAttachmentCapabilities
 } from "./use-launcher-ai-model-display-controller"
+import { useLauncherAiModelPickerController } from "./use-launcher-ai-model-picker-controller"
 import { launcherAiCommands } from "./launcher-ai-commands"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
@@ -99,6 +105,7 @@ import {
 } from "@jingle/agent-client"
 import type { Message, Todo } from "@/types"
 import type { LauncherSearchResult } from "@shared/launcher-search"
+import type { ModelRuntimeSelection } from "@shared/app-types"
 
 const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
 const EMPTY_MESSAGES: readonly Message[] = []
@@ -232,6 +239,9 @@ export function LauncherAiPage(): React.JSX.Element {
   const [approvalCorrectionDrafts, setApprovalCorrectionDrafts] = useState<
     ReadonlyMap<string, string>
   >(() => new Map())
+  const [approvalModelRecoveryDrafts, setApprovalModelRecoveryDrafts] = useState<
+    ReadonlyMap<string, ModelRuntimeSelection>
+  >(() => new Map())
   const approvalCorrectionRevisionsRef = useRef(new Map<string, number>())
   const [pendingCommands, setPendingCommands] = useState<ReadonlyMap<string, AgentCommandActivity>>(
     () => new Map()
@@ -258,6 +268,7 @@ export function LauncherAiPage(): React.JSX.Element {
     seedQuery: initialSeedQuery
   })
   const threadId = threadNavigation.threadId
+  const modelPickerController = useLauncherAiModelPickerController()
   const handleCommandAdmitted = useCallback((activity: AgentCommandActivity): void => {
     setPendingCommands((currentActivities) => {
       const nextActivities = new Map(currentActivities)
@@ -359,7 +370,59 @@ export function LauncherAiPage(): React.JSX.Element {
     projectedApprovalKey && settledApprovalKeys.has(projectedApprovalKey)
       ? null
       : projectedPendingApproval
+  const pendingApprovalRunModelRuntimeRecovery = useThreadSelector(
+    threadId,
+    (state) => state?.agent.pendingApprovalRunModelRuntimeRecovery ?? null
+  )
+  const approvalModelRecoveryProjection = useMemo(
+    () =>
+      projectLauncherApprovalModelRecovery({
+        catalog: modelPickerController.catalog,
+        drafts: approvalModelRecoveryDrafts,
+        loadState: modelPickerController.loadState,
+        pendingApproval,
+        recovery: pendingApprovalRunModelRuntimeRecovery,
+        threadId
+      }),
+    [
+      approvalModelRecoveryDrafts,
+      pendingApproval,
+      pendingApprovalRunModelRuntimeRecovery,
+      modelPickerController.catalog,
+      modelPickerController.loadState,
+      threadId
+    ]
+  )
+  const approvalModelRecoveryKey =
+    threadId && pendingApprovalRunModelRuntimeRecovery?.kind === "legacy_missing_effort"
+      ? createLauncherApprovalModelRecoveryKey({
+          requestId: pendingApprovalRunModelRuntimeRecovery.requestId,
+          runId: pendingApprovalRunModelRuntimeRecovery.runId,
+          threadId
+        })
+      : null
+  const canResumeApprovalModelExecution =
+    approvalModelRecoveryProjection.kind === "not_required" ||
+    (approvalModelRecoveryProjection.kind === "required" &&
+      approvalModelRecoveryProjection.selection !== null)
+  const selectApprovalModelRecovery = useCallback(
+    (selection: ModelRuntimeSelection): void => {
+      if (!approvalModelRecoveryKey) {
+        return
+      }
+      setApprovalModelRecoveryDrafts((currentDrafts) =>
+        setLauncherApprovalModelRecoveryDraft(currentDrafts, approvalModelRecoveryKey, selection)
+      )
+    },
+    [approvalModelRecoveryKey]
+  )
   const approvalActions = projectLauncherApprovalActions(pendingApproval)
+  const canDeclineApprovalRun =
+    approvalActions.canDeclineRun &&
+    !(
+      approvalModelRecoveryProjection.kind === "blocked" &&
+      approvalModelRecoveryProjection.reason === "source_run_unavailable"
+    )
   const approvalIdentityKey =
     threadId && pendingApproval
       ? createLauncherApprovalCorrectionKey(threadId, pendingApproval.id)
@@ -943,11 +1006,21 @@ export function LauncherAiPage(): React.JSX.Element {
         return
       }
 
+      const runModelRuntimeSelectionRecovery =
+        decision.type === "user_declined" || approvalModelRecoveryProjection.kind === "not_required"
+          ? undefined
+          : approvalModelRecoveryProjection.kind === "required"
+            ? approvalModelRecoveryProjection.selection
+            : null
+      if (runModelRuntimeSelectionRecovery === null) {
+        return
+      }
+
       const submittedThreadId = threadId
       const submittedApprovalKey = approvalIdentityKey
       const submittedCorrectionRevision =
         approvalCorrectionRevisionsRef.current.get(submittedApprovalKey) ?? 0
-      void handleApprovalDecision(decision).then((accepted) => {
+      void handleApprovalDecision(decision, runModelRuntimeSelectionRecovery).then((accepted) => {
         if (accepted && submittedThreadId !== null) {
           setSettledApprovalKeys((currentKeys) => {
             if (currentKeys.has(submittedApprovalKey)) {
@@ -970,9 +1043,22 @@ export function LauncherAiPage(): React.JSX.Element {
         setApprovalCorrectionDrafts((currentDrafts) =>
           clearLauncherApprovalCorrectionDraft(currentDrafts, submittedApprovalKey)
         )
+        if (approvalModelRecoveryKey) {
+          setApprovalModelRecoveryDrafts((currentDrafts) =>
+            clearLauncherApprovalModelRecoveryDraft(currentDrafts, approvalModelRecoveryKey)
+          )
+        }
       })
     },
-    [approvalCorrectionKey, approvalIdentityKey, handleApprovalDecision, pendingApproval, threadId]
+    [
+      approvalCorrectionKey,
+      approvalIdentityKey,
+      approvalModelRecoveryKey,
+      approvalModelRecoveryProjection,
+      handleApprovalDecision,
+      pendingApproval,
+      threadId
+    ]
   )
   const submitApprovalCorrection = useCallback((): void => {
     if (!approvalActions.canCorrect) {
@@ -991,9 +1077,9 @@ export function LauncherAiPage(): React.JSX.Element {
     submitApprovalDecision({ type: "approve" })
   }, [approvalActions.canApprove, submitApprovalDecision])
   const submitApprovalDecline = useCallback((): void => {
-    if (!approvalActions.canDeclineRun) return
+    if (!canDeclineApprovalRun) return
     submitApprovalDecision({ type: "user_declined" })
-  }, [approvalActions.canDeclineRun, submitApprovalDecision])
+  }, [canDeclineApprovalRun, submitApprovalDecision])
   const handleComposerKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLElement>): void => {
       const isHistoryKey = event.key === "ArrowUp" || event.key === "ArrowDown"
@@ -1578,6 +1664,7 @@ export function LauncherAiPage(): React.JSX.Element {
                     <LauncherAiHeaderModelPicker
                       currentSelection={currentModelRuntimeSelection}
                       fallbackLabel={copy.launcher.aiThreadTitle}
+                      modelPickerController={modelPickerController}
                       onSelectSelection={selectModel}
                       selectionRevision={threadId ? durableModelRuntimeSelectionRevision : null}
                     />
@@ -1787,6 +1874,12 @@ export function LauncherAiPage(): React.JSX.Element {
                         request={pendingApproval}
                         variant="composer-tray"
                       />
+                      {approvalModelRecoveryProjection.kind !== "not_required" ? (
+                        <LauncherAiResumeModelRecovery
+                          onSelect={selectApprovalModelRecovery}
+                          projection={approvalModelRecoveryProjection}
+                        />
+                      ) : null}
                     </div>
                   ) : null}
                   {!isApprovalPending && threadId && followUpQueue ? (
@@ -1933,7 +2026,7 @@ export function LauncherAiPage(): React.JSX.Element {
                         <div className="ml-auto flex shrink-0 items-center gap-[var(--jingle-gap-sm)]">
                           {isApprovalPending ? (
                             <>
-                              {approvalActions.canDeclineRun ? (
+                              {canDeclineApprovalRun ? (
                                 <button
                                   type="button"
                                   className="min-h-8 rounded-full px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -1948,7 +2041,9 @@ export function LauncherAiPage(): React.JSX.Element {
                                   type="button"
                                   className="min-h-8 rounded-full px-[var(--jingle-space-2-5)] [font-size:var(--jingle-font-body)] font-medium text-foreground transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-40"
                                   disabled={
-                                    hasPendingCommand || approvalCorrection.trim().length === 0
+                                    hasPendingCommand ||
+                                    !canResumeApprovalModelExecution ||
+                                    approvalCorrection.trim().length === 0
                                   }
                                   onClick={submitApprovalCorrection}
                                 >
@@ -1959,7 +2054,7 @@ export function LauncherAiPage(): React.JSX.Element {
                                 <button
                                   type="button"
                                   className="min-h-8 rounded-full bg-foreground px-[var(--jingle-space-3)] [font-size:var(--jingle-font-body)] font-semibold text-background shadow-[0_6px_16px_rgba(32,38,45,0.14)] transition-transform hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
-                                  disabled={hasPendingCommand}
+                                  disabled={hasPendingCommand || !canResumeApprovalModelExecution}
                                   onClick={submitApprovalAccept}
                                 >
                                   {copy.toolCall.accept}

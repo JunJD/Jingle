@@ -1,7 +1,10 @@
 import { randomUUID } from "crypto"
 import type { HITLDecision } from "@shared/hitl"
 import type { ModelRuntimeSelection } from "@shared/app-types"
-import { withModelRuntimeSelection } from "@shared/model-runtime-selection"
+import {
+  readRunModelRuntimeSelection,
+  withModelRuntimeSelection
+} from "@shared/model-runtime-selection"
 import {
   AGENT_RUN_FAILURE_METADATA_KEY,
   encodeAgentRunFailure,
@@ -47,6 +50,7 @@ import {
   createRunStartedEventInput,
   createUserMessageCreatedEventInput
 } from "./event-recorder"
+import type { RunModelRuntimeSelectionResumeAdmission } from "../model-provider/runtime-selection-admission"
 
 type PersistedRunStatus = "pending" | "running" | "error" | "success" | "interrupted" | "cancelled"
 type ExistingRun = NonNullable<Awaited<ReturnType<typeof getRun>>>
@@ -100,9 +104,9 @@ export async function beginAgentRun(
     selection
   )
   const runStartedEventInput = createRunStartedEventInput({
-    modelId: selection.modelId,
     permissionMode,
     runId,
+    selection: requireReadyRunModelRuntimeSelection(metadata),
     threadId,
     userMessageId: options.startEvent.userMessageId
   })
@@ -214,11 +218,87 @@ async function withRunMetadataLock<T>(runId: string, operation: () => Promise<T>
   }
 }
 
+function parsePersistedRunMetadataForResume(run: ExistingRun): Record<string, unknown> {
+  if (run.metadata === null) {
+    return {}
+  }
+
+  try {
+    const parsed = JSON.parse(run.metadata) as unknown
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>
+    }
+  } catch {
+    // Report the durable fact as invalid below.
+  }
+  throw new JingleIpcError({
+    channel: "agent:resume",
+    code: "FAILED_PRECONDITION",
+    message: "The source run metadata is invalid and cannot be resumed safely."
+  })
+}
+
+function requireReadyRunModelRuntimeSelection(
+  metadata: Record<string, unknown>
+): ModelRuntimeSelection {
+  const state = readRunModelRuntimeSelection(metadata)
+  if (state.kind !== "ready") {
+    throw new Error("Run admission is missing its canonical model runtime selection.")
+  }
+  return state.selection
+}
+
+function isSameModelRuntimeSelection(
+  left: ModelRuntimeSelection,
+  right: ModelRuntimeSelection
+): boolean {
+  return (
+    left.version === right.version &&
+    left.modelId === right.modelId &&
+    left.thinkingEffort === right.thinkingEffort
+  )
+}
+
 function mergeRunResumeMetadata(
   run: ExistingRun,
-  metadata: Record<string, unknown> | undefined
-): Record<string, unknown> {
-  return removeRunFailureMetadata(mergeRunMetadata(run, metadata ?? {}))
+  metadata: Record<string, unknown> | undefined,
+  admission: RunModelRuntimeSelectionResumeAdmission
+): { metadata: Record<string, unknown>; selection: ModelRuntimeSelection } {
+  const persistedMetadata = parsePersistedRunMetadataForResume(run)
+  const state = readRunModelRuntimeSelection(persistedMetadata)
+  let selection: ModelRuntimeSelection
+  if (admission.kind === "persisted") {
+    if (
+      state.kind !== "ready" ||
+      !isSameModelRuntimeSelection(state.selection, admission.selection)
+    ) {
+      throw new JingleIpcError({
+        channel: "agent:resume",
+        code: "CONFLICT",
+        message: "The source run model runtime selection changed before resume admission."
+      })
+    }
+    selection = state.selection
+  } else {
+    if (
+      state.kind !== "legacy_missing_effort" ||
+      state.modelId !== admission.expectedLegacyModelId
+    ) {
+      throw new JingleIpcError({
+        channel: "agent:resume",
+        code: "CONFLICT",
+        message: "The source run legacy model identity changed before recovery admission."
+      })
+    }
+    selection = admission.selection
+  }
+
+  const merged = removeRunFailureMetadata({ ...persistedMetadata, ...(metadata ?? {}) })
+  return {
+    metadata:
+      admission.kind === "legacy_upgrade" ? withModelRuntimeSelection(merged, selection) : merged,
+    selection
+  }
 }
 
 function removeRunFailureMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
@@ -265,9 +345,7 @@ export async function commitAgentResumeDecision(
   decision: HITLDecision & { request_id: string; tool_call_id: string },
   metadata: Record<string, unknown> | undefined,
   options: {
-    resumeEvent: {
-      modelId?: string
-    }
+    modelRuntimeSelectionAdmission?: RunModelRuntimeSelectionResumeAdmission
   }
 ): Promise<{ run: ExistingRun; runId: string } | null> {
   const approvalEvent = createApprovalResolvedEventInput({
@@ -276,26 +354,7 @@ export async function commitAgentResumeDecision(
     runId,
     threadId
   })
-  const eventInputs: AppendAgentEventInput[] =
-    decision.type === "user_declined"
-      ? [
-          approvalEvent,
-          createRunFinishedEventInput({
-            completionReason: "user_declined",
-            runId,
-            status: "cancelled",
-            threadId
-          })
-        ]
-      : [
-          approvalEvent,
-          createRunResumedEventInput({
-            modelId: options.resumeEvent.modelId,
-            requestId: decision.request_id,
-            runId,
-            threadId
-          })
-        ]
+  const eventInputsRef: { current: AppendAgentEventInput[] | null } = { current: null }
 
   const committed = await withRunMetadataLock(runId, async () => {
     const prisma = getPrismaClient()
@@ -344,6 +403,37 @@ export async function commitAgentResumeDecision(
       }
 
       const now = BigInt(Date.now())
+      const terminalDecline = decision.type === "user_declined"
+      const resumeMutation = terminalDecline
+        ? null
+        : options.modelRuntimeSelectionAdmission
+          ? mergeRunResumeMetadata(existing, metadata, options.modelRuntimeSelectionAdmission)
+          : (() => {
+              throw new JingleIpcError({
+                channel: "agent:resume",
+                code: "FAILED_PRECONDITION",
+                message: "Resume admission is missing its model runtime selection."
+              })
+            })()
+      const eventInputs: AppendAgentEventInput[] = terminalDecline
+        ? [
+            approvalEvent,
+            createRunFinishedEventInput({
+              completionReason: "user_declined",
+              runId,
+              status: "cancelled",
+              threadId
+            })
+          ]
+        : [
+            approvalEvent,
+            createRunResumedEventInput({
+              requestId: decision.request_id,
+              runId,
+              selection: resumeMutation!.selection,
+              threadId
+            })
+          ]
       const resolution = await transaction.hitlRequest.updateMany({
         data: {
           decision: serializeJsonValue(decision),
@@ -365,13 +455,10 @@ export async function commitAgentResumeDecision(
         return null
       }
 
-      const terminalDecline = decision.type === "user_declined"
       const updatedRow = await transaction.run.update({
         data: {
           metadata: serializeJsonValue(
-            terminalDecline
-              ? mergeRunMetadataWithoutFailure(existing)
-              : mergeRunResumeMetadata(existing, metadata)
+            terminalDecline ? mergeRunMetadataWithoutFailure(existing) : resumeMutation!.metadata
           ),
           ...(terminalDecline
             ? { status: "cancelled" }
@@ -383,6 +470,7 @@ export async function commitAgentResumeDecision(
         where: { runId }
       })
       await appendAgentEventsInTransaction(transaction, eventInputs, { now })
+      eventInputsRef.current = eventInputs
       await transaction.thread.update({
         data: {
           status: terminalDecline ? "idle" : "busy",
@@ -397,7 +485,10 @@ export async function commitAgentResumeDecision(
   if (!committed) {
     return null
   }
-  commitAgentEventProjectionState(eventInputs)
+  if (!eventInputsRef.current) {
+    throw new Error("Resume admission committed without its durable event batch.")
+  }
+  commitAgentEventProjectionState(eventInputsRef.current)
   return { run: committed, runId }
 }
 

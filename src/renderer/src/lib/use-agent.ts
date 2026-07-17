@@ -190,12 +190,13 @@ export function useAgent(options: UseAgentOptions): {
   }, [threadId])
 
   const resume = useCallback(
-    async (decision): Promise<boolean> => {
+    async (decision, resumeOptions): Promise<boolean> => {
       return resumeAgentThread({
         decision,
         onCommandAdmitted,
         onCommandSettled,
         onLocalError: setLocalError,
+        runModelRuntimeSelectionRecovery: resumeOptions?.runModelRuntimeSelectionRecovery,
         threadContext,
         threadId
       })

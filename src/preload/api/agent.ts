@@ -7,6 +7,7 @@ import type {
 import type { HITLDecision } from "@shared/hitl"
 import type { AgentInvokeMessage, ComposerMessageInput } from "@shared/message-content"
 import type { PermissionModeName } from "@shared/permission-mode"
+import type { ModelRuntimeSelection } from "@shared/app-types"
 import type { AgentThreadEventSubscriptionSurface } from "@shared/agent-thread-contract"
 import {
   getAgentCommandLifecycleChannel,
@@ -99,12 +100,17 @@ export const agentApi = {
       temporaryMode
     })
   },
-  resume: (threadId: string, decision: HITLDecision): Promise<AgentCommandOutcome> => {
+  resume: (
+    threadId: string,
+    decision: HITLDecision,
+    runModelRuntimeSelectionRecovery?: ModelRuntimeSelection
+  ): Promise<AgentCommandOutcome> => {
     return invokeIpc<AgentCommandOutcome>(
       "agent:resume",
       buildAgentResumeIpcPayload({
         threadId,
-        decision
+        decision,
+        runModelRuntimeSelectionRecovery
       })
     )
   },

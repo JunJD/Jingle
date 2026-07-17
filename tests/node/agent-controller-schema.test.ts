@@ -156,6 +156,75 @@ test("parseAgentResumeParams requires request_id at the IPC boundary", () => {
   )
 })
 
+test("parseAgentResumeParams canonicalizes one explicit recovery pair and rejects decline repair", () => {
+  const parsed = parseAgentResumeParams({
+    decision: {
+      request_id: " request-1 ",
+      tool_call_id: " tool-1 ",
+      type: "approve"
+    },
+    runModelRuntimeSelectionRecovery: {
+      modelId: "deepseek:deepseek-v4-pro",
+      thinkingEffort: "max",
+      version: 1
+    },
+    threadId: " thread-1 "
+  })
+  assert.deepEqual(parsed, {
+    decision: {
+      request_id: "request-1",
+      tool_call_id: "tool-1",
+      type: "approve"
+    },
+    runModelRuntimeSelectionRecovery: {
+      modelId: "deepseek:deepseek-v4-pro",
+      thinkingEffort: "max",
+      version: 1
+    },
+    threadId: "thread-1"
+  })
+  assert.equal(Object.isFrozen(parsed.runModelRuntimeSelectionRecovery), true)
+
+  assert.throws(() =>
+    parseAgentResumeParams({
+      decision: {
+        request_id: "request-1",
+        tool_call_id: "tool-1",
+        type: "user_declined"
+      },
+      runModelRuntimeSelectionRecovery: {
+        modelId: "deepseek:deepseek-v4-pro",
+        thinkingEffort: "max",
+        version: 1
+      },
+      threadId: "thread-1"
+    })
+  )
+})
+
+test("parseAgentResumeParams snapshots recovery without invoking accessors", () => {
+  let getterCalls = 0
+  assert.throws(() =>
+    parseAgentResumeParams({
+      decision: {
+        request_id: "request-1",
+        tool_call_id: "tool-1",
+        type: "approve"
+      },
+      runModelRuntimeSelectionRecovery: {
+        get modelId() {
+          getterCalls += 1
+          return "deepseek:deepseek-v4-pro"
+        },
+        thinkingEffort: "max",
+        version: 1
+      },
+      threadId: "thread-1"
+    })
+  )
+  assert.equal(getterCalls, 0)
+})
+
 test("parseAgentInvokeParams rejects queue as a main-process follow-up action", () => {
   assert.throws(
     () =>

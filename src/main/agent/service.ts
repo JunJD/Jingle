@@ -34,6 +34,7 @@ import {
 } from "@shared/agent-run-recovery"
 import { createAgentRunHandle } from "./runtime"
 import { createAgentRuntime } from "./runtime-assembly"
+import { commitTerminalAgentResumeDecision } from "./run-lifecycle-controller"
 import { createExtensionAiRuntime } from "./extension-ai-runtime"
 import { createNativeExtensionToolRegistry } from "../extension-tools/native-extension-tools"
 import {
@@ -69,7 +70,11 @@ import { diagnosticsGraph } from "../diagnostics/instance"
 import { JingleMemoryService } from "../jingle-memory/service"
 import { WorkspaceService } from "../workspace/service"
 import { readRunPermissionModeSnapshot, readThreadPermissionMode } from "./permission-mode"
-import { requirePersistedModelRuntimeSelection } from "../model-provider/runtime-selection-admission"
+import {
+  admitRunModelRuntimeSelectionForResume,
+  requirePersistedModelRuntimeSelection,
+  type RunModelRuntimeSelectionResumeAdmission
+} from "../model-provider/runtime-selection-admission"
 import { getProviderAdapter } from "../model-provider/adapters"
 import { resolveModelRuntimeConfig } from "../model-provider/resolver"
 import { resolveJingleWorkspaceIdentity } from "../workspace/identity"
@@ -156,18 +161,19 @@ function parsePersistedMetadata(
   })
 }
 
-function resolveResumeModelRuntimeSelection(input: {
+function resolveResumeModelRuntimeSelectionAdmission(input: {
   channel: "agent:resume"
   decision: HITLDecision
+  recoverySelection: ModelRuntimeSelection | undefined
   sourceRun: NonNullable<Awaited<ReturnType<typeof getRun>>>
-}): ModelRuntimeSelection | null {
+}): RunModelRuntimeSelectionResumeAdmission | null {
   if (input.decision.type === "user_declined") {
     return null
   }
-  return requirePersistedModelRuntimeSelection({
+  return admitRunModelRuntimeSelectionForResume({
     channel: input.channel,
     metadata: parsePersistedMetadata(input.channel, input.sourceRun.metadata),
-    owner: "run"
+    recoverySelection: input.recoverySelection
   })
 }
 
@@ -1308,7 +1314,7 @@ export class AgentService {
   }
 
   async resume(
-    { threadId, decision }: AgentResumeParams,
+    { threadId, decision, runModelRuntimeSelectionRecovery }: AgentResumeParams,
     sink: AgentStreamSink,
     options?: AgentRunOptions<ResolvedHitlDecision>
   ): Promise<void> {
@@ -1339,6 +1345,32 @@ export class AgentService {
     let runExecutionStarted = false
     this.activeRuns.set(threadId, activeRun)
     try {
+      if (decision.type === "user_declined") {
+        const resumeTarget = await awaitAbortableSetupRead(abortController.signal, () =>
+          resolveResumeTarget(threadId, decision)
+        )
+        const resolvedHitlDecision: ResolvedHitlDecision = {
+          request_id: resumeTarget.requestId,
+          tool_call_id: resumeTarget.toolCallId,
+          type: "user_declined"
+        }
+        durableResumeDecision = resolvedHitlDecision
+        abortController.signal.throwIfAborted()
+        options?.onCoreAdmitted?.()
+        activeRun.markPreparationSettled()
+        const terminal = await commitTerminalAgentResumeDecision({
+          decision: resolvedHitlDecision,
+          runId: resumeTarget.runId,
+          threadId
+        })
+        terminal.scheduleProjection()
+        options?.onRunAccepted?.(resolvedHitlDecision)
+        sink.send({ type: "run_started", runId: terminal.runId })
+        commandOutcome.report(claim.outcome)
+        sink.send({ type: "cancelled" })
+        return
+      }
+
       const workspacePath = await awaitAbortableSetupRead(abortController.signal, () =>
         this.workspaceService.getWorkspacePath(threadId)
       )
@@ -1356,6 +1388,21 @@ export class AgentService {
       const resumeTarget = await awaitAbortableSetupRead(abortController.signal, () =>
         resolveResumeTarget(threadId, decision)
       )
+      const resolvedHitlDecision: ResolvedHitlDecision =
+        decision.type === "corrected"
+          ? {
+              correction: decision.correction,
+              request_id: resumeTarget.requestId,
+              tool_call_id: resumeTarget.toolCallId,
+              type: "corrected"
+            }
+          : {
+              request_id: resumeTarget.requestId,
+              tool_call_id: resumeTarget.toolCallId,
+              type: "approve"
+            }
+      durableResumeDecision = resolvedHitlDecision
+
       const sourceRun = await awaitAbortableSetupRead(abortController.signal, () =>
         getRun(resumeTarget.runId)
       )
@@ -1380,7 +1427,13 @@ export class AgentService {
         return
       }
 
-      const selection = resolveResumeModelRuntimeSelection({ channel, decision, sourceRun })
+      const modelRuntimeSelectionAdmission = resolveResumeModelRuntimeSelectionAdmission({
+        channel,
+        decision,
+        recoverySelection: runModelRuntimeSelectionRecovery,
+        sourceRun
+      })
+      const selection = modelRuntimeSelectionAdmission?.selection ?? null
       activeRun.attachmentCapabilities = selection
         ? getProviderAdapter(resolveModelRuntimeConfig({ selection }).providerId)
             .attachmentCapabilities
@@ -1466,27 +1519,13 @@ export class AgentService {
         return
       }
 
-      const resolvedHitlDecision: ResolvedHitlDecision =
-        decision.type === "corrected"
-          ? {
-              correction: decision.correction,
-              request_id: resumeTarget.requestId,
-              tool_call_id: resumeTarget.toolCallId,
-              type: "corrected"
-            }
-          : {
-              request_id: resumeTarget.requestId,
-              tool_call_id: resumeTarget.toolCallId,
-              type: decision.type
-            }
-      durableResumeDecision = resolvedHitlDecision
       const run = await runHandle.thread.startResume({
         aiCapabilities: runtimeAiCapabilities,
         decision: resolvedHitlDecision,
         extensionAiRuntime,
         jingleMemoryContextPack,
         jingleMemoryTemporaryMode: jingleMemoryContextPack?.temporaryMode === true,
-        ...(selection ? { selection } : {}),
+        ...(modelRuntimeSelectionAdmission ? { modelRuntimeSelectionAdmission } : {}),
         permissionMode,
         runId: resumeTarget.runId,
         source: "resume",

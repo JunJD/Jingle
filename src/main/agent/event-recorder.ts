@@ -20,6 +20,7 @@ import { JingleIpcError } from "../ipc/error"
 import { getDevtoolsNetworkRecorder } from "@jingle/devtools-network/main"
 import type { HITLDecision } from "../types"
 import { parseAgentRunFailure } from "@shared/agent-run-failure"
+import type { ModelRuntimeSelection } from "@shared/app-types"
 
 export interface AgentStreamBoundaryRecorderState {
   approvalRequestIds: Set<string>
@@ -183,9 +184,9 @@ function recordAgentStreamForDevtools(input: {
 }
 
 export interface RunStartedEventInput {
-  modelId?: string
   permissionMode: string
   runId: string
+  selection: ModelRuntimeSelection
   threadId: string
   userMessageId: string
 }
@@ -193,9 +194,10 @@ export interface RunStartedEventInput {
 export function createRunStartedEventInput(input: RunStartedEventInput): AppendAgentEventInput {
   return {
     payload: {
-      model: input.modelId ?? null,
+      model: input.selection.modelId,
       permissionMode: input.permissionMode,
       source: "invoke",
+      thinkingEffort: input.selection.thinkingEffort,
       userMessageId: input.userMessageId
     },
     runId: input.runId,
@@ -209,18 +211,19 @@ export async function recordRunStarted(input: RunStartedEventInput): Promise<voi
 }
 
 export interface RunResumedEventInput {
-  modelId?: string
   requestId: string
   runId: string
+  selection: ModelRuntimeSelection
   threadId: string
 }
 
 export function createRunResumedEventInput(input: RunResumedEventInput): AppendAgentEventInput {
   return {
     payload: {
-      model: input.modelId ?? null,
+      model: input.selection.modelId,
       requestId: input.requestId,
-      source: "resume"
+      source: "resume",
+      thinkingEffort: input.selection.thinkingEffort
     },
     runId: input.runId,
     threadId: input.threadId,

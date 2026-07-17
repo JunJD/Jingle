@@ -67,6 +67,7 @@ function createThreadDataSnapshot(
       error: null,
       forkState: { canFork: true },
       pendingApproval: null,
+      pendingApprovalRunModelRuntimeRecovery: null,
       recovery: null,
       runId: null,
       todos: [],
@@ -119,6 +120,7 @@ function installWindowApiStub(input?: {
   }>
   resumed: Array<{
     requestId: string
+    runModelRuntimeSelectionRecovery?: import("../../src/shared/app-types").ModelRuntimeSelection
     threadId: string
     toolCallId: string
   }>
@@ -148,6 +150,7 @@ function installWindowApiStub(input?: {
   }> = []
   const resumed: Array<{
     requestId: string
+    runModelRuntimeSelectionRecovery?: import("../../src/shared/app-types").ModelRuntimeSelection
     threadId: string
     toolCallId: string
   }> = []
@@ -248,10 +251,12 @@ function installWindowApiStub(input?: {
           },
           resume: async (
             threadId: string,
-            decision: { request_id: string; tool_call_id: string }
+            decision: { request_id: string; tool_call_id: string },
+            runModelRuntimeSelectionRecovery?: import("../../src/shared/app-types").ModelRuntimeSelection
           ) => {
             resumed.push({
               requestId: decision.request_id,
+              ...(runModelRuntimeSelectionRecovery ? { runModelRuntimeSelectionRecovery } : {}),
               threadId,
               toolCallId: decision.tool_call_id
             })
@@ -1336,6 +1341,47 @@ test("resumeAgentThread sends approval without an ambient model override", async
   assert.deepEqual(resumed, [
     {
       requestId: "hitl:thread-a:run-a:tool-a",
+      threadId: "thread-a",
+      toolCallId: "tool-a"
+    }
+  ])
+})
+
+test("resumeAgentThread forwards only the explicit run-scoped recovery pair", async () => {
+  const { resumed } = installWindowApiStub()
+  const store = createThreadStore()
+  store.applyThreadDataSnapshot("thread-a", createThreadDataSnapshot({}))
+  store.applyRuntimeEvents("thread-a", [
+    {
+      approval: createPendingApproval(),
+      requestedAt: new Date("2026-01-01T00:00:02.000Z"),
+      revision: 1,
+      runId: "run-a",
+      type: "approval.requested"
+    }
+  ])
+  const recovery = {
+    modelId: "deepseek:deepseek-v4-pro",
+    thinkingEffort: "max" as const,
+    version: 1 as const
+  }
+
+  assert.equal(
+    await resumeAgentThread({
+      decision: { type: "approve" },
+      runModelRuntimeSelectionRecovery: recovery,
+      threadContext: {
+        getAgentCommandState: (threadId) => getAgentCommandState(store, threadId),
+        loadThreadData: async () => {}
+      },
+      threadId: "thread-a"
+    }),
+    true
+  )
+  assert.deepEqual(resumed, [
+    {
+      requestId: "hitl:thread-a:run-a:tool-a",
+      runModelRuntimeSelectionRecovery: recovery,
       threadId: "thread-a",
       toolCallId: "tool-a"
     }

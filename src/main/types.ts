@@ -71,6 +71,7 @@ export interface AgentEditLastUserMessageAndInvokeParams extends AgentInvokePara
 export interface AgentResumeParams {
   threadId: string
   decision: JingleAgentResumeDecision
+  runModelRuntimeSelectionRecovery?: import("@shared/app-types").ModelRuntimeSelection
 }
 
 export interface AgentCancelParams {
@@ -212,6 +213,9 @@ export interface AgentThreadRunStateSnapshot {
   error: AgentRunFailure | null
   forkState: ThreadForkState
   pendingApproval: HITLRequest | null
+  pendingApprovalRunModelRuntimeRecovery:
+    | import("@shared/app-types").PendingApprovalRunModelRuntimeRecovery
+    | null
   recovery: AgentRunRecoveryRequired | null
   runId: string | null
   todos: Todo[]

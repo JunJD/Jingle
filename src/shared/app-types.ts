@@ -111,7 +111,17 @@ export interface DefaultModels {
   llm: string
 }
 
-export type ThinkingEffort = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
+export const THINKING_EFFORT_VALUES = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max"
+] as const
+
+export type ThinkingEffort = (typeof THINKING_EFFORT_VALUES)[number]
 
 export interface ModelRuntimeSelection {
   modelId: string
@@ -124,6 +134,26 @@ export type ThreadModelRuntimeSelectionState =
   | { kind: "legacy_missing_effort"; modelId: string }
   | { kind: "invalid" }
   | { kind: "missing" }
+
+interface PendingApprovalRunModelRuntimeRecoveryIdentity {
+  requestId: string
+  runId: string
+  toolCallId: string
+}
+
+export type PendingApprovalRunModelRuntimeRecovery =
+  | (PendingApprovalRunModelRuntimeRecoveryIdentity & {
+      kind: "legacy_missing_effort"
+      modelId: string
+    })
+  | (PendingApprovalRunModelRuntimeRecoveryIdentity & { kind: "invalid" })
+  | (PendingApprovalRunModelRuntimeRecoveryIdentity & { kind: "missing" })
+  | {
+      kind: "source_run_unavailable"
+      requestId: string
+      runId: string | null
+      toolCallId: string
+    }
 
 export interface ThreadModelRuntimeSelectionChangedEvent {
   revision: number
@@ -401,6 +431,7 @@ export interface AgentThreadRunStateSnapshot {
   error: AgentRunFailure | null
   forkState: ThreadForkState
   pendingApproval: HITLRequest | null
+  pendingApprovalRunModelRuntimeRecovery: PendingApprovalRunModelRuntimeRecovery | null
   recovery: AgentRunRecoveryRequired | null
   runId: string | null
   todos: Todo[]

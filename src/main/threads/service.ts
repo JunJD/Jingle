@@ -19,7 +19,7 @@ import {
   type ThreadRow
 } from "../db/threads"
 import { getLatestPendingHitlRequest, hasPendingHitlRequest } from "../db/hitl"
-import { getLatestRun } from "../db/runs"
+import { getLatestRun, getRun } from "../db/runs"
 import {
   getProjects,
   getThreadWorkspaceBindings,
@@ -65,12 +65,14 @@ import { THREAD_PINNED_METADATA_KEY } from "@shared/thread-sidebar"
 import {
   MODEL_RUNTIME_SELECTION_METADATA_KEY,
   MODEL_RUNTIME_SELECTION_REVISION_METADATA_KEY,
+  readRunModelRuntimeSelection,
   readThreadModelRuntimeSelection,
   readThreadModelRuntimeSelectionRevision,
   withThreadModelRuntimeSelection
 } from "@shared/model-runtime-selection"
 import type {
   ModelRuntimeSelection,
+  PendingApprovalRunModelRuntimeRecovery,
   ThreadModelRuntimeSelectionChangedEvent
 } from "@shared/app-types"
 import type { ArchivedThreadItem, ArchivedThreadsView } from "@shared/thread-archive"
@@ -363,8 +365,67 @@ interface LoadedThreadRuntimeFacts {
   forkState: ThreadForkState
   messages: Message[]
   pendingApproval: HITLRequest | null
+  pendingHitlRequest: Awaited<ReturnType<typeof getLatestPendingHitlRequest>>
   thread: Thread
   todos: Todo[]
+}
+
+async function projectPendingApprovalRunModelRuntimeRecovery(input: {
+  pendingApproval: HITLRequest | null
+  pendingHitlRequest: Awaited<ReturnType<typeof getLatestPendingHitlRequest>>
+  threadId: string
+}): Promise<PendingApprovalRunModelRuntimeRecovery | null> {
+  const pendingApproval = input.pendingApproval
+  if (!pendingApproval) {
+    return null
+  }
+
+  const durableRequest = input.pendingHitlRequest
+  const requestId = pendingApproval.id
+  const toolCallId = pendingApproval.tool_call.id
+  if (
+    !durableRequest ||
+    durableRequest.request_id !== requestId ||
+    durableRequest.tool_call_id !== toolCallId ||
+    !durableRequest.run_id
+  ) {
+    return {
+      kind: "source_run_unavailable",
+      requestId,
+      runId: durableRequest?.run_id ?? null,
+      toolCallId
+    }
+  }
+
+  const runId = durableRequest.run_id
+  const sourceRun = await getRun(runId)
+  if (!sourceRun || sourceRun.thread_id !== input.threadId) {
+    return { kind: "source_run_unavailable", requestId, runId, toolCallId }
+  }
+
+  let metadata: Record<string, unknown> | null = null
+  if (sourceRun.metadata !== null) {
+    try {
+      const parsed = JSON.parse(sourceRun.metadata) as unknown
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return { kind: "invalid", requestId, runId, toolCallId }
+      }
+      metadata = parsed as Record<string, unknown>
+    } catch {
+      return { kind: "invalid", requestId, runId, toolCallId }
+    }
+  }
+
+  const state = readRunModelRuntimeSelection(metadata)
+  switch (state.kind) {
+    case "ready":
+      return null
+    case "legacy_missing_effort":
+      return { ...state, requestId, runId, toolCallId }
+    case "invalid":
+    case "missing":
+      return { kind: state.kind, requestId, runId, toolCallId }
+  }
 }
 
 type ResolvedCreateThreadWorkspace =
@@ -482,6 +543,7 @@ export class ThreadsService {
       pendingApproval: latestPendingHitl
         ? mapHitlRowToRequest(latestPendingHitl)
         : checkpointFacts.hitlRequest,
+      pendingHitlRequest: latestPendingHitl,
       thread,
       todos: checkpointFacts.todos
     }
@@ -892,6 +954,12 @@ export class ThreadsService {
       this.getLatestRunSummary(threadId),
       this.threadWorkspaceService.getThreadWorkspacePath(threadId)
     ])
+    const pendingApprovalRunModelRuntimeRecovery =
+      await projectPendingApprovalRunModelRuntimeRecovery({
+        pendingApproval: facts.pendingApproval,
+        pendingHitlRequest: facts.pendingHitlRequest,
+        threadId
+      })
 
     return {
       thread: {
@@ -917,6 +985,7 @@ export class ThreadsService {
               }),
         forkState: facts.forkState,
         pendingApproval: facts.pendingApproval,
+        pendingApprovalRunModelRuntimeRecovery,
         recovery: null,
         todos: facts.todos,
         error: latestRun.error,

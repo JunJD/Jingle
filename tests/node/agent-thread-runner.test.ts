@@ -145,6 +145,7 @@ function createThreadData(
         canFork: true
       },
       pendingApproval,
+      pendingApprovalRunModelRuntimeRecovery: null,
       recovery: null,
       runId: input.runId ?? null,
       todos: input.todos ?? [],
@@ -811,6 +812,7 @@ test("AgentThreadRunner hydrates an empty thread only once", async () => {
           error: null,
           forkState: { canFork: true },
           pendingApproval: null,
+          pendingApprovalRunModelRuntimeRecovery: null,
           recovery: null,
           runId: null,
           todos: [],
@@ -839,6 +841,7 @@ test("AgentThreadRunner hydrates an empty thread only once", async () => {
           error: null,
           forkState: { canFork: true },
           pendingApproval: null,
+          pendingApprovalRunModelRuntimeRecovery: null,
           recovery: null,
           runId: null,
           todos: [],

@@ -1555,6 +1555,8 @@ export class AgentThreadRunner {
         contextInclusions: runtimeState.contextInclusions,
         forkState: toRuntimeForkState(runtimeState, persistedThreadData.runState.forkState),
         pendingApproval: runtimeState.pendingApproval,
+        pendingApprovalRunModelRuntimeRecovery:
+          persistedThreadData.runState.pendingApprovalRunModelRuntimeRecovery,
         recovery: entry.projector.readRecovery(),
         runId: runtimeState.latestRunId ?? persistedThreadData.runState.runId,
         todos: runtimeState.todos,

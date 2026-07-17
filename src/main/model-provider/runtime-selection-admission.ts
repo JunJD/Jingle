@@ -7,6 +7,17 @@ import {
 import { JingleIpcError } from "../ipc/error"
 import { resolveModelRuntimeConfig } from "./resolver"
 
+export type RunModelRuntimeSelectionResumeAdmission =
+  | {
+      kind: "persisted"
+      selection: ModelRuntimeSelection
+    }
+  | {
+      expectedLegacyModelId: string
+      kind: "legacy_upgrade"
+      selection: ModelRuntimeSelection
+    }
+
 export function validateModelRuntimeSelectionForAdmission(input: {
   channel: string
   selection: unknown
@@ -36,6 +47,63 @@ export function requirePersistedModelRuntimeSelection(input: {
     channel: input.channel,
     selection: requirePersistedModelRuntimeSelectionSnapshot(input)
   })
+}
+
+export function admitRunModelRuntimeSelectionForResume(input: {
+  channel: "agent:resume"
+  metadata: Record<string, unknown> | null | undefined
+  recoverySelection: unknown
+}): RunModelRuntimeSelectionResumeAdmission {
+  const state = readRunModelRuntimeSelection(input.metadata)
+  switch (state.kind) {
+    case "ready":
+      if (input.recoverySelection !== undefined) {
+        throw failedPrecondition(
+          input.channel,
+          "This run already has a durable model runtime selection and cannot be changed during resume."
+        )
+      }
+      return {
+        kind: "persisted",
+        selection: validateModelRuntimeSelectionForAdmission({
+          channel: input.channel,
+          selection: state.selection
+        })
+      }
+    case "legacy_missing_effort": {
+      if (input.recoverySelection === undefined) {
+        throw failedPrecondition(
+          input.channel,
+          "This run predates durable reasoning effort. Choose a supported reasoning effort before approving or correcting the pending action."
+        )
+      }
+      const selection = validateModelRuntimeSelectionForAdmission({
+        channel: input.channel,
+        selection: input.recoverySelection
+      })
+      if (selection.modelId !== state.modelId) {
+        throw failedPrecondition(
+          input.channel,
+          `This run must resume with its original model "${state.modelId}".`
+        )
+      }
+      return {
+        expectedLegacyModelId: state.modelId,
+        kind: "legacy_upgrade",
+        selection
+      }
+    }
+    case "invalid":
+      throw failedPrecondition(
+        input.channel,
+        "This run has an invalid model runtime selection and cannot be repaired safely."
+      )
+    case "missing":
+      throw failedPrecondition(
+        input.channel,
+        "This run has no model identity and cannot be repaired safely."
+      )
+  }
 }
 
 export function requirePersistedModelRuntimeSelectionSnapshot(input: {

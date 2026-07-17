@@ -286,6 +286,7 @@ test("get_trace_evidence tool content includes bounded trace blobs", () => {
     started_at: 1,
     status: "completed",
     thread_id: "thread-1",
+    thinking_effort: "high",
     total_input_tokens: 0,
     total_output_tokens: 0,
     total_steps: 1,

@@ -4,20 +4,13 @@ import type {
   ThreadModelRuntimeSelectionChangedEvent,
   ThreadModelRuntimeSelectionState
 } from "./app-types"
+import { THINKING_EFFORT_VALUES } from "./app-types"
 
 export const MODEL_RUNTIME_SELECTION_METADATA_KEY = "modelRuntimeSelection"
 export const MODEL_RUNTIME_SELECTION_REVISION_METADATA_KEY = "modelRuntimeSelectionRevision"
 export const MODEL_RUNTIME_SELECTION_VERSION = 1 as const
 
-const THINKING_EFFORTS = new Set<ThinkingEffort>([
-  "off",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max"
-])
+const THINKING_EFFORTS = new Set<ThinkingEffort>(THINKING_EFFORT_VALUES)
 
 export function parseModelRuntimeSelection(value: unknown): ModelRuntimeSelection | null {
   if (!isRecord(value)) {
@@ -206,7 +199,7 @@ export function readThreadModelRuntimeSelectionRevision(
   return isModelRuntimeSelectionRevision(revision) ? revision : 0
 }
 
-function isThinkingEffort(value: unknown): value is ThinkingEffort {
+export function isThinkingEffort(value: unknown): value is ThinkingEffort {
   return typeof value === "string" && THINKING_EFFORTS.has(value as ThinkingEffort)
 }
 
