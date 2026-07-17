@@ -175,11 +175,13 @@ export class NativeExtensionsService {
       nextRecord: request.secrets,
       provider: connection.provider
     })
-    this.emitConfigurationCommitted(commit.mutation)
-    this.emitPreferencesChanged({
-      extensionName: request.extensionName,
-      scope: "extension"
-    })
+    if (commit.mutation.changed.length > 0) {
+      this.emitConfigurationCommitted(commit.mutation)
+      this.emitPreferencesChanged({
+        extensionName: request.extensionName,
+        scope: "extension"
+      })
+    }
     return resolveNativeExtensionExecutionContextFromSnapshot(commit.snapshot).connection
   }
 
@@ -202,11 +204,13 @@ export class NativeExtensionsService {
 
   async finishOAuthCallback(rawUrl: string): Promise<NativeExtensionOAuthCallbackResult> {
     const commit = await this.oauthService.finishCallback(rawUrl)
-    this.emitConfigurationCommitted(commit.mutation)
-    this.emitPreferencesChanged({
-      extensionName: commit.result.extensionName,
-      scope: "extension"
-    })
+    if (commit.mutation.changed.length > 0) {
+      this.emitConfigurationCommitted(commit.mutation)
+      this.emitPreferencesChanged({
+        extensionName: commit.result.extensionName,
+        scope: "extension"
+      })
+    }
     return commit.result
   }
 

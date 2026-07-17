@@ -703,6 +703,15 @@ export function setNativeExtensionConnectionSecretRecord(params: {
       return value && value.length > 0 ? [[secretName, value]] : []
     })
   )
+  if (isDeepStrictEqual(currentRecord, nextRecord)) {
+    const snapshot = createNativeExtensionConfigurationSnapshotFromState({ manifest, state })
+    return {
+      mutation: createNativeExtensionConfigurationMutation(snapshot.token, []),
+      snapshot,
+      value: structuredClone(currentRecord)
+    }
+  }
+
   const key = getNativeExtensionConnectionOwnerKey(params)
   const connectionSecrets = { ...state.connectionSecrets }
   if (Object.keys(nextRecord).length === 0) {

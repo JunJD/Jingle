@@ -488,10 +488,10 @@ test("native extension configuration writes advance only their owned revisions",
     nextRecord: currentSecretRecord,
     provider: "notion"
   })
-  assert.deepEqual(credentialCommit.mutation.changed, ["credential"])
+  assert.deepEqual(credentialCommit.mutation.changed, [])
   assert.equal(
     credentialCommit.snapshot.token.revisions.credentialRevision,
-    beforeCredential.token.revisions.credentialRevision + 1
+    beforeCredential.token.revisions.credentialRevision
   )
   assert.equal(
     credentialCommit.snapshot.token.revisions.extensionConfigRevision,
@@ -843,7 +843,6 @@ test("platform OAuth callback exchanges handoff code and stores GitHub connectio
     const result = await nativeExtensionsService.finishOAuthCallback(
       `jingle://oauth/callback?state=${encodeURIComponent(state)}&provider=github&code=handoff-code`
     )
-    unsubscribe()
 
     assert.equal(result.status, "connected")
     assert.deepEqual(mutations[0]?.changed, ["credential"])
@@ -858,6 +857,30 @@ test("platform OAuth callback exchanges handoff code and stores GitHub connectio
     assert.equal(tokenRequests[0]?.body.connection_id, "default")
     assert.equal(tokenRequests[0]?.body.extension_name, "github")
     assert.equal(tokenRequests[0]?.body.provider, "github")
+
+    const afterFirstCredential = preferences.getNativeExtensionConfigurationSnapshot({
+      extensionName: "github"
+    })
+    const secondStart = await nativeExtensionsService.startOAuthConnection({
+      extensionName: "github"
+    })
+    const secondState = new URL(secondStart.authorizationUrl).searchParams.get("state")
+    assert.ok(secondState)
+    const secondResult = await nativeExtensionsService.finishOAuthCallback(
+      `jingle://oauth/callback?state=${encodeURIComponent(secondState)}&provider=github&code=handoff-code`
+    )
+    unsubscribe()
+
+    const afterSecondCredential = preferences.getNativeExtensionConfigurationSnapshot({
+      extensionName: "github"
+    })
+    assert.equal(secondResult.status, "connected")
+    assert.equal(mutations.length, 1)
+    assert.equal(
+      afterSecondCredential.token.revisions.credentialRevision,
+      afterFirstCredential.token.revisions.credentialRevision
+    )
+    assert.equal(tokenRequests.length, 2)
     assert.deepEqual(
       preferences.getNativeExtensionConnectionSecretRecord({
         connectionId: "default",
