@@ -14,16 +14,10 @@ export function createRuntimeThreadStreamDrainControlFromController<TReview = un
 ): RuntimeThreadStreamControl {
   return {
     drainRunStream: async (drainInput) => {
-      let beforePendingHitlPersistenceApplied = false
       const result = await drainRuntimeRunStream({
         onChunk: async (chunk) => {
           drainInput.signal.throwIfAborted()
           const [mode, data] = chunk
-          if (drainInput.beforePendingHitlPersistence && !beforePendingHitlPersistenceApplied) {
-            await drainInput.beforePendingHitlPersistence()
-            drainInput.signal.throwIfAborted()
-            beforePendingHitlPersistenceApplied = true
-          }
           const interrupted = await persistJingleValuesHitlRequest({
             data,
             mode,
@@ -39,10 +33,7 @@ export function createRuntimeThreadStreamDrainControlFromController<TReview = un
         signal: drainInput.signal,
         stream: drainInput.stream
       })
-      return {
-        ...result,
-        beforePendingHitlPersistenceApplied
-      }
+      return result
     }
   }
 }

@@ -1,4 +1,5 @@
 import type { HitlRequest } from "@prisma/client"
+import { isHitlDecisionType, type HITLDecisionType } from "@shared/hitl"
 import { getPrismaClient } from "./client"
 import { serializeJsonValue, toNumber } from "./utils"
 
@@ -54,6 +55,26 @@ function mapHitlRequestRow(row: HitlRequest): HitlRequestRow {
     updated_at: toNumber(row.updatedAt),
     resolved_at: row.resolvedAt === null ? null : toNumber(row.resolvedAt)
   }
+}
+
+export function parsePersistedHitlAllowedDecisions(
+  requestId: string,
+  value: string
+): HITLDecisionType[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value) as unknown
+  } catch (error) {
+    throw new Error(`[HITL] Request "${requestId}" has invalid allowed_decisions JSON.`, {
+      cause: error
+    })
+  }
+
+  if (!Array.isArray(parsed) || parsed.length === 0 || !parsed.every(isHitlDecisionType)) {
+    throw new Error(`[HITL] Request "${requestId}" has invalid allowed_decisions.`)
+  }
+
+  return parsed
 }
 
 export async function upsertHitlRequest(input: UpsertHitlRequestInput): Promise<HitlRequestRow> {
@@ -151,6 +172,23 @@ export async function getLatestHitlRequest(threadId: string): Promise<HitlReques
   return row ? mapHitlRequestRow(row) : null
 }
 
+export async function getLatestPendingHitlRequest(
+  threadId: string
+): Promise<HitlRequestRow | null> {
+  const prisma = getPrismaClient()
+  const row = await prisma.hitlRequest.findFirst({
+    where: {
+      threadId,
+      status: "pending"
+    },
+    orderBy: {
+      updatedAt: "desc"
+    }
+  })
+
+  return row ? mapHitlRequestRow(row) : null
+}
+
 export async function hasPendingHitlRequest(threadId: string): Promise<boolean> {
   const prisma = getPrismaClient()
   const row = await prisma.hitlRequest.findFirst({
@@ -203,36 +241,20 @@ export async function resolveHitlRequest(
 ): Promise<HitlRequestRow | null> {
   const prisma = getPrismaClient()
   const now = BigInt(Date.now())
-  const row = await prisma.$transaction(async (tx) => {
-    const result = await tx.hitlRequest.updateMany({
-      where: { requestId, status: "pending" },
-      data: {
-        status,
-        decision: serializeJsonValue(decision),
-        updatedAt: now,
-        resolvedAt: now
-      }
-    })
-    if (result.count === 0) return null
-
-    const resolved = await tx.hitlRequest.findUniqueOrThrow({ where: { requestId } })
-    if (status === "user_declined") {
-      if (!resolved.runId) {
-        throw new Error(`[HITL] Declined request "${requestId}" has no run owner.`)
-      }
-      await tx.run.update({
-        where: { runId: resolved.runId },
-        data: { status: "cancelled", updatedAt: now }
-      })
-      await tx.thread.update({
-        where: { threadId: resolved.threadId },
-        data: { status: "idle", updatedAt: now }
-      })
+  const result = await prisma.hitlRequest.updateMany({
+    where: { requestId, status: "pending" },
+    data: {
+      status,
+      decision: serializeJsonValue(decision),
+      updatedAt: now,
+      resolvedAt: now
     }
-    return resolved
   })
+  if (result.count === 0) return null
 
-  return row ? mapHitlRequestRow(row) : null
+  const row = await prisma.hitlRequest.findUniqueOrThrow({ where: { requestId } })
+
+  return mapHitlRequestRow(row)
 }
 
 export async function resolvePendingHitlRequests(

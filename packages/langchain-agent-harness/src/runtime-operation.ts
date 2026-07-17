@@ -57,7 +57,6 @@ export interface RuntimeResumeOperation<TContextInclusion = unknown> extends Run
 export interface RuntimeDrainOperation<
   TChunk extends RuntimeRunStreamChunk
 > extends RuntimeRunContext {
-  beforePendingHitlPersistence?: () => Promise<void> | void
   kind: "drain"
   onChunk: (chunk: TChunk) => Promise<void> | void
   signal: AbortSignal

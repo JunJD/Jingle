@@ -1511,6 +1511,7 @@ export class AgentThreadRunner {
         messages: runtimeState.messagesPage
       },
       runState: {
+        approvals: persistedThreadData.runState.approvals,
         error: runtimeState.error,
         contextInclusions: runtimeState.contextInclusions,
         forkState: toRuntimeForkState(runtimeState, persistedThreadData.runState.forkState),

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import type { RuntimeApproval } from "@jingle/langchain-agent-harness"
 import type { AgentThreadDataSnapshot, Message, Todo } from "../../src/shared/app-types"
 import { AgentThreadDataSnapshotService } from "../../src/main/threads/agent-thread-data-snapshot-service"
 import { ThreadsService } from "../../src/main/threads/service"
@@ -10,6 +11,7 @@ import {
 } from "../../src/shared/jingle-memory"
 
 function createService(input: {
+  approvals?: RuntimeApproval[]
   contextInclusions?: AgentContextInclusion[]
   latestRunMetadata?: Record<string, unknown> | null
   messages: Message[]
@@ -26,6 +28,7 @@ function createService(input: {
       getThreadWorkspacePath: async () => "/tmp/demo-workspace"
     },
     loadThreadRuntimeFacts: async () => ({
+      approvals: input.approvals ?? [],
       artifacts: [],
       checkpoint: undefined,
       contextInclusions: input.contextInclusions ?? [],
@@ -84,6 +87,7 @@ function createThreadDataSnapshot(input: {
       messages: input.messages ?? []
     },
     runState: {
+      approvals: [],
       contextInclusions: [],
       error: null,
       forkState: { canFork: true },
@@ -120,7 +124,16 @@ test("threads service splits persisted agent thread data into messages and runSt
     }
   ]
 
-  const service = createService({ messages, todos })
+  const approvals: RuntimeApproval[] = [
+    {
+      approvalId: "approval-1",
+      correction: "use a different target",
+      requestId: "approval-1",
+      status: "corrected",
+      toolCallId: "tool-1"
+    }
+  ]
+  const service = createService({ approvals, messages, todos })
 
   const snapshot = await service.getPersistedAgentThreadData("thread-1")
 
@@ -131,13 +144,20 @@ test("threads service splits persisted agent thread data into messages and runSt
     model: "openai:gpt-4o"
   })
   assert.deepEqual(snapshot.messages.artifacts, [])
-  assert.deepEqual(snapshot.messages.messages.map((message) => message.id), ["message-1"])
+  assert.deepEqual(
+    snapshot.messages.messages.map((message) => message.id),
+    ["message-1"]
+  )
+  assert.deepEqual(snapshot.runState.approvals, approvals)
   assert.deepEqual(snapshot.runState.forkState, { canFork: true })
   assert.equal(snapshot.runState.pendingApproval, null)
   assert.equal(snapshot.runState.runId, "run-1")
   assert.equal(snapshot.runState.workspacePath, "/tmp/demo-workspace")
   assert.equal(snapshot.runState.error, "boom")
-  assert.deepEqual(snapshot.runState.todos.map((todo) => todo.id), ["todo-1"])
+  assert.deepEqual(
+    snapshot.runState.todos.map((todo) => todo.id),
+    ["todo-1"]
+  )
   assert.deepEqual(snapshot.runState.contextInclusions, [])
 })
 
@@ -185,10 +205,7 @@ test("threads service restores provided context inclusions from frozen run metad
   const snapshot = await service.getPersistedAgentThreadData("thread-1")
 
   assert.equal(snapshot.runState.contextInclusions.length, 1)
-  assert.equal(
-    snapshot.runState.contextInclusions[0]?.id,
-    "ctx:run-1:provided:memory:memory-1"
-  )
+  assert.equal(snapshot.runState.contextInclusions[0]?.id, "ctx:run-1:provided:memory:memory-1")
   assert.equal(snapshot.runState.contextInclusions[0]?.mode, "provided")
   assert.equal(snapshot.runState.contextInclusions[0]?.sourceType, "memory")
 })

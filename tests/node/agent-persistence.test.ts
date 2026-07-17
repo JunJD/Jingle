@@ -245,9 +245,9 @@ test.after(async () => {
 })
 
 test("resume primitives target the request's run instead of the latest active run", async () => {
-  const { createRun, createThread, getHitlRequest, getRun, resolveHitlRequest, upsertHitlRequest } =
+  const { createRun, createThread, getHitlRequest, getRun, upsertHitlRequest } =
     await loadDbModules()
-  const { resumeAgentRun } = await import("../../src/main/agent/persistence")
+  const { commitAgentResumeDecision } = await import("../../src/main/agent/persistence")
 
   const threadId = "thread-1"
   const olderRunId = "run-older"
@@ -280,24 +280,24 @@ test("resume primitives target the request's run instead of the latest active ru
   const request = await getHitlRequest("request-older")
   assert.equal(request?.run_id, olderRunId)
 
-  await resumeAgentRun(
+  await commitAgentResumeDecision(
     threadId,
     request!.run_id!,
+    {
+      request_id: request!.request_id,
+      tool_call_id: request!.tool_call_id!,
+      type: "approve"
+    },
     {
       requestId: request!.request_id,
       source: "resume"
     },
     {
       resumeEvent: {
-        requestId: request!.request_id
+        modelId: "bdd"
       }
     }
   )
-  await resolveHitlRequest(request!.request_id, "approved", {
-    request_id: request!.request_id,
-    tool_call_id: request!.tool_call_id,
-    type: "approve"
-  })
 
   const resumedRun = await getRun(olderRunId)
   const latestRun = await getRun(latestRunId)
@@ -361,6 +361,46 @@ test("terminal HITL requests ignore stale pending request replay", async () => {
   }
 })
 
+test("thread snapshot selects the latest pending HITL instead of a newer terminal row", async () => {
+  const { createRun, createThread, resolveHitlRequest, upsertHitlRequest } = await loadDbModules()
+  const threadId = "thread-hitl-pending-selection"
+  const terminalRunId = "run-hitl-terminal-selection"
+  const pendingRunId = "run-hitl-pending-selection"
+
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+  await createRun(terminalRunId, threadId, { status: "interrupted" })
+  await createRun(pendingRunId, threadId, { status: "interrupted" })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve"],
+    request_id: "request-hitl-terminal-selection",
+    run_id: terminalRunId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: "tool-hitl-terminal-selection",
+    tool_name: "write_file"
+  })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve"],
+    request_id: "request-hitl-pending-selection",
+    run_id: pendingRunId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: "tool-hitl-pending-selection",
+    tool_name: "write_file"
+  })
+  await resolveHitlRequest("request-hitl-terminal-selection", "approved", {
+    request_id: "request-hitl-terminal-selection",
+    tool_call_id: "tool-hitl-terminal-selection",
+    type: "approve"
+  })
+
+  const snapshot = await (await createThreadsServiceForTest()).getAgentThreadData(threadId)
+  assert.equal(snapshot.runState.pendingApproval?.id, "request-hitl-pending-selection")
+})
+
 test("concurrent HITL resolution accepts exactly one terminal decision", async () => {
   const { createRun, createThread, getHitlRequest, resolveHitlRequest, upsertHitlRequest } =
     await loadDbModules()
@@ -406,8 +446,8 @@ test("concurrent HITL resolution accepts exactly one terminal decision", async (
 })
 
 test("user_declined atomically resolves HITL and cancels its run", async () => {
-  const { createRun, createThread, getRun, getThread, upsertHitlRequest, resolveHitlRequest } =
-    await loadDbModules()
+  const { createRun, createThread, getRun, getThread, upsertHitlRequest } = await loadDbModules()
+  const { commitAgentResumeDecision } = await import("../../src/main/agent/persistence")
   const threadId = "thread-hitl-declined"
   const runId = "run-hitl-declined"
   const requestId = "request-hitl-declined"
@@ -424,18 +464,25 @@ test("user_declined atomically resolves HITL and cancels its run", async () => {
     tool_name: "write_file"
   })
 
-  const resolved = await resolveHitlRequest(requestId, "user_declined", {
-    request_id: requestId,
-    tool_call_id: "tool-hitl-declined",
-    type: "user_declined"
-  })
-  assert.equal(resolved?.status, "user_declined")
+  const committed = await commitAgentResumeDecision(
+    threadId,
+    runId,
+    {
+      request_id: requestId,
+      tool_call_id: "tool-hitl-declined",
+      type: "user_declined"
+    },
+    undefined,
+    { resumeEvent: { modelId: "bdd" } }
+  )
+  assert.ok(committed)
   assert.equal((await getRun(runId))?.status, "cancelled")
   assert.equal((await getThread(threadId))?.status, "idle")
 })
 
-test("HITL CAS loser does not record approval.resolved", async () => {
-  const { createRun, createThread, getPrismaClient, upsertHitlRequest } = await loadDbModules()
+test("HITL resume admission accepts exactly one decision and one event batch", async () => {
+  const { createRun, createThread, getHitlRequest, getPrismaClient, getRun, upsertHitlRequest } =
+    await loadDbModules()
   const { createRuntimeRunLifecycleController } =
     await import("../../src/main/agent/run-lifecycle-controller")
   const threadId = "thread-hitl-cas-loser-event"
@@ -467,38 +514,118 @@ test("HITL CAS loser does not record approval.resolved", async () => {
       } as never,
       threadId
     })
-  const [firstStart, secondStart] = await Promise.all([
-    createStart("approve"),
-    createStart("user_declined")
-  ])
-
-  const resolutions = await Promise.allSettled([
-    firstStart.beforePendingHitlPersistence(),
-    secondStart.beforePendingHitlPersistence()
-  ])
-  const rejected = resolutions.filter(
+  const starts = await Promise.allSettled([createStart("approve"), createStart("user_declined")])
+  const rejected = starts.filter(
     (result): result is PromiseRejectedResult => result.status === "rejected"
   )
 
-  assert.equal(resolutions.filter((result) => result.status === "fulfilled").length, 1)
+  assert.equal(starts.filter((result) => result.status === "fulfilled").length, 1)
   assert.equal(rejected.length, 1)
   assert.equal((rejected[0]?.reason as { code?: string }).code, "CONFLICT")
-  if (resolutions[1]?.status === "fulfilled") {
-    await secondStart.cancelAfterDecision?.()
-  }
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const count = await getPrismaClient().agentEvent.count({
-      where: { runId, threadId, type: "approval.resolved" }
-    })
-    if (count === 1) break
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
+  const request = await getHitlRequest(requestId)
+  const run = await getRun(runId)
+  assert.ok(request)
+  assert.equal(run?.status, request.status === "user_declined" ? "cancelled" : "running")
   assert.equal(
     await getPrismaClient().agentEvent.count({
       where: { runId, threadId, type: "approval.resolved" }
     }),
     1
   )
+})
+
+test("HITL resume admission rejects decisions outside the durable allowlist without writes", async () => {
+  const { createRun, createThread, getHitlRequest, getPrismaClient, getRun, upsertHitlRequest } =
+    await loadDbModules()
+  const { commitAgentResumeDecision } = await import("../../src/main/agent/persistence")
+  const threadId = "thread-hitl-disallowed-decision"
+  const runId = "run-hitl-disallowed-decision"
+  const requestId = "request-hitl-disallowed-decision"
+  const toolCallId = "tool-call-hitl-disallowed-decision"
+
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "interrupted" })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve"],
+    request_id: requestId,
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: toolCallId,
+    tool_name: "write_file"
+  })
+
+  await assert.rejects(
+    commitAgentResumeDecision(
+      threadId,
+      runId,
+      {
+        correction: "change the target",
+        request_id: requestId,
+        tool_call_id: toolCallId,
+        type: "corrected"
+      },
+      undefined,
+      { resumeEvent: { modelId: "bdd" } }
+    ),
+    /does not allow decision "corrected"/
+  )
+
+  assert.equal((await getHitlRequest(requestId))?.status, "pending")
+  assert.equal((await getRun(runId))?.status, "interrupted")
+  assert.equal(await getPrismaClient().agentEvent.count({ where: { runId } }), 0)
+})
+
+test("HITL resume admission rolls back CAS when the run transition fails", async () => {
+  const { createRun, createThread, getHitlRequest, getPrismaClient, getRun, upsertHitlRequest } =
+    await loadDbModules()
+  const { commitAgentResumeDecision } = await import("../../src/main/agent/persistence")
+  const threadId = "thread-hitl-resume-rollback"
+  const runId = "run-hitl-resume-rollback"
+  const requestId = "request-hitl-resume-rollback"
+  const toolCallId = "tool-call-hitl-resume-rollback"
+  const triggerName = "fail_hitl_resume_thread_busy_update"
+  const prisma = getPrismaClient()
+
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "interrupted" })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve"],
+    request_id: requestId,
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: toolCallId,
+    tool_name: "write_file"
+  })
+  await prisma.$executeRawUnsafe(`
+    CREATE TRIGGER "${triggerName}"
+    BEFORE UPDATE OF "status" ON "threads"
+    WHEN NEW."thread_id" = '${threadId}' AND NEW."status" = 'busy'
+    BEGIN
+      SELECT RAISE(FAIL, 'injected HITL resume transition failure');
+    END
+  `)
+
+  try {
+    await assert.rejects(
+      commitAgentResumeDecision(
+        threadId,
+        runId,
+        { request_id: requestId, tool_call_id: toolCallId, type: "approve" },
+        undefined,
+        { resumeEvent: { modelId: "bdd" } }
+      )
+    )
+  } finally {
+    await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${triggerName}"`)
+  }
+
+  assert.equal((await getHitlRequest(requestId))?.status, "pending")
+  assert.equal((await getRun(runId))?.status, "interrupted")
+  assert.equal(await prisma.agentEvent.count({ where: { runId } }), 0)
 })
 
 test("beginAgentRun rolls back the run row when marking the thread busy fails", async () => {
@@ -539,9 +666,17 @@ test("beginAgentRun rolls back the run row when marking the thread busy fails", 
   assert.equal((await getThread(threadId))?.status, "idle")
 })
 
-test("resumeAgentRun rolls back the run update when marking the thread busy fails", async () => {
-  const { createRun, createThread, getPrismaClient, getRun, getThread } = await loadDbModules()
-  const { resumeAgentRun } = await import("../../src/main/agent/persistence")
+test("resume admission rolls back the decision and run when marking the thread busy fails", async () => {
+  const {
+    createRun,
+    createThread,
+    getHitlRequest,
+    getPrismaClient,
+    getRun,
+    getThread,
+    upsertHitlRequest
+  } = await loadDbModules()
+  const { commitAgentResumeDecision } = await import("../../src/main/agent/persistence")
   const threadId = "thread-resume-transaction-rollback"
   const runId = "run-resume-transaction-rollback"
   const triggerName = "fail_resume_thread_busy_update"
@@ -552,6 +687,16 @@ test("resumeAgentRun rolls back the run update when marking the thread busy fail
   await createRun(runId, threadId, {
     metadata: { existing: true },
     status: "interrupted"
+  })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve"],
+    request_id: "request-rollback",
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: "tool-call-rollback",
+    tool_name: "write_file"
   })
   await prisma.$executeRawUnsafe(`
     CREATE TRIGGER "${triggerName}"
@@ -564,14 +709,18 @@ test("resumeAgentRun rolls back the run update when marking the thread busy fail
 
   try {
     await assert.rejects(
-      resumeAgentRun(
+      commitAgentResumeDecision(
         threadId,
         runId,
+        {
+          request_id: "request-rollback",
+          tool_call_id: "tool-call-rollback",
+          type: "approve"
+        },
         { requestId: "request-rollback" },
         {
           resumeEvent: {
-            modelId: "gpt-test",
-            requestId: "request-rollback"
+            modelId: "gpt-test"
           }
         }
       )
@@ -583,13 +732,15 @@ test("resumeAgentRun rolls back the run update when marking the thread busy fail
   const run = await getRun(runId)
   assert.equal(run?.status, "interrupted")
   assert.deepEqual(JSON.parse(run?.metadata ?? "{}"), { existing: true })
+  assert.equal((await getHitlRequest("request-rollback"))?.status, "pending")
   assert.equal((await getThread(threadId))?.status, "idle")
   assert.equal(await prisma.agentEvent.count({ where: { runId } }), 0)
   assert.equal(await prisma.agentEventSequence.count(), sequenceCountBefore)
 })
 
-test("agent resume keeps HITL request pending when resumed stream fails before first chunk", async () => {
-  const { createRun, createThread, getHitlRequest, upsertHitlRequest } = await loadDbModules()
+test("agent resume commits HITL before a resumed stream can fail on its first chunk", async () => {
+  const { createRun, createThread, getHitlRequest, getRun, upsertHitlRequest } =
+    await loadDbModules()
   const consoleLog = mock.method(console, "log", () => {})
   const consoleError = mock.method(console, "error", () => {})
   const previousRuntimeMode = process.env.JINGLE_BDD_AGENT_RUNTIME
@@ -644,10 +795,19 @@ test("agent resume keeps HITL request pending when resumed stream fails before f
 
   const request = await getHitlRequest(requestId)
   assert.ok(outcome)
-  assert.equal(request?.status, "pending")
-  assert.equal(request?.decision, null)
-  assert.equal(outcome.type, "rejected")
-  assert.deepEqual(events, [])
+  assert.equal(request?.status, "corrected")
+  assert.deepEqual(JSON.parse(request?.decision ?? "{}"), {
+    correction: "bdd:fail-before-first-chunk",
+    request_id: requestId,
+    tool_call_id: "tool-call-resume-failure",
+    type: "corrected"
+  })
+  assert.equal((await getRun(runId))?.status, "error")
+  assert.equal(outcome.type, "accepted")
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["run_started", "error"]
+  )
 })
 
 test("agent resume rejects workspace mismatch before mutating the run", async () => {
@@ -1303,31 +1463,49 @@ test("concurrent invoke cannot replace an active run while its projection is pen
   }
 })
 
-test("resume admission atomically records one resume event", async () => {
-  const { createRun, createThread, getPrismaClient, getRun, getThread } = await loadDbModules()
-  const { resumeAgentRun } = await import("../../src/main/agent/persistence")
+test("resume admission atomically records decision and resume events", async () => {
+  const { createRun, createThread, getPrismaClient, getRun, getThread, upsertHitlRequest } =
+    await loadDbModules()
+  const { commitAgentResumeDecision } = await import("../../src/main/agent/persistence")
   const threadId = "thread-atomic-resume-admission"
   const runId = "run-atomic-resume-admission"
   const requestId = "request-atomic-resume-admission"
 
   await createThread(threadId)
   await createRun(runId, threadId, { status: "interrupted" })
-  await resumeAgentRun(
+  await upsertHitlRequest({
+    allowed_decisions: ["approve"],
+    request_id: requestId,
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: "tool-call-atomic-resume",
+    tool_name: "write_file"
+  })
+  await commitAgentResumeDecision(
     threadId,
     runId,
+    {
+      request_id: requestId,
+      tool_call_id: "tool-call-atomic-resume",
+      type: "approve"
+    },
     { requestId, source: "resume" },
-    { resumeEvent: { modelId: "gpt-test", requestId } }
+    { resumeEvent: { modelId: "gpt-test" } }
   )
 
   assert.equal((await getRun(runId))?.status, "running")
   assert.equal((await getThread(threadId))?.status, "busy")
   const events = await getPrismaClient().agentEvent.findMany({
     orderBy: { seq: "asc" },
-    where: { runId, type: "run.resumed" }
+    where: { runId }
   })
-  assert.equal(events.length, 1)
-  assert.equal(events[0]?.seq, 1)
-  assert.deepEqual(JSON.parse(events[0]?.payload ?? "{}"), {
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["approval.resolved", "run.resumed"]
+  )
+  assert.deepEqual(JSON.parse(events[1]?.payload ?? "{}"), {
     model: "gpt-test",
     requestId,
     source: "resume"
@@ -1678,8 +1856,8 @@ test("thread hydration fails closed for corrupt and noncanonical persisted messa
 })
 
 test("resume and successful completion clear a stale durable run failure", async () => {
-  const { createRun, createThread, getRun } = await loadDbModules()
-  const { finalizeRunWithoutCheckpoint, resumeAgentRun } =
+  const { createRun, createThread, getRun, upsertHitlRequest } = await loadDbModules()
+  const { commitAgentResumeDecision, finalizeRunWithoutCheckpoint } =
     await import("../../src/main/agent/persistence")
   const threadId = "thread-clears-stale-run-failure"
   const runId = "run-clears-stale-run-failure"
@@ -1694,12 +1872,28 @@ test("resume and successful completion clear a stale durable run failure", async
     },
     status: "interrupted"
   })
-
-  await resumeAgentRun(threadId, runId, undefined, {
-    resumeEvent: {
-      requestId: "request-clears-stale-run-failure"
-    }
+  await upsertHitlRequest({
+    allowed_decisions: ["approve"],
+    request_id: "request-clears-stale-run-failure",
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: "tool-clears-stale-run-failure",
+    tool_name: "write_file"
   })
+
+  await commitAgentResumeDecision(
+    threadId,
+    runId,
+    {
+      request_id: "request-clears-stale-run-failure",
+      tool_call_id: "tool-clears-stale-run-failure",
+      type: "approve"
+    },
+    undefined,
+    { resumeEvent: {} }
+  )
   const resumedMetadata = JSON.parse((await getRun(runId))?.metadata ?? "{}") as Record<
     string,
     unknown
@@ -1742,8 +1936,9 @@ test("abort clears stale durable failure even when checkpoint sync cannot comple
 })
 
 test("agent run metadata snapshots permission mode and preserves it through resume", async () => {
-  const { createThread, getRun } = await loadDbModules()
-  const { beginAgentRun, resumeAgentRun } = await import("../../src/main/agent/persistence")
+  const { createThread, getRun, upsertHitlRequest } = await loadDbModules()
+  const { beginAgentRun, commitAgentResumeDecision } =
+    await import("../../src/main/agent/persistence")
   const { readRunPermissionModeSnapshot } = await import("../../src/main/agent/permission-mode")
   const {
     createRunExtensionAiCapabilitiesSnapshot,
@@ -1801,18 +1996,27 @@ test("agent run metadata snapshots permission mode and preserves it through resu
     readRunExtensionAiCapabilitiesSnapshotFromMetadata(createdRun?.metadata),
     aiCapabilitiesSnapshot
   )
+  await upsertHitlRequest({
+    allowed_decisions: ["approve"],
+    request_id: "request-1",
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: "tool-call-permission",
+    tool_name: "write_file"
+  })
 
-  await resumeAgentRun(
+  await commitAgentResumeDecision(
     threadId,
     runId,
+    { request_id: "request-1", tool_call_id: "tool-call-permission", type: "approve" },
     {
       requestId: "request-1",
       source: "resume"
     },
     {
-      resumeEvent: {
-        requestId: "request-1"
-      }
+      resumeEvent: {}
     }
   )
 
@@ -2265,8 +2469,8 @@ test("memory context snapshots truncate large file context", async () => {
 })
 
 test("run metadata updates preserve loaded extension snapshots and resume metadata", async () => {
-  const { createThread, getRun } = await loadDbModules()
-  const { beginAgentRun, resumeAgentRun, updateRunExtensionAiCapabilitiesSnapshot } =
+  const { createThread, getRun, upsertHitlRequest } = await loadDbModules()
+  const { beginAgentRun, commitAgentResumeDecision, updateRunExtensionAiCapabilitiesSnapshot } =
     await import("../../src/main/agent/persistence")
   const { readRunExtensionAiCapabilitiesSnapshotFromMetadata } =
     await import("../../src/shared/extension-sources")
@@ -2300,22 +2504,35 @@ test("run metadata updates preserve loaded extension snapshots and resume metada
       platform: "darwin"
     }
   )
+  await upsertHitlRequest({
+    allowed_decisions: ["approve"],
+    request_id: "request-loaded-extension",
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: "tool-call-loaded-extension",
+    tool_name: "write_file"
+  })
 
   await Promise.all([
     updateRunExtensionAiCapabilitiesSnapshot(runId, {
       aiCapabilities
     }),
-    resumeAgentRun(
+    commitAgentResumeDecision(
       threadId,
       runId,
+      {
+        request_id: "request-loaded-extension",
+        tool_call_id: "tool-call-loaded-extension",
+        type: "approve"
+      },
       {
         requestId: "request-loaded-extension",
         source: "resume"
       },
       {
-        resumeEvent: {
-          requestId: "request-loaded-extension"
-        }
+        resumeEvent: {}
       }
     )
   ])

@@ -180,9 +180,7 @@ export type RuntimeThreadFailInput = RuntimeThreadScopedOperationInput<RuntimeFa
 export type RuntimeThreadDrainInput<TChunk extends RuntimeRunStreamChunk> =
   RuntimeThreadScopedOperationInput<RuntimeDrainOperation<TChunk>>
 
-export interface RuntimeThreadDrainResult extends DrainRuntimeRunStreamResult {
-  beforePendingHitlPersistenceApplied: boolean
-}
+export type RuntimeThreadDrainResult = DrainRuntimeRunStreamResult
 
 export interface RuntimeThreadRunExecutionInput {
   callbacks?: readonly BaseCallbackHandler[]

@@ -133,19 +133,27 @@ export function createRuntimeThreadRunLifecycleControlFromController<
             threadId: thread.threadId
           })
         )
+        const admittedStart = runStart
         const publicStart = {
-          beforePendingHitlPersistence: runStart.beforePendingHitlPersistence,
-          modelId: runStart.modelId,
-          recordingRefs: [...runStart.recordingRefs],
-          runId: runStart.runId
+          executionDisposition: admittedStart.executionDisposition,
+          modelId: admittedStart.modelId,
+          recordingRefs: [...admittedStart.recordingRefs],
+          runId: admittedStart.runId
         }
         const admission = {
-          ...runStart,
-          createRunExecution: input.bindExecution.resume({
-            resume: beginInput.resume,
-            start: runStart,
-            thread
-          })
+          ...admittedStart,
+          createRunExecution:
+            admittedStart.executionDisposition === "terminal"
+              ? async () => {
+                  throw new Error(
+                    `[RuntimeThread] Terminal resume "${admittedStart.runId}" cannot create execution.`
+                  )
+                }
+              : input.bindExecution.resume({
+                  resume: beginInput.resume,
+                  start: admittedStart,
+                  thread
+                })
         }
         input.context.admitRun(reservation, admission)
         return publicStart

@@ -136,6 +136,7 @@ function createThreadData(
       messages: input.messages ?? []
     },
     runState: {
+      approvals: [],
       contextInclusions: [],
       error: input.error ?? null,
       forkState: {
@@ -706,6 +707,7 @@ test("AgentThreadRunner hydrates an empty thread only once", async () => {
           messages: []
         },
         runState: {
+          approvals: [],
           contextInclusions: [],
           error: null,
           forkState: { canFork: true },
@@ -730,6 +732,7 @@ test("AgentThreadRunner hydrates an empty thread only once", async () => {
           messages: []
         },
         runState: {
+          approvals: [],
           contextInclusions: [],
           error: null,
           forkState: { canFork: true },
@@ -1202,10 +1205,16 @@ test("AgentThreadRunner exposes live thread data while persisted state lags runt
     type: "done"
   })
 
-  const completedLiveSnapshot = hub.readLiveThreadDataSnapshot("thread-overlay", persistedThreadData)
+  const completedLiveSnapshot = hub.readLiveThreadDataSnapshot(
+    "thread-overlay",
+    persistedThreadData
+  )
   assert.equal(completedLiveSnapshot?.thread.status, "idle")
   assert.deepEqual(
-    completedLiveSnapshot?.messages.messages.map((message) => ({ id: message.id, role: message.role })),
+    completedLiveSnapshot?.messages.messages.map((message) => ({
+      id: message.id,
+      role: message.role
+    })),
     [
       { id: "user-1", role: "user" },
       { id: "assistant-1", role: "assistant" }

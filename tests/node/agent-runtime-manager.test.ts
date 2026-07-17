@@ -1,10 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import type { AgentThreadEvent } from "../../src/shared/agent-thread-contract"
-import type {
-  JingleAgentRuntimeReplayOptions,
-  JingleRuntimeEventBatch
-} from "@jingle/agent-client"
+import type { JingleAgentRuntimeReplayOptions, JingleRuntimeEventBatch } from "@jingle/agent-client"
 import type { AgentThreadDataSnapshot } from "../../src/shared/app-types"
 import type { HITLRequest } from "../../src/shared/hitl"
 import type { AgentContextInclusion } from "../../src/shared/jingle-memory"
@@ -68,6 +65,7 @@ function createThreadDataSnapshot(input: {
       messages: input.messages
     },
     runState: {
+      approvals: [],
       contextInclusions: input.contextInclusions ?? [],
       error: null,
       forkState: { canFork: true },
@@ -133,7 +131,10 @@ function installWindowApiStub(input: {
               ready: Promise.resolve()
             })
           },
-          replayThreadEvents: async (threadId: string, options?: JingleAgentRuntimeReplayOptions) => {
+          replayThreadEvents: async (
+            threadId: string,
+            options?: JingleAgentRuntimeReplayOptions
+          ) => {
             await input.onReplayThreadEvents?.(threadId, options)
           }
         },

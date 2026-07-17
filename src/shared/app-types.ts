@@ -8,6 +8,7 @@ import type { AgentRunFailure } from "./agent-run-failure"
 import type { AgentFollowUpMode } from "./agent-follow-up"
 import type { ThreadWorkflowCreateInput } from "./thread-workflow"
 import type { JingleTodo } from "@jingle/agent-client"
+import type { RuntimeApproval } from "@jingle/langchain-agent-harness"
 export type { LocalizedText } from "./i18n"
 export type { HITLDecision, HITLRequest } from "./hitl"
 export type { ToolDecision } from "./tool-decision"
@@ -367,6 +368,7 @@ export interface AgentThreadInfoSnapshot {
 }
 
 export interface AgentThreadRunStateSnapshot {
+  approvals: RuntimeApproval[]
   contextInclusions: AgentContextInclusion[]
   error: AgentRunFailure | null
   forkState: ThreadForkState

@@ -11,10 +11,9 @@ import type {
   RuntimeRecordingRef,
   RuntimeToolDecision
 } from "@jingle/langchain-agent-harness"
-import type { HitlRequestRow } from "../db"
+import { parsePersistedHitlAllowedDecisions, type HitlRequestRow } from "../db"
 import type { HITLRequest, Todo } from "../types"
 import type { AgentContextInclusion } from "@shared/jingle-memory"
-import { isHitlDecisionType } from "@shared/hitl"
 import { parseToolApprovalItem } from "@shared/tool-approval"
 import { parseOptionalToolDecision } from "@shared/tool-decision"
 import {
@@ -156,16 +155,10 @@ export function mapHitlRowToRequest(row: HitlRequestRow): HITLRequest {
     throw new Error(`[RuntimeState] HITL request "${row.request_id}" has invalid tool_args.`)
   }
 
-  const parsedAllowedDecisions = parseHitlJson(row, "allowed_decisions", row.allowed_decisions)
-  if (
-    !Array.isArray(parsedAllowedDecisions) ||
-    parsedAllowedDecisions.length === 0 ||
-    !parsedAllowedDecisions.every(isHitlDecisionType)
-  ) {
-    throw new Error(
-      `[RuntimeState] HITL request "${row.request_id}" has invalid allowed_decisions.`
-    )
-  }
+  const parsedAllowedDecisions = parsePersistedHitlAllowedDecisions(
+    row.request_id,
+    row.allowed_decisions
+  )
 
   const reviewPayload = row.review_payload
     ? parseHitlJson(row, "review_payload", row.review_payload)

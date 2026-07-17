@@ -43,6 +43,7 @@ test("thread bootstrap derives interrupted state and approval-owned active run",
       ]
     },
     runState: {
+      approvals: [],
       contextInclusions: [],
       error: null,
       forkState: { canFork: false, reason: "pending_hitl" },
@@ -73,6 +74,7 @@ test("thread bootstrap maps persisted error string into runtime error payload", 
       messages: []
     },
     runState: {
+      approvals: [],
       contextInclusions: [],
       error: createLegacyAgentRunFailure("boom"),
       forkState: { canFork: true },
@@ -102,6 +104,7 @@ test("thread bootstrap preserves persisted context inclusions", () => {
       messages: []
     },
     runState: {
+      approvals: [],
       contextInclusions: [
         {
           availability: "available",

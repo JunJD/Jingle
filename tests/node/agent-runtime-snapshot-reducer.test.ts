@@ -38,6 +38,15 @@ test("agent runtime snapshot reducer applies messages, metadata, and non-runtime
       ]
     },
     runState: {
+      approvals: [
+        {
+          approvalId: "approval-1",
+          correction: "use a different target",
+          requestId: "approval-1",
+          status: "corrected",
+          toolCallId: "tool-1"
+        }
+      ],
       contextInclusions: [],
       error: null,
       forkState: { canFork: true },
@@ -55,6 +64,15 @@ test("agent runtime snapshot reducer applies messages, metadata, and non-runtime
   assert.equal(next.agent.permissionMode, DEFAULT_PERMISSION_MODE)
   assert.equal(next.agent.latestRunId, null)
   assert.equal(next.agent.activeRun, null)
+  assert.deepEqual(next.agent.approvals, [
+    {
+      approvalId: "approval-1",
+      correction: "use a different target",
+      requestId: "approval-1",
+      status: "corrected",
+      toolCallId: "tool-1"
+    }
+  ])
 })
 
 test("agent runtime snapshot reducer hydrates context inclusions from run state", () => {
@@ -71,6 +89,7 @@ test("agent runtime snapshot reducer hydrates context inclusions from run state"
       messages: []
     },
     runState: {
+      approvals: [],
       contextInclusions: [
         {
           availability: "available",
@@ -140,6 +159,7 @@ test("agent runtime snapshot reducer does not produce runtime facts from snapsho
       messages: []
     },
     runState: {
+      approvals: [],
       contextInclusions: [],
       error: null,
       forkState: { canFork: true },
@@ -186,6 +206,7 @@ test("agent runtime snapshot reducer clears missing metadata instead of keeping 
       messages: []
     },
     runState: {
+      approvals: [],
       contextInclusions: [],
       error: null,
       forkState: { canFork: true },
@@ -220,6 +241,7 @@ test("agent runtime snapshot reducer applies only metadata from busy snapshots",
       ]
     },
     runState: {
+      approvals: [],
       contextInclusions: [],
       error: null,
       forkState: { canFork: false, reason: "busy" },
@@ -266,6 +288,7 @@ test("agent runtime snapshot reducer hydrates interrupted approval snapshots", (
       ]
     },
     runState: {
+      approvals: [],
       contextInclusions: [],
       error: null,
       forkState: { canFork: false, reason: "pending_hitl" },

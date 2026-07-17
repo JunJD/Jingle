@@ -226,7 +226,7 @@ function createLifecycleControl(
       runId: "run-unused"
     }),
     beginResumeRun: async () => ({
-      beforePendingHitlPersistence: () => undefined,
+      executionDisposition: "resume",
       modelId: "model-unused",
       recordingRefs: [],
       runId: "run-unused"
@@ -292,7 +292,7 @@ test("RuntimeThreadRun abort waits for stream work before persisting the termina
       for await (const chunk of input.stream) {
         await input.onChunk(chunk)
       }
-      return { beforePendingHitlPersistenceApplied: false, interrupted: false }
+      return { interrupted: false }
     }
   }
   const run = createRuntimeThreadInvokeRun({
@@ -324,7 +324,7 @@ test("RuntimeThreadRun abort waits for stream work before persisting the termina
   assert.deepEqual(events, ["chunk-finished", "abort", "settle"])
 })
 
-test("RuntimeThread stream does not call the host after cancellation during HITL persistence", async () => {
+test("RuntimeThread stream does not call the host after cancellation during pending HITL persistence", async () => {
   const persistenceStarted = createDeferred<void>()
   const releasePersistence = createDeferred<void>()
   const controller = new AbortController()
@@ -332,21 +332,42 @@ test("RuntimeThread stream does not call the host after cancellation during HITL
   const stream = createRuntimeThreadStreamDrainControlFromController({
     pauseController: {
       parseReview: () => null,
-      upsertPendingHitlRequest: async () => undefined
+      upsertPendingHitlRequest: async () => {
+        persistenceStarted.resolve()
+        await releasePersistence.promise
+      }
     },
     thread: { threadId: "thread-cancelled-hitl", workspacePath: "/workspace" }
   })
   const drain = stream.drainRunStream({
-    beforePendingHitlPersistence: async () => {
-      persistenceStarted.resolve()
-      await releasePersistence.promise
-    },
     onChunk: () => {
       hostChunkCount += 1
     },
     runId: "run-cancelled-hitl",
     signal: controller.signal,
-    stream: createChunkStream()
+    stream: {
+      async *[Symbol.asyncIterator]() {
+        yield [
+          "values",
+          {
+            __interrupt__: [
+              {
+                value: {
+                  actionRequests: [
+                    {
+                      args: {},
+                      name: "write_file",
+                      toolCallId: "tool-call-cancelled-hitl"
+                    }
+                  ],
+                  reviewConfigs: []
+                }
+              }
+            ]
+          }
+        ] as [string, unknown]
+      }
+    }
   })
 
   await persistenceStarted.promise
@@ -383,10 +404,7 @@ test("RuntimeThreadRun keeps completion when completion claims the terminal stat
       lifecycle,
       operations: createOperationControl(),
       stream: {
-        drainRunStream: async () => ({
-          beforePendingHitlPersistenceApplied: false,
-          interrupted: false
-        })
+        drainRunStream: async () => ({ interrupted: false })
       }
     },
     start: { modelId: "model-1", recordingRefs: [], runId: "run-complete" }
@@ -432,7 +450,7 @@ test("RuntimeThreadRun keeps an explicit failure when abort follows during strea
           for await (const chunk of input.stream) {
             await input.onChunk(chunk)
           }
-          return { beforePendingHitlPersistenceApplied: false, interrupted: false }
+          return { interrupted: false }
         }
       }
     },
@@ -506,10 +524,7 @@ test("RuntimeThreadRun settles runtime ownership once when terminal persistence 
       }),
       operations: createOperationControl(),
       stream: {
-        drainRunStream: async () => ({
-          beforePendingHitlPersistenceApplied: false,
-          interrupted: false
-        })
+        drainRunStream: async () => ({ interrupted: false })
       }
     },
     start: { modelId: "model-1", recordingRefs: [], runId: "run-persistence-failure" }
@@ -547,7 +562,7 @@ test("RuntimeThreadRun preserves the runtime error when failure persistence also
   })
 })
 
-test("RuntimeThreadRun captures the resume decision before execution", async () => {
+test("RuntimeThreadRun observes committed admission before creating the resume stream", async () => {
   const decision: RuntimeToolApprovalDecision = {
     request_id: "request-1",
     tool_call_id: "tool-call-1",
@@ -560,28 +575,23 @@ test("RuntimeThreadRun captures the resume decision before execution", async () 
       lifecycle: createLifecycleControl(),
       operations: createOperationControl({
         onResume: (value) => {
+          events.push("operations-resume")
           observedDecision = value
         },
         stream: createChunkStream()
       }),
       stream: {
         drainRunStream: async (input) => {
-          await input.beforePendingHitlPersistence?.()
           for await (const chunk of input.stream) {
             await input.onChunk(chunk)
           }
-          return {
-            beforePendingHitlPersistenceApplied: true,
-            interrupted: false
-          }
+          return { interrupted: false }
         }
       }
     },
     decision,
     start: {
-      beforePendingHitlPersistence: () => {
-        events.push("decision-committed")
-      },
+      executionDisposition: "resume",
       modelId: "model-1",
       recordingRefs: [],
       runId: "run-resume"
@@ -598,10 +608,10 @@ test("RuntimeThreadRun captures the resume decision before execution", async () 
     signal: new AbortController().signal
   })
   assert.equal(observedDecision, decision)
-  assert.deepEqual(events, ["decision-committed", "decision-observed", "chunk"])
+  assert.deepEqual(events, ["decision-observed", "operations-resume", "chunk"])
 })
 
-test("RuntimeThreadRun commits user_declined as cancelled after the decision checkpoint", async () => {
+test("RuntimeThreadRun commits user_declined without creating a resume stream", async () => {
   const events: string[] = []
   const run = createRuntimeThreadResumeRun({
     controls: {
@@ -613,12 +623,16 @@ test("RuntimeThreadRun commits user_declined as cancelled after the decision che
           events.push("settle")
         }
       }),
-      operations: createOperationControl({ stream: createChunkStream() }),
+      operations: createOperationControl({
+        onResume: () => {
+          events.push("operations-resume")
+        },
+        stream: createChunkStream()
+      }),
       stream: {
         drainRunStream: async (input) => {
-          await input.beforePendingHitlPersistence?.()
           for await (const chunk of input.stream) await input.onChunk(chunk)
-          return { beforePendingHitlPersistenceApplied: true, interrupted: false }
+          return { interrupted: false }
         }
       }
     },
@@ -628,12 +642,10 @@ test("RuntimeThreadRun commits user_declined as cancelled after the decision che
       type: "user_declined"
     },
     start: {
-      beforePendingHitlPersistence: () => {
-        events.push("decision-committed")
-      },
       cancelAfterDecision: () => {
         events.push("cancelled")
       },
+      executionDisposition: "terminal",
       modelId: "model-1",
       recordingRefs: [],
       runId: "run-declined"
@@ -644,10 +656,13 @@ test("RuntimeThreadRun commits user_declined as cancelled after the decision che
     onChunk: () => {
       events.push("checkpoint-streamed")
     },
+    onDecisionCommitted: () => {
+      events.push("decision-observed")
+    },
     signal: new AbortController().signal
   })
   assert.deepEqual(result, { status: "cancelled" })
-  assert.deepEqual(events, ["decision-committed", "checkpoint-streamed", "cancelled", "settle"])
+  assert.deepEqual(events, ["decision-observed", "cancelled", "settle"])
 })
 
 test("RuntimeThreadRun observes a committed resume decision before cancellation skips the chunk", async () => {
@@ -675,10 +690,7 @@ test("RuntimeThreadRun observes a committed resume decision before cancellation 
     },
     decision: { request_id: "request-1", tool_call_id: "tool-1", type: "approve" },
     start: {
-      beforePendingHitlPersistence: () => {
-        events.push("decision-committed")
-        controller.abort()
-      },
+      executionDisposition: "resume",
       modelId: "model-1",
       recordingRefs: [],
       runId: "run-resume-observation"
@@ -691,12 +703,13 @@ test("RuntimeThreadRun observes a committed resume decision before cancellation 
     },
     onDecisionCommitted: () => {
       events.push("decision-observed")
+      controller.abort()
     },
     signal: controller.signal
   })
 
   assert.deepEqual(result, { status: "aborted" })
-  assert.deepEqual(events, ["decision-committed", "decision-observed"])
+  assert.deepEqual(events, ["decision-observed"])
   assert.deepEqual(lifecycleEvents, ["abort", "settle"])
 })
 
@@ -721,7 +734,7 @@ test("RuntimeThread compact rejects while a run owns the thread", async () => {
         runId: "run-compact"
       }),
       beginResumeRun: async () => ({
-        beforePendingHitlPersistence: () => undefined,
+        executionDisposition: "resume",
         modelId: "model-unused",
         recordingRefs: [],
         runId: "run-unused"
@@ -982,6 +995,86 @@ test("RuntimeThread lifecycle returns a public start without retaining its priva
 
   const start = await control.beginInvokeRun({ invoke: {} })
   assert.equal(Object.hasOwn(start, "createRunExecution"), false)
+  await control.settleRun({ runId: start.runId })
+})
+
+test("RuntimeThread lifecycle does not bind execution when durable resume admission rejects", async () => {
+  const admissionError = new Error("HITL CAS conflict")
+  let resumeBindingCount = 0
+  const context = createRuntimeThreadContext({
+    threadId: "thread-resume-admission-rejected",
+    workspacePath: "/workspace"
+  })
+  const lifecycle = createLifecycleController()
+  lifecycle.beginResumeRun = async () => {
+    throw admissionError
+  }
+  const control = createRuntimeThreadRunLifecycleControlFromController({
+    bindExecution: {
+      invoke: () => async () => {
+        throw new Error("Execution was not expected.")
+      },
+      resume: () => {
+        resumeBindingCount += 1
+        return async () => {
+          throw new Error("Execution was not expected.")
+        }
+      }
+    },
+    context,
+    runLifecycleController: lifecycle
+  })
+
+  await assert.rejects(
+    control.beginResumeRun({
+      resume: {
+        decision: { request_id: "request-loser", tool_call_id: "tool-loser", type: "approve" }
+      }
+    }),
+    admissionError
+  )
+  assert.equal(resumeBindingCount, 0)
+})
+
+test("RuntimeThread lifecycle does not bind execution for a durable terminal resume", async () => {
+  let resumeBindingCount = 0
+  const context = createRuntimeThreadContext({
+    threadId: "thread-resume-terminal",
+    workspacePath: "/workspace"
+  })
+  const lifecycle = createLifecycleController()
+  lifecycle.beginResumeRun = async () => ({
+    executionDisposition: "terminal",
+    modelId: "model-1",
+    recordingRefs: [],
+    runId: "run-resume-terminal"
+  })
+  const control = createRuntimeThreadRunLifecycleControlFromController({
+    bindExecution: {
+      invoke: () => async () => {
+        throw new Error("Execution was not expected.")
+      },
+      resume: () => {
+        resumeBindingCount += 1
+        return async () => {
+          throw new Error("Execution was not expected.")
+        }
+      }
+    },
+    context,
+    runLifecycleController: lifecycle
+  })
+
+  const start = await control.beginResumeRun({
+    resume: {
+      decision: {
+        request_id: "request-terminal",
+        tool_call_id: "tool-terminal",
+        type: "user_declined"
+      }
+    }
+  })
+  assert.equal(resumeBindingCount, 0)
   await control.settleRun({ runId: start.runId })
 })
 
@@ -1322,7 +1415,7 @@ function createLifecycleController(
       runId: `run-${++runSequence}`
     }),
     beginResumeRun: async () => ({
-      beforePendingHitlPersistence: () => undefined,
+      executionDisposition: "resume",
       modelId: "model-1",
       recordingRefs: [],
       runId: `run-${++runSequence}`

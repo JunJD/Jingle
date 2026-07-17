@@ -51,6 +51,7 @@ function createThreadDataSnapshot(
       messages: []
     },
     runState: {
+      approvals: [],
       contextInclusions: [],
       error: null,
       forkState: { canFork: true },

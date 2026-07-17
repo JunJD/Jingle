@@ -37,7 +37,6 @@ interface RuntimeThreadRunInternals<TContextInclusion> extends RuntimeThreadRun 
     >
   ): Promise<RuntimeThreadRunResult<TContextInclusion>>
   requestAbort(): RuntimeThreadTerminalSubmission
-  requestCancellation(cancelAfterDecision?: () => Promise<void> | void): RuntimeThreadTerminalSubmission
   readonly signal: AbortSignal
 }
 
@@ -100,14 +99,11 @@ export function createRuntimeThreadResumeRun<TContextInclusion>(input: {
           steeringBuffer: executionInput.steeringBuffer
         },
         async () => {
-          const completion = await executeRuntimeThreadRunWork({
-            beforePendingHitlPersistence: async () => {
-              await start.beforePendingHitlPersistence()
-              if (input.decision.type === "user_declined") {
-                run.requestCancellation(start.cancelAfterDecision)
-              }
-              executionInput.onDecisionCommitted?.()
-            },
+          executionInput.onDecisionCommitted?.()
+          if (start.executionDisposition === "terminal") {
+            return { cancelAfterDecision: start.cancelAfterDecision, status: "cancelled" }
+          }
+          return executeRuntimeThreadRunWork({
             createStream: () =>
               controls.operations.resume(
                 {
@@ -123,14 +119,12 @@ export function createRuntimeThreadResumeRun<TContextInclusion>(input: {
             stream: controls.stream,
             submittedContextInclusions: executionInput.contextInclusions ?? []
           })
-          return completion
         }
       )
   }
 }
 
 async function executeRuntimeThreadRunWork<TContextInclusion>(input: {
-  beforePendingHitlPersistence?: () => Promise<void> | void
   createStream: () => Promise<AsyncIterable<RuntimeRunStreamChunk>>
   executionInput: RuntimeThreadRunExecutionInput
   run: RuntimeThreadRunInternals<TContextInclusion>
@@ -147,18 +141,11 @@ async function executeRuntimeThreadRunWork<TContextInclusion>(input: {
 
     const stream = await input.createStream()
     const drainResult = await input.stream.drainRunStream({
-      beforePendingHitlPersistence: input.beforePendingHitlPersistence,
       onChunk: input.executionInput.onChunk,
       runId: input.run.runId,
       signal: input.run.signal,
       stream
     })
-
-    assertRuntimeThreadExecutionActive(input.run.signal)
-
-    if (input.beforePendingHitlPersistence && !drainResult.beforePendingHitlPersistenceApplied) {
-      await input.beforePendingHitlPersistence()
-    }
 
     assertRuntimeThreadExecutionActive(input.run.signal)
 
@@ -187,13 +174,6 @@ function createRuntimeThreadRunBase<TContextInclusion>(
     executionContext.abort()
     return submission
   }
-  const requestCancellation = (
-    cancelAfterDecision?: () => Promise<void> | void
-  ): RuntimeThreadTerminalSubmission => {
-    executionContext.assertActive()
-    return terminal.submit({ cancelAfterDecision, status: "cancelled" })
-  }
-
   return {
     abort: async () => {
       const winnerStatus = terminal.winnerStatus()
@@ -254,7 +234,6 @@ function createRuntimeThreadRunBase<TContextInclusion>(
       return terminal.owns(submission)
     },
     requestAbort,
-    requestCancellation,
     runId: start.runId,
     signal: executionContext.signal
   }

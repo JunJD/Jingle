@@ -39,7 +39,7 @@ import {
   recordAgentStreamBoundaryEvents
 } from "./event-recorder"
 import { ThreadLifecycleGate, type ThreadRunLease } from "./thread-lifecycle-gate"
-import { getHitlRequest } from "../db/hitl"
+import { getHitlRequest, parsePersistedHitlAllowedDecisions } from "../db/hitl"
 import { getRun } from "../db/runs"
 import { getThread } from "../db/threads"
 import { listProjectedThreadMessages } from "../db/message-state"
@@ -358,6 +358,18 @@ async function resolveResumeTarget(
       channel: "agent:resume",
       code: "CONFLICT",
       message: `[Agent] HITL request "${requestId}" is already "${request.status}", expected pending.`
+    })
+  }
+
+  const allowedDecisions = parsePersistedHitlAllowedDecisions(
+    request.request_id,
+    request.allowed_decisions
+  )
+  if (!decision || !allowedDecisions.includes(decision.type)) {
+    throw new JingleIpcError({
+      channel: "agent:resume",
+      code: "INVALID_ARGUMENT",
+      message: `[Agent] HITL request "${requestId}" does not allow decision "${decision?.type ?? "missing"}".`
     })
   }
 

@@ -9,7 +9,6 @@ import {
   appendAgentEvent,
   appendAgentEventSafely,
   appendAgentEventsSafely,
-  enqueueAgentTraceProjection,
   type AppendAgentEventInput
 } from "../db/agent-events"
 import { JingleIpcError } from "../ipc/error"
@@ -246,13 +245,17 @@ export async function recordUserMessageCreated(input: UserMessageCreatedEventInp
   await appendAgentEvent(createUserMessageCreatedEventInput(input))
 }
 
-export async function recordApprovalResolved(input: {
+export interface ApprovalResolvedEventInput {
   decision: HITLDecision
   requestId: string
   runId: string
   threadId: string
-}): Promise<void> {
-  await appendAgentEventSafely({
+}
+
+export function createApprovalResolvedEventInput(
+  input: ApprovalResolvedEventInput
+): AppendAgentEventInput {
+  return {
     payload: {
       decision: input.decision.type,
       correction: input.decision.type === "corrected" ? input.decision.correction : null,
@@ -262,41 +265,6 @@ export async function recordApprovalResolved(input: {
     runId: input.runId,
     threadId: input.threadId,
     type: "approval.resolved"
-  })
-}
-
-export async function recordDeclinedApprovalOutcome(input: {
-  decision: Extract<HITLDecision, { type: "user_declined" }>
-  requestId: string
-  runId: string
-  threadId: string
-}): Promise<void> {
-  const events = await appendAgentEventsSafely([
-    {
-      payload: {
-        decision: input.decision.type,
-        correction: null,
-        requestId: input.requestId,
-        toolCallId: input.decision.tool_call_id ?? null
-      },
-      runId: input.runId,
-      threadId: input.threadId,
-      type: "approval.resolved"
-    },
-    {
-      payload: {
-        completionReason: "user_declined",
-        errorMessage: null,
-        errorType: null,
-        status: "cancelled"
-      },
-      runId: input.runId,
-      threadId: input.threadId,
-      type: "run.finished"
-    }
-  ])
-  if (events.length > 0) {
-    enqueueAgentTraceProjection(input.runId)
   }
 }
 
@@ -322,8 +290,18 @@ export async function recordRunFinished(input: {
   status: string
   threadId: string
 }): Promise<void> {
+  await appendAgentEventSafely(createRunFinishedEventInput(input))
+}
+
+export function createRunFinishedEventInput(input: {
+  completionReason?: string
+  error?: unknown
+  runId: string
+  status: string
+  threadId: string
+}): AppendAgentEventInput {
   const traceError = input.error ? describeRuntimeErrorForTrace(input.error) : null
-  const event = await appendAgentEventSafely({
+  return {
     payload: {
       completionReason: input.completionReason ?? null,
       errorMessage: traceError?.errorMessage ?? null,
@@ -331,11 +309,9 @@ export async function recordRunFinished(input: {
       status: input.status
     },
     runId: input.runId,
+    projectTrace: true,
     threadId: input.threadId,
     type: "run.finished"
-  })
-  if (event) {
-    enqueueAgentTraceProjection(input.runId)
   }
 }
 

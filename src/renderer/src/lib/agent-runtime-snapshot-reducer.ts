@@ -63,6 +63,9 @@ export function applyRuntimeSnapshotToThreadState(
   const artifacts = snapshotPolicy.canApplyContent
     ? stabilizeJingleReferences(state.agent.artifacts, snapshot.messages.artifacts)
     : state.agent.artifacts
+  const approvals = snapshotPolicy.canApplyRuntimeState
+    ? stabilizeJingleReferences(state.agent.approvals, snapshot.runState.approvals)
+    : state.agent.approvals
   const forkState = snapshotPolicy.canApplyContent
     ? stabilizeJingleReferences(state.agent.forkState, snapshot.runState.forkState)
     : state.agent.forkState
@@ -72,6 +75,7 @@ export function applyRuntimeSnapshotToThreadState(
   const nextAgentState: ThreadState["agent"] = {
     ...state.agent,
     activeRun: bootstrapState?.activeRun ?? sourceState.activeRun,
+    approvals,
     artifacts,
     contextInclusions,
     currentModel: typeof metadata.model === "string" ? metadata.model : DEFAULT_MODELS.llm,
@@ -81,9 +85,7 @@ export function applyRuntimeSnapshotToThreadState(
     followUpQueue: sourceState.followUpQueue,
     messagesPage,
     pendingApproval: bootstrapState?.pendingApproval ?? sourceState.pendingApproval,
-    permissionMode: isPermissionModeName(permissionMode)
-      ? permissionMode
-      : DEFAULT_PERMISSION_MODE,
+    permissionMode: isPermissionModeName(permissionMode) ? permissionMode : DEFAULT_PERMISSION_MODE,
     latestRunId: bootstrapState?.latestRunId ?? sourceState.latestRunId,
     status: bootstrapState?.status ?? sourceState.status,
     threadId: snapshot.thread.thread_id,

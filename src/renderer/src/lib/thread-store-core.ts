@@ -1,15 +1,14 @@
 import { DEFAULT_MODELS } from "@shared/models"
 import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permission-mode"
 import type { ArtifactRecord } from "@shared/artifacts"
-import type {
-  AgentThreadDataSnapshot
-} from "@shared/app-types"
+import type { AgentThreadDataSnapshot } from "@shared/app-types"
 import {
   createJingleThreadStateStore,
   type JingleAgentFollowUpQueueItem,
   type JingleAgentSteerResult,
   type JingleTokenUsage
 } from "@jingle/agent-client"
+import type { RuntimeApproval } from "@jingle/langchain-agent-harness"
 import type { ComposerMessageInput } from "@shared/message-content"
 import {
   getArtifactTabId,
@@ -36,6 +35,7 @@ export type { AgentThreadEvent, AgentThreadRuntimeState } from "@shared/agent-th
 export type TokenUsage = JingleTokenUsage
 
 export interface AgentSourceState extends AgentThreadRuntimeState {
+  approvals: RuntimeApproval[]
   artifacts: ArtifactRecord[]
   forkState: ThreadForkState
   workspacePath: string | null
@@ -106,6 +106,7 @@ export function createDefaultThreadState(threadId = ""): ThreadState {
   return {
     agent: {
       ...createDefaultAgentThreadRuntimeState(threadId),
+      approvals: [],
       artifacts: [],
       forkState: {
         canFork: true

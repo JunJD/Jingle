@@ -4,6 +4,7 @@ import {
   findEarliestJingleLangGraphCheckpointContainingMessage,
   readJingleLangGraphCheckpointConfig
 } from "@jingle/langchain-agent-harness/transitional"
+import type { RuntimeApproval } from "@jingle/langchain-agent-harness"
 import {
   cloneThread as dbCloneThread,
   cloneThreadUntilCheckpoint as dbCloneThreadUntilCheckpoint,
@@ -17,7 +18,7 @@ import {
   updateThreadMetadata,
   type ThreadRow
 } from "../db/threads"
-import { getLatestHitlRequest, hasPendingHitlRequest } from "../db/hitl"
+import { getLatestPendingHitlRequest, hasPendingHitlRequest } from "../db/hitl"
 import { getLatestRun } from "../db/runs"
 import {
   getProjects,
@@ -78,16 +79,6 @@ import type {
   Todo,
   ThreadUpdateParams
 } from "../types"
-
-async function resolvePendingHitlRequest(
-  latestHitl: Awaited<ReturnType<typeof getLatestHitlRequest>>
-): Promise<HITLRequest | null> {
-  if (!latestHitl || latestHitl.status !== "pending") {
-    return null
-  }
-
-  return mapHitlRowToRequest(latestHitl)
-}
 
 function mapThreadRowToThread(row: ThreadRow, fallbackTitle?: string): Thread {
   return {
@@ -261,6 +252,7 @@ async function assertThreadCanFork(input: {
 }
 
 interface LoadedThreadRuntimeFacts {
+  approvals: RuntimeApproval[]
   artifacts: ArtifactRecord[]
   contextInclusions: AgentContextInclusion[]
   forkState: ThreadForkState
@@ -332,9 +324,9 @@ export class ThreadsService {
   }
 
   private async loadThreadRuntimeFacts(threadId: string): Promise<LoadedThreadRuntimeFacts> {
-    const [checkpointer, latestHitl, artifacts, row, thread] = await Promise.all([
+    const [checkpointer, latestPendingHitl, artifacts, row, thread] = await Promise.all([
       getCheckpointer(threadId),
-      getLatestHitlRequest(threadId),
+      getLatestPendingHitlRequest(threadId),
       this.artifactsService.list(threadId),
       getThread(threadId),
       this.get(threadId)
@@ -350,9 +342,8 @@ export class ThreadsService {
     )
 
     const checkpointFacts = extractThreadFactsFromCheckpoint(threadId, checkpoint)
-    const [messages, pendingApproval, forkState] = await Promise.all([
+    const [messages, forkState] = await Promise.all([
       listProjectedThreadMessages(threadId).then(mapProjectedMessagesToThreadMessages),
-      resolvePendingHitlRequest(latestHitl),
       computeThreadForkState({
         checkpointHasInterrupt: checkpointFacts.hasInterrupt,
         thread: row,
@@ -361,11 +352,14 @@ export class ThreadsService {
     ])
 
     return {
+      approvals: checkpointFacts.approvals,
       artifacts,
       contextInclusions: checkpointFacts.contextInclusions,
       forkState,
       messages,
-      pendingApproval: latestHitl ? pendingApproval : checkpointFacts.hitlRequest,
+      pendingApproval: latestPendingHitl
+        ? mapHitlRowToRequest(latestPendingHitl)
+        : checkpointFacts.hitlRequest,
       thread,
       todos: checkpointFacts.todos
     }
@@ -699,6 +693,7 @@ export class ThreadsService {
         messages: facts.messages
       },
       runState: {
+        approvals: facts.approvals,
         contextInclusions:
           facts.contextInclusions.length > 0
             ? facts.contextInclusions

@@ -3,9 +3,7 @@ import test from "node:test"
 import { DEFAULT_PERMISSION_MODE } from "../../src/shared/permission-mode"
 import type { AgentThreadEvent } from "../../src/shared/agent-thread-contract"
 import { reduceJingleAgentThreadRuntimeEvent } from "@jingle/agent-client"
-import {
-  createDefaultAgentThreadRuntimeState
-} from "../../src/shared/agent-thread-contract"
+import { createDefaultAgentThreadRuntimeState } from "../../src/shared/agent-thread-contract"
 import type { JingleActiveAgentRun } from "@jingle/agent-client"
 import type { AgentThreadDataSnapshot } from "../../src/shared/app-types"
 import type { HITLRequest } from "../../src/shared/hitl"
@@ -103,6 +101,7 @@ function createThreadDataSnapshot(
       messages: []
     },
     runState: {
+      approvals: [],
       contextInclusions: [],
       error: null,
       forkState: { canFork: true },
@@ -132,8 +131,10 @@ function createPendingApproval(): HITLRequest {
 function installAgentQueueApiStub(): {
   calls: Array<{ input: unknown; type: "enqueue" | "remove" | "restore" | "steer" | "take" }>
 } {
-  const calls: Array<{ input: unknown; type: "enqueue" | "remove" | "restore" | "steer" | "take" }> =
-    []
+  const calls: Array<{
+    input: unknown
+    type: "enqueue" | "remove" | "restore" | "steer" | "take"
+  }> = []
   Object.defineProperty(globalThis, "window", {
     configurable: true,
     value: {
@@ -425,6 +426,7 @@ test("thread data snapshot and events update thread state through store reducer"
         messages: [createUserMessage("user-1", "Question")]
       },
       runState: {
+        approvals: [],
         contextInclusions: [],
         error: null,
         forkState: { canFork: true },
@@ -556,6 +558,7 @@ test("run started immediately moves projection active turn before assistant firs
         ]
       },
       runState: {
+        approvals: [],
         contextInclusions: [],
         error: null,
         forkState: { canFork: true },
@@ -634,6 +637,7 @@ test("stale idle snapshots do not remove runtime messages after a finished run",
         messages: firstTurnMessages
       },
       runState: {
+        approvals: [],
         contextInclusions: [],
         error: null,
         forkState: { canFork: true },
@@ -692,6 +696,7 @@ test("stale idle snapshots do not remove runtime messages after a finished run",
         messages: firstTurnMessages
       },
       runState: {
+        approvals: [],
         contextInclusions: [],
         error: null,
         forkState: { canFork: true },
@@ -732,6 +737,7 @@ test("stale idle snapshots do not remove runtime messages after a finished run",
         ]
       },
       runState: {
+        approvals: [],
         contextInclusions: [],
         error: null,
         forkState: { canFork: true },
@@ -780,6 +786,7 @@ test("runtime tool events update source run facts and message projection facts",
         ]
       },
       runState: {
+        approvals: [],
         contextInclusions: [],
         error: null,
         forkState: { canFork: true },
@@ -901,6 +908,7 @@ test("run finished clears active run when no tool result exists", () => {
         ]
       },
       runState: {
+        approvals: [],
         contextInclusions: [],
         error: null,
         forkState: { canFork: true },
@@ -997,6 +1005,7 @@ test("pending approval updates source approval facts", () => {
         ]
       },
       runState: {
+        approvals: [],
         contextInclusions: [],
         error: null,
         forkState: { canFork: true },
@@ -1066,6 +1075,7 @@ test("pending approval updates source approval facts", () => {
         ]
       },
       runState: {
+        approvals: [],
         contextInclusions: [],
         error: null,
         forkState: { canFork: false, reason: "pending_hitl" },
@@ -1116,6 +1126,7 @@ test("runtime delta for an unknown message does not advance revision before thre
         ]
       },
       runState: {
+        approvals: [],
         contextInclusions: [],
         error: null,
         forkState: { canFork: true },
@@ -1152,6 +1163,7 @@ test("runtime token delta keeps historical turn references stable after thread d
         ]
       },
       runState: {
+        approvals: [],
         contextInclusions: [],
         error: null,
         forkState: { canFork: true },
@@ -1207,6 +1219,7 @@ test("runtime token delta in long history keeps inactive turns and rows stable",
         messages
       },
       runState: {
+        approvals: [],
         contextInclusions: [],
         error: null,
         forkState: { canFork: true },
@@ -1275,6 +1288,7 @@ test("thread data snapshot restores non-runtime facts and stale events do not ro
         messages: [createUserMessage("user-1", "Question")]
       },
       runState: {
+        approvals: [],
         contextInclusions: [],
         error: createLegacyAgentRunFailure("Needs approval"),
         forkState: { canFork: false, reason: "pending_hitl" },

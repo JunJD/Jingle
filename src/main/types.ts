@@ -5,6 +5,7 @@ import type { PermissionModeName } from "@shared/permission-mode"
 import type { AgentFollowUpMode } from "@shared/agent-follow-up"
 import type { ArtifactRecord } from "@shared/artifacts"
 import type { JingleTodo } from "@jingle/agent-client"
+import type { RuntimeApproval } from "@jingle/langchain-agent-harness"
 import type {
   AgentThreadEventSubscriptionSurface,
   AgentThreadEventSubscriptionToken
@@ -205,6 +206,7 @@ export interface AgentThreadInfoSnapshot {
 }
 
 export interface AgentThreadRunStateSnapshot {
+  approvals: RuntimeApproval[]
   contextInclusions: AgentContextInclusion[]
   error: AgentRunFailure | null
   forkState: ThreadForkState

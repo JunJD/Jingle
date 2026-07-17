@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto"
+import type { HITLDecision } from "@shared/hitl"
 import {
   AGENT_RUN_FAILURE_METADATA_KEY,
   encodeAgentRunFailure,
@@ -22,7 +23,7 @@ import {
 } from "../db/agent-events"
 import { serializeJsonValue } from "../db/utils"
 import { getThread, updateThread } from "../db/threads"
-import { hasPendingHitlRequestForRun } from "../db/hitl"
+import { hasPendingHitlRequestForRun, parsePersistedHitlAllowedDecisions } from "../db/hitl"
 import { getCheckpointer } from "../checkpointer/runtime-checkpointer-manager"
 import { extractThreadFactsFromCheckpoint } from "./runtime-state"
 import { listProjectedThreadMessages } from "../db/message-state"
@@ -36,6 +37,8 @@ import {
   type JingleMemoryContextSnapshot
 } from "@shared/jingle-memory"
 import {
+  createApprovalResolvedEventInput,
+  createRunFinishedEventInput,
   createRunResumedEventInput,
   createRunStartedEventInput,
   createUserMessageCreatedEventInput
@@ -229,68 +232,142 @@ function mergeRunFailureMetadata(
   })
 }
 
-export async function resumeAgentRun(
+export async function commitAgentResumeDecision(
   threadId: string,
   runId: string,
+  decision: HITLDecision & { request_id: string; tool_call_id: string },
   metadata: Record<string, unknown> | undefined,
   options: {
     resumeEvent: {
       modelId?: string
-      requestId: string
     }
   }
-): Promise<{ run: ExistingRun; runId: string }> {
-  const resumeEventInputs: AppendAgentEventInput[] = [
-    createRunResumedEventInput({
-      modelId: options.resumeEvent.modelId,
-      requestId: options.resumeEvent.requestId,
-      runId,
-      threadId
-    })
-  ]
-  const run = await withRunMetadataLock(runId, async () => {
+): Promise<{ run: ExistingRun; runId: string } | null> {
+  const approvalEvent = createApprovalResolvedEventInput({
+    decision,
+    requestId: decision.request_id,
+    runId,
+    threadId
+  })
+  const eventInputs: AppendAgentEventInput[] =
+    decision.type === "user_declined"
+      ? [
+          approvalEvent,
+          createRunFinishedEventInput({
+            completionReason: "user_declined",
+            runId,
+            status: "cancelled",
+            threadId
+          })
+        ]
+      : [
+          approvalEvent,
+          createRunResumedEventInput({
+            modelId: options.resumeEvent.modelId,
+            requestId: decision.request_id,
+            runId,
+            threadId
+          })
+        ]
+
+  const committed = await withRunMetadataLock(runId, async () => {
     const prisma = getPrismaClient()
-    // Resume facts and the busy transition must become visible as one generation.
     return prisma.$transaction(async (transaction) => {
+      const request = await transaction.hitlRequest.findUnique({
+        where: { requestId: decision.request_id }
+      })
+      if (!request) {
+        throw new Error(`[Agent] Cannot resume missing HITL request "${decision.request_id}".`)
+      }
+      if (
+        request.threadId !== threadId ||
+        request.runId !== runId ||
+        request.toolCallId !== decision.tool_call_id
+      ) {
+        throw new Error(
+          `[Agent] HITL request "${decision.request_id}" does not match its resume owner.`
+        )
+      }
+      if (request.status !== "pending") {
+        return null
+      }
+
+      const allowedDecisions = parsePersistedHitlAllowedDecisions(
+        request.requestId,
+        request.allowedDecisions
+      )
+      if (!allowedDecisions.includes(decision.type)) {
+        throw new Error(
+          `[Agent] HITL request "${decision.request_id}" does not allow decision "${decision.type}".`
+        )
+      }
+
       const existingRow = await transaction.run.findUnique({ where: { runId } })
       if (!existingRow) {
         throw new Error(`[Agent] Cannot resume missing run "${runId}".`)
       }
-
       const existing = mapRunRow(existingRow)
       if (existing.thread_id !== threadId) {
         throw new Error(
           `[Agent] Cannot resume run "${runId}" from thread "${threadId}"; actual thread is "${existing.thread_id}".`
         )
       }
-
       if (existing.status && !["pending", "running", "interrupted"].includes(existing.status)) {
         throw new Error(`[Agent] Cannot resume run "${runId}" from status "${existing.status}".`)
       }
 
       const now = BigInt(Date.now())
-      const resumedRow = await transaction.run.update({
+      const resolution = await transaction.hitlRequest.updateMany({
         data: {
-          metadata: serializeJsonValue(mergeRunResumeMetadata(existing, metadata)),
-          status: "running",
+          decision: serializeJsonValue(decision),
+          resolvedAt: now,
+          status:
+            decision.type === "approve"
+              ? "approved"
+              : decision.type === "user_declined"
+                ? "user_declined"
+                : "corrected",
+          updatedAt: now
+        },
+        where: {
+          requestId: decision.request_id,
+          status: "pending"
+        }
+      })
+      if (resolution.count === 0) {
+        return null
+      }
+
+      const terminalDecline = decision.type === "user_declined"
+      const updatedRow = await transaction.run.update({
+        data: {
+          ...(terminalDecline
+            ? { status: "cancelled" }
+            : {
+                metadata: serializeJsonValue(mergeRunResumeMetadata(existing, metadata)),
+                status: "running"
+              }),
           updatedAt: now
         },
         where: { runId }
       })
-      await appendAgentEventsInTransaction(transaction, resumeEventInputs, { now })
+      await appendAgentEventsInTransaction(transaction, eventInputs, { now })
       await transaction.thread.update({
         data: {
-          status: "busy",
+          status: terminalDecline ? "idle" : "busy",
           updatedAt: now
         },
         where: { threadId }
       })
-      return mapRunRow(resumedRow)
+      return mapRunRow(updatedRow)
     })
   })
-  commitAgentEventProjectionState(resumeEventInputs)
 
-  return { run, runId }
+  if (!committed) {
+    return null
+  }
+  commitAgentEventProjectionState(eventInputs)
+  return { run: committed, runId }
 }
 
 export async function syncRunFromLatestCheckpointFacts(

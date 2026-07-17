@@ -106,8 +106,8 @@ export interface RuntimeRunStart {
 }
 
 export interface RuntimeResumeRunStart extends RuntimeRunStart {
-  beforePendingHitlPersistence: () => Promise<void> | void
   cancelAfterDecision?: () => Promise<void> | void
+  executionDisposition: "resume" | "terminal"
 }
 
 export interface RuntimeRunLifecycleControllerContract<

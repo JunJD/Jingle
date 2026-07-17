@@ -51,8 +51,10 @@ export type { CreateRunInput, RunRow, UpdateRunInput } from "./runs"
 export {
   getHitlRequest,
   getLatestHitlRequest,
+  getLatestPendingHitlRequest,
   hasPendingHitlRequest,
   hasPendingHitlRequestForRun,
+  parsePersistedHitlAllowedDecisions,
   resolveHitlRequest,
   resolvePendingHitlRequests,
   upsertHitlRequest
