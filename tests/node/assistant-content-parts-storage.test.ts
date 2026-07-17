@@ -87,7 +87,9 @@ test.before(async () => {
 })
 
 test.after(async () => {
+  const { diagnosticsGraph } = await import("../../src/main/diagnostics/instance")
   const { closeDatabase } = await loadDb()
+  await diagnosticsGraph.flush()
   await closeDatabase()
   if (originalJingleHome === undefined) delete process.env.JINGLE_HOME
   else process.env.JINGLE_HOME = originalJingleHome
@@ -585,7 +587,7 @@ test("startup recovery compares canonical revisions even when finalizedAt is new
   assert.notEqual(projection.contentRevision, `sha256:${"0".repeat(64)}`)
 })
 
-test("shutdown aborts recovery after the current bounded dispatch batch", async () => {
+test("recovery aborts after the current bounded dispatch batch", async () => {
   const { createThread, getPrismaClient } = await loadDb()
   const prisma = getPrismaClient()
   const threadId = "thread-content-projection-bounded-recovery"
@@ -621,28 +623,35 @@ test("shutdown aborts recovery after the current bounded dispatch batch", async 
     }))
   })
 
-  const recoveryTask = startAssistantContentProjectionLifecycle()
-  await waitFor(
-    () =>
-      readAssistantContentPartsProjection({
-        messageId: "assistant-message-bounded-recovery-000",
-        threadId
-      }),
-    (projection) => projection !== null
+  const recoveryAbortController = new AbortController()
+  const dispatchedRunIds: string[] = []
+  let dispatchBatchCount = 0
+  await recoverAssistantContentProjectionJobs({
+    onBatch: (batchRunIds) => {
+      dispatchBatchCount += 1
+      dispatchedRunIds.push(...batchRunIds)
+      recoveryAbortController.abort()
+    },
+    signal: recoveryAbortController.signal
+  })
+
+  assert.equal(dispatchBatchCount, 1)
+  assert.deepEqual(
+    dispatchedRunIds,
+    runIds.slice(0, ASSISTANT_CONTENT_PROJECTION_RECOVERY_BATCH_SIZE)
   )
-  await flushAssistantContentProjection()
-  await recoveryTask
-
-  const completedAfterShutdown = await prisma.assistantContentProjectionJob.count({
-    where: { runId: { in: runIds }, status: "completed" }
-  })
-  const pendingAfterShutdown = await prisma.assistantContentProjectionJob.count({
-    where: { runId: { in: runIds }, status: "pending" }
-  })
-  assert.ok(completedAfterShutdown > 0)
-  assert.ok(pendingAfterShutdown > 0)
-  assert.equal(completedAfterShutdown + pendingAfterShutdown, runIds.length)
-
+  assert.equal(
+    await prisma.assistantContentProjectionJob.count({
+      where: { runId: { in: runIds }, status: "pending" }
+    }),
+    runIds.length
+  )
+  assert.equal(
+    await prisma.assistantContentProjectionJob.count({
+      where: { runId: { in: runIds }, status: "completed" }
+    }),
+    0
+  )
   const { closeDatabase, initializeDatabase } = await loadDb()
   await closeDatabase()
   await initializeDatabase()
