@@ -1,13 +1,17 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
+import { createHash } from "node:crypto"
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
   statSync,
+  symlinkSync,
+  truncateSync,
   writeFileSync
 } from "node:fs"
 import { tmpdir } from "node:os"
@@ -18,6 +22,8 @@ import {
   createFileExtensionRuntimeCacheBackend,
   EXTENSION_RUNTIME_CACHE_MAX_ACTIVE_FILE_BYTES,
   EXTENSION_RUNTIME_CACHE_MAX_CORRUPT_FILE_BYTES,
+  EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_BYTES,
+  EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES,
   EXTENSION_RUNTIME_CACHE_MAX_FILE_SET_BYTES,
   EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE,
   writeRuntimeCacheBufferFully,
@@ -199,6 +205,50 @@ test("file runtime cache backend merges independent utility mutations in one exa
   })
 })
 
+test("file runtime cache backend keeps directory and file lock order across processes", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const workerSource = `
+      const { createFileExtensionRuntimeCacheBackend } = require(${JSON.stringify(
+        resolve("src/extension-runtime/cache-backend.ts")
+      )});
+      const identity = ${JSON.stringify(cacheIdentity)};
+      void (async () => {
+        const backend = createFileExtensionRuntimeCacheBackend(process.env.CACHE_DIR);
+        for (let index = 0; index < 20; index++) {
+          backend.mutateStore({
+            commandName: "search-page",
+            extensionName: "notion",
+            identity,
+            namespace: process.env.WORKER + "-namespace-" + index
+          }, {
+            kind: "update",
+            removeKeys: [],
+            upsertEntries: [["worker", process.env.WORKER]]
+          });
+        }
+        await backend.flush();
+      })().catch((error) => {
+        console.error(error);
+        process.exitCode = 1;
+      });
+    `
+    const runWorker = (worker: string) =>
+      execFileAsync(process.execPath, ["--require", "tsx/cjs", "--eval", workerSource], {
+        cwd: process.cwd(),
+        env: { ...process.env, CACHE_DIR: cacheDir, WORKER: worker },
+        timeout: 90_000
+      })
+
+    await Promise.all([runWorker("first"), runWorker("second")])
+
+    assertCacheDirectoryQuota(cacheDir)
+    assert.equal(
+      listRegularCacheArtifacts(cacheDir).some((name) => name.endsWith(".tmp")),
+      false
+    )
+  })
+})
+
 test("file runtime cache backend preserves queued order and input snapshots", async () => {
   await withCacheDirectory(async (cacheDir) => {
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
@@ -237,11 +287,151 @@ test("file runtime cache backend applies remove and clear mutations", async () =
     backend.mutateStore(notionScope, { kind: "clear" })
     await backend.flush()
     assert.deepEqual(createFileExtensionRuntimeCacheBackend(cacheDir).loadStore(notionScope), [])
+    assert.equal(existsSync(getCacheFilePathForScope(cacheDir, notionScope)), false)
+  })
+})
+
+test("file runtime cache backend clears one empty namespace without deleting another", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const clearedScope = { ...notionScope, namespace: "cleared-namespace" }
+    const retainedScope = { ...notionScope, namespace: "retained-namespace" }
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    writeEntries(backend, clearedScope, [["cleared", "value"]])
+    writeEntries(backend, retainedScope, [["retained", "value"]])
+    await backend.flush()
+
+    backend.mutateStore(clearedScope, { kind: "clear" })
+    await backend.flush()
+
+    assert.equal(existsSync(getCacheFilePathForScope(cacheDir, clearedScope)), false)
+    assert.equal(existsSync(getCacheFilePathForScope(cacheDir, retainedScope)), true)
+    assert.deepEqual(backend.loadStore(retainedScope), [["retained", "value"]])
+    assertCacheDirectoryQuota(cacheDir)
+  })
+})
+
+test("file runtime cache backend bounds namespaces and lets a late backend recreate one exact scope", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const lateBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    const currentBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    const scopes = Array.from(
+      { length: EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES + 4 },
+      (_, index) => ({ ...notionScope, namespace: `directory-generation-${index}` })
+    )
+    for (const [index, scope] of scopes.entries()) {
+      writeEntries(currentBackend, scope, [["generation", String(index)]])
+    }
+    await currentBackend.flush()
+
+    assertCacheDirectoryQuota(cacheDir)
+    const evictedScope = scopes.find(
+      (scope) => !existsSync(getCacheFilePathForScope(cacheDir, scope))
+    )
+    assert.ok(evictedScope)
+
+    writeEntries(lateBackend, evictedScope, [["generation", "late-recreated"]])
+    await lateBackend.flush()
+
+    assert.deepEqual(lateBackend.loadStore(evictedScope), [["generation", "late-recreated"]])
+    assertCacheDirectoryQuota(cacheDir)
+  })
+})
+
+test("file runtime cache backend removes only strict stale temporary artifacts", async (context) => {
+  if (process.platform === "win32") {
+    context.skip("Creating symlinks is not a stable unprivileged Windows test contract.")
+    return
+  }
+
+  await withCacheDirectory(async (cacheDir) => {
+    const strictTemporary = join(
+      cacheDir,
+      `store-${"a".repeat(64)}.json.42.00000000-0000-4000-8000-000000000001.tmp`
+    )
+    const unknownTemporary = `${strictTemporary}.unknown`
+    const directoryArtifact = join(cacheDir, `store-${"b".repeat(64)}.json`)
+    const outsideFile = join(cacheDir, "outside-target")
+    const symlinkArtifact = join(cacheDir, `store-${"c".repeat(64)}.json`)
+    writeFileSync(strictTemporary, "stale")
+    writeFileSync(unknownTemporary, "unknown")
+    mkdirSync(directoryArtifact)
+    writeFileSync(outsideFile, "outside")
+    symlinkSync(outsideFile, symlinkArtifact)
+
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    writeEntries(backend, notionScope, [["page", "page-1"]])
+    await backend.flush()
+
+    assert.equal(existsSync(strictTemporary), false)
+    assert.equal(existsSync(unknownTemporary), true)
+    assert.equal(lstatSync(directoryArtifact).isDirectory(), true)
+    assert.equal(lstatSync(symlinkArtifact).isSymbolicLink(), true)
+    assert.equal(readFileSync(outsideFile, "utf8"), "outside")
+    assertCacheDirectoryQuota(cacheDir)
+  })
+})
+
+test("file runtime cache backend rejects an exact-scope symlink without touching its target", async (context) => {
+  if (process.platform === "win32") {
+    context.skip("Creating symlinks is not a stable unprivileged Windows test contract.")
+    return
+  }
+
+  await withCacheDirectory(async (cacheDir) => {
+    const outsideFile = join(cacheDir, "outside-current-target")
+    const cacheFilePath = getCacheFilePathForScope(cacheDir, notionScope)
+    writeFileSync(outsideFile, "outside-current")
+    symlinkSync(outsideFile, cacheFilePath)
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    const failures: Error[] = []
+    backend.onFailure((error) => failures.push(error))
+
+    writeEntries(backend, notionScope, [["page", "page-1"]])
+    await assert.rejects(backend.flush(), /Extension runtime cache persistence failed/)
+
+    assert.equal(failures.length, 1)
+    assert.equal(lstatSync(cacheFilePath).isSymbolicLink(), true)
+    assert.equal(readFileSync(outsideFile, "utf8"), "outside-current")
+  })
+})
+
+test("file runtime cache backend evicts an oversized stale legacy artifact before writing", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const oversizedLegacyPath = join(cacheDir, `store-${"d".repeat(64)}.json`)
+    writeFileSync(oversizedLegacyPath, "legacy")
+    truncateSync(oversizedLegacyPath, EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_BYTES + 1)
+
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    writeEntries(backend, notionScope, [["page", "page-1"]])
+    await backend.flush()
+
+    assert.equal(existsSync(oversizedLegacyPath), false)
+    assert.deepEqual(backend.loadStore(notionScope), [["page", "page-1"]])
+    assertCacheDirectoryQuota(cacheDir)
+  })
+})
+
+test("file runtime cache backend fails a protected oversized legacy artifact without replacing it", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const cacheFilePath = getCacheFilePathForScope(cacheDir, notionScope)
+    writeFileSync(cacheFilePath, "legacy")
+    truncateSync(cacheFilePath, EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_BYTES + 1)
+    const originalSize = statSync(cacheFilePath).size
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    const failures: Error[] = []
+    backend.onFailure((error) => failures.push(error))
+
+    writeEntries(backend, notionScope, [["page", "page-1"]])
+    await assert.rejects(backend.flush(), /Extension runtime cache persistence failed/)
+
+    assert.equal(failures.length, 1)
+    assert.equal(failures[0].name, "ExtensionRuntimeCachePersistenceError")
+    assert.equal(failures[0].message, "Extension runtime cache persistence failed.")
+    assert.doesNotMatch(failures[0].message, /store-|jingle-runtime-cache/)
+    assert.equal(statSync(cacheFilePath).size, originalSize)
     assert.equal(
-      readCacheEnvelope(getCacheFilePath(cacheDir)).stores[
-        encodeRuntimeCacheBackendScopeKey(notionScope)
-      ],
-      undefined
+      listRegularCacheArtifacts(cacheDir).some((name) => name.endsWith(".tmp")),
+      false
     )
   })
 })
@@ -617,6 +807,41 @@ test("file runtime cache backend bounds corrupt evidence with the active envelop
   })
 })
 
+test("file runtime cache backend keeps current recovery artifacts inside the directory quota", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const scopes = Array.from(
+      { length: EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES },
+      (_, index) => ({ ...notionScope, namespace: `recovery-namespace-${index}` })
+    )
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    for (const [index, scope] of scopes.entries()) {
+      writeEntries(backend, scope, [["generation", String(index)]])
+    }
+    await backend.flush()
+    const recoveredScope = scopes[0]
+    const recoveredPath = getCacheFilePathForScope(cacheDir, recoveredScope)
+    writeFileSync(recoveredPath, '{"stores":')
+
+    const diagnostics: string[] = []
+    const originalConsoleError = console.error
+    console.error = (...args) => diagnostics.push(args.map(String).join(" "))
+    try {
+      assert.deepEqual(backend.loadStore(recoveredScope), [])
+    } finally {
+      console.error = originalConsoleError
+    }
+
+    assert.deepEqual(diagnostics, [cacheCorruptionRecoveryDiagnostic])
+    assert.equal(existsSync(recoveredPath), true)
+    assert.equal(existsSync(`${recoveredPath}.corrupt`), true)
+    assertCacheDirectoryQuota(cacheDir)
+    assert.equal(
+      listRegularCacheArtifacts(cacheDir).some((name) => name.endsWith(".tmp")),
+      false
+    )
+  })
+})
+
 test("file runtime cache backend preserves valid stores while concurrent writers quarantine corruption", async () => {
   await withCacheDirectory(async (cacheDir) => {
     const initialBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
@@ -781,6 +1006,37 @@ function getCacheFilePath(cacheDir: string): string {
   const cacheFile = readdirSync(cacheDir).find((name) => name.endsWith(".json"))
   assert.ok(cacheFile)
   return join(cacheDir, cacheFile)
+}
+
+function getCacheFilePathForScope(
+  cacheDir: string,
+  scope: Parameters<RuntimeCacheBackend["loadStore"]>[0]
+): string {
+  const address = JSON.stringify([scope.extensionName, scope.namespace])
+  const digest = createHash("sha256").update(address).digest("hex")
+  return join(cacheDir, `store-${digest}.json`)
+}
+
+function listRegularCacheArtifacts(cacheDir: string): string[] {
+  return readdirSync(cacheDir).filter((name) => {
+    if (
+      !/^store-[a-f0-9]{64}\.json(?:\.corrupt|(?:\.corrupt)?\.[0-9]+\.[0-9a-f-]{36}\.tmp)?$/.test(
+        name
+      )
+    ) {
+      return false
+    }
+    return lstatSync(join(cacheDir, name)).isFile()
+  })
+}
+
+function assertCacheDirectoryQuota(cacheDir: string): void {
+  const artifacts = listRegularCacheArtifacts(cacheDir)
+  assert.ok(artifacts.length <= EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES)
+  assert.ok(
+    artifacts.reduce((total, name) => total + statSync(join(cacheDir, name)).size, 0) <=
+      EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_BYTES
+  )
 }
 
 function readCacheEnvelope(cacheFilePath: string): {
