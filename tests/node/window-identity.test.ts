@@ -95,6 +95,10 @@ test("generic or destroyed senders cannot retain a durable caller lease", () => 
   registerWindowIdentity(webContents, { kind: "settings" })
   assert.equal(lease.signal.aborted, true)
   assert.equal(getDurableWindowCallerLease(webContents), null)
+  assert.deepEqual(getWindowIdentity(webContents), { kind: "settings" })
+
+  sender.destroy()
+  assert.equal(getWindowIdentity(webContents), null)
 
   const destroyed = new FakeWebContents()
   destroyed.destroy()

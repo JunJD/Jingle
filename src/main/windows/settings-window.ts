@@ -1,4 +1,4 @@
-import { BrowserWindow, type WebContents } from "electron"
+import { BrowserWindow } from "electron"
 import { join } from "path"
 import { startRendererWindowLoad } from "./load-renderer-window"
 import { installExternalWindowOpenHandler } from "./external-window-open"
@@ -15,11 +15,6 @@ import { registerWindowIdentity } from "./window-identity"
 
 const SETTINGS_WINDOW_WIDTH = 1220
 const SETTINGS_WINDOW_HEIGHT = 820
-const settingsWindowWebContents = new WeakSet<WebContents>()
-
-export function isSettingsWindowWebContents(webContents: WebContents): boolean {
-  return settingsWindowWebContents.has(webContents) && !webContents.isDestroyed()
-}
 
 export function createSettingsWindow(): BrowserWindow {
   const isMac = process.platform === "darwin"
@@ -46,7 +41,6 @@ export function createSettingsWindow(): BrowserWindow {
     }
   })
   registerWindowIdentity(settingsWindow.webContents, { kind: "settings" })
-  settingsWindowWebContents.add(settingsWindow.webContents)
 
   const observeRendererWindowLoadFailure = attachWindowDiagnostics(settingsWindow, "settings")
   lockFixedWindowZoom(settingsWindow)

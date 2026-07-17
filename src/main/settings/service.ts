@@ -10,7 +10,6 @@ import {
   setAppThemeSettings,
   setLauncherSettings
 } from "../preferences"
-import { isSettingsWindowWebContents } from "../windows/settings-window"
 import { updateThemeTitleBarOverlay } from "../windows/title-bar-overlay"
 import { getWindowIdentity, isDurableWindowIdentity } from "../windows/window-identity"
 
@@ -49,9 +48,9 @@ export class SettingsService {
         continue
       }
 
+      const identity = getWindowIdentity(window.webContents)
       const hasThemeAwareNativeChrome =
-        isSettingsWindowWebContents(window.webContents) ||
-        isDurableWindowIdentity(getWindowIdentity(window.webContents))
+        identity?.kind === "settings" || isDurableWindowIdentity(identity)
 
       if (hasThemeAwareNativeChrome) {
         try {
