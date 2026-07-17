@@ -45,7 +45,7 @@ test("Apple Reminders runtime accessories serialize as a stable text visual", as
   renderer.render(
     createElement(
       List,
-      null,
+      { navigationTitle: "My Reminders" },
       createElement(List.Item, {
         accessories,
         id: "reminder-1",

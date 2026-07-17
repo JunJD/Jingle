@@ -15,9 +15,10 @@ import {
   type ExtensionRuntimeHostRequestInput
 } from "@jingle/extension-api/host-runtime"
 import { showFailureToast } from "../../packages/extension-utils/src"
-import type {
-  ExtensionHostResponse,
-  ExtensionRuntimeLaunchContext
+import {
+  resolveExtensionShortcutPlatform,
+  type ExtensionHostResponse,
+  type ExtensionRuntimeLaunchContext
 } from "../../src/shared/extension-runtime-protocol"
 
 test("showToast sends toast payloads through the runtime toast host request", async () => {
@@ -63,6 +64,20 @@ test("showToast sends toast payloads through the runtime toast host request", as
     }
   )
 
+  const shortcutPlatform = resolveExtensionShortcutPlatform(process.platform)
+  const primaryShortcut =
+    shortcutPlatform === "macOS"
+      ? { key: "o", modifiers: ["cmd"] }
+      : shortcutPlatform === "Windows"
+        ? { key: "o", modifiers: ["ctrl"] }
+        : undefined
+  const secondaryShortcut =
+    shortcutPlatform === "macOS"
+      ? { key: "c", modifiers: ["cmd", "shift"] }
+      : shortcutPlatform === "Windows"
+        ? { key: "c", modifiers: ["ctrl", "shift"] }
+        : undefined
+
   assert.deepEqual(requests, [
     {
       capability: "toast",
@@ -71,18 +86,12 @@ test("showToast sends toast payloads through the runtime toast host request", as
         message: "Page title",
         primaryAction: {
           id: "toast-action-0",
-          shortcut: {
-            key: "o",
-            modifiers: ["cmd"]
-          },
+          shortcut: primaryShortcut,
           title: "Open Page"
         },
         secondaryAction: {
           id: "toast-action-1",
-          shortcut: {
-            key: "c",
-            modifiers: ["cmd", "shift"]
-          },
+          shortcut: secondaryShortcut,
           title: "Copy URL"
         },
         style: "success",
