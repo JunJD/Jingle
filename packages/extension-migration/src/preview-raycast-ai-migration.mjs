@@ -1634,12 +1634,19 @@ export function buildRaycastAiMigrationPreview(args) {
   const sourceFiles = collectSourceFiles(reader, args.extensionPath, target)
   const runtimeCompatibility = buildRuntimeCompatibilityReport(sourceFiles)
   const utilsBoundaryReport = buildUtilsBoundaryReport(sourceFiles)
-  const sourceMigration = buildSourceMigration(reader, args.extensionPath, sourceFiles, target)
+  const manifestPreview = buildManifestPreview(pkg, sourceFiles, target)
+  const sourceMigration = buildSourceMigration(
+    reader,
+    args.extensionPath,
+    sourceFiles,
+    target,
+    manifestPreview.commands
+  )
   const preview = {
     dependencyReport: buildDependencyReport(pkg, sourceFiles),
     feasibility: null,
     hostEntryMode: args.hostEntryMode ?? "migrated-source",
-    manifestPreview: buildManifestPreview(pkg, sourceFiles, target),
+    manifestPreview,
     runtimeCompatibility,
     source: {
       extensionPath: args.extensionPath,
@@ -2938,6 +2945,7 @@ function buildMigratedToolRunnerSource(preview, migratedSourceImportPrefix = "./
     "    {",
     "      commandName: ctx.toolName,",
     "      commandPreferences: {},",
+    '      dataIdentity: { kind: "unavailable" },',
     "      extensionName: ctx.extensionName,",
     "      extensionPreferences: ctx.extensionPreferences,",
     '      initialAction: "open",',
@@ -2973,7 +2981,7 @@ function indent(value, spaces) {
     .join("\n")
 }
 
-function buildSourceMigration(reader, extensionPath, sourceFiles, target) {
+function buildSourceMigration(reader, extensionPath, sourceFiles, target, commands) {
   const sourceFilesByPath = new Map(sourceFiles.map((file) => [file.path, file]))
   const resolvedRelativeImportsByPath = new Map(
     sourceFiles.map((file) => [
@@ -2986,6 +2994,7 @@ function buildSourceMigration(reader, extensionPath, sourceFiles, target) {
   const toolReachableFiles = findFilesReachableFromTools(sourceFiles, resolvedRelativeImportsByPath)
   const rewrittenSourceFiles = sourceFiles.flatMap((file) => {
     const rewrittenSource = rewriteSourceForJingle(file.sourceText, file.path, target, {
+      navigationTitle: resolveSourceNavigationTitle(file.path, commands, target.title),
       sourceFiles
     })
     const output = {
@@ -3024,6 +3033,18 @@ function buildSourceMigration(reader, extensionPath, sourceFiles, target) {
     diagnostics: collectTransformDiagnostics(rewrittenSourceFiles),
     sourceFiles: rewrittenSourceFiles
   }
+}
+
+function resolveSourceNavigationTitle(filePath, commands, extensionTitle) {
+  const directCommand = commands.find(
+    (command) => filePath === `src/${command.name}.tsx` || filePath === `src/${command.name}.ts`
+  )
+  if (directCommand) {
+    return directCommand.title
+  }
+
+  const viewCommands = commands.filter((command) => command.mode === "view")
+  return viewCommands.length === 1 ? viewCommands[0].title : extensionTitle
 }
 
 function buildSourceMigrationArtifacts(preview, options = {}) {

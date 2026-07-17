@@ -1,5 +1,10 @@
+import { createRequire } from "node:module"
 import { rewriteRaycastRuntimeImports } from "./import-rewrite.mjs"
 import { getApplicableTransforms, knownExtensionTransforms } from "./known-extensions/index.mjs"
+
+const require = createRequire(import.meta.url)
+const ts = require("typescript")
+const NAVIGATION_COMPONENTS = new Set(["Detail", "Form", "List"])
 
 export function rewriteSourceForJingle(sourceText, filePath, target, options = {}) {
   const rewrittenSource = rewriteGenericSourceForJingle(sourceText, filePath, target)
@@ -25,8 +30,95 @@ export function rewriteSourceForJingle(sourceText, filePath, target, options = {
 
   return {
     diagnostics: knownExtensionResult.diagnostics,
-    sourceText: ensureReactRuntimeImport(knownExtensionResult.sourceText, filePath)
+    sourceText: ensureReactRuntimeImport(
+      ensureExtensionRuntimeNavigationTitles(
+        knownExtensionResult.sourceText,
+        filePath,
+        options.navigationTitle
+      ),
+      filePath
+    )
   }
+}
+
+export function ensureExtensionRuntimeNavigationTitles(sourceText, filePath, navigationTitle) {
+  if (!filePath.endsWith(".tsx")) {
+    return sourceText
+  }
+
+  const sourceFile = ts.createSourceFile(
+    filePath,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  )
+  const localComponents = new Set()
+  const namespaceImports = new Set()
+
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== "@jingle/extension-api"
+    ) {
+      continue
+    }
+    const bindings = statement.importClause?.namedBindings
+    if (ts.isNamedImports(bindings)) {
+      for (const element of bindings.elements) {
+        const importedName = element.propertyName?.text ?? element.name.text
+        if (NAVIGATION_COMPONENTS.has(importedName)) {
+          localComponents.add(element.name.text)
+        }
+      }
+    } else if (ts.isNamespaceImport(bindings)) {
+      namespaceImports.add(bindings.name.text)
+    }
+  }
+
+  const insertions = []
+  const visit = (node) => {
+    if (
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      isNavigationComponentTag(node.tagName, localComponents, namespaceImports) &&
+      !node.attributes.properties.some(
+        (property) => ts.isJsxAttribute(property) && property.name.text === "navigationTitle"
+      )
+    ) {
+      insertions.push(node.tagName.end)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
+
+  if (insertions.length === 0) {
+    return sourceText
+  }
+  if (typeof navigationTitle !== "string" || navigationTitle.trim().length === 0) {
+    throw new Error(`Missing navigation title while rewriting ${filePath}.`)
+  }
+
+  const attribute = ` navigationTitle={${JSON.stringify(navigationTitle)}}`
+  return insertions
+    .sort((left, right) => right - left)
+    .reduce(
+      (currentSource, position) =>
+        `${currentSource.slice(0, position)}${attribute}${currentSource.slice(position)}`,
+      sourceText
+    )
+}
+
+function isNavigationComponentTag(tagName, localComponents, namespaceImports) {
+  if (ts.isIdentifier(tagName)) {
+    return localComponents.has(tagName.text)
+  }
+  return (
+    ts.isPropertyAccessExpression(tagName) &&
+    ts.isIdentifier(tagName.expression) &&
+    namespaceImports.has(tagName.expression.text) &&
+    NAVIGATION_COMPONENTS.has(tagName.name.text)
+  )
 }
 
 export function rewriteGenericSourceForJingle(sourceText, filePath, target) {

@@ -56,6 +56,30 @@ test("Raycast migration rewrites runtime imports through static module specifier
   assert.match(rewritten, /const untouched = "@raycast\/api"/)
 })
 
+test("Raycast migration gives runtime view roots a canonical navigation title", () => {
+  const source = [
+    'import * as Runtime from "@raycast/api"',
+    'import { Detail, Form as RuntimeForm, List } from "@raycast/api"',
+    "const list = <List />",
+    'const form = <RuntimeForm navigationTitle="Existing" />',
+    "const detail = <Detail />",
+    "const namespaced = <Runtime.List />"
+  ].join("\n")
+
+  const result = rewriteSourceForJingle(
+    source,
+    "src/search-page.tsx",
+    { extensionId: "notion", sourceExtensionId: "notion" },
+    { navigationTitle: "Search Pages" }
+  )
+
+  assert.match(result.sourceText, /<List navigationTitle=\{"Search Pages"\} \/>/)
+  assert.match(result.sourceText, /<RuntimeForm navigationTitle="Existing" \/>/)
+  assert.match(result.sourceText, /<Detail navigationTitle=\{"Search Pages"\} \/>/)
+  assert.match(result.sourceText, /<Runtime\.List navigationTitle=\{"Search Pages"\} \/>/)
+  assert.equal(result.sourceText.match(/navigationTitle=/g)?.length, 4)
+})
+
 test("Raycast migration gates known extension transforms by target context", () => {
   const source = [
     'import { OAuth, getPreferenceValues } from "@jingle/extension-api"',
@@ -2389,6 +2413,11 @@ test("Raycast migration generated UI command uses Jingle runtime facade host req
         "      value: {",
         "        commandName: 'quick-capture',",
         "        commandPreferences: {},",
+        "        dataIdentity: {",
+        "          cache: { kind: 'unavailable', reason: 'artifact-revision-unavailable' },",
+        "          kind: 'available',",
+        "          localStorage: { connectionId: 'fixture', credentialGeneration: 0 }",
+        "        },",
         "        extensionName: 'fixture',",
         "        extensionPreferences: { accessToken: 'runtime-token' },",
         "        initialAction: 'open',",
@@ -3041,6 +3070,7 @@ test("Raycast migration generated runtime supports top-level preference reads in
         "      value: {",
         "        commandName: 'search-page',",
         "        commandPreferences: {},",
+        "        dataIdentity: { kind: 'unavailable' },",
         "        extensionName: 'fixture',",
         "        extensionPreferences: { accessToken: 'runtime-token' },",
         "        initialAction: 'open',",
