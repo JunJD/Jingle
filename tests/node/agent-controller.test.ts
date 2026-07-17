@@ -697,7 +697,7 @@ test("AgentController requires a subscription token for thread event disconnect"
   )
 })
 
-test("AgentController revokes stale Main subscriptions when a window changes thread", async () => {
+test("AgentController restores Launcher events after a Main window changes thread", async () => {
   const listeners = new Map<string, (batch: never) => void>()
   const disconnected: string[] = []
   const runner = {
@@ -738,22 +738,25 @@ test("AgentController revokes stale Main subscriptions when a window changes thr
   })
   const launcherThreadAKey = [...listeners.keys()].find((key) => key.startsWith("1:thread-a:"))
   const pinnedThreadAKey = [...listeners.keys()].find((key) => key.startsWith("2:thread-a:"))
-  assert.equal(launcherThreadAKey, undefined)
+  assert.ok(launcherThreadAKey)
   assert.ok(pinnedThreadAKey)
+  listeners.get(launcherThreadAKey)?.({} as never)
   listeners.get(pinnedThreadAKey)?.({} as never)
   assert.equal(launcherSender.sent.length, 0)
   assert.equal(pinnedSender.sent.length, 1)
 
   mainThreadId = "thread-b"
   listeners.get(pinnedThreadAKey)?.({} as never)
+  listeners.get(launcherThreadAKey)?.({} as never)
   assert.equal(pinnedSender.sent.length, 1)
-  assert.equal(launcherSender.sent.length, 0)
+  assert.equal(launcherSender.sent.length, 1)
 
   await ipcMain.invokeFrom(pinnedEvent, "agent:connectThreadEvents", {
     threadId: "thread-b"
   })
-  assert.equal(disconnected.some((key) => key.startsWith("1:thread-a:")), true)
+  assert.equal(disconnected.some((key) => key.startsWith("1:thread-a:")), false)
   assert.equal(disconnected.includes(pinnedThreadAKey), true)
+  assert.equal(listeners.has(launcherThreadAKey), true)
   assert.equal(listeners.has(pinnedThreadAKey), false)
   assert.equal(
     [...listeners.keys()].some((key) => key.startsWith("2:thread-b:")),
@@ -819,7 +822,7 @@ test("AgentController discards a stale Main subscription that resolves after ret
   assert.equal(sender.sent.length, 1)
 })
 
-test("AgentController does not revive Launcher ownership after Main reconnect settles", async () => {
+test("AgentController preserves Launcher ownership across Main reconnects", async () => {
   let reconnectStarted!: () => void
   let releaseReconnect!: () => void
   const reconnectEntered = new Promise<void>((resolve) => {
@@ -891,13 +894,14 @@ test("AgentController does not revive Launcher ownership after Main reconnect se
   })
 
   const launcherKey = [...listeners.keys()].find((key) => key.startsWith("1:thread-a:"))
-  assert.equal(launcherKey, undefined)
-  assert.equal(launcherSender.sent.length, 0)
+  assert.ok(launcherKey)
   assert.equal(
     [...listeners.keys()].some((key) => key.startsWith("2:thread-a:")),
     false
   )
   assert.equal(disconnected.filter((key) => key.startsWith("2:thread-a:")).length >= 2, true)
+  listeners.get(launcherKey)?.({} as never)
+  assert.equal(launcherSender.sent.length, 1)
 })
 
 test("AgentController ignores delayed cleanup for an older subscription generation", async () => {
@@ -1038,7 +1042,7 @@ test("AgentController keeps Launcher events active until a Main subscription con
   assert.equal(pinnedSender.sent.length, 1)
 })
 
-test("AgentController prevents a pending Launcher subscription from reviving after Main handoff", async () => {
+test("AgentController preserves a pending Launcher subscription through Main handoff", async () => {
   let launcherConnectStarted!: () => void
   let releaseLauncherConnect!: () => void
   const launcherConnectEntered = new Promise<void>((resolve) => { launcherConnectStarted = resolve })
@@ -1071,22 +1075,38 @@ test("AgentController prevents a pending Launcher subscription from reviving aft
   )
   const ipcMain = new FakeIpcMain()
   controller.register(ipcMain as unknown as IpcMain)
+  const launcherSender = createFakeSender(1)
   const launcherConnect = ipcMain.invokeFrom(
-    createInvokeEvent({ sender: createFakeSender(1) }),
+    createInvokeEvent({ sender: launcherSender }),
     "agent:connectThreadEvents",
     { threadId: "thread-a" }
   )
   await launcherConnectEntered
-  await ipcMain.invokeFrom(
-    createInvokeEvent({ sender: createFakeSender(2) }),
-    "agent:connectThreadEvents",
-    { threadId: "thread-a" }
+  const mainSender = createFakeSender(2)
+  const mainConnection = parseAgentConnectThreadEventsResult(
+    await ipcMain.invokeFrom(
+      createInvokeEvent({ sender: mainSender }),
+      "agent:connectThreadEvents",
+      { threadId: "thread-a" }
+    )
   )
   releaseLauncherConnect()
   await launcherConnect
 
-  assert.equal([...listeners.keys()].some((key) => key.startsWith("1:thread-a:")), false)
-  assert.equal([...listeners.keys()].some((key) => key.startsWith("2:thread-a:")), true)
+  const launcherKey = [...listeners.keys()].find((key) => key.startsWith("1:thread-a:"))
+  const mainKey = [...listeners.keys()].find((key) => key.startsWith("2:thread-a:"))
+  assert.ok(launcherKey)
+  assert.ok(mainKey)
+  listeners.get(launcherKey)?.({} as never)
+  assert.equal(launcherSender.sent.length, 0)
+
+  await ipcMain.invokeFrom(
+    createInvokeEvent({ sender: mainSender }),
+    "agent:disconnectThreadEvents",
+    { subscriptionToken: mainConnection.subscriptionToken, threadId: "thread-a" }
+  )
+  listeners.get(launcherKey)?.({} as never)
+  assert.equal(launcherSender.sent.length, 1)
 })
 
 test("AgentController discards a pending subscription when its sender is destroyed", async () => {

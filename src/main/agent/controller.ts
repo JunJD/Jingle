@@ -631,7 +631,6 @@ export class AgentController {
     }
 
     this.removeOtherSubscriptionsForSender(sender.id, subscriptionKey)
-    if (options.surface === "main") this.removeLauncherSubscriptionsForThread(threadId)
     previousCleanup?.()
 
     const handleSenderDestroyed = (): void => {
@@ -709,17 +708,6 @@ export class AgentController {
     const prefix = `${senderId}:`
     for (const subscriptionKey of this.eventSubscriptions.keys()) {
       if (subscriptionKey !== retainedKey && subscriptionKey.startsWith(prefix)) {
-        this.removeSubscriptionByKey(subscriptionKey)
-      }
-    }
-  }
-
-  private removeLauncherSubscriptionsForThread(threadId: string): void {
-    for (const [subscriptionKey, subscription] of this.eventSubscriptions) {
-      if (subscription.surface === "launcher" && subscription.threadId === threadId) {
-        this.invalidateEventSubscriptionGeneration(
-          this.getMainSubscriptionGenerationKey(subscription.sender.id)
-        )
         this.removeSubscriptionByKey(subscriptionKey)
       }
     }
