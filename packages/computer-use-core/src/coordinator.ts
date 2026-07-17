@@ -106,6 +106,10 @@ export class ComputerUseTransactionCoordinator {
     const signal = input.signal
       ? AbortSignal.any([input.signal, sessionSignal])
       : sessionSignal
+    if (signal.aborted) {
+      const outcome = await this.ledger.cancel(attempt.attemptId)
+      return { baseStateId: base.stateId, outcome, steps: [] }
+    }
     const unsupported = this.preflight(actions, base.stateId, "background")
     if (unsupported) {
       await this.ledger.settle(attempt.attemptId, unsupported.outcome)

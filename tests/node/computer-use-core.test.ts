@@ -1422,3 +1422,80 @@ test("coordinator preflight settles first and later unsupported actions without 
     "later-unsupported:settled:refused"
   ])
 })
+
+test("pre-aborted unsupported transactions settle as cancelled before dispatch", async () => {
+  const raw = observation({
+    elements: [
+      {
+        actions: ["scroll"],
+        index: 0,
+        ref: "@e1",
+        role: "scroll_area"
+      }
+    ]
+  })
+  let backendDispatches = 0
+  const backend: ComputerUseBackend = {
+    matrix: {
+      capabilities: [
+        {
+          action: "scroll",
+          background: "unavailable",
+          foreground: "unavailable",
+          route: "unavailable"
+        }
+      ],
+      environment: "macos-quartz",
+      platform: "macos",
+      protocolVersion: 1
+    },
+    disposeSession: resolvedVoid,
+    async execute() {
+      backendDispatches += 1
+      throw new Error("pre-aborted unsupported actions must not dispatch")
+    },
+    async observe() {
+      const { epoch: _epoch, stateId: _stateId, ...value } = raw
+      return value
+    }
+  }
+  const ledgerWrites: string[] = []
+  const ledger = new ComputerUseActionLedger({
+    async reserve() {
+      return "reserved"
+    },
+    async write(attempt) {
+      ledgerWrites.push(`${attempt.attemptId}:${attempt.phase}:${attempt.outcome ?? "pending"}`)
+    }
+  })
+  const sessions = new ComputerUseSessionManager(backend)
+  const coordinator = new ComputerUseTransactionCoordinator(
+    backend,
+    new ComputerUseResourceScheduler(),
+    sessions,
+    ledger
+  )
+  const base = await coordinator.observe({})
+  await sessions.setEnabled(true)
+  const grant = sessions.openSession({ observation: base, runId: "run", threadId: "thread" })
+  const controller = new AbortController()
+  controller.abort()
+
+  const result = await coordinator.execute({
+    actions: [{ kind: "scroll", ref: "@e1", scrollAmount: 1 }],
+    baseStateId: base.stateId,
+    runId: "run",
+    sessionId: grant.sessionId,
+    signal: controller.signal,
+    threadId: "thread",
+    transactionId: "pre-aborted-unsupported"
+  })
+
+  assert.deepEqual(result, {
+    baseStateId: base.stateId,
+    outcome: "cancelled_before_dispatch",
+    steps: []
+  })
+  assert.equal(backendDispatches, 0)
+  assert.deepEqual(ledgerWrites, ["pre-aborted-unsupported:settled:cancelled_before_dispatch"])
+})
