@@ -284,6 +284,75 @@ test("a dirty write during execution prevents an older generation from completin
   assert.equal((await getPrismaClient().run.count({ where: { status: "success" } })) > 0, true)
 })
 
+test("a committed projection change is published when a newer generation wins completion", async () => {
+  const { createRun, createThread, getPrismaClient, persistMessageStateVersion } = await loadDb()
+  const runId = "run-content-projection-generation-change"
+  const threadId = "thread-content-projection-generation-change"
+  const messageId = "assistant-message-generation-change"
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "success" })
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-generation-change",
+    checkpointNs: "",
+    messages: [{ ...assistantItem("raw-generation-change", null), messageId }],
+    runId,
+    threadId,
+    version: "1"
+  })
+
+  await getPrismaClient().$executeRawUnsafe(`
+    CREATE TRIGGER advance_projection_generation_after_commit
+    AFTER INSERT ON assistant_content_projections
+    WHEN NEW.message_id = 'assistant-message-generation-change'
+    BEGIN
+      UPDATE assistant_content_projection_jobs
+      SET generation = generation + 1, status = 'pending', updated_at = updated_at + 1
+      WHERE run_id = 'run-content-projection-generation-change' AND status = 'running';
+    END
+  `)
+  const changes: Array<{ contentRevision: string; projectionFingerprint: string }> = []
+  const projectionsAtDelivery: Array<ReturnType<typeof readAssistantContentPartsProjection>> = []
+  const stopChanges = assistantContentProjectionEvents.onChanged((event) => {
+    if (event.messageId === messageId && event.threadId === threadId) {
+      changes.push({
+        contentRevision: event.contentRevision,
+        projectionFingerprint: event.projectionFingerprint
+      })
+      projectionsAtDelivery.push(readAssistantContentPartsProjection({ messageId, threadId }))
+    }
+  })
+
+  try {
+    await enqueueAssistantContentProjection({ runId })
+    await flushAssistantContentProjection()
+  } finally {
+    stopChanges()
+    await getPrismaClient().$executeRawUnsafe(
+      "DROP TRIGGER IF EXISTS advance_projection_generation_after_commit"
+    )
+  }
+
+  const projection = await readAssistantContentPartsProjection({ messageId, threadId })
+  assert.ok(projection)
+  assert.equal(projectionsAtDelivery.length, 1)
+  const projectionAtDelivery = await projectionsAtDelivery[0]
+  assert.ok(projectionAtDelivery)
+  assert.equal(projectionAtDelivery.contentRevision, projection.contentRevision)
+  assert.equal(
+    assistantContentProjectionFingerprint(projectionAtDelivery),
+    assistantContentProjectionFingerprint(projection)
+  )
+  const job = await readAssistantContentProjectionJob(runId)
+  assert.equal(job?.generation, 2)
+  assert.equal(job?.status, "completed")
+  assert.deepEqual(changes, [
+    {
+      contentRevision: projection.contentRevision,
+      projectionFingerprint: assistantContentProjectionFingerprint(projection)
+    }
+  ])
+})
+
 test("hydrate scheduling during execution preserves a newer projection wake-up", async () => {
   const { createRun, createThread, persistMessageStateVersion } = await loadDb()
   const runId = "run-content-projection-ensure-generation"

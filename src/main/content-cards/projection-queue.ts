@@ -150,6 +150,12 @@ const assistantContentProjectionQueue = createProjectionQueue<AssistantContentPr
         runId: claim.runId,
         threadId: claim.threadId
       })
+      // Finalization is committed here. Its invalidation must not depend on a job-generation CAS.
+      await publishChangedProjections({
+        changedProjections: finalized.changedProjections,
+        runId: job.runId,
+        threadId: claim.threadId
+      })
       if (finalized.repairedCorruptions.length > 0) {
         await recordProjectionIssue({
           error: finalized.repairedCorruptions[0]!.error,
@@ -167,11 +173,6 @@ const assistantContentProjectionQueue = createProjectionQueue<AssistantContentPr
           return
         }
         clearRetry(job.runId)
-        await publishChangedProjections({
-          changedProjections: finalized.changedProjections,
-          runId: job.runId,
-          threadId: claim.threadId
-        })
         await recordProjectionIssue({
           error: blocked.error,
           eventCode: "assistant_content_projection.input_blocked",
@@ -184,11 +185,6 @@ const assistantContentProjectionQueue = createProjectionQueue<AssistantContentPr
       const completed = await completeAssistantContentProjection(claim)
       if (completed) {
         clearRetry(job.runId)
-        await publishChangedProjections({
-          changedProjections: finalized.changedProjections,
-          runId: job.runId,
-          threadId: claim.threadId
-        })
       } else assistantContentProjectionQueue.enqueue(job)
     } catch (error) {
       await recordProjectionIssue({
