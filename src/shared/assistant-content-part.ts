@@ -1,5 +1,13 @@
 import { z } from "zod/v4"
 
+export const assistantContentPartKindSchema = z.enum([
+  "narrative",
+  "code",
+  "diff",
+  "table",
+  "mermaid"
+])
+
 const partBaseSchema = z.object({
   id: z.string().uuid(),
   revision: z.string().regex(/^sha256:[a-f0-9]{64}$/)
@@ -46,11 +54,39 @@ export const assistantContentPartSchema = z.discriminatedUnion("kind", [
   mermaidPartSchema
 ])
 
+export const assistantContentPartIdentitySchema = partBaseSchema.extend({
+  kind: assistantContentPartKindSchema
+})
+
 export const assistantContentPartsProjectionSchema = z.object({
   contentRevision: z.string().regex(/^sha256:[a-f0-9]{64}$/),
   parts: z.array(assistantContentPartSchema),
   schemaVersion: z.literal(1)
 })
+
+export const assistantContentProjectionChangedEventSchema = z
+  .object({
+    contentRevision: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    messageId: z.string().min(1),
+    projectionFingerprint: z.string().regex(/^fnv1a64:[a-f0-9]{16}$/),
+    threadId: z.string().min(1)
+  })
+  .strict()
+
+export const assistantContentProjectionInspectionSchema = z.discriminatedUnion("status", [
+  z
+    .object({
+      messageId: z.string().min(1),
+      projectionFingerprint: z.string().regex(/^fnv1a64:[a-f0-9]{16}$/),
+      status: z.literal("ready")
+    })
+    .strict(),
+  z.object({ messageId: z.string().min(1), status: z.literal("stale") }).strict()
+])
+
+export const assistantContentProjectionInspectionListSchema = z.array(
+  assistantContentProjectionInspectionSchema
+)
 
 export const assistantContentPartsResultSchema = z.discriminatedUnion("status", [
   z.object({ projection: assistantContentPartsProjectionSchema, status: z.literal("ready") }),
@@ -58,10 +94,37 @@ export const assistantContentPartsResultSchema = z.discriminatedUnion("status", 
 ])
 
 export type AssistantContentPart = z.infer<typeof assistantContentPartSchema>
-export type AssistantContentPartsProjection = z.infer<
-  typeof assistantContentPartsProjectionSchema
+export type AssistantContentPartsProjection = z.infer<typeof assistantContentPartsProjectionSchema>
+export type AssistantContentProjectionChangedEvent = z.infer<
+  typeof assistantContentProjectionChangedEventSchema
+>
+export type AssistantContentProjectionInspection = z.infer<
+  typeof assistantContentProjectionInspectionSchema
 >
 export type AssistantContentPartsResult = z.infer<typeof assistantContentPartsResultSchema>
+
+export function assistantContentProjectionFingerprint(projection: {
+  contentRevision: string
+  parts: readonly Pick<AssistantContentPart, "id" | "kind" | "revision">[]
+  schemaVersion: 1
+}): string {
+  let hash = 14695981039346656037n
+  const update = (value: string): void => {
+    const framed = `${value.length}:${value}`
+    for (let index = 0; index < framed.length; index += 1) {
+      hash ^= BigInt(framed.charCodeAt(index))
+      hash = BigInt.asUintN(64, hash * 1099511628211n)
+    }
+  }
+  update(String(projection.schemaVersion))
+  update(projection.contentRevision)
+  for (const part of projection.parts) {
+    update(part.id)
+    update(part.kind)
+    update(part.revision)
+  }
+  return `fnv1a64:${hash.toString(16).padStart(16, "0")}`
+}
 
 type WithoutContentPartIdentity<T> = T extends unknown ? Omit<T, "id" | "revision"> : never
 export type AssistantContentPartInput = WithoutContentPartIdentity<AssistantContentPart>
@@ -197,7 +260,9 @@ export function projectAssistantContentPartInputs(
         rows: lines.slice(2).map((row) => {
           const values = splitTableRow(row)
           return {
-            cells: Object.fromEntries(columns.map((column, index) => [column.id, values[index] ?? ""])),
+            cells: Object.fromEntries(
+              columns.map((column, index) => [column.id, values[index] ?? ""])
+            ),
             id: createId()
           }
         })

@@ -77,6 +77,10 @@ after(async () => {
 
 test("annotation storage enforces revision and retains a tombstone", async () => {
   const service = new ContentAnnotationsService()
+  const changedRevisions: number[] = []
+  const stopChanges = service.onChanged((annotation) => {
+    changedRevisions.push(annotation.revision)
+  })
   const created = await service.create({
     body: "Clarify this.",
     id: "annotation-1",
@@ -113,6 +117,10 @@ test("annotation storage enforces revision and retains a tombstone", async () =>
         anchorResolution: "resolved",
         cardRevision: "sha256:missing",
         contextHash: created.contextHash,
+        expected: {
+          cardRevision: created.cardRevision,
+          contextHash: created.contextHash
+        },
         quote: created.quote
       }
     }),
@@ -123,6 +131,8 @@ test("annotation storage enforces revision and retains a tombstone", async () =>
   assert.equal(deleted.revision, 3)
   assert.notEqual(deleted.deletedAt, null)
   assert.equal((await service.list("thread-annotations")).length, 1)
+  stopChanges()
+  assert.deepEqual(changedRevisions, [1, 2, 3])
 })
 
 test("pending stream selections cannot become durable annotations", async () => {
@@ -176,6 +186,168 @@ test("V1 rejects non-assistant content-card annotations", async () => {
       }
     }),
     (error: Error & { code?: string }) => error.code === "FAILED_PRECONDITION"
+  )
+})
+
+test("orphaned annotation anchors can reconcile against the same durable card identity", async () => {
+  const service = new ContentAnnotationsService()
+  const created = await service.create({
+    body: "Keep this anchor.",
+    id: "annotation-orphan-repair",
+    intent: "comment",
+    selection: {
+      anchor: { blockId: durableCard.slot, end: 7, kind: "text-range", start: 0 },
+      anchorResolution: "resolved",
+      card: durableCard,
+      contextHash: "sha256:orphan-repair",
+      quote: "Summary"
+    }
+  })
+  const orphaned = await service.update({
+    expectedRevision: created.revision,
+    id: created.id,
+    repair: {
+      anchor: created.anchor,
+      anchorResolution: "orphaned",
+      cardRevision: created.cardRevision,
+      contextHash: created.contextHash,
+      expected: {
+        cardRevision: created.cardRevision,
+        contextHash: created.contextHash
+      },
+      quote: created.quote
+    }
+  })
+  assert.equal(orphaned.anchorResolution, "orphaned")
+
+  const reconciled = await service.update({
+    expectedRevision: orphaned.revision,
+    id: orphaned.id,
+    repair: {
+      anchor: orphaned.anchor,
+      anchorResolution: "resolved",
+      cardRevision: orphaned.cardRevision,
+      contextHash: orphaned.contextHash,
+      expected: {
+        cardRevision: orphaned.cardRevision,
+        contextHash: orphaned.contextHash
+      },
+      quote: orphaned.quote
+    }
+  })
+  assert.equal(reconciled.anchorResolution, "resolved")
+  assert.equal(reconciled.cardId, created.cardId)
+})
+
+test("changed-revision orphan repair CASes the old anchor facts and writes the new card revision", async () => {
+  const runId = "run-annotation-changed-revision"
+  const messageId = "message-annotation-changed-revision"
+  await createRun(runId, "thread-annotations", { status: "success" })
+  const now = BigInt(Date.now())
+  await getPrismaClient().message.create({
+    data: {
+      content: JSON.stringify("Before quote"),
+      createdAt: now,
+      kind: "assistant",
+      messageId,
+      rawHash: "hash-before",
+      rawMessage: "Before quote",
+      role: "assistant",
+      runId,
+      searchText: "Before quote",
+      seq: 2,
+      threadId: "thread-annotations",
+      updatedAt: now
+    }
+  })
+  await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
+  const initialProjection = await readAssistantContentPartsProjection({
+    messageId,
+    threadId: "thread-annotations"
+  })
+  assert.ok(initialProjection)
+  const initialPart = initialProjection.parts[0]!
+  const identitySource = {
+    kind: initialPart.kind,
+    slot: `part:${initialPart.id}`,
+    sourceId: messageId,
+    sourceType: "message" as const
+  }
+  const card: ContentCardIdentity = {
+    ...identitySource,
+    cardId: createContentCardId(identitySource),
+    revision: initialPart.revision,
+    threadId: "thread-annotations"
+  }
+  const service = new ContentAnnotationsService()
+  const created = await service.create({
+    body: "Track this quote.",
+    id: "annotation-changed-revision",
+    intent: "comment",
+    selection: {
+      anchor: { blockId: card.slot, end: 6, kind: "text-range", start: 0 },
+      anchorResolution: "resolved",
+      card,
+      contextHash: "context-before",
+      quote: "Before"
+    }
+  })
+
+  await getPrismaClient().message.update({
+    data: {
+      content: JSON.stringify("After only"),
+      rawHash: "hash-after",
+      rawMessage: "After only",
+      searchText: "After only",
+      updatedAt: now + 1n
+    },
+    where: { threadId_messageId: { messageId, threadId: "thread-annotations" } }
+  })
+  await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
+  const refreshedProjection = await readAssistantContentPartsProjection({
+    messageId,
+    threadId: "thread-annotations"
+  })
+  assert.ok(refreshedProjection)
+  const refreshedPart = refreshedProjection.parts[0]!
+  assert.equal(refreshedPart.id, initialPart.id)
+  assert.notEqual(refreshedPart.revision, initialPart.revision)
+
+  const orphaned = await service.update({
+    expectedRevision: created.revision,
+    id: created.id,
+    repair: {
+      anchor: created.anchor,
+      anchorResolution: "orphaned",
+      cardRevision: refreshedPart.revision,
+      contextHash: `revision:${refreshedPart.revision}`,
+      expected: {
+        cardRevision: created.cardRevision,
+        contextHash: created.contextHash
+      },
+      quote: created.quote
+    }
+  })
+  assert.equal(orphaned.anchorResolution, "orphaned")
+  assert.equal(orphaned.cardRevision, refreshedPart.revision)
+  assert.equal(orphaned.contextHash, `revision:${refreshedPart.revision}`)
+  await assert.rejects(
+    service.update({
+      expectedRevision: created.revision,
+      id: created.id,
+      repair: {
+        anchor: created.anchor,
+        anchorResolution: "orphaned",
+        cardRevision: refreshedPart.revision,
+        contextHash: `revision:${refreshedPart.revision}`,
+        expected: {
+          cardRevision: created.cardRevision,
+          contextHash: created.contextHash
+        },
+        quote: created.quote
+      }
+    }),
+    (error: Error & { code?: string }) => error.code === "CONFLICT"
   )
 })
 

@@ -9,6 +9,17 @@ import { cn } from "@/lib/utils"
 import { useCardAnnotations, useContentAnnotations } from "./ContentAnnotationsContext"
 import { revealContentAnnotationAnchor } from "@/lib/content-annotation-reveal"
 
+export function shouldRepairContentAnnotationAnchor(input: {
+  annotation: Parameters<typeof revealContentAnnotationAnchor>[1]
+  cardRevision: string
+  resolution: "ambiguous" | "orphaned" | "resolved"
+}): boolean {
+  return (
+    input.resolution !== input.annotation.anchorResolution ||
+    input.annotation.cardRevision !== input.cardRevision
+  )
+}
+
 export function ContentCardFrame(props: {
   annotationEnabled?: boolean
   children: ReactNode | ((expanded: boolean) => ReactNode)
@@ -64,7 +75,13 @@ export function ContentCardFrame(props: {
         const result = revealContentAnnotationAnchor(selectionSurface, annotation)
         if (result.target && result.target.tabIndex < 0) result.target.tabIndex = -1
         result.target?.focus({ preventScroll: true })
-        if (result.status !== annotation.anchorResolution) {
+        if (
+          shouldRepairContentAnnotationAnchor({
+            annotation,
+            cardRevision: identity.revision,
+            resolution: result.status
+          })
+        ) {
           void annotations.update({
             expectedRevision: annotation.revision,
             id: annotation.id,
@@ -72,14 +89,18 @@ export function ContentCardFrame(props: {
               anchor: annotation.anchor,
               anchorResolution: result.status,
               cardRevision: identity.revision,
-              contextHash: annotation.contextHash,
+              contextHash: selection.contextHash,
+              expected: {
+                cardRevision: annotation.cardRevision,
+                contextHash: annotation.contextHash
+              },
               quote: annotation.quote
             }
           })
         }
       })
     },
-    [annotations, identity.revision, setCollapsed]
+    [annotations, identity.revision, selection.contextHash, setCollapsed]
   )
 
   useEffect(
@@ -91,7 +112,8 @@ export function ContentCardFrame(props: {
     async (intent: "comment" | "suggestion"): Promise<void> => {
       const value = body.trim()
       if (!value) return
-      await annotations.create(selection, value, intent)
+      const created = await annotations.create(selection, value, intent)
+      if (!created) return
       setBody("")
       setComposerOpen(false)
     },

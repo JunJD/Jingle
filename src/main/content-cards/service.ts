@@ -1,4 +1,10 @@
-import type { AssistantContentPartsResult } from "@shared/assistant-content-part"
+import {
+  assistantContentPartIdentitySchema,
+  assistantContentProjectionFingerprint,
+  type AssistantContentPart,
+  type AssistantContentPartsResult,
+  type AssistantContentProjectionInspection
+} from "@shared/assistant-content-part"
 import { getPrismaClient } from "../db/client"
 import {
   assistantContentRevision,
@@ -16,6 +22,70 @@ import {
 } from "./projection-queue"
 
 export class ContentCardsService {
+  async inspectAssistantParts(input: {
+    messageIds: readonly string[]
+    threadId: string
+  }): Promise<AssistantContentProjectionInspection[]> {
+    const messageIds = [...new Set(input.messageIds)]
+    return getPrismaClient().$transaction(async (transaction) => {
+      const messages = await transaction.message.findMany({
+        select: { content: true, messageId: true },
+        where: {
+          messageId: { in: messageIds },
+          role: "assistant",
+          threadId: input.threadId
+        }
+      })
+      const projections = await transaction.assistantContentProjection.findMany({
+        select: {
+          contentRevision: true,
+          messageId: true,
+          parts: {
+            orderBy: { ordinal: "asc" },
+            select: { kind: true, partId: true, revision: true }
+          }
+        },
+        where: { messageId: { in: messageIds }, threadId: input.threadId }
+      })
+      const messagesById = new Map(messages.map((message) => [message.messageId, message]))
+      const projectionsById = new Map(
+        projections.map((projection) => [projection.messageId, projection])
+      )
+      return messageIds.map((messageId): AssistantContentProjectionInspection => {
+        const message = messagesById.get(messageId)
+        const projection = projectionsById.get(messageId)
+        if (!message || !projection) return { messageId, status: "stale" }
+        let contentRevision: string
+        try {
+          contentRevision = assistantContentRevision(message.content)
+        } catch (error) {
+          if (!isAssistantContentProjectionInputError(error)) throw error
+          return { messageId, status: "stale" }
+        }
+        if (contentRevision !== projection.contentRevision) return { messageId, status: "stale" }
+        const partIdentities: Array<Pick<AssistantContentPart, "id" | "kind" | "revision">> = []
+        for (const part of projection.parts) {
+          const parsed = assistantContentPartIdentitySchema.safeParse({
+            id: part.partId,
+            kind: part.kind,
+            revision: part.revision
+          })
+          if (!parsed.success) return { messageId, status: "stale" }
+          partIdentities.push(parsed.data)
+        }
+        return {
+          messageId,
+          projectionFingerprint: assistantContentProjectionFingerprint({
+            contentRevision,
+            parts: partIdentities,
+            schemaVersion: 1
+          }),
+          status: "ready"
+        }
+      })
+    })
+  }
+
   async getAssistantParts(input: {
     messageId: string
     threadId: string

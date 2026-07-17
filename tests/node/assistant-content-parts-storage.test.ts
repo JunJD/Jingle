@@ -26,7 +26,9 @@ import {
 } from "../../src/main/db/assistant-content-projection-jobs"
 import { ContentCardsService } from "../../src/main/content-cards/service"
 import { ASSISTANT_CONTENT_PROJECTION_ERROR_MAX_LENGTH } from "../../src/main/content-cards/projection-error"
+import { assistantContentProjectionEvents } from "../../src/main/content-cards/events"
 import { createContentCardId } from "../../src/shared/content-card"
+import { assistantContentProjectionFingerprint } from "../../src/shared/assistant-content-part"
 
 const repoRoot = process.cwd()
 const originalJingleHome = process.env.JINGLE_HOME
@@ -1114,6 +1116,22 @@ test("content-card hydrate rejects a stale projection and schedules the canonica
   await flushAssistantContentProjection()
   const initialProjection = await readAssistantContentPartsProjection({ messageId, threadId })
   assert.ok(initialProjection)
+  const service = new ContentCardsService()
+  assert.deepEqual(await service.inspectAssistantParts({ messageIds: [messageId], threadId }), [
+    {
+      messageId,
+      projectionFingerprint: assistantContentProjectionFingerprint(initialProjection),
+      status: "ready"
+    }
+  ])
+  const changedRevisions: string[] = []
+  const changedFingerprints: string[] = []
+  const stopChanges = assistantContentProjectionEvents.onChanged((event) => {
+    if (event.messageId === messageId && event.threadId === threadId) {
+      changedRevisions.push(event.contentRevision)
+      changedFingerprints.push(event.projectionFingerprint)
+    }
+  })
 
   await getPrismaClient().message.update({
     data: {
@@ -1122,7 +1140,9 @@ test("content-card hydrate rejects a stale projection and schedules the canonica
     },
     where: { threadId_messageId: { messageId, threadId } }
   })
-  const service = new ContentCardsService()
+  assert.deepEqual(await service.inspectAssistantParts({ messageIds: [messageId], threadId }), [
+    { messageId, status: "stale" }
+  ])
   assert.deepEqual(await service.getAssistantParts({ messageId, threadId }), {
     status: "pending-stream"
   })
@@ -1132,7 +1152,19 @@ test("content-card hydrate rejects a stale projection and schedules the canonica
   assert.equal(refreshed.status, "ready")
   if (refreshed.status === "ready") {
     assert.notEqual(refreshed.projection.contentRevision, initialProjection.contentRevision)
+    assert.deepEqual(changedRevisions, [refreshed.projection.contentRevision])
+    assert.deepEqual(changedFingerprints, [
+      assistantContentProjectionFingerprint(refreshed.projection)
+    ])
+    assert.deepEqual(await service.inspectAssistantParts({ messageIds: [messageId], threadId }), [
+      {
+        messageId,
+        projectionFingerprint: assistantContentProjectionFingerprint(refreshed.projection),
+        status: "ready"
+      }
+    ])
   }
+  stopChanges()
 })
 
 test("content-card hydrate schedules a missing terminal projection", async () => {

@@ -15,6 +15,14 @@ import type {
   UpdateContentAnnotationInput
 } from "@shared/content-annotation"
 import type { ContentSelectionDraft } from "@shared/content-selection"
+import {
+  createCanonicalHydrationOwner,
+  reportCanonicalContentFailure
+} from "@/lib/canonical-content-hydration"
+import {
+  ContentWindowHydrationProvider,
+  useContentWindowHydration
+} from "./ContentWindowHydrationContext"
 
 interface RevealRegistration {
   reveal: (annotation: ContentAnnotation) => void
@@ -23,6 +31,8 @@ interface RevealRegistration {
 class CardAnnotationStore {
   private readonly listeners = new Map<string, Set<() => void>>()
   private snapshots = new Map<string, readonly ContentAnnotation[]>()
+
+  constructor(readonly threadId: string) {}
 
   getSnapshot = (cardId: string): readonly ContentAnnotation[] =>
     this.snapshots.get(cardId) ?? EMPTY_ANNOTATIONS
@@ -68,18 +78,42 @@ class CardAnnotationStore {
 
 const EMPTY_ANNOTATIONS: readonly ContentAnnotation[] = []
 
+export function mergeContentAnnotationRecords(
+  current: readonly ContentAnnotation[],
+  incoming: readonly ContentAnnotation[]
+): readonly ContentAnnotation[] {
+  const records = new Map(current.map((annotation) => [annotation.id, annotation]))
+  let changed = false
+  for (const annotation of incoming) {
+    const previous = records.get(annotation.id)
+    if (
+      !previous ||
+      annotation.revision > previous.revision ||
+      (annotation.revision === previous.revision && annotation.updatedAt > previous.updatedAt)
+    ) {
+      records.set(annotation.id, annotation)
+      changed = true
+    }
+  }
+  if (!changed) return current
+  return [...records.values()].sort(
+    (left, right) =>
+      left.updatedAt.localeCompare(right.updatedAt) || left.id.localeCompare(right.id)
+  )
+}
+
 interface ContentAnnotationsContextValue {
   cardStore: CardAnnotationStore
   create: (
     selection: ContentSelectionDraft,
     body: string,
     intent: "comment" | "suggestion"
-  ) => Promise<void>
-  remove: (annotation: ContentAnnotation) => Promise<void>
+  ) => Promise<boolean>
+  remove: (annotation: ContentAnnotation) => Promise<boolean>
   reveal: (annotation: ContentAnnotation) => void
   registerReveal: (cardId: string, registration: RevealRegistration) => () => void
   threadId: string
-  update: (input: UpdateContentAnnotationInput) => Promise<void>
+  update: (input: UpdateContentAnnotationInput) => Promise<boolean>
 }
 
 const ContentAnnotationsContext = createContext<ContentAnnotationsContextValue | null>(null)
@@ -87,6 +121,7 @@ const ContentAnnotationRecordsContext = createContext<readonly ContentAnnotation
 const ContentAnnotationsSidebarContext = createContext<{
   setOpen: (open: boolean) => void
   open: boolean
+  syncError: boolean
 } | null>(null)
 
 export function ContentAnnotationsProvider(props: {
@@ -94,45 +129,101 @@ export function ContentAnnotationsProvider(props: {
   mountCard?: (cardId: string) => Promise<void> | void
   threadId: string
 }): React.JSX.Element {
+  return (
+    <ContentWindowHydrationProvider threadId={props.threadId}>
+      <ContentAnnotationsStateProvider {...props} />
+    </ContentWindowHydrationProvider>
+  )
+}
+
+function ContentAnnotationsStateProvider(props: {
+  children: ReactNode
+  mountCard?: (cardId: string) => Promise<void> | void
+  threadId: string
+}): React.JSX.Element {
   const { children, mountCard, threadId } = props
-  const [annotations, setAnnotations] = useState<ContentAnnotation[]>([])
-  const [cardStore] = useState(() => new CardAnnotationStore())
+  const windowHydration = useContentWindowHydration()
+  const [annotationSnapshot, setAnnotationSnapshot] = useState<{
+    records: readonly ContentAnnotation[]
+    threadId: string
+  }>(() => ({ records: [], threadId }))
+  const annotations =
+    annotationSnapshot.threadId === threadId ? annotationSnapshot.records : EMPTY_ANNOTATIONS
+  const cardStore = useMemo(() => new CardAnnotationStore(threadId), [threadId])
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const annotationsRef = useRef<ContentAnnotation[]>([])
+  const [syncIssue, setSyncIssue] = useState<{ threadId: string } | null>(null)
+  const [mutationIssue, setMutationIssue] = useState<{ threadId: string } | null>(null)
+  const syncError = syncIssue?.threadId === threadId || mutationIssue?.threadId === threadId
+  const annotationsRef = useRef<{ records: readonly ContentAnnotation[]; threadId: string }>({
+    records: [],
+    threadId
+  })
   const revealersRef = useRef(new Map<string, RevealRegistration>())
 
   const commit = useCallback(
-    (records: ContentAnnotation[]): void => {
-      annotationsRef.current = records
+    (records: readonly ContentAnnotation[]): void => {
+      annotationsRef.current = { records, threadId }
       cardStore.replace(records)
-      setAnnotations(records)
+      setAnnotationSnapshot({ records, threadId })
     },
-    [cardStore]
+    [cardStore, threadId]
+  )
+
+  const merge = useCallback(
+    (records: readonly ContentAnnotation[]): void => {
+      const current =
+        annotationsRef.current.threadId === threadId ? annotationsRef.current.records : []
+      const next = mergeContentAnnotationRecords(current, records)
+      if (next !== current) commit(next)
+    },
+    [commit, threadId]
   )
 
   useEffect(() => {
-    let active = true
-    void window.api.contentAnnotations.list(threadId).then((records) => {
-      if (active) commit(records)
+    const attemptController = new AbortController()
+    const hydration = createCanonicalHydrationOwner({
+      load: () =>
+        windowHydration.runAttempt(
+          () => window.api.contentAnnotations.list(threadId),
+          attemptController.signal
+        ),
+      onFailure: ({ attempt }) => {
+        setSyncIssue({ threadId })
+        if (attempt === 1) {
+          reportCanonicalContentFailure({
+            operation: "hydrate-content-annotations",
+            summary: "Content annotation hydration failed"
+          })
+        }
+      },
+      onSuccess: (records) => {
+        merge(records)
+        setSyncIssue((current) => (current?.threadId === threadId ? null : current))
+      }
     })
-    return () => {
-      active = false
+    const requestHydration = (): void => {
+      void hydration.request({ resetFailures: true })
     }
-  }, [commit, threadId])
+    const unsubscribe = window.api.contentAnnotations.onChanged(({ annotation }) => {
+      if (annotation.threadId === threadId) merge([annotation])
+    })
+    const stopSnapshotResync = windowHydration.registerSnapshot("content-annotations", () =>
+      hydration.request({ resetFailures: true })
+    )
+    requestHydration()
+    return () => {
+      attemptController.abort()
+      stopSnapshotResync()
+      unsubscribe()
+      hydration.dispose()
+    }
+  }, [merge, threadId, windowHydration])
 
   const replace = useCallback(
     (record: ContentAnnotation): void => {
-      const current = annotationsRef.current
-      const index = current.findIndex((entry) => entry.id === record.id)
-      if (index < 0) {
-        commit([...current, record])
-        return
-      }
-      const next = [...current]
-      next[index] = record
-      commit(next)
+      merge([record])
     },
-    [commit]
+    [merge]
   )
 
   const create = useCallback(
@@ -140,36 +231,69 @@ export function ContentAnnotationsProvider(props: {
       selection: ContentSelectionDraft,
       body: string,
       intent: "comment" | "suggestion"
-    ): Promise<void> => {
+    ): Promise<boolean> => {
       const input: CreateContentAnnotationInput = {
         body,
         id: crypto.randomUUID(),
         intent,
         selection
       }
-      replace(await window.api.contentAnnotations.create(input))
-      setSidebarOpen(true)
+      try {
+        replace(await window.api.contentAnnotations.create(input))
+        setMutationIssue((current) => (current?.threadId === threadId ? null : current))
+        setSidebarOpen(true)
+        return true
+      } catch {
+        setMutationIssue({ threadId })
+        reportCanonicalContentFailure({
+          operation: "create-content-annotation",
+          summary: "Content annotation creation failed"
+        })
+        return false
+      }
     },
-    [replace]
+    [replace, threadId]
   )
 
   const update = useCallback(
-    async (input: UpdateContentAnnotationInput): Promise<void> => {
-      replace(await window.api.contentAnnotations.update(input))
+    async (input: UpdateContentAnnotationInput): Promise<boolean> => {
+      try {
+        replace(await window.api.contentAnnotations.update(input))
+        setMutationIssue((current) => (current?.threadId === threadId ? null : current))
+        return true
+      } catch {
+        setMutationIssue({ threadId })
+        reportCanonicalContentFailure({
+          operation: "update-content-annotation",
+          summary: "Content annotation update failed"
+        })
+        return false
+      }
     },
-    [replace]
+    [replace, threadId]
   )
 
   const remove = useCallback(
-    async (annotation: ContentAnnotation): Promise<void> => {
-      replace(
-        await window.api.contentAnnotations.delete({
-          expectedRevision: annotation.revision,
-          id: annotation.id
+    async (annotation: ContentAnnotation): Promise<boolean> => {
+      try {
+        replace(
+          await window.api.contentAnnotations.delete({
+            expectedRevision: annotation.revision,
+            id: annotation.id
+          })
+        )
+        setMutationIssue((current) => (current?.threadId === threadId ? null : current))
+        return true
+      } catch {
+        setMutationIssue({ threadId })
+        reportCanonicalContentFailure({
+          operation: "delete-content-annotation",
+          summary: "Content annotation deletion failed"
         })
-      )
+        return false
+      }
     },
-    [replace]
+    [replace, threadId]
   )
 
   const registerReveal = useCallback(
@@ -212,8 +336,8 @@ export function ContentAnnotationsProvider(props: {
     [cardStore, create, registerReveal, remove, reveal, threadId, update]
   )
   const sidebarValue = useMemo(
-    () => ({ open: sidebarOpen, setOpen: setSidebarOpen }),
-    [sidebarOpen]
+    () => ({ open: sidebarOpen, setOpen: setSidebarOpen, syncError }),
+    [sidebarOpen, syncError]
   )
 
   return (
@@ -230,7 +354,10 @@ export function ContentAnnotationsProvider(props: {
 export function useCardAnnotations(cardId: string): readonly ContentAnnotation[] {
   const context = useContentAnnotations()
   return useSyncExternalStore(
-    useCallback((listener) => context.cardStore.subscribe(cardId, listener), [cardId, context.cardStore]),
+    useCallback(
+      (listener) => context.cardStore.subscribe(cardId, listener),
+      [cardId, context.cardStore]
+    ),
     useCallback(() => context.cardStore.getSnapshot(cardId), [cardId, context.cardStore]),
     () => EMPTY_ANNOTATIONS
   )
@@ -245,6 +372,7 @@ export function useContentAnnotationRecords(): readonly ContentAnnotation[] {
 export function useContentAnnotationsSidebar(): {
   open: boolean
   setOpen: (open: boolean) => void
+  syncError: boolean
 } {
   const context = use(ContentAnnotationsSidebarContext)
   if (!context) throw new Error("useContentAnnotationsSidebar requires ContentAnnotationsProvider")

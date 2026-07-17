@@ -30,6 +30,12 @@ export const contentAnnotationSchema = z.object({
 
 export type ContentAnnotation = z.infer<typeof contentAnnotationSchema>
 
+export const contentAnnotationChangedEventSchema = z
+  .object({ annotation: contentAnnotationSchema })
+  .strict()
+
+export type ContentAnnotationChangedEvent = z.infer<typeof contentAnnotationChangedEventSchema>
+
 export const createContentAnnotationInputSchema = z.object({
   body: z.string().min(1),
   id: z.string().min(1),
@@ -44,6 +50,12 @@ const annotationRepairSchema = z.object({
   anchorResolution: z.enum(["resolved", "ambiguous", "orphaned"]),
   cardRevision: z.string().min(1),
   contextHash: z.string().min(1),
+  expected: z
+    .object({
+      cardRevision: z.string().min(1),
+      contextHash: z.string().min(1)
+    })
+    .strict(),
   quote: z.string().min(1)
 })
 

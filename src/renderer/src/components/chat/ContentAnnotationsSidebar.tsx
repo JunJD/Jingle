@@ -31,14 +31,15 @@ export function ContentAnnotationsSidebar(props: {
   const annotations = useContentAnnotations()
   const annotationRecords = useContentAnnotationRecords()
   const sidebar = useContentAnnotationsSidebar()
-  const { open: sidebarOpen, setOpen: setSidebarOpen } = sidebar
+  const { open: sidebarOpen, setOpen: setSidebarOpen, syncError } = sidebar
   const visible = annotationRecords.filter((annotation) => annotation.deletedAt === null)
   const sidebarRef = useRef<HTMLElement | null>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (!sidebarOpen) return undefined
-    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    returnFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
     const frame = requestAnimationFrame(() => sidebarRef.current?.focus())
     const handleEscape = (event: globalThis.KeyboardEvent): void => {
       if (event.key !== "Escape") return
@@ -60,6 +61,14 @@ export function ContentAnnotationsSidebar(props: {
 
   return (
     <>
+      {syncError ? (
+        <div
+          className="fixed bottom-16 right-4 z-50 rounded-[var(--jingle-radius-md)] border border-destructive/40 bg-background px-3 py-2 text-[var(--jingle-font-meta)] text-destructive shadow-md"
+          role="alert"
+        >
+          批注暂时无法同步
+        </div>
+      ) : null}
       <IconButton
         className="fixed bottom-4 right-4 z-30 shadow-md"
         label="打开批注"
@@ -87,12 +96,7 @@ export function ContentAnnotationsSidebar(props: {
             <div className="text-[var(--jingle-font-control)] font-medium">
               批注 · {visible.length}
             </div>
-            <IconButton
-              label="关闭批注"
-              onClick={closeSidebar}
-              size="icon-sm"
-              variant="ghost"
-            >
+            <IconButton label="关闭批注" onClick={closeSidebar} size="icon-sm" variant="ghost">
               <X className="size-4" />
             </IconButton>
           </header>

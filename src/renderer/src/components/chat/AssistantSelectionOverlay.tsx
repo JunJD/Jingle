@@ -100,8 +100,8 @@ function projectAnchor(
     if (startSide !== endSide) return null
     return {
       endLine: Math.max(startLine, endLine),
-      filePath: start.closest<HTMLElement>("[data-file-mutation-path]")?.dataset
-        .fileMutationPath ?? null,
+      filePath:
+        start.closest<HTMLElement>("[data-file-mutation-path]")?.dataset.fileMutationPath ?? null,
       kind: "diff-range",
       patchRevision: card.revision,
       side: startSide,
@@ -212,7 +212,8 @@ export function AssistantSelectionOverlay(props: {
             <Button
               disabled={!body.trim() || draft.selection.anchorResolution === "pending-stream"}
               onClick={() =>
-                void annotations.create(draft.selection, body.trim(), "comment").then(() => {
+                void annotations.create(draft.selection, body.trim(), "comment").then((created) => {
+                  if (!created) return
                   setBody("")
                   setDraft(null)
                   setAnnotationOpen(false)

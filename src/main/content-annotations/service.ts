@@ -11,11 +11,22 @@ import { contentAnchorSchema, type ContentAnchor } from "@shared/content-selecti
 import { readAssistantContentPartsProjection } from "../db/assistant-content-parts"
 import { getPrismaClient } from "../db/client"
 import { JingleIpcError } from "../ipc/error"
+import type { DiagnosticEventRef, DiagnosticGraphSink } from "../diagnostics/schema"
 
 type TransactionClient = Omit<
   PrismaClient,
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
 >
+
+const NOOP_EVENT_REF: DiagnosticEventRef = {
+  eventId: "diag:noop:0",
+  sequence: 0,
+  sessionId: "noop"
+}
+
+const NOOP_DIAGNOSTICS: DiagnosticGraphSink = {
+  capture: () => NOOP_EVENT_REF
+}
 
 function toIso(value: bigint | null): string | null {
   return value === null ? null : new Date(Number(value)).toISOString()
@@ -167,7 +178,10 @@ function toRecord(row: ContentAnnotationRow): ContentAnnotation {
 async function findDurablePart(
   tx: TransactionClient,
   input: {
-    card: Pick<ContentCardIdentity, "kind" | "revision" | "slot" | "sourceId" | "sourceType" | "threadId">
+    card: Pick<
+      ContentCardIdentity,
+      "kind" | "revision" | "slot" | "sourceId" | "sourceType" | "threadId"
+    >
   }
 ): Promise<AssistantContentPart | null> {
   if (input.card.sourceType !== "message" || !input.card.slot.startsWith("part:")) return null
@@ -192,6 +206,15 @@ async function findDurablePart(
 }
 
 export class ContentAnnotationsService {
+  private readonly changedListeners = new Set<(annotation: ContentAnnotation) => void>()
+
+  constructor(private readonly diagnostics: DiagnosticGraphSink = NOOP_DIAGNOSTICS) {}
+
+  onChanged(listener: (annotation: ContentAnnotation) => void): () => void {
+    this.changedListeners.add(listener)
+    return () => this.changedListeners.delete(listener)
+  }
+
   async get(id: string): Promise<ContentAnnotation> {
     return this.getRequired(id)
   }
@@ -211,7 +234,7 @@ export class ContentAnnotationsService {
         message: "Pending stream selections cannot be persisted as annotations."
       })
     }
-    return getPrismaClient().$transaction(async (transaction) => {
+    const annotation = await getPrismaClient().$transaction(async (transaction) => {
       const part = await findDurablePart(transaction, { card: input.selection.card })
       if (
         !part ||
@@ -251,16 +274,24 @@ export class ContentAnnotationsService {
         })
       )
     })
+    this.publishChanged(annotation)
+    return annotation
   }
 
   async update(input: UpdateContentAnnotationInput): Promise<ContentAnnotation> {
-    return getPrismaClient().$transaction(async (transaction) => {
+    const annotation = await getPrismaClient().$transaction(async (transaction) => {
       const current = await transaction.contentAnnotation.findUnique({ where: { id: input.id } })
       if (!current || current.deletedAt !== null || current.revision !== input.expectedRevision) {
         this.throwConflict(input.id)
       }
       let repairAnchor = input.repair?.anchor
       if (input.repair) {
+        if (
+          input.repair.expected.cardRevision !== current.cardRevision ||
+          input.repair.expected.contextHash !== current.contextHash
+        ) {
+          this.throwConflict(input.id)
+        }
         const source = readContentCardIdSource(current.cardId)
         if (!source || source.sourceType !== "message" || !source.slot.startsWith("part:")) {
           throw new JingleIpcError({
@@ -278,8 +309,9 @@ export class ContentAnnotationsService {
         if (input.repair.anchorResolution === "orphaned") {
           const validOrphan =
             input.repair.cardRevision === (currentPart?.revision ?? current.cardRevision) &&
+            (!currentPart || currentPart.kind === source.kind) &&
             input.repair.quote === current.quote &&
-            input.repair.contextHash === current.contextHash &&
+            (currentPart !== undefined || input.repair.contextHash === current.contextHash) &&
             JSON.stringify(input.repair.anchor) === current.anchorJson
           if (!validOrphan) {
             throw new JingleIpcError({
@@ -298,12 +330,13 @@ export class ContentAnnotationsService {
             message: "Annotation repair does not match the durable content part."
           })
         } else if (input.repair.anchorResolution === "resolved") {
-          repairAnchor = resolveCanonicalAnchor({
-            anchor: input.repair.anchor,
-            cardSlot: source.slot,
-            part: currentPart,
-            quote: input.repair.quote
-          }) ?? undefined
+          repairAnchor =
+            resolveCanonicalAnchor({
+              anchor: input.repair.anchor,
+              cardSlot: source.slot,
+              part: currentPart,
+              quote: input.repair.quote
+            }) ?? undefined
           if (!repairAnchor) {
             throw new JingleIpcError({
               code: "FAILED_PRECONDITION",
@@ -335,11 +368,13 @@ export class ContentAnnotationsService {
       if (!row) this.throwConflict(input.id)
       return toRecord(row)
     })
+    this.publishChanged(annotation)
+    return annotation
   }
 
   async delete(input: DeleteContentAnnotationInput): Promise<ContentAnnotation> {
     const now = BigInt(Date.now())
-    return getPrismaClient().$transaction(async (transaction) => {
+    const annotation = await getPrismaClient().$transaction(async (transaction) => {
       const result = await transaction.contentAnnotation.updateMany({
         data: { deletedAt: now, revision: { increment: 1 }, updatedAt: now },
         where: { deletedAt: null, id: input.id, revision: input.expectedRevision }
@@ -349,6 +384,8 @@ export class ContentAnnotationsService {
       if (!row) this.throwConflict(input.id)
       return toRecord(row)
     })
+    this.publishChanged(annotation)
+    return annotation
   }
 
   private async getRequired(id: string): Promise<ContentAnnotation> {
@@ -362,5 +399,28 @@ export class ContentAnnotationsService {
       code: "CONFLICT",
       message: `Annotation ${id} changed since it was read.`
     })
+  }
+
+  private publishChanged(annotation: ContentAnnotation): void {
+    for (const listener of this.changedListeners) {
+      try {
+        listener(annotation)
+      } catch (error) {
+        this.diagnostics.capture({
+          component: "content-annotations",
+          eventCode: "content_annotation.change_listener_failed",
+          evidence: [{ kind: "error", value: error }],
+          level: "warn",
+          operation: "publish-change",
+          recoverable: true,
+          refs: [
+            { id: annotation.threadId, kind: "thread" },
+            { id: annotation.id, kind: "content-annotation" }
+          ],
+          stateImpact: "annotation_saved_notification_missed",
+          summary: "Content annotation was saved but a change listener failed"
+        })
+      }
+    }
   }
 }

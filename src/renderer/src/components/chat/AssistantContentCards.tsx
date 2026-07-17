@@ -1,14 +1,24 @@
 import type { Message as ThreadMessage } from "@/types"
+import { useEffect, useState } from "react"
 import { extractMessageText } from "@shared/message-content"
-import type {
-  AssistantContentPart,
-  AssistantContentPartsProjection
+import {
+  assistantContentProjectionFingerprint,
+  type AssistantContentPart
 } from "@shared/assistant-content-part"
 import type { ContentCardIdentity } from "@shared/content-card"
 import type { ContentSelectionDraft } from "@shared/content-selection"
 import { MessageResponse } from "./message"
 import { ContentCardFrame } from "./ContentCardFrame"
 import { projectAssistantContentPartCard } from "@/lib/content-card-registry"
+import {
+  projectionForAssistantContentSource,
+  type LoadedAssistantContentProjection
+} from "@/lib/assistant-content-projection-cache"
+import {
+  createCanonicalHydrationOwner,
+  reportCanonicalContentFailure
+} from "@/lib/canonical-content-hydration"
+import { useContentWindowHydration } from "./ContentWindowHydrationContext"
 
 function identityFor(
   message: ThreadMessage,
@@ -164,39 +174,103 @@ export function AssistantContentCards(props: {
   threadId: string
 }): React.JSX.Element | null {
   const { isStreaming, message, threadId } = props
+  const windowHydration = useContentWindowHydration()
   const text = extractMessageText(message.content)
-  const [loadedProjection, setLoadedProjection] = useState<AssistantContentPartsProjection | null>(
+  const [loadedProjection, setLoadedProjection] = useState<LoadedAssistantContentProjection | null>(
     null
   )
-  const projection = loadedProjection
+  const [syncIssue, setSyncIssue] = useState<{ messageId: string; threadId: string } | null>(null)
+  const syncFailed = syncIssue?.messageId === message.id && syncIssue.threadId === threadId
+  const projection = projectionForAssistantContentSource({
+    isStreaming,
+    loaded: loadedProjection,
+    messageId: message.id,
+    sourceText: text,
+    threadId
+  })
 
   useEffect(() => {
-    if (projection || isStreaming || !text.trim()) return undefined
-    let active = true
-    let timeoutId: number | null = null
-    let attempt = 0
-    const load = async (): Promise<void> => {
-      const result = await window.api.contentCards.getAssistantParts({
-        messageId: message.id,
-        threadId
-      })
-      if (!active) return
-      if (result.status === "ready") {
-        setLoadedProjection(result.projection)
-        return
+    if (isStreaming || !text.trim()) return undefined
+    let cardRegistration: ReturnType<typeof windowHydration.registerCard> | null = null
+    const attemptController = new AbortController()
+    const hydration = createCanonicalHydrationOwner({
+      load: () =>
+        windowHydration.runAttempt(
+          () =>
+            window.api.contentCards.getAssistantParts({
+              messageId: message.id,
+              threadId
+            }),
+          attemptController.signal
+        ),
+      onFailure: ({ attempt }) => {
+        setSyncIssue({ messageId: message.id, threadId })
+        if (attempt === 1) {
+          reportCanonicalContentFailure({
+            operation: "hydrate-content-card",
+            summary: "Assistant content card hydration failed"
+          })
+        }
+      },
+      onSuccess: (result) => {
+        setSyncIssue((current) =>
+          current?.messageId === message.id && current.threadId === threadId ? null : current
+        )
+        if (result.status !== "ready") return
+        setLoadedProjection({
+          messageId: message.id,
+          projection: result.projection,
+          sourceText: text,
+          threadId
+        })
+        cardRegistration?.updateProjectionFingerprint(
+          assistantContentProjectionFingerprint(result.projection)
+        )
       }
-      attempt += 1
-      if (attempt < 20) timeoutId = window.setTimeout(() => void load(), 100)
-    }
-    void load()
+    })
+    const requestHydration = (): Promise<void> => hydration.request({ resetFailures: true })
+    cardRegistration = windowHydration.registerCard({
+      messageId: message.id,
+      refresh: requestHydration
+    })
+    const unsubscribe = window.api.contentCards.onChanged((event) => {
+      if (event.messageId !== message.id || event.threadId !== threadId) return
+      setLoadedProjection((current) => {
+        const currentFingerprint = current
+          ? assistantContentProjectionFingerprint(current.projection)
+          : null
+        if (
+          current?.messageId !== message.id ||
+          current.threadId !== threadId ||
+          currentFingerprint === event.projectionFingerprint
+        ) {
+          return current
+        }
+        return null
+      })
+      cardRegistration?.updateProjectionFingerprint(null)
+      void requestHydration()
+    })
+    void requestHydration()
     return () => {
-      active = false
-      if (timeoutId !== null) window.clearTimeout(timeoutId)
+      attemptController.abort()
+      unsubscribe()
+      cardRegistration?.dispose()
+      hydration.dispose()
     }
-  }, [isStreaming, message.id, projection, text, threadId])
+  }, [isStreaming, message.id, text, threadId, windowHydration])
 
   if (!projection) {
-    return text.trim() ? <MessageResponse isAnimating={isStreaming}>{text}</MessageResponse> : null
+    return text.trim() ? (
+      <>
+        <MessageResponse isAnimating={isStreaming}>{text}</MessageResponse>
+        {syncFailed && !isStreaming ? (
+          <p className="mt-2 text-[var(--jingle-font-meta)] text-destructive" role="alert">
+            内容卡片暂时无法同步
+          </p>
+        ) : null}
+      </>
+    ) : null
   }
 
   if (projection.parts.length === 0) return null
@@ -215,7 +289,9 @@ export function AssistantContentCards(props: {
           content = <TableSurface payload={part.payload} />
         } else if (part.kind === "mermaid") {
           content = (
-            <MessageResponse isAnimating={false}>{`\`\`\`mermaid\n${part.payload.source}\n\`\`\``}</MessageResponse>
+            <MessageResponse
+              isAnimating={false}
+            >{`\`\`\`mermaid\n${part.payload.source}\n\`\`\``}</MessageResponse>
           )
         } else {
           content = <MessageResponse isAnimating={false}>{part.payload.markdown}</MessageResponse>
@@ -240,4 +316,3 @@ export function AssistantContentCards(props: {
     </div>
   )
 }
-import { useEffect, useState } from "react"

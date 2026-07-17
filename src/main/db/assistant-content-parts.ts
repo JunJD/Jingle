@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import type { PrismaClient } from "@prisma/client"
 import {
+  assistantContentProjectionFingerprint,
   assistantContentPartSchema,
   assistantContentPartsProjectionSchema,
   projectAssistantContentPartInputs,
@@ -399,6 +400,11 @@ export async function finalizeAssistantContentPartsForRun(input: {
   blockedInputs: Array<
     AssistantContentProjectionBlockedInput & { error: AssistantContentProjectionInputError }
   >
+  changedProjections: Array<{
+    contentRevision: string
+    messageId: string
+    projectionFingerprint: string
+  }>
   repairedCorruptions: Array<{ error: AssistantContentProjectionDecodeError; messageId: string }>
 }> {
   const prisma = getPrismaClient()
@@ -406,6 +412,11 @@ export async function finalizeAssistantContentPartsForRun(input: {
     const blockedInputs: Array<
       AssistantContentProjectionBlockedInput & { error: AssistantContentProjectionInputError }
     > = []
+    const changedProjections: Array<{
+      contentRevision: string
+      messageId: string
+      projectionFingerprint: string
+    }> = []
     const repairedCorruptions: Array<{
       error: AssistantContentProjectionDecodeError
       messageId: string
@@ -419,7 +430,7 @@ export async function finalizeAssistantContentPartsForRun(input: {
       run.threadId !== input.threadId ||
       !isAssistantContentProjectionTerminalRunStatus(run.status)
     ) {
-      return { blockedInputs, repairedCorruptions }
+      return { blockedInputs, changedProjections, repairedCorruptions }
     }
     const messages = await tx.message.findMany({
       orderBy: { seq: "asc" },
@@ -466,8 +477,13 @@ export async function finalizeAssistantContentPartsForRun(input: {
           projection,
           threadId: input.threadId
         })
+        changedProjections.push({
+          contentRevision: projection.contentRevision,
+          messageId: message.messageId,
+          projectionFingerprint: assistantContentProjectionFingerprint(projection)
+        })
       }
     }
-    return { blockedInputs, repairedCorruptions }
+    return { blockedInputs, changedProjections, repairedCorruptions }
   })
 }
