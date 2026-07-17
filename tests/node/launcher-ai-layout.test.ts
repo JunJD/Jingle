@@ -64,8 +64,22 @@ test("renderer entry keeps bootstrap side effects out of the React refresh bound
 
   assert.match(
     mainSource,
-    /ReactDOM\.createRoot\(document\.getElementById\("root"\)!\)\.render\(\s*<RendererRoot resolvedWindowKind=\{resolvedWindowKind\} windowKind=\{windowKind\} \/>\s*\)/
+    /const rendererRoot = ReactDOM\.createRoot\(document\.getElementById\("root"\)!\)/
   )
+  assert.match(
+    mainSource,
+    /rendererRoot\.render\(\s*<RendererRoot resolvedWindowKind=\{resolvedWindowKind\} windowKind=\{windowKind\} \/>\s*\)/
+  )
+  const bootstrapStart = mainSource.indexOf("function bootstrapRenderer")
+  const initialRender = mainSource.indexOf("renderRoot()", bootstrapStart)
+  const catalogLoad = mainSource.indexOf("listLauncherCatalog()", bootstrapStart)
+  assert.ok(bootstrapStart >= 0, "renderer bootstrap should exist")
+  assert.ok(initialRender > bootstrapStart, "renderer bootstrap should mount the core root")
+  assert.ok(
+    catalogLoad > initialRender,
+    "native extension projections should load only after the core root mounts"
+  )
+  assert.doesNotMatch(mainSource.slice(bootstrapStart), /Promise\.all/)
   assert.match(mainSource, /import \{ RendererRoot \} from "\.\/RendererRoot"/)
   assert.doesNotMatch(mainSource, /export function RendererRoot/)
   assert.doesNotMatch(mainSource, /export const RendererRoot/)
@@ -76,6 +90,21 @@ test("renderer entry keeps bootstrap side effects out of the React refresh bound
   assert.match(rootSource, /import \{ I18nProvider \} from "@\/lib\/i18n"/)
   assert.doesNotMatch(rootSource, /ReactDOM\.createRoot/)
   assert.doesNotMatch(rootSource, /bootstrapRenderer/)
+})
+
+test("native extension projections notify every memoized launcher consumer", async () => {
+  const [projectionSource, sourceMentionHook, searchHook, activeCommandHook] = await Promise.all([
+    readWorkspaceFile("src/renderer/src/extension-host/index.ts"),
+    readWorkspaceFile("src/renderer/src/extension-host/use-native-source-mentions-projection.ts"),
+    readWorkspaceFile("src/renderer/src/launcher-shell/hooks/useLauncherSearchPage.ts"),
+    readWorkspaceFile("src/renderer/src/launcher-shell/hooks/useActiveLauncherCommand.ts")
+  ])
+
+  assert.match(projectionSource, /useSyncExternalStore/)
+  assert.equal(projectionSource.match(/publishNativeExtensionProjection\(\)/g)?.length, 3)
+  assert.match(sourceMentionHook, /\[locale, projectionRevision\]/)
+  assert.match(searchHook, /\[locale, nativeExtensionProjectionRevision\]/)
+  assert.match(activeCommandHook, /\[nativeExtensionProjectionRevision, route\]/)
 })
 
 test("renderer i18n context is imported through one module identity", async () => {

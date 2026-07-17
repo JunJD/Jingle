@@ -9,6 +9,7 @@ import {
   type LauncherShellConfig
 } from "@shared/launcher"
 import { useI18n } from "@/lib/i18n"
+import { useNativeExtensionProjectionRevision } from "@extension-host/index"
 import { useNativeSourceMentionsProjection } from "@extension-host/use-native-source-mentions-projection"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import { DEFAULT_HOME_COMMAND, listLauncherCommands, resolveLauncherCommand } from "../pages"
@@ -164,13 +165,13 @@ export function useLauncherSearchPage(props: {
   )
   const shellConfig: LauncherShellConfig = FALLBACK_SHELL_CONFIG
   const trimmedQuery = query.trim()
-  const useWithCommands = useMemo(
-    () =>
-      listLauncherCommands(locale).filter(
-        (command) => command.address.kind === "extension-command"
-      ),
-    [locale]
-  )
+  const nativeExtensionProjectionRevision = useNativeExtensionProjectionRevision()
+  const useWithCommands = useMemo(() => {
+    void nativeExtensionProjectionRevision
+    return listLauncherCommands(locale).filter(
+      (command) => command.address.kind === "extension-command"
+    )
+  }, [locale, nativeExtensionProjectionRevision])
   const useWithCommandGroups = useMemo(
     () => splitLauncherUseWithCommands(useWithCommands, useWithDisabledCommandKeys),
     [useWithCommands, useWithDisabledCommandKeys]

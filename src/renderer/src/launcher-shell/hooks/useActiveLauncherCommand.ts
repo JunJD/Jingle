@@ -3,6 +3,7 @@ import type { ExtensionRuntimeToastRequestEvent } from "@shared/extension-runtim
 import type { LauncherShellConfig } from "@shared/launcher"
 import type { LauncherCommandOwnerCapability } from "@shared/launcher-command-owner"
 import { resolveLocalizedText, type AppLocale } from "@shared/i18n"
+import { useNativeExtensionProjectionRevision } from "@extension-host/index"
 import { getLauncherCommandDefinition, getLauncherCommandOwnerId } from "../pages"
 import { commandNeedsLauncherArguments } from "../command-arguments"
 import {
@@ -92,13 +93,15 @@ export function useActiveLauncherCommand(
     })
   const lastExecutedNoViewCommandKeyRef = useRef<string | null>(null)
   const latestRouteKeyRef = useRef(routeKey)
+  const nativeExtensionProjectionRevision = useNativeExtensionProjectionRevision()
   const activeCommandRecord = useMemo(() => {
+    void nativeExtensionProjectionRevision
     if (!isLauncherCommandRoute(route)) {
       return null
     }
 
     return getLauncherCommandDefinition(route)
-  }, [route])
+  }, [nativeExtensionProjectionRevision, route])
   const activeCommand = activeCommandRecord?.command ?? null
   const activeCommandOwner = activeCommandRecord?.owner ?? null
   const activeCommandOwnerId = isLauncherCommandRoute(route)

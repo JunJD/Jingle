@@ -30,10 +30,15 @@ export function DurableWindowApp(): React.JSX.Element {
   useEffect(
     () =>
       window.api.durableWindow.onThreadChanged(({ threadId }) => {
+        void threads.activate(threadId).catch((error: unknown) => {
+          console.error("[DurableWindow] Failed to activate the main thread.", error)
+        })
         void historyShellStore
           .getState()
           .loadSidebarView()
-          .then(() => threads.activate(threadId))
+          .catch((error: unknown) => {
+            console.error("[DurableWindow] Failed to refresh the main sidebar.", error)
+          })
       }),
     [threads]
   )

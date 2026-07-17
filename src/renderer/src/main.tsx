@@ -83,28 +83,37 @@ const appThemeProjectionReady =
   resolvedWindowKind === IPC_NETWORK_WINDOW_KIND ? Promise.resolve() : installAppThemeProjection()
 
 function renderRoot(): void {
-  ReactDOM.createRoot(document.getElementById("root")!).render(
+  rendererRoot.render(
     <RendererRoot resolvedWindowKind={resolvedWindowKind} windowKind={windowKind} />
   )
 }
 
-async function bootstrapRenderer(): Promise<void> {
+const rendererRoot = ReactDOM.createRoot(document.getElementById("root")!)
+
+function bootstrapRenderer(): void {
+  renderRoot()
+
   if (resolvedWindowKind === IPC_NETWORK_WINDOW_KIND) {
-    renderRoot()
     return
   }
 
-  const [, launcherCatalog, sourceMentions] = await Promise.all([
-    appThemeProjectionReady,
-    window.api.nativeExtensions.listLauncherCatalog(),
-    window.api.nativeExtensions.listSourceMentions()
-  ])
-  setNativeLauncherCatalogProjection(launcherCatalog)
-  setNativeSourceMentionProjection(sourceMentions)
-  renderRoot()
+  void appThemeProjectionReady
+  void window.api.nativeExtensions
+    .listLauncherCatalog()
+    .then((launcherCatalog) => {
+      setNativeLauncherCatalogProjection(launcherCatalog)
+    })
+    .catch((error: unknown) => {
+      console.error("[native-extensions] Failed to refresh the launcher catalog.", error)
+    })
+  void window.api.nativeExtensions
+    .listSourceMentions()
+    .then((sourceMentions) => {
+      setNativeSourceMentionProjection(sourceMentions)
+    })
+    .catch((error: unknown) => {
+      console.error("[native-extensions] Failed to refresh source mentions.", error)
+    })
 }
 
-void bootstrapRenderer().catch((error) => {
-  console.error("[native-extensions] Failed to bootstrap renderer launcher catalog.", error)
-  throw error
-})
+bootstrapRenderer()

@@ -25,7 +25,7 @@ import type {
   ExtensionAiCapabilityCatalogToolSummary,
   ExtensionSourceMention
 } from "@shared/extension-sources"
-import { lazy, type ComponentType } from "react"
+import { lazy, useSyncExternalStore, type ComponentType } from "react"
 
 const RuntimeExtensionCommandSurface = lazy(async () => {
   const module = await import("@renderer/extension-runtime/RuntimeExtensionCommandSurface")
@@ -320,17 +320,45 @@ function hasSearchArguments(command: NativeExtensionLauncherCommandProjection): 
 
 let nativeLauncherCommandOwners: LauncherCommandOwnerDefinition[] = []
 let nativeSourceMentionProjection: readonly NativeExtensionSourceMentionProjection[] = []
+let nativeExtensionProjectionRevision = 0
+const nativeExtensionProjectionListeners = new Set<() => void>()
+
+function publishNativeExtensionProjection(): void {
+  nativeExtensionProjectionRevision += 1
+  for (const listener of nativeExtensionProjectionListeners) {
+    listener()
+  }
+}
+
+function subscribeNativeExtensionProjection(listener: () => void): () => void {
+  nativeExtensionProjectionListeners.add(listener)
+  return () => nativeExtensionProjectionListeners.delete(listener)
+}
+
+function getNativeExtensionProjectionRevision(): number {
+  return nativeExtensionProjectionRevision
+}
+
+export function useNativeExtensionProjectionRevision(): number {
+  return useSyncExternalStore(
+    subscribeNativeExtensionProjection,
+    getNativeExtensionProjectionRevision,
+    getNativeExtensionProjectionRevision
+  )
+}
 
 export function setNativeLauncherCatalogProjection(
   catalog: readonly NativeExtensionLauncherCatalogProjection[]
 ): void {
   nativeLauncherCommandOwners = buildNativeLauncherCommandOwners(catalog)
+  publishNativeExtensionProjection()
 }
 
 export function setNativeSourceMentionProjection(
   sourceMentions: readonly NativeExtensionSourceMentionProjection[]
 ): void {
   nativeSourceMentionProjection = sourceMentions
+  publishNativeExtensionProjection()
 }
 
 export function getNativeLauncherCommandOwners(): readonly LauncherCommandOwnerDefinition[] {

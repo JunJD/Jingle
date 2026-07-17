@@ -37,7 +37,7 @@
     假如 Jingle 桌面应用已启动
     而且 我通过 API 创建标题为 "BDD Workspace First UI" 且 workspace 为测试目录 "workspace-ui-first" 的线程
     而且 我通过 API 创建标题为 "BDD Workspace Second UI" 且 workspace 为测试目录 "workspace-ui-second" 的线程
-    当 我通过 API 打开最后创建线程的 pinned AI session
+    当 我通过 API 打开最后创建线程的 Main 窗口
     并且 我在 Main 窗口 选择标题为 "BDD Workspace First UI" 的线程
     那么 Main 窗口 workspace 路径应为标题 "BDD Workspace First UI" 的线程 workspace
     当 我在 Main 窗口 选择标题为 "BDD Workspace Second UI" 的线程
