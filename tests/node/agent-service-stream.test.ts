@@ -1,5 +1,25 @@
 import assert from "node:assert/strict"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import test from "node:test"
+
+const originalJingleHome = process.env.JINGLE_HOME
+let jingleHome = ""
+
+test.before(async () => {
+  jingleHome = await mkdtemp(join(tmpdir(), "jingle-agent-service-stream-"))
+  process.env.JINGLE_HOME = jingleHome
+})
+
+test.after(async () => {
+  if (originalJingleHome === undefined) {
+    delete process.env.JINGLE_HOME
+  } else {
+    process.env.JINGLE_HOME = originalJingleHome
+  }
+  await rm(jingleHome, { force: true, recursive: true })
+})
 
 async function loadAgentServiceApi(): Promise<{
   serializeStreamChunkForIpc: (

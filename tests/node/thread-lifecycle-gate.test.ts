@@ -1,7 +1,26 @@
 import assert from "node:assert/strict"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import test from "node:test"
-import { AgentService } from "../../src/main/agent/service"
 import { ThreadLifecycleGate } from "../../src/main/agent/thread-lifecycle-gate"
+
+const originalJingleHome = process.env.JINGLE_HOME
+let jingleHome = ""
+
+test.before(async () => {
+  jingleHome = await mkdtemp(join(tmpdir(), "jingle-thread-lifecycle-gate-"))
+  process.env.JINGLE_HOME = jingleHome
+})
+
+test.after(async () => {
+  if (originalJingleHome === undefined) {
+    delete process.env.JINGLE_HOME
+  } else {
+    process.env.JINGLE_HOME = originalJingleHome
+  }
+  await rm(jingleHome, { force: true, recursive: true })
+})
 
 test("ThreadLifecycleGate aborts active runs and closes admission during shutdown", async () => {
   const gate = new ThreadLifecycleGate()
@@ -33,6 +52,7 @@ test("ThreadLifecycleGate aborts active runs and closes admission during shutdow
 })
 
 test("AgentService rejects new commands after shutdown begins", async () => {
+  const { AgentService } = await import("../../src/main/agent/service")
   const gate = new ThreadLifecycleGate()
   const service = new AgentService({} as never, gate, {} as never)
   const events: Array<{ code?: string; type: string }> = []
