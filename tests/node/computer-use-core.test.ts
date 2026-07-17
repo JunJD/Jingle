@@ -1,9 +1,11 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import * as computerUseCore from "../../packages/computer-use-core/src"
 import {
   ComputerUseAuthorizationRegistry,
   ComputerUseActionLedger,
   computerUseCapabilityMatrix,
+  createJingleComputerUseNativeBackend,
   ComputerUseObservationStore,
   ComputerUseResourceScheduler,
   ComputerUseSessionManager,
@@ -11,8 +13,13 @@ import {
   StaleComputerUseStateError,
   computerUseResultAllowsForegroundRetry,
   type ComputerUseBackend,
+  type ComputerUseBackendEnvironment,
+  type ComputerUseCapability,
+  type ComputerUseCapabilityMatrix,
   type ComputerUseObservation,
-  type ComputerUseBackendExecutionResult
+  type ComputerUseBackendExecutionResult,
+  type JingleComputerUseNativeBridge,
+  type JingleComputerUseNativeRequest
 } from "../../packages/computer-use-core/src"
 
 function observation(overrides: Partial<ComputerUseObservation> = {}): ComputerUseObservation {
@@ -43,6 +50,155 @@ function typeTextObservation(): ComputerUseObservation {
 
 function resolvedVoid(): Promise<void> {
   return Promise.resolve()
+}
+
+interface RecordedNativeInvocation {
+  request: JingleComputerUseNativeRequest
+  signal?: AbortSignal
+}
+
+function recordingNativeBridge(
+  handler: (
+    request: JingleComputerUseNativeRequest,
+    signal?: AbortSignal
+  ) => unknown | Promise<unknown>
+): { bridge: JingleComputerUseNativeBridge; calls: RecordedNativeInvocation[] } {
+  const calls: RecordedNativeInvocation[] = []
+  return {
+    bridge: {
+      async invoke<T>(request: JingleComputerUseNativeRequest, signal?: AbortSignal): Promise<T> {
+        calls.push({ request, signal })
+        return (await handler(request, signal)) as T
+      }
+    },
+    calls
+  }
+}
+
+function probedMatrix(environment: ComputerUseBackendEnvironment): ComputerUseCapabilityMatrix {
+  if (environment === "macos-quartz") {
+    return {
+      capabilities: [
+        { action: "press", background: "verified", foreground: "unavailable", route: "ax_action" },
+        {
+          action: "set_value",
+          background: "verified",
+          foreground: "unavailable",
+          route: "ax_value"
+        },
+        {
+          action: "type_text",
+          background: "verified",
+          foreground: "unavailable",
+          route: "ax_value"
+        },
+        {
+          action: "keypress",
+          background: "refused",
+          foreground: "unavailable",
+          route: "unavailable"
+        },
+        {
+          action: "scroll",
+          background: "unavailable",
+          foreground: "unavailable",
+          route: "unavailable"
+        }
+      ],
+      environment,
+      platform: "macos",
+      protocolVersion: 1
+    }
+  }
+  if (environment === "windows-win32") {
+    return {
+      capabilities: [
+        {
+          action: "press",
+          background: "unavailable",
+          foreground: "unavailable",
+          route: "uia_action"
+        },
+        {
+          action: "set_value",
+          background: "unavailable",
+          foreground: "unavailable",
+          route: "uia_value"
+        },
+        {
+          action: "type_text",
+          background: "unavailable",
+          foreground: "unavailable",
+          route: "uia_value"
+        },
+        {
+          action: "keypress",
+          background: "unavailable",
+          foreground: "unavailable",
+          route: "uia_unavailable"
+        },
+        {
+          action: "scroll",
+          background: "unavailable",
+          foreground: "unavailable",
+          route: "uia_unavailable"
+        }
+      ],
+      environment,
+      platform: "windows",
+      protocolVersion: 1
+    }
+  }
+  return {
+    capabilities: [
+      {
+        action: "press",
+        background: "verified",
+        foreground: "unavailable",
+        route: "at_spi_action"
+      },
+      {
+        action: "set_value",
+        background: "verified",
+        foreground: "unavailable",
+        route: "at_spi_editable_text"
+      },
+      {
+        action: "type_text",
+        background: "verified",
+        foreground: "unavailable",
+        route: "at_spi_editable_text"
+      },
+      {
+        action: "keypress",
+        background: "refused",
+        foreground: "unavailable",
+        route: "unavailable"
+      },
+      {
+        action: "scroll",
+        background: "verified",
+        foreground: "unavailable",
+        route: "at_spi_action"
+      }
+    ],
+    environment,
+    platform: "linux",
+    protocolVersion: 1
+  }
+}
+
+function replaceCapability(
+  matrix: ComputerUseCapabilityMatrix,
+  action: ComputerUseCapability["action"],
+  patch: Partial<ComputerUseCapability>
+): ComputerUseCapabilityMatrix {
+  return {
+    ...matrix,
+    capabilities: matrix.capabilities.map((capability) =>
+      capability.action === action ? { ...capability, ...patch } : capability
+    )
+  }
 }
 
 test("computer-use scheduler rejects stale mutations before dispatch", async () => {
@@ -914,4 +1070,250 @@ test("backend actions are compared by fields rather than object property order",
   })
 
   assert.equal(result.outcome, "worked")
+})
+
+test("native computer-use backend has one probe factory and no injectable constructor", () => {
+  assert.equal(typeof computerUseCore.createJingleComputerUseNativeBackend, "function")
+  assert.equal("JingleComputerUseNativeBackend" in computerUseCore, false)
+})
+
+test("native capability probes accept the exact policy for every environment", async () => {
+  const environments: readonly ComputerUseBackendEnvironment[] = [
+    "macos-quartz",
+    "windows-win32",
+    "linux-x11",
+    "linux-wayland-gnome",
+    "linux-wayland-kde",
+    "linux-wayland-other"
+  ]
+  for (const environment of environments) {
+    const matrix = probedMatrix(environment)
+    const { bridge, calls } = recordingNativeBridge(() => matrix)
+    const backend = await createJingleComputerUseNativeBackend(environment, bridge)
+
+    assert.equal(calls.length, 1)
+    assert.deepEqual(calls[0]?.request, { environment, method: "probe" })
+    assert.equal(backend.matrix.environment, environment)
+    assert.deepEqual(
+      backend.matrix.capabilities.map((capability) => capability.action),
+      ["press", "set_value", "type_text", "keypress", "scroll"]
+    )
+  }
+})
+
+test("native capability probes reject environment and protocol mismatches", async () => {
+  const base = probedMatrix("macos-quartz")
+  const invalidMatrices: unknown[] = [
+    { ...base, environment: "windows-win32" },
+    { ...base, platform: "windows" },
+    { ...base, protocolVersion: 2 }
+  ]
+  for (const matrix of invalidMatrices) {
+    const { bridge } = recordingNativeBridge(() => matrix)
+    await assert.rejects(
+      createJingleComputerUseNativeBackend("macos-quartz", bridge),
+      /another environment or protocol/
+    )
+  }
+})
+
+test("native capability probes reject missing, duplicate, extra, and invalid actions", async () => {
+  const base = probedMatrix("macos-quartz")
+  const invalidMatrices: unknown[] = [
+    { ...base, capabilities: base.capabilities.slice(0, -1) },
+    { ...base, capabilities: [...base.capabilities.slice(0, -1), base.capabilities[0]] },
+    { ...base, capabilities: [...base.capabilities, { ...base.capabilities[0], action: "bogus" }] },
+    {
+      ...base,
+      capabilities: base.capabilities.map((capability, index) =>
+        index === 0 ? { ...capability, action: "bogus" } : capability
+      )
+    }
+  ]
+  for (const matrix of invalidMatrices) {
+    const { bridge } = recordingNativeBridge(() => matrix)
+    await assert.rejects(createJingleComputerUseNativeBackend("macos-quartz", bridge), /action/)
+  }
+})
+
+test("native capability probes reject invalid support and action-route combinations", async () => {
+  const base = probedMatrix("macos-quartz")
+  const invalidMatrices: unknown[] = [
+    {
+      ...base,
+      capabilities: base.capabilities.map((capability) =>
+        capability.action === "press" ? { ...capability, background: "invalid" } : capability
+      )
+    },
+    replaceCapability(base, "press", { background: "refused" }),
+    replaceCapability(base, "press", { route: "ax_value" }),
+    replaceCapability(base, "press", { route: "global_input" }),
+    replaceCapability(base, "keypress", { background: "verified" })
+  ]
+  for (const matrix of invalidMatrices) {
+    const { bridge } = recordingNativeBridge(() => matrix)
+    await assert.rejects(createJingleComputerUseNativeBackend("macos-quartz", bridge))
+  }
+})
+
+test("native bridge keeps signals out of probe, observe, and execute JSON payloads", async () => {
+  const base = typeTextObservation()
+  const { epoch: _epoch, stateId: _stateId, ...backendObservation } = base
+  const controller = new AbortController()
+  const { bridge, calls } = recordingNativeBridge((request) => {
+    if (request.method === "probe") return probedMatrix("macos-quartz")
+    if (request.method === "observe") return backendObservation
+    if (request.method === "execute") {
+      return {
+        baseStateId: request.request.base.stateId,
+        outcome: "worked",
+        steps: [
+          {
+            action: request.request.actions[0],
+            evidence: {
+              delivery: "semantic",
+              noSideEffectProof: false,
+              route: "ax_value",
+              verification: "verified"
+            },
+            outcome: "worked"
+          }
+        ]
+      }
+    }
+    return undefined
+  })
+  const backend = await createJingleComputerUseNativeBackend(
+    "macos-quartz",
+    bridge,
+    controller.signal
+  )
+  await backend.observe({ applicationId: base.application.id, signal: controller.signal })
+  await backend.execute({
+    actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
+    authorization: {
+      expiresAt: Date.now() + 1_000,
+      runId: "run",
+      sessionId: "session",
+      threadId: "thread",
+      window: base.window
+    },
+    base,
+    delivery: "background",
+    signal: controller.signal
+  })
+
+  assert.deepEqual(
+    calls.map((call) => call.request.method),
+    ["probe", "observe", "execute"]
+  )
+  for (const call of calls) {
+    assert.equal(call.signal, controller.signal)
+    assert.equal(JSON.stringify(call.request).includes("signal"), false)
+    if (call.request.method === "observe" || call.request.method === "execute") {
+      assert.equal(Object.hasOwn(call.request.request, "signal"), false)
+    }
+  }
+})
+
+test("pre-aborted native calls never invoke the bridge", async () => {
+  const probeController = new AbortController()
+  probeController.abort()
+  const probe = recordingNativeBridge(() => probedMatrix("macos-quartz"))
+  await assert.rejects(
+    createJingleComputerUseNativeBackend("macos-quartz", probe.bridge, probeController.signal),
+    /aborted/i
+  )
+  assert.equal(probe.calls.length, 0)
+
+  const active = recordingNativeBridge((request) => {
+    if (request.method === "probe") return probedMatrix("macos-quartz")
+    throw new Error("pre-aborted native operation must not invoke the bridge")
+  })
+  const backend = await createJingleComputerUseNativeBackend("macos-quartz", active.bridge)
+  active.calls.length = 0
+  const operationController = new AbortController()
+  operationController.abort()
+  const base = typeTextObservation()
+
+  await assert.rejects(backend.observe({ signal: operationController.signal }), /aborted/i)
+  await assert.rejects(
+    backend.execute({
+      actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
+      authorization: {
+        expiresAt: Date.now() + 1_000,
+        runId: "run",
+        sessionId: "session",
+        threadId: "thread",
+        window: base.window
+      },
+      base,
+      delivery: "background",
+      signal: operationController.signal
+    }),
+    /aborted/i
+  )
+  assert.equal(active.calls.length, 0)
+})
+
+test("native backend returns an empty typed refusal before invoking unsupported actions", async () => {
+  const base = typeTextObservation()
+  const { bridge, calls } = recordingNativeBridge((request) => {
+    if (request.method === "probe") return probedMatrix("macos-quartz")
+    throw new Error("unsupported native actions must not invoke the bridge")
+  })
+  const backend = await createJingleComputerUseNativeBackend("macos-quartz", bridge)
+  calls.length = 0
+  const authorization = {
+    expiresAt: Date.now() + 1_000,
+    runId: "run",
+    sessionId: "session",
+    threadId: "thread",
+    window: base.window
+  }
+  const press = { kind: "press", ref: "@e1" } as const
+  const keypress = { keys: ["ENTER"], kind: "keypress", ref: "@e1" } as const
+
+  const firstUnsupported = await backend.execute({
+    actions: [keypress, press],
+    authorization,
+    base,
+    delivery: "background"
+  })
+  const secondUnsupported = await backend.execute({
+    actions: [press, keypress],
+    authorization,
+    base,
+    delivery: "background"
+  })
+
+  assert.deepEqual(firstUnsupported, {
+    baseStateId: base.stateId,
+    outcome: "refused",
+    steps: []
+  })
+  assert.deepEqual(secondUnsupported, {
+    baseStateId: base.stateId,
+    outcome: "refused",
+    steps: []
+  })
+  assert.equal(calls.length, 0)
+})
+
+test("native capability matrices are canonical immutable copies", async () => {
+  const matrix = probedMatrix("linux-x11")
+  const { bridge } = recordingNativeBridge(() => matrix)
+  const backend = await createJingleComputerUseNativeBackend("linux-x11", bridge)
+  ;(matrix.capabilities as ComputerUseCapability[]).reverse()
+
+  assert.deepEqual(
+    backend.matrix.capabilities.map((capability) => capability.action),
+    ["press", "set_value", "type_text", "keypress", "scroll"]
+  )
+  assert.equal(Object.isFrozen(backend.matrix), true)
+  assert.equal(Object.isFrozen(backend.matrix.capabilities), true)
+  assert.equal(Object.isFrozen(backend.matrix.capabilities[0]), true)
+  assert.throws(() => {
+    ;(backend.matrix.capabilities[0] as { route: string }).route = "global_input"
+  })
 })
