@@ -1,15 +1,24 @@
-import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent } from "electron"
+import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent, type WebContents } from "electron"
 import {
   settingsWindowGetPendingNavigationArgsSchema,
   settingsWindowOpenArgsSchema,
   settingsWindowOpenTabArgsSchema
 } from "@shared/settings-window"
 import { registerValidatedIpcHandle } from "../ipc/handle"
-import { isSettingsWindowWebContents } from "../windows/settings-window"
+import { getWindowIdentity, isDurableWindowIdentity } from "../windows/window-identity"
 import { SettingsWindowRoutingService } from "./service"
 
+type SenderWindowResolver = (sender: WebContents) => BrowserWindow | null
+
+function resolveElectronSenderWindow(sender: WebContents): BrowserWindow | null {
+  return BrowserWindow.fromWebContents(sender)
+}
+
 export class SettingsWindowRoutingController {
-  constructor(private readonly settingsWindowRoutingService: SettingsWindowRoutingService) {}
+  constructor(
+    private readonly settingsWindowRoutingService: SettingsWindowRoutingService,
+    private readonly resolveSenderWindow: SenderWindowResolver = resolveElectronSenderWindow
+  ) {}
 
   register(ipcMain: IpcMain): void {
     registerValidatedIpcHandle(
@@ -17,8 +26,9 @@ export class SettingsWindowRoutingController {
       "settings:openWindow",
       settingsWindowOpenArgsSchema,
       (event, ...args) => {
+        const hideLauncher = this.assertSettingsOpener(event)
         this.settingsWindowRoutingService.openWindow(args[0])
-        this.hideLauncherSender(event)
+        if (hideLauncher) this.hideLauncherSender(event)
       }
     )
 
@@ -27,8 +37,9 @@ export class SettingsWindowRoutingController {
       "settings:openTab",
       settingsWindowOpenTabArgsSchema,
       (event, payload) => {
+        const hideLauncher = this.assertSettingsOpener(event)
         this.settingsWindowRoutingService.openWindow(payload)
-        this.hideLauncherSender(event)
+        if (hideLauncher) this.hideLauncherSender(event)
       }
     )
 
@@ -45,19 +56,25 @@ export class SettingsWindowRoutingController {
 
   private assertSettingsSender(event: IpcMainInvokeEvent): void {
     if (
-      !isSettingsWindowWebContents(event.sender) ||
+      getWindowIdentity(event.sender)?.kind !== "settings" ||
       event.senderFrame !== event.sender.mainFrame
     ) {
       throw new Error("Pending settings navigation can only be claimed by the Settings window.")
     }
   }
 
-  private hideLauncherSender(event: IpcMainInvokeEvent): void {
-    const senderUrl = new URL(event.sender.getURL())
-    if (senderUrl.searchParams.get("window") !== "launcher") {
-      return
+  private assertSettingsOpener(event: IpcMainInvokeEvent): boolean {
+    const identity = getWindowIdentity(event.sender)
+    if (
+      event.senderFrame !== event.sender.mainFrame ||
+      (identity?.kind !== "launcher" && !isDurableWindowIdentity(identity))
+    ) {
+      throw new Error("Settings can only be opened by the Launcher or a durable window.")
     }
+    return identity.kind === "launcher"
+  }
 
-    BrowserWindow.fromWebContents(event.sender)?.hide()
+  private hideLauncherSender(event: IpcMainInvokeEvent): void {
+    this.resolveSenderWindow(event.sender)?.hide()
   }
 }
