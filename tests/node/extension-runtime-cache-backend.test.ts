@@ -14,7 +14,15 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import test from "node:test"
 import { promisify } from "node:util"
-import { createFileExtensionRuntimeCacheBackend } from "../../src/extension-runtime/cache-backend"
+import {
+  createFileExtensionRuntimeCacheBackend,
+  EXTENSION_RUNTIME_CACHE_MAX_ACTIVE_FILE_BYTES,
+  EXTENSION_RUNTIME_CACHE_MAX_CORRUPT_FILE_BYTES,
+  EXTENSION_RUNTIME_CACHE_MAX_FILE_SET_BYTES,
+  EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE,
+  writeRuntimeCacheBufferFully,
+  writeRuntimeCacheBufferFullySync
+} from "../../src/extension-runtime/cache-backend"
 import { createExtensionRuntimeCacheLifecycle } from "../../src/extension-runtime/cache-lifecycle"
 import {
   encodeRuntimeCacheBackendScopeKey,
@@ -37,6 +45,44 @@ const notionSecondaryScope = createScope("notifications")
 const execFileAsync = promisify(execFile)
 const cacheCorruptionRecoveryDiagnostic =
   "[jingle:extension-runtime] Extension runtime cache corruption was recovered."
+
+test("cache evidence write helpers drain short writes and reject no progress", async () => {
+  const input = Buffer.from("bounded-evidence")
+  const asyncChunks: Buffer[] = []
+  await writeRuntimeCacheBufferFully(
+    {
+      async write(buffer, offset, length) {
+        const bytesWritten = Math.min(length, 2)
+        asyncChunks.push(Buffer.from(buffer.subarray(offset, offset + bytesWritten)))
+        return { bytesWritten }
+      }
+    },
+    input,
+    input.length
+  )
+  assert.equal(Buffer.concat(asyncChunks).toString(), input.toString())
+
+  const syncChunks: Buffer[] = []
+  writeRuntimeCacheBufferFullySync(
+    (buffer, offset, length) => {
+      const bytesWritten = Math.min(length, 3)
+      syncChunks.push(Buffer.from(buffer.subarray(offset, offset + bytesWritten)))
+      return bytesWritten
+    },
+    input,
+    input.length
+  )
+  assert.equal(Buffer.concat(syncChunks).toString(), input.toString())
+
+  await assert.rejects(
+    writeRuntimeCacheBufferFully({ write: async () => ({ bytesWritten: 0 }) }, input, input.length),
+    /did not make valid progress/
+  )
+  assert.throws(
+    () => writeRuntimeCacheBufferFullySync(() => 0, input, input.length),
+    /did not make valid progress/
+  )
+})
 
 test("file runtime cache backend persists entries by exact scope", async () => {
   await withCacheDirectory(async (cacheDir) => {
@@ -191,6 +237,238 @@ test("file runtime cache backend applies remove and clear mutations", async () =
     backend.mutateStore(notionScope, { kind: "clear" })
     await backend.flush()
     assert.deepEqual(createFileExtensionRuntimeCacheBackend(cacheDir).loadStore(notionScope), [])
+    assert.equal(
+      readCacheEnvelope(getCacheFilePath(cacheDir)).stores[
+        encodeRuntimeCacheBackendScopeKey(notionScope)
+      ],
+      undefined
+    )
+  })
+})
+
+test("file runtime cache backend bounds generation warm-up by mutation order", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    const scopes = Array.from(
+      { length: EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE + 4 },
+      (_, index) => createGenerationScope(index)
+    )
+    for (const [index, scope] of scopes.entries()) {
+      writeEntries(backend, scope, [["generation", String(index)]])
+    }
+    await backend.flush()
+
+    const cacheFilePath = getCacheFilePath(cacheDir)
+    const envelope = readCacheEnvelope(cacheFilePath)
+    assert.equal(envelope.version, 1)
+    assert.equal(envelope.mutationSequence, scopes.length)
+    assert.equal(Object.keys(envelope.stores).length, EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE)
+    assert.ok(statSync(cacheFilePath).size <= EXTENSION_RUNTIME_CACHE_MAX_ACTIVE_FILE_BYTES)
+
+    const restartedBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    for (const [index, scope] of scopes.entries()) {
+      assert.deepEqual(
+        restartedBackend.loadStore(scope),
+        index < scopes.length - EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE
+          ? []
+          : [["generation", String(index)]]
+      )
+    }
+  })
+})
+
+test("file runtime cache backend lets an old process recreate only its exact generation", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const rollbackScope = createGenerationScope(0)
+    const oldProcessBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    const currentBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    const scopes = Array.from(
+      { length: EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE + 1 },
+      (_, index) => createGenerationScope(index)
+    )
+    for (const [index, scope] of scopes.entries()) {
+      writeEntries(currentBackend, scope, [["generation", `current-${index}`]])
+    }
+    await currentBackend.flush()
+    assert.deepEqual(currentBackend.loadStore(rollbackScope), [])
+
+    writeEntries(oldProcessBackend, rollbackScope, [["generation", "rollback-0"]])
+    await oldProcessBackend.flush()
+
+    const restartedBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    assert.deepEqual(restartedBackend.loadStore(rollbackScope), [["generation", "rollback-0"]])
+    assert.deepEqual(restartedBackend.loadStore(scopes.at(-1)!), [
+      ["generation", `current-${scopes.length - 1}`]
+    ])
+    assert.deepEqual(restartedBackend.loadStore(scopes[1]), [])
+  })
+})
+
+test("file runtime cache backend keeps concurrent generation GC exact", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const firstBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    const secondBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    const scopes = Array.from(
+      { length: EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE + 6 },
+      (_, index) => createGenerationScope(index)
+    )
+    for (const [index, scope] of scopes.entries()) {
+      writeEntries(index % 2 === 0 ? firstBackend : secondBackend, scope, [
+        ["generation", `value-${index}`]
+      ])
+    }
+    await Promise.all([firstBackend.flush(), secondBackend.flush()])
+
+    const envelope = readCacheEnvelope(getCacheFilePath(cacheDir))
+    assert.equal(Object.keys(envelope.stores).length, EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE)
+    const restartedBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    for (const [index, scope] of scopes.entries()) {
+      const storeKey = encodeRuntimeCacheBackendScopeKey(scope)
+      assert.deepEqual(
+        restartedBackend.loadStore(scope),
+        envelope.stores[storeKey] ? [["generation", `value-${index}`]] : []
+      )
+    }
+  })
+})
+
+test("file runtime cache backend bounds an oversized legacy envelope on mutation", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const oversizedScope = createGenerationScope(0)
+    const currentScope = createGenerationScope(1)
+    const seedBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    writeEntries(seedBackend, currentScope, [["seed", "seed"]])
+    await seedBackend.flush()
+    const cacheFilePath = getCacheFilePath(cacheDir)
+    const oversizedValue = "x".repeat(EXTENSION_RUNTIME_CACHE_MAX_ACTIVE_FILE_BYTES)
+    writeFileSync(
+      cacheFilePath,
+      `${JSON.stringify({
+        stores: {
+          [encodeRuntimeCacheBackendScopeKey(oversizedScope)]: [["oversized", oversizedValue]]
+        }
+      })}\n`
+    )
+
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    writeEntries(backend, currentScope, [["current", "retained"]])
+    await backend.flush()
+
+    assert.ok(statSync(cacheFilePath).size <= EXTENSION_RUNTIME_CACHE_MAX_ACTIVE_FILE_BYTES)
+    assert.deepEqual(backend.loadStore(oversizedScope), [])
+    assert.deepEqual(backend.loadStore(currentScope), [["current", "retained"]])
+  })
+})
+
+test("file runtime cache backend retains the exact mutated legacy store before stable eviction", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const scopes = Array.from(
+      { length: EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE + 1 },
+      (_, index) => createGenerationScope(index)
+    )
+    const stores = Object.fromEntries(
+      scopes.map((scope, index) => [
+        encodeRuntimeCacheBackendScopeKey(scope),
+        index === 0
+          ? [
+              ["keep", "kept-value"],
+              ["remove", "removed-value"]
+            ]
+          : [["generation", String(index)]]
+      ])
+    )
+    const lexicalFirstKey = Object.keys(stores).sort()[0]
+    const retainedScope = scopes.find(
+      (scope) => encodeRuntimeCacheBackendScopeKey(scope) === lexicalFirstKey
+    )
+    assert.ok(retainedScope)
+    stores[lexicalFirstKey] = [
+      ["keep", "kept-value"],
+      ["remove", "removed-value"]
+    ]
+
+    mkdirSync(cacheDir, { recursive: true })
+    const seedBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    writeEntries(seedBackend, retainedScope, [["seed", "seed"]])
+    await seedBackend.flush()
+    const cacheFilePath = getCacheFilePath(cacheDir)
+    writeFileSync(cacheFilePath, `${JSON.stringify({ stores })}\n`)
+
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    backend.mutateStore(retainedScope, {
+      kind: "update",
+      removeKeys: ["remove"],
+      upsertEntries: []
+    })
+    await backend.flush()
+
+    assert.deepEqual(backend.loadStore(retainedScope), [["keep", "kept-value"]])
+    assert.equal(
+      Object.keys(readCacheEnvelope(cacheFilePath).stores).length,
+      EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE
+    )
+  })
+})
+
+test("file runtime cache backend resolves legacy mutation ties by UTF-8 bytes", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const currentScope = { ...notionScope, commandName: "\u{10000}-current" }
+    const supplementaryScopes = Array.from(
+      { length: EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE - 1 },
+      (_, index) => ({ ...notionScope, commandName: `\u{10000}-${index}` })
+    )
+    const bmpScope = { ...notionScope, commandName: "\uE000" }
+    const stores = Object.fromEntries(
+      [...supplementaryScopes, bmpScope, currentScope].map((scope) => [
+        encodeRuntimeCacheBackendScopeKey(scope),
+        [["command", scope.commandName]]
+      ])
+    )
+
+    const seedBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    writeEntries(seedBackend, currentScope, [["seed", "seed"]])
+    await seedBackend.flush()
+    const cacheFilePath = getCacheFilePath(cacheDir)
+    writeFileSync(cacheFilePath, `${JSON.stringify({ stores })}\n`)
+
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    writeEntries(backend, currentScope, [["current", "retained"]])
+    await backend.flush()
+
+    assert.deepEqual(backend.loadStore(bmpScope), [])
+    assert.deepEqual(backend.loadStore(supplementaryScopes[0]), [
+      ["command", supplementaryScopes[0].commandName]
+    ])
+    assert.deepEqual(backend.loadStore(currentScope), [
+      ["command", currentScope.commandName],
+      ["current", "retained"]
+    ])
+  })
+})
+
+test("file runtime cache backend fails an oversized current scope without replacing active data", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const preservedScope = createGenerationScope(1)
+    const oversizedScope = createGenerationScope(2)
+    const initialBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    writeEntries(initialBackend, preservedScope, [["preserved", "before-failure"]])
+    await initialBackend.flush()
+    const cacheFilePath = getCacheFilePath(cacheDir)
+    const activeBefore = readFileSync(cacheFilePath, "utf8")
+
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    const failures: Error[] = []
+    backend.onFailure((error) => failures.push(error))
+    writeEntries(backend, oversizedScope, [
+      ["oversized", "x".repeat(EXTENSION_RUNTIME_CACHE_MAX_ACTIVE_FILE_BYTES)]
+    ])
+    await assert.rejects(backend.flush(), /Extension runtime cache persistence failed/)
+
+    assert.equal(failures.length, 1)
+    assert.equal(readFileSync(cacheFilePath, "utf8"), activeBefore)
+    const restartedBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    assert.deepEqual(restartedBackend.loadStore(preservedScope), [["preserved", "before-failure"]])
+    assert.deepEqual(restartedBackend.loadStore(oversizedScope), [])
   })
 })
 
@@ -276,7 +554,11 @@ test("file runtime cache backend quarantines a malformed envelope without termin
       console.error = originalConsoleError
     }
     assert.equal(readFileSync(`${cacheFilePath}.corrupt`, "utf8"), corruptPayload)
-    assert.deepEqual(JSON.parse(readFileSync(cacheFilePath, "utf8")), { stores: {} })
+    assert.deepEqual(JSON.parse(readFileSync(cacheFilePath, "utf8")), {
+      mutationSequence: 0,
+      stores: {},
+      version: 1
+    })
 
     const restartedBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
     const restartFailures: Error[] = []
@@ -290,6 +572,48 @@ test("file runtime cache backend quarantines a malformed envelope without termin
     }
     assert.deepEqual(restartFailures, [])
     assert.deepEqual(restartDiagnostics, [])
+  })
+})
+
+test("file runtime cache backend bounds corrupt evidence with the active envelope", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    writeEntries(backend, notionScope, [["page", "page-1"]])
+    await backend.flush()
+    const cacheFilePath = getCacheFilePath(cacheDir)
+    writeFileSync(
+      cacheFilePath,
+      `{"stores":${"x".repeat(EXTENSION_RUNTIME_CACHE_MAX_CORRUPT_FILE_BYTES + 1_024)}`
+    )
+
+    const diagnostics: string[] = []
+    const originalConsoleError = console.error
+    console.error = (...args) => diagnostics.push(args.map(String).join(" "))
+    try {
+      assert.deepEqual(backend.loadStore(notionScope), [])
+    } finally {
+      console.error = originalConsoleError
+    }
+    assert.deepEqual(diagnostics, [cacheCorruptionRecoveryDiagnostic])
+    const activeBytes = statSync(cacheFilePath).size
+    const corruptBytes = statSync(`${cacheFilePath}.corrupt`).size
+    assert.ok(activeBytes <= EXTENSION_RUNTIME_CACHE_MAX_ACTIVE_FILE_BYTES)
+    assert.equal(corruptBytes, EXTENSION_RUNTIME_CACHE_MAX_CORRUPT_FILE_BYTES)
+    assert.ok(activeBytes + corruptBytes <= EXTENSION_RUNTIME_CACHE_MAX_FILE_SET_BYTES)
+    if (process.platform !== "win32") {
+      assert.equal(statSync(`${cacheFilePath}.corrupt`).mode & 0o777, 0o600)
+    }
+
+    const restartedBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    const restartDiagnostics: string[] = []
+    console.error = (...args) => restartDiagnostics.push(args.map(String).join(" "))
+    try {
+      assert.deepEqual(restartedBackend.loadStore(notionScope), [])
+    } finally {
+      console.error = originalConsoleError
+    }
+    assert.deepEqual(restartDiagnostics, [])
+    assert.equal(statSync(`${cacheFilePath}.corrupt`).size, corruptBytes)
   })
 })
 
@@ -432,6 +756,18 @@ function createScope(commandName: string): Parameters<RuntimeCacheBackend["loadS
   }
 }
 
+function createGenerationScope(
+  credentialGeneration: number
+): Parameters<RuntimeCacheBackend["loadStore"]>[0] {
+  return {
+    ...notionScope,
+    identity: {
+      ...notionScope.identity,
+      credentialGeneration
+    }
+  }
+}
+
 async function withCacheDirectory(callback: (cacheDir: string) => Promise<void>): Promise<void> {
   const cacheDir = mkdtempSync(join(tmpdir(), "jingle-runtime-cache-"))
   try {
@@ -445,6 +781,24 @@ function getCacheFilePath(cacheDir: string): string {
   const cacheFile = readdirSync(cacheDir).find((name) => name.endsWith(".json"))
   assert.ok(cacheFile)
   return join(cacheDir, cacheFile)
+}
+
+function readCacheEnvelope(cacheFilePath: string): {
+  mutationSequence: number
+  stores: Record<
+    string,
+    { entries: readonly (readonly [string, string])[]; lastMutationSequence: number }
+  >
+  version: number
+} {
+  return JSON.parse(readFileSync(cacheFilePath, "utf8")) as {
+    mutationSequence: number
+    stores: Record<
+      string,
+      { entries: readonly (readonly [string, string])[]; lastMutationSequence: number }
+    >
+    version: number
+  }
 }
 
 function writeEntries(

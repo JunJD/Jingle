@@ -1,16 +1,17 @@
 import {
   closeSync,
-  copyFileSync,
   existsSync,
   fsyncSync,
   mkdirSync,
   openSync,
+  readSync,
   readFileSync,
   renameSync,
   rmSync,
+  writeSync,
   writeFileSync
 } from "node:fs"
-import { copyFile, mkdir, open, readFile, rename, rm } from "node:fs/promises"
+import { mkdir, open, readFile, rename, rm, stat } from "node:fs/promises"
 import { createHash, randomUUID } from "node:crypto"
 import { dirname, join } from "node:path"
 import * as properLockfile from "proper-lockfile"
@@ -23,8 +24,15 @@ import {
   type RuntimeCacheEntry
 } from "@jingle/extension-api/host-runtime"
 
+interface RuntimeCacheFileStoreShape {
+  entries: RuntimeCacheEntry[]
+  lastMutationSequence: number
+}
+
 interface RuntimeCacheFileShape {
-  stores: Record<string, RuntimeCacheEntry[]>
+  mutationSequence: number
+  stores: Record<string, RuntimeCacheFileStoreShape>
+  version: typeof RUNTIME_CACHE_FILE_VERSION
 }
 
 interface RuntimeCacheFileBackendOptions {
@@ -39,6 +47,14 @@ interface RuntimeCacheFileBackendOptions {
 export const EXTENSION_RUNTIME_CACHE_DIR_ENV = "JINGLE_EXTENSION_RUNTIME_CACHE_DIR"
 
 const CACHE_LOCK_STALE_MS = 30_000
+const RUNTIME_CACHE_FILE_VERSION = 1
+// Production consumers use the SDK's 10 MiB default store. Keep several warm generations while
+// bounding each aggregate file and one atomic corruption-evidence replacement.
+export const EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE = 8
+export const EXTENSION_RUNTIME_CACHE_MAX_ACTIVE_FILE_BYTES = 64 * 1024 * 1024
+export const EXTENSION_RUNTIME_CACHE_MAX_CORRUPT_FILE_BYTES = 16 * 1024 * 1024
+export const EXTENSION_RUNTIME_CACHE_MAX_FILE_SET_BYTES =
+  EXTENSION_RUNTIME_CACHE_MAX_ACTIVE_FILE_BYTES + EXTENSION_RUNTIME_CACHE_MAX_CORRUPT_FILE_BYTES
 const CACHE_CORRUPTION_RECOVERY_DIAGNOSTIC =
   "[jingle:extension-runtime] Extension runtime cache corruption was recovered."
 const CACHE_PERSISTENCE_ERROR_MESSAGE = "Extension runtime cache persistence failed."
@@ -131,7 +147,7 @@ export function createFileExtensionRuntimeCacheBackend(
         if (result.corruption) {
           reportCacheCorruptionRecovery()
         }
-        return result.cacheFile.stores[encodeRuntimeCacheBackendScopeKey(scope)] ?? []
+        return result.cacheFile.stores[encodeRuntimeCacheBackendScopeKey(scope)]?.entries ?? []
       } catch (error) {
         throw toCachePersistenceError(error)
       }
@@ -209,13 +225,34 @@ async function updateCacheFile(
     const result = await readCacheFileForUpdate(cacheFilePath)
     recoveredCorruption = result.corruption
     const cacheFile = result.cacheFile
-    const currentEntries = cacheFile.stores[storeKey] ?? []
-    await writeCacheFileAtomically(cacheFilePath, {
-      stores: {
-        ...cacheFile.stores,
-        [storeKey]: applyMutation(currentEntries, mutation)
+    const currentEntries = cacheFile.stores[storeKey]?.entries ?? []
+    if (cacheFile.mutationSequence === Number.MAX_SAFE_INTEGER) {
+      throw new RangeError("Extension runtime cache mutation sequence is exhausted.")
+    }
+    const nextSequence = cacheFile.mutationSequence + 1
+    const stores = { ...cacheFile.stores }
+    if (mutation.kind === "clear") {
+      delete stores[storeKey]
+    } else {
+      stores[storeKey] = {
+        entries: applyMutation(currentEntries, mutation),
+        lastMutationSequence: nextSequence
       }
-    })
+    }
+    const nextCacheFile = retainCacheFile(
+      {
+        mutationSequence: nextSequence,
+        stores,
+        version: RUNTIME_CACHE_FILE_VERSION
+      },
+      mutation.kind === "clear" ? null : storeKey
+    )
+    if (result.corruption) {
+      await quarantineCacheFile(cacheFilePath, EXTENSION_RUNTIME_CACHE_MAX_CORRUPT_FILE_BYTES)
+    } else {
+      await boundQuarantineFile(cacheFilePath, EXTENSION_RUNTIME_CACHE_MAX_CORRUPT_FILE_BYTES)
+    }
+    await writeCacheFileAtomically(cacheFilePath, nextCacheFile)
     assertLockIsOwned(compromisedError)
   } finally {
     await release()
@@ -267,15 +304,14 @@ async function readCacheFileForUpdate(cacheFilePath: string): Promise<{
 }> {
   try {
     return {
-      cacheFile: parseCacheFile(await readFile(cacheFilePath, "utf8")),
+      cacheFile: parseCacheFile(await readFile(cacheFilePath, "utf8"), false),
       corruption: null
     }
   } catch (error) {
     if (isNodeErrorWithCode(error, "ENOENT")) {
-      return { cacheFile: { stores: {} }, corruption: null }
+      return { cacheFile: createEmptyCacheFile(), corruption: null }
     }
     if (error instanceof ExtensionRuntimeCacheCorruptionError) {
-      await quarantineCacheFile(cacheFilePath)
       return { cacheFile: error.recoveredFile, corruption: error }
     }
     throw error
@@ -321,10 +357,11 @@ function readCacheFileWithRecoverySync(
       if (!(error instanceof ExtensionRuntimeCacheCorruptionError)) {
         throw error
       }
-      quarantineCacheFileSync(cacheFilePath)
-      writeCacheFileAtomicallySync(cacheFilePath, error.recoveredFile)
+      const recoveredFile = retainCacheFile(error.recoveredFile, null)
+      quarantineCacheFileSync(cacheFilePath, EXTENSION_RUNTIME_CACHE_MAX_CORRUPT_FILE_BYTES)
+      writeCacheFileAtomicallySync(cacheFilePath, recoveredFile)
       assertLockIsOwned(compromisedError)
-      result = { cacheFile: error.recoveredFile, corruption: error }
+      result = { cacheFile: recoveredFile, corruption: error }
     }
   } finally {
     release()
@@ -333,32 +370,151 @@ function readCacheFileWithRecoverySync(
   return result
 }
 
-async function quarantineCacheFile(cacheFilePath: string): Promise<void> {
-  const cacheDirectory = dirname(cacheFilePath)
+async function quarantineCacheFile(cacheFilePath: string, maxBytes: number): Promise<void> {
   const quarantinePath = `${cacheFilePath}.corrupt`
-  await rm(quarantinePath, { force: true })
-  await copyFile(cacheFilePath, quarantinePath)
-  const quarantineFile = await open(quarantinePath, "r")
-  try {
-    await quarantineFile.sync()
-  } finally {
-    await quarantineFile.close()
-  }
-  await syncDirectory(cacheDirectory)
+  await replaceFileWithPrefixAtomically(cacheFilePath, quarantinePath, maxBytes)
 }
 
-function quarantineCacheFileSync(cacheFilePath: string): void {
-  const cacheDirectory = dirname(cacheFilePath)
+function quarantineCacheFileSync(cacheFilePath: string, maxBytes: number): void {
   const quarantinePath = `${cacheFilePath}.corrupt`
-  rmSync(quarantinePath, { force: true })
-  copyFileSync(cacheFilePath, quarantinePath)
-  const quarantineFile = openSync(quarantinePath, "r")
+  replaceFileWithPrefixAtomicallySync(cacheFilePath, quarantinePath, maxBytes)
+}
+
+async function boundQuarantineFile(cacheFilePath: string, maxBytes: number): Promise<void> {
+  const quarantinePath = `${cacheFilePath}.corrupt`
+  let quarantineSize: number
   try {
-    fsyncSync(quarantineFile)
-  } finally {
-    closeSync(quarantineFile)
+    quarantineSize = (await stat(quarantinePath)).size
+  } catch (error) {
+    if (isNodeErrorWithCode(error, "ENOENT")) {
+      return
+    }
+    throw error
   }
-  syncDirectorySync(cacheDirectory)
+  if (quarantineSize <= maxBytes) {
+    return
+  }
+  await replaceFileWithPrefixAtomically(quarantinePath, quarantinePath, maxBytes)
+}
+
+async function replaceFileWithPrefixAtomically(
+  sourcePath: string,
+  destinationPath: string,
+  maxBytes: number
+): Promise<void> {
+  const directoryPath = dirname(destinationPath)
+  const temporaryPath = `${destinationPath}.${process.pid}.${randomUUID()}.tmp`
+  const source = await open(sourcePath, "r")
+  let sourceOpen = true
+  let destination: Awaited<ReturnType<typeof open>> | null = null
+  try {
+    destination = await open(temporaryPath, "wx", 0o600)
+    const buffer = Buffer.allocUnsafe(64 * 1024)
+    let remaining = maxBytes
+    while (remaining > 0) {
+      const { bytesRead } = await source.read(buffer, 0, Math.min(buffer.length, remaining), null)
+      if (bytesRead === 0) {
+        break
+      }
+      await writeRuntimeCacheBufferFully(destination, buffer, bytesRead)
+      remaining -= bytesRead
+    }
+    await destination.sync()
+    await destination.close()
+    destination = null
+    await source.close()
+    sourceOpen = false
+    await rename(temporaryPath, destinationPath)
+    await syncDirectory(directoryPath)
+  } finally {
+    await destination?.close().catch(() => undefined)
+    if (sourceOpen) {
+      await source.close()
+    }
+    await rm(temporaryPath, { force: true }).catch(() => undefined)
+  }
+}
+
+function replaceFileWithPrefixAtomicallySync(
+  sourcePath: string,
+  destinationPath: string,
+  maxBytes: number
+): void {
+  const directoryPath = dirname(destinationPath)
+  const temporaryPath = `${destinationPath}.${process.pid}.${randomUUID()}.tmp`
+  const source = openSync(sourcePath, "r")
+  let sourceOpen = true
+  let destination: number | null = null
+  try {
+    destination = openSync(temporaryPath, "wx", 0o600)
+    const buffer = Buffer.allocUnsafe(64 * 1024)
+    let remaining = maxBytes
+    while (remaining > 0) {
+      const bytesRead = readSync(source, buffer, 0, Math.min(buffer.length, remaining), null)
+      if (bytesRead === 0) {
+        break
+      }
+      writeRuntimeCacheBufferFullySync(
+        (chunk, offset, length) => writeSync(destination!, chunk, offset, length),
+        buffer,
+        bytesRead
+      )
+      remaining -= bytesRead
+    }
+    fsyncSync(destination)
+    closeSync(destination)
+    destination = null
+    closeSync(source)
+    sourceOpen = false
+    renameSync(temporaryPath, destinationPath)
+    syncDirectorySync(directoryPath)
+  } finally {
+    if (destination !== null) {
+      closeSync(destination)
+    }
+    if (sourceOpen) {
+      closeSync(source)
+    }
+    try {
+      rmSync(temporaryPath, { force: true })
+    } catch {
+      // The original persistence error remains authoritative.
+    }
+  }
+}
+
+export async function writeRuntimeCacheBufferFully(
+  writer: {
+    write: (buffer: Uint8Array, offset: number, length: number) => Promise<{ bytesWritten: number }>
+  },
+  buffer: Uint8Array,
+  length: number
+): Promise<void> {
+  let offset = 0
+  while (offset < length) {
+    const { bytesWritten } = await writer.write(buffer, offset, length - offset)
+    assertValidWriteLength(bytesWritten, length - offset)
+    offset += bytesWritten
+  }
+}
+
+export function writeRuntimeCacheBufferFullySync(
+  write: (buffer: Uint8Array, offset: number, length: number) => number,
+  buffer: Uint8Array,
+  length: number
+): void {
+  let offset = 0
+  while (offset < length) {
+    const bytesWritten = write(buffer, offset, length - offset)
+    assertValidWriteLength(bytesWritten, length - offset)
+    offset += bytesWritten
+  }
+}
+
+function assertValidWriteLength(bytesWritten: number, requestedBytes: number): void {
+  if (!Number.isInteger(bytesWritten) || bytesWritten <= 0 || bytesWritten > requestedBytes) {
+    throw new Error("Extension runtime cache evidence write did not make valid progress.")
+  }
 }
 
 async function writeCacheFileAtomically(
@@ -371,7 +527,7 @@ async function writeCacheFileAtomically(
 
   try {
     temporaryFile = await open(temporaryPath, "wx", 0o600)
-    await temporaryFile.writeFile(`${JSON.stringify(cacheFile, null, 2)}\n`, "utf8")
+    await temporaryFile.writeFile(serializeCacheFile(cacheFile), "utf8")
     await temporaryFile.sync()
     await temporaryFile.close()
     temporaryFile = null
@@ -393,7 +549,7 @@ function writeCacheFileAtomicallySync(
 
   try {
     temporaryFile = openSync(temporaryPath, "wx", 0o600)
-    writeFileSync(temporaryFile, `${JSON.stringify(cacheFile, null, 2)}\n`, "utf8")
+    writeFileSync(temporaryFile, serializeCacheFile(cacheFile), "utf8")
     fsyncSync(temporaryFile)
     closeSync(temporaryFile)
     temporaryFile = null
@@ -483,12 +639,12 @@ function isNodeErrorWithCode(error: unknown, code: string): boolean {
 
 function readCacheFile(cacheFilePath: string): RuntimeCacheFileShape {
   if (!existsSync(cacheFilePath)) {
-    return { stores: {} }
+    return createEmptyCacheFile()
   }
   return parseCacheFile(readFileSync(cacheFilePath, "utf8"))
 }
 
-function parseCacheFile(raw: string): RuntimeCacheFileShape {
+function parseCacheFile(raw: string, applyRetention = true): RuntimeCacheFileShape {
   let parsed: unknown
   try {
     parsed = JSON.parse(raw) as unknown
@@ -496,18 +652,37 @@ function parseCacheFile(raw: string): RuntimeCacheFileShape {
     if (!(cause instanceof SyntaxError)) {
       throw cause
     }
-    throw new ExtensionRuntimeCacheCorruptionError({ stores: {} }, cause)
+    throw new ExtensionRuntimeCacheCorruptionError(createEmptyCacheFile(), cause)
   }
 
   if (!isRecord(parsed) || !isRecord(parsed.stores)) {
-    throw new ExtensionRuntimeCacheCorruptionError({ stores: {} })
+    throw new ExtensionRuntimeCacheCorruptionError(createEmptyCacheFile())
   }
 
-  const stores = Object.create(null) as Record<string, RuntimeCacheEntry[]>
+  const isLegacyFile = parsed.version === undefined && parsed.mutationSequence === undefined
+  const mutationSequence = isLegacyFile ? 0 : parsed.mutationSequence
+  if (
+    (!isLegacyFile && parsed.version !== RUNTIME_CACHE_FILE_VERSION) ||
+    !Number.isSafeInteger(mutationSequence) ||
+    (mutationSequence as number) < 0
+  ) {
+    throw new ExtensionRuntimeCacheCorruptionError(createEmptyCacheFile())
+  }
+
+  const stores = Object.create(null) as Record<string, RuntimeCacheFileStoreShape>
   let containsInvalidStore = false
-  for (const [storeKey, entries] of Object.entries(parsed.stores)) {
+  for (const [storeKey, rawStore] of Object.entries(parsed.stores)) {
+    const entries = isLegacyFile ? rawStore : isRecord(rawStore) ? rawStore.entries : undefined
+    const lastMutationSequence = isLegacyFile
+      ? 0
+      : isRecord(rawStore)
+        ? rawStore.lastMutationSequence
+        : undefined
     if (
       !Array.isArray(entries) ||
+      !Number.isSafeInteger(lastMutationSequence) ||
+      (lastMutationSequence as number) < 0 ||
+      (lastMutationSequence as number) > (mutationSequence as number) ||
       entries.some(
         (entry) =>
           !Array.isArray(entry) ||
@@ -519,14 +694,76 @@ function parseCacheFile(raw: string): RuntimeCacheFileShape {
       containsInvalidStore = true
       continue
     }
-    stores[storeKey] = entries as RuntimeCacheEntry[]
+    stores[storeKey] = {
+      entries: entries as RuntimeCacheEntry[],
+      lastMutationSequence: lastMutationSequence as number
+    }
   }
+
+  const parsedFile: RuntimeCacheFileShape = {
+    mutationSequence: mutationSequence as number,
+    stores,
+    version: RUNTIME_CACHE_FILE_VERSION
+  }
+  const recoveredFile = applyRetention ? retainCacheFile(parsedFile, null) : parsedFile
 
   if (containsInvalidStore) {
-    throw new ExtensionRuntimeCacheCorruptionError({ stores })
+    throw new ExtensionRuntimeCacheCorruptionError(recoveredFile)
   }
 
-  return { stores }
+  return recoveredFile
+}
+
+function createEmptyCacheFile(): RuntimeCacheFileShape {
+  return { mutationSequence: 0, stores: {}, version: RUNTIME_CACHE_FILE_VERSION }
+}
+
+function retainCacheFile(
+  cacheFile: RuntimeCacheFileShape,
+  retainedStoreKey: string | null
+): RuntimeCacheFileShape {
+  const stores = { ...cacheFile.stores }
+  const evictionCandidates = Object.entries(stores)
+    .filter(([storeKey]) => storeKey !== retainedStoreKey)
+    .sort(
+      ([leftKey, left], [rightKey, right]) =>
+        left.lastMutationSequence - right.lastMutationSequence ||
+        compareStoreKeys(leftKey, rightKey)
+    )
+
+  let storeCount = Object.keys(stores).length
+  while (storeCount > EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE) {
+    const candidate = evictionCandidates.shift()
+    if (!candidate) {
+      throw new RangeError("Extension runtime cache active file exceeded its retention budget.")
+    }
+    delete stores[candidate[0]]
+    storeCount--
+  }
+  while (
+    measureSerializedCacheFile({ ...cacheFile, stores }) >
+    EXTENSION_RUNTIME_CACHE_MAX_ACTIVE_FILE_BYTES
+  ) {
+    const candidate = evictionCandidates.shift()
+    if (!candidate) {
+      throw new RangeError("Extension runtime cache active file exceeded its retention budget.")
+    }
+    delete stores[candidate[0]]
+  }
+
+  return { ...cacheFile, stores }
+}
+
+function compareStoreKeys(left: string, right: string): number {
+  return Buffer.compare(Buffer.from(left), Buffer.from(right))
+}
+
+function measureSerializedCacheFile(cacheFile: RuntimeCacheFileShape): number {
+  return Buffer.byteLength(serializeCacheFile(cacheFile))
+}
+
+function serializeCacheFile(cacheFile: RuntimeCacheFileShape): string {
+  return `${JSON.stringify(cacheFile, null, 2)}\n`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
