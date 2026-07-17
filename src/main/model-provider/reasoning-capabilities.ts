@@ -24,6 +24,14 @@ interface RegistryEntry {
 const OPENAI_GPT_5_1 = ["off", "low", "medium", "high"] satisfies ThinkingEffort[]
 const OPENAI_GPT_5_2 = [...OPENAI_GPT_5_1, "xhigh"] satisfies ThinkingEffort[]
 const OPENAI_GPT_5_6 = [...OPENAI_GPT_5_2, "max"] satisfies ThinkingEffort[]
+const REASONING_EFFORT_ORDER = [
+  "off",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max"
+] satisfies ThinkingEffort[]
 
 // Exact model ids only. Provider list responses are intentionally not trusted as
 // capability metadata; new aliases and snapshots require a registry update.
@@ -138,6 +146,14 @@ export interface ResolvedReasoningEffortCapability {
   capability: ModelReasoningEffortCapability | null
   reference: string | null
   transport: ReasoningEffortTransport | null
+}
+
+export function resolveHighestReasoningEffort(
+  capability: ModelReasoningEffortCapability | null
+): ThinkingEffort | null {
+  return (
+    REASONING_EFFORT_ORDER.findLast((effort) => capability?.allowedValues.includes(effort)) ?? null
+  )
 }
 
 export function createCustomReasoningEffortCapability(input: {

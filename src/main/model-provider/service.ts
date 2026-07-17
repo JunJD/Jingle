@@ -18,6 +18,7 @@ import { getCustomProviderConfig, upsertCustomProvider } from "./custom-provider
 import { modelSupportsReasoning } from "./model-metadata"
 import {
   assertReasoningEffortSupported,
+  resolveHighestReasoningEffort,
   resolveModelReasoningEffortCapability
 } from "./reasoning-capabilities"
 import { listCatalogModelsByProvider } from "./model-list"
@@ -187,7 +188,7 @@ async function activateProviderForSetup(provider: string): Promise<void> {
   const firstModelCapability = resolveCapabilityForModel(firstModel).capability
 
   await setDefaultModelForUI("llm", firstModel.id, {
-    thinkingEffort: firstModelCapability?.allowedValues.includes("high") ? "high" : null
+    thinkingEffort: resolveHighestReasoningEffort(firstModelCapability)
   })
 }
 

@@ -28,7 +28,7 @@ const THINKING_EFFORT_OPTIONS: Array<{ label: string; value: ThinkingEffort }> =
   { label: "Off - No extended thinking", value: "off" },
   { label: "Low - Minimal thinking, fastest responses", value: "low" },
   { label: "Medium - Moderate thinking", value: "medium" },
-  { label: "High - Deep reasoning (default)", value: "high" },
+  { label: "High - Deep reasoning", value: "high" },
   { label: "Extra high - More reasoning", value: "xhigh" },
   { label: "Max - No constraints on thinking depth", value: "max" }
 ]
