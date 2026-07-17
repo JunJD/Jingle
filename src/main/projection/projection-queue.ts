@@ -7,6 +7,7 @@ export interface ProjectionQueue<TJob> {
 export interface CreateProjectionQueueOptions<TJob> {
   debounceMs: number
   getKey: (job: TJob) => string
+  maxConcurrency?: number
   name: string
   onError?: (job: TJob, error: unknown) => Promise<void> | void
   run: (job: TJob) => Promise<void>
@@ -57,6 +58,14 @@ function getSharedProjectionQueueState<TJob>(key: string): ProjectionQueueState<
 export function createProjectionQueue<TJob>(
   options: CreateProjectionQueueOptions<TJob>
 ): ProjectionQueue<TJob> {
+  if (
+    options.maxConcurrency !== undefined &&
+    (!Number.isFinite(options.maxConcurrency) ||
+      !Number.isInteger(options.maxConcurrency) ||
+      options.maxConcurrency <= 0)
+  ) {
+    throw new Error("Projection queue maxConcurrency must be a positive finite integer.")
+  }
   const state = options.stateKey
     ? getSharedProjectionQueueState<TJob>(options.stateKey)
     : createProjectionQueueState<TJob>()
@@ -91,7 +100,16 @@ export function createProjectionQueue<TJob>(
       state.scheduledJobs.delete(key)
     }
 
-    await Promise.all(jobs.map(([, job]) => runJob(job)))
+    const maxConcurrency = Math.min(jobs.length, options.maxConcurrency ?? jobs.length)
+    let nextJobIndex = 0
+    await Promise.all(
+      Array.from({ length: maxConcurrency }, async () => {
+        while (nextJobIndex < jobs.length) {
+          const job = jobs[nextJobIndex++]
+          if (job) await runJob(job[1])
+        }
+      })
+    )
   }
 
   const queueDrain = (input: { flush: boolean }): void => {

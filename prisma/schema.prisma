@@ -240,10 +240,37 @@ model Run {
   agentTraces            AgentTrace[]
   agentMemorySuggestions AgentMemorySuggestion[]
   agentMemoryInclusions  AgentMemoryInclusion[]
+  assistantContentProjectionJob AssistantContentProjectionJob?
 
   @@index([threadId], map: "idx_runs_thread_id")
   @@index([status], map: "idx_runs_status")
   @@map("runs")
+}
+
+model AssistantContentProjectionJob {
+  runId         String  @id @map("run_id")
+  generation    Int     @default(1)
+  status        String  @default("pending")
+  attemptCount  Int     @default(0) @map("attempt_count")
+  lastError     String? @map("last_error")
+  createdAt     BigInt  @map("created_at")
+  updatedAt     BigInt  @map("updated_at")
+  run           Run     @relation(fields: [runId], references: [runId], onDelete: Cascade)
+  blockedInputs AssistantContentProjectionBlockedInput[]
+
+  @@index([status, runId], map: "idx_assistant_content_projection_jobs_status_run_id")
+  @@map("assistant_content_projection_jobs")
+}
+
+model AssistantContentProjectionBlockedInput {
+  runId          String @map("run_id")
+  messageId      String @map("message_id")
+  sourceRevision String @map("source_revision")
+  reason         String
+  job            AssistantContentProjectionJob @relation(fields: [runId], references: [runId], onDelete: Cascade)
+
+  @@id([runId, messageId])
+  @@map("assistant_content_projection_blocked_inputs")
 }
 
 model AgentMemory {

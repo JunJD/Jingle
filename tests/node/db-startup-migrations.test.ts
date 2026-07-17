@@ -65,9 +65,43 @@ test("first launch applies packaged Prisma migrations to a fresh database", asyn
     `SELECT name FROM sqlite_master WHERE type = 'table'`
   )
   const tableNames = new Set(tableRows.map((row) => row.name))
-  for (const table of ["threads", "projects", "messages", "runs", "checkpoints"]) {
+  for (const table of [
+    "threads",
+    "projects",
+    "messages",
+    "runs",
+    "checkpoints",
+    "assistant_content_projection_jobs",
+    "assistant_content_projection_blocked_inputs"
+  ]) {
     assert.ok(tableNames.has(table), `expected table ${table} to exist after first launch`)
   }
+
+  const blockedInputColumns = await getPrismaClient().$queryRawUnsafe<Array<{ name: string }>>(
+    `PRAGMA table_info("assistant_content_projection_blocked_inputs")`
+  )
+  assert.deepEqual(
+    blockedInputColumns.map((column) => column.name),
+    ["run_id", "message_id", "source_revision", "reason"]
+  )
+  const projectionJobIndexColumns = await getPrismaClient().$queryRawUnsafe<
+    Array<{ name: string }>
+  >(`PRAGMA index_info("idx_assistant_content_projection_jobs_status_run_id")`)
+  assert.deepEqual(
+    projectionJobIndexColumns.map((column) => column.name),
+    ["status", "run_id"]
+  )
+  const recoveryPlan = await getPrismaClient().$queryRawUnsafe<Array<{ detail: string }>>(
+    `EXPLAIN QUERY PLAN
+     SELECT "run_id" FROM "assistant_content_projection_jobs"
+     WHERE "status" IN ('pending', 'failed') AND "run_id" > ''
+     ORDER BY "run_id" ASC LIMIT 100`
+  )
+  assert.ok(
+    recoveryPlan.some((row) =>
+      row.detail.includes("idx_assistant_content_projection_jobs_status_run_id")
+    )
+  )
 })
 
 test("restart after auto-migration is idempotent", async () => {

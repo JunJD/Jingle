@@ -2,6 +2,7 @@ import "./observability/bootstrap"
 import { app, BrowserWindow, ipcMain, nativeImage, protocol } from "electron"
 import { join } from "path"
 import { closeDatabase, initializeDatabase } from "./db/lifecycle"
+import { startAssistantContentProjectionLifecycle } from "./content-cards/projection-queue"
 import { closeRuntimeCheckpointers } from "./checkpointer/runtime-checkpointer-manager"
 import { createMainCompositionRoot, type MainCompositionRoot } from "./composition-root"
 import { createLauncherWindow, showLauncherWindow } from "./windows/launcher-window"
@@ -359,6 +360,7 @@ if (hasSingleInstanceLock) {
 
     // Initialize database
     await initializeDatabase()
+    void startAssistantContentProjectionLifecycle()
 
     // Register IPC handlers
     mainCompositionRoot = createMainCompositionRoot({

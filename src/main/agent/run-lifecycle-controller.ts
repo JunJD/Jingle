@@ -121,7 +121,7 @@ export function createRuntimeRunLifecycleController(input: {
         ...(declinedDecision
           ? {
               cancelAfterDecision: async () => {
-                enqueueAssistantContentProjection({ runId, threadId })
+                void enqueueAssistantContentProjection({ runId })
               }
             }
           : {}),
@@ -156,7 +156,7 @@ export function createRuntimeRunLifecycleController(input: {
     markRunFailed: async ({ error, runId, threadId }) => {
       const failure = toAgentRunFailure("agent:runtime", error)
       const status = await markRunFailed(threadId, runId, failure)
-      enqueueAssistantContentProjection({ runId, threadId })
+      void enqueueAssistantContentProjection({ runId })
       return { failure, status }
     },
     markRunCancelled: async ({ runId, threadId }) => {
@@ -171,7 +171,7 @@ export function createRuntimeRunLifecycleController(input: {
       }),
     recordRunFinished: async (event) => {
       await recordRunFinished(event)
-      enqueueAssistantContentProjection({ runId: event.runId, threadId: event.threadId })
+      void enqueueAssistantContentProjection({ runId: event.runId })
     },
     recordRunInterrupted,
     settleRun: () => undefined,

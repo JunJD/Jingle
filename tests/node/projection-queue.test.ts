@@ -166,3 +166,44 @@ test("projection queue can share state across queue instances", async () => {
 
   assert.deepEqual(runs, ["shared"])
 })
+
+test("projection queue rejects invalid concurrency limits", () => {
+  for (const maxConcurrency of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.throws(
+      () =>
+        createProjectionQueue<string>({
+          debounceMs: 0,
+          getKey: (job) => job,
+          maxConcurrency,
+          name: "ProjectionQueueConcurrencyValidationTest",
+          run: async () => undefined
+        }),
+      /positive finite integer/
+    )
+  }
+})
+
+test("projection queue bounds max in-flight work above one recovery batch", async () => {
+  let inFlight = 0
+  let maxInFlight = 0
+  let completed = 0
+  const queue = createProjectionQueue<number>({
+    debounceMs: 1_000,
+    getKey: String,
+    maxConcurrency: 2,
+    name: "ProjectionQueueBoundedConcurrencyTest",
+    run: async () => {
+      inFlight += 1
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      await delay(1)
+      completed += 1
+      inFlight -= 1
+    }
+  })
+  for (let job = 0; job < 101; job += 1) queue.enqueue(job)
+
+  await queue.flush()
+
+  assert.equal(completed, 101)
+  assert.equal(maxInFlight, 2)
+})
