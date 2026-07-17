@@ -5,6 +5,7 @@ import type { BrowserWindow, IpcMain, IpcMainInvokeEvent, WebContents } from "el
 import {
   assistantContentProjectionFingerprint,
   assistantContentProjectionChangedEventSchema,
+  assistantContentPartsResultSchema,
   type AssistantContentPartsProjection
 } from "../../src/shared/assistant-content-part"
 import {
@@ -155,19 +156,45 @@ function windowFixture() {
 test("content change codecs reject unknown and malformed wire data", () => {
   assert.equal(
     assistantContentProjectionChangedEventSchema.safeParse({
-      contentRevision: SHA_A,
+      kind: "ready",
       messageId: "message-1",
       projectionFingerprint: FINGERPRINT_A,
+      revision: SHA_A,
       threadId: "thread-bound"
     }).success,
     true
   )
   assert.equal(
     assistantContentProjectionChangedEventSchema.safeParse({
-      contentRevision: "bad",
+      kind: "ready",
       messageId: "message-1",
       projectionFingerprint: FINGERPRINT_A,
+      revision: "bad",
       threadId: "thread-bound"
+    }).success,
+    false
+  )
+  assert.equal(
+    assistantContentProjectionChangedEventSchema.safeParse({
+      kind: "issue",
+      revision: "job:2:3",
+      runId: "run-1",
+      status: "blocked",
+      threadId: "thread-bound"
+    }).success,
+    true
+  )
+  assert.equal(
+    assistantContentPartsResultSchema.safeParse({
+      issue: { code: "source-invalid", reason: "noncanonical" },
+      status: "blocked"
+    }).success,
+    true
+  )
+  assert.equal(
+    assistantContentPartsResultSchema.safeParse({
+      issue: { code: "retryable-failure", message: "raw database error" },
+      status: "failed"
     }).success,
     false
   )
@@ -204,15 +231,27 @@ test("content changes publish only to Launcher and windows bound to the same thr
   annotationController.register(new FakeIpcMain() as unknown as IpcMain)
 
   const projectionEvent = {
-    contentRevision: SHA_A,
+    kind: "ready" as const,
     messageId: "message-1",
     projectionFingerprint: FINGERPRINT_A,
+    revision: SHA_A,
     threadId: "thread-bound"
   }
   assistantContentProjectionEvents.publish(projectionEvent)
+  assistantContentProjectionEvents.publish({
+    kind: "issue",
+    revision: "job:1:1",
+    runId: "run-1",
+    status: "failed",
+    threadId: "thread-bound"
+  })
   annotationListener(annotation())
 
-  const expectedChannels = ["contentCards:changed", "contentAnnotations:changed"]
+  const expectedChannels = [
+    "contentCards:changed",
+    "contentCards:changed",
+    "contentAnnotations:changed"
+  ]
   assert.deepEqual(
     cards.launcher.sent.map((event) => event.channel),
     expectedChannels
@@ -403,6 +442,96 @@ test("one window focus owner batches many cards and refreshes only missed finger
 
   stopFocus()
   assert.equal(focusTarget.listeners.size, 0)
+  owner.dispose()
+})
+
+test("one issue invalidation batches card inspection and ready changes refresh only their card", async () => {
+  const inspectionBatches: string[][] = []
+  const refreshed: string[] = []
+  let snapshotRefreshes = 0
+  const owner = createContentWindowHydrationOwner({
+    inspectCards: async (messageIds) => {
+      inspectionBatches.push(messageIds)
+      return messageIds.map((messageId) => ({
+        messageId,
+        projectionFingerprint: FINGERPRINT_A,
+        status: "ready" as const
+      }))
+    },
+    onFailure: () => assert.fail("projection invalidation hydration should not fail")
+  })
+  owner.registerSnapshot("annotations", async () => {
+    snapshotRefreshes += 1
+  })
+  for (const [messageId, fingerprint] of [
+    ["message-a", FINGERPRINT_A],
+    ["message-b", FINGERPRINT_B],
+    ["message-c", FINGERPRINT_A]
+  ] as const) {
+    const registration = owner.registerCard({
+      messageId,
+      refresh: async () => {
+        refreshed.push(messageId)
+      }
+    })
+    registration.updateProjectionFingerprint(fingerprint)
+  }
+
+  await owner.handleProjectionChange({
+    kind: "issue",
+    revision: "job:1:1",
+    runId: "run-1",
+    status: "failed",
+    threadId: "thread-bound"
+  })
+  assert.deepEqual(inspectionBatches, [["message-a", "message-b", "message-c"]])
+  assert.deepEqual(refreshed, ["message-b"])
+  assert.equal(snapshotRefreshes, 0)
+
+  await owner.handleProjectionChange({
+    kind: "ready",
+    messageId: "message-c",
+    projectionFingerprint: FINGERPRINT_B,
+    revision: SHA_B,
+    threadId: "thread-bound"
+  })
+  assert.deepEqual(inspectionBatches, [["message-a", "message-b", "message-c"]])
+  assert.deepEqual(refreshed, ["message-b", "message-c"])
+  assert.equal(snapshotRefreshes, 0)
+  owner.dispose()
+})
+
+test("repeated issue invalidations coalesce while a batched inspection is active", async () => {
+  let inspectCalls = 0
+  let releaseFirstInspection!: () => void
+  const firstInspection = new Promise<void>((resolve) => {
+    releaseFirstInspection = resolve
+  })
+  const owner = createContentWindowHydrationOwner({
+    inspectCards: async (messageIds) => {
+      inspectCalls += 1
+      if (inspectCalls === 1) await firstInspection
+      return messageIds.map((messageId) => ({ messageId, status: "stale" as const }))
+    },
+    onFailure: () => assert.fail("projection invalidation hydration should not fail")
+  })
+  owner.registerCard({ messageId: "message-a", refresh: async () => undefined })
+  const issue = {
+    kind: "issue" as const,
+    revision: "job:1:1",
+    runId: "run-1",
+    status: "failed" as const,
+    threadId: "thread-bound"
+  }
+
+  const first = owner.handleProjectionChange(issue)
+  await waitFor(() => inspectCalls === 1)
+  const second = owner.handleProjectionChange({ ...issue, revision: "job:1:2" })
+  const third = owner.handleProjectionChange({ ...issue, revision: "job:1:3" })
+  releaseFirstInspection()
+  await Promise.all([first, second, third])
+  await waitFor(() => inspectCalls === 2)
+  assert.equal(inspectCalls, 2)
   owner.dispose()
 })
 

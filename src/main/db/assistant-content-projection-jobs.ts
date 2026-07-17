@@ -190,12 +190,13 @@ export async function completeAssistantContentProjection(
 export async function failAssistantContentProjection(
   claim: AssistantContentProjectionClaim,
   error: unknown
-): Promise<void> {
+): Promise<boolean> {
   const message = summarizeAssistantContentProjectionError(error)
-  await getPrismaClient().assistantContentProjectionJob.updateMany({
+  const result = await getPrismaClient().assistantContentProjectionJob.updateMany({
     data: { lastError: message, status: "failed", updatedAt: now() },
     where: { generation: claim.generation, runId: claim.runId }
   })
+  return result.count === 1
 }
 
 export async function blockAssistantContentProjection(

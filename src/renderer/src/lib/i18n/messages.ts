@@ -67,6 +67,10 @@ export interface AppCopy {
     modelRuntimeSelectionInvalid: string
     modelRuntimeSelectionLegacyMissingEffort: string
     modelRuntimeSelectionMissing: string
+    contentCardSourceInvalidJson: string
+    contentCardSourceNoncanonical: string
+    contentCardSyncRetryableFailure: string
+    contentCardSyncTransportFailure: string
     messageContentUnavailable: string
     messageReplayAttachmentUnavailable: string
     messageReplayContentUnavailable: string
@@ -457,6 +461,10 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       modelRuntimeSelectionInvalid: "这个对话的模型运行配置无效，请重新选择模型。",
       modelRuntimeSelectionLegacyMissingEffort: "这个对话缺少推理强度，请重新选择模型。",
       modelRuntimeSelectionMissing: "这个对话尚未选择模型，请先选择模型。",
+      contentCardSourceInvalidJson: "内容卡片无法生成：保存的回答内容已损坏",
+      contentCardSourceNoncanonical: "内容卡片无法生成：保存的回答格式不受支持",
+      contentCardSyncRetryableFailure: "内容卡片同步失败，系统将自动重试",
+      contentCardSyncTransportFailure: "内容卡片暂时无法同步",
       messageContentUnavailable: "这条消息包含无法显示的内容。",
       messageReplayAttachmentUnavailable: "这条消息包含当前无法重新提交的附件。",
       messageReplayContentUnavailable: "这条消息包含当前无法重新提交的内容。",
@@ -881,6 +889,13 @@ export const appCopy: Record<AppLocale, AppCopy> = {
         "This conversation has no saved reasoning effort. Select the model again.",
       modelRuntimeSelectionMissing:
         "This conversation has no model runtime selection. Select a model first.",
+      contentCardSourceInvalidJson:
+        "Content cards cannot be generated because the saved response is corrupted.",
+      contentCardSourceNoncanonical:
+        "Content cards cannot be generated because the saved response format is unsupported.",
+      contentCardSyncRetryableFailure:
+        "Content card synchronization failed and will retry automatically.",
+      contentCardSyncTransportFailure: "Content cards are temporarily unavailable.",
       messageContentUnavailable: "This message contains content that cannot be displayed.",
       messageReplayAttachmentUnavailable:
         "This message contains an attachment that cannot currently be submitted again.",

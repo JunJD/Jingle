@@ -1,8 +1,11 @@
 import {
+  assistantContentProjectionBlockedReasonSchema,
+  assistantContentProjectionJobStatusSchema,
   assistantContentPartIdentitySchema,
   assistantContentProjectionFingerprint,
   type AssistantContentPart,
   type AssistantContentPartsResult,
+  type AssistantContentProjectionBlockedReason,
   type AssistantContentProjectionInspection
 } from "@shared/assistant-content-part"
 import { getPrismaClient } from "../db/client"
@@ -20,6 +23,31 @@ import {
   ensureAssistantContentProjectionScheduled,
   resumeAssistantContentProjectionForRepairedSource
 } from "./projection-queue"
+
+interface ProjectionJobSnapshot {
+  blockedInputs: Array<{
+    messageId: string
+    reason: AssistantContentProjectionBlockedReason
+    sourceRevision: string
+  }>
+  status: ReturnType<typeof assistantContentProjectionJobStatusSchema.parse>
+}
+
+function parseProjectionJobSnapshot(
+  job: {
+    blockedInputs: Array<{ messageId: string; reason: string; sourceRevision: string }>
+    status: string
+  } | null
+): ProjectionJobSnapshot | null {
+  if (!job) return null
+  return {
+    blockedInputs: job.blockedInputs.map((input) => ({
+      ...input,
+      reason: assistantContentProjectionBlockedReasonSchema.parse(input.reason)
+    })),
+    status: assistantContentProjectionJobStatusSchema.parse(job.status)
+  }
+}
 
 export class ContentCardsService {
   async inspectAssistantParts(input: {
@@ -92,7 +120,24 @@ export class ContentCardsService {
   }): Promise<AssistantContentPartsResult> {
     const inspection = await getPrismaClient().$transaction(async (transaction) => {
       const message = await transaction.message.findUnique({
-        select: { content: true, role: true, runId: true },
+        select: {
+          content: true,
+          role: true,
+          run: {
+            select: {
+              assistantContentProjectionJob: {
+                select: {
+                  blockedInputs: {
+                    orderBy: { messageId: "asc" },
+                    select: { messageId: true, reason: true, sourceRevision: true }
+                  },
+                  status: true
+                }
+              }
+            }
+          },
+          runId: true
+        },
         where: { threadId_messageId: input }
       })
       if (!message) return { kind: "missing" as const }
@@ -102,6 +147,7 @@ export class ContentCardsService {
           message: "Content cards require an assistant message."
         })
       }
+      const job = parseProjectionJobSnapshot(message.run?.assistantContentProjectionJob ?? null)
       let currentRevision: string
       try {
         currentRevision = assistantContentRevision(message.content)
@@ -112,6 +158,7 @@ export class ContentCardsService {
             messageId: input.messageId,
             sourceRevision: assistantContentProjectionSourceRevision(message.content)
           },
+          job,
           kind: "invalid" as const,
           runId: message.runId
         }
@@ -119,25 +166,20 @@ export class ContentCardsService {
       try {
         const projection = await readAssistantContentPartsProjection(input, transaction)
         if (projection?.contentRevision === currentRevision) {
-          const blockedInput = message.runId
-            ? await transaction.assistantContentProjectionBlockedInput.findUnique({
-                select: { job: { select: { status: true } } },
-                where: {
-                  runId_messageId: { messageId: input.messageId, runId: message.runId }
-                }
-              })
-            : null
           return {
+            job,
             kind: "ready" as const,
             projection,
             runId: message.runId,
-            shouldResumeBlockedSource: blockedInput?.job.status === "blocked"
+            shouldResumeBlockedSource:
+              job?.status === "blocked" &&
+              job.blockedInputs.some((blockedInput) => blockedInput.messageId === input.messageId)
           }
         }
       } catch (error) {
         if (!isAssistantContentProjectionDecodeError(error)) throw error
       }
-      return { kind: "stale" as const, runId: message.runId }
+      return { job, kind: "stale" as const, runId: message.runId }
     })
 
     if (inspection.kind === "ready") {
@@ -145,6 +187,40 @@ export class ContentCardsService {
         void resumeAssistantContentProjectionForRepairedSource(inspection.runId, input.messageId)
       }
       return { projection: inspection.projection, status: "ready" }
+    }
+    if (inspection.job?.status === "failed") {
+      return { issue: { code: "retryable-failure" }, status: "failed" }
+    }
+    if (inspection.job?.status === "blocked") {
+      if (!inspection.runId) {
+        throw new Error("Blocked assistant content projection has no durable run owner.")
+      }
+      const blockedInput = inspection.job.blockedInputs.find(
+        (entry) => entry.messageId === input.messageId
+      )
+      if (
+        inspection.kind === "invalid" &&
+        blockedInput &&
+        blockedInput.sourceRevision !== inspection.blockedSource.sourceRevision
+      ) {
+        await ensureAssistantContentProjectionScheduled(inspection.runId, {
+          allowBlockedRetry: false,
+          blockedSource: inspection.blockedSource
+        })
+        return { status: "pending-stream" }
+      }
+      if (inspection.kind === "stale" && blockedInput) {
+        await resumeAssistantContentProjectionForRepairedSource(inspection.runId, input.messageId)
+        return { status: "pending-stream" }
+      }
+      const persistedBlockedInput = inspection.job.blockedInputs[0]
+      if (!persistedBlockedInput) {
+        throw new Error("Blocked assistant content projection has no durable blocked input.")
+      }
+      return {
+        issue: { code: "source-invalid", reason: persistedBlockedInput.reason },
+        status: "blocked"
+      }
     }
     if (inspection.kind === "invalid" && inspection.runId) {
       await ensureAssistantContentProjectionScheduled(inspection.runId, {

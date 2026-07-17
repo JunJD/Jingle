@@ -58,20 +58,51 @@ export const assistantContentPartIdentitySchema = partBaseSchema.extend({
   kind: assistantContentPartKindSchema
 })
 
+const assistantContentRevisionSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
+const assistantContentProjectionFingerprintSchema = z.string().regex(/^fnv1a64:[a-f0-9]{16}$/)
+
 export const assistantContentPartsProjectionSchema = z.object({
-  contentRevision: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  contentRevision: assistantContentRevisionSchema,
   parts: z.array(assistantContentPartSchema),
   schemaVersion: z.literal(1)
 })
 
-export const assistantContentProjectionChangedEventSchema = z
-  .object({
-    contentRevision: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-    messageId: z.string().min(1),
-    projectionFingerprint: z.string().regex(/^fnv1a64:[a-f0-9]{16}$/),
-    threadId: z.string().min(1)
-  })
-  .strict()
+export const assistantContentProjectionJobStatusSchema = z.enum([
+  "pending",
+  "running",
+  "failed",
+  "blocked",
+  "completed"
+])
+
+export const assistantContentProjectionBlockedReasonSchema = z.enum([
+  "invalid-json",
+  "noncanonical"
+])
+export const assistantContentProjectionJobRevisionSchema = z
+  .string()
+  .regex(/^job:[1-9]\d*:[1-9]\d*$/)
+
+export const assistantContentProjectionChangedEventSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("ready"),
+      messageId: z.string().min(1),
+      projectionFingerprint: assistantContentProjectionFingerprintSchema,
+      revision: assistantContentRevisionSchema,
+      threadId: z.string().min(1)
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("issue"),
+      revision: assistantContentProjectionJobRevisionSchema,
+      runId: z.string().min(1),
+      status: z.enum(["blocked", "failed"]),
+      threadId: z.string().min(1)
+    })
+    .strict()
+])
 
 export const assistantContentProjectionInspectionSchema = z.discriminatedUnion("status", [
   z
@@ -89,8 +120,27 @@ export const assistantContentProjectionInspectionListSchema = z.array(
 )
 
 export const assistantContentPartsResultSchema = z.discriminatedUnion("status", [
-  z.object({ projection: assistantContentPartsProjectionSchema, status: z.literal("ready") }),
-  z.object({ status: z.literal("pending-stream") })
+  z
+    .object({ projection: assistantContentPartsProjectionSchema, status: z.literal("ready") })
+    .strict(),
+  z.object({ status: z.literal("pending-stream") }).strict(),
+  z
+    .object({
+      issue: z
+        .object({
+          code: z.literal("source-invalid"),
+          reason: assistantContentProjectionBlockedReasonSchema
+        })
+        .strict(),
+      status: z.literal("blocked")
+    })
+    .strict(),
+  z
+    .object({
+      issue: z.object({ code: z.literal("retryable-failure") }).strict(),
+      status: z.literal("failed")
+    })
+    .strict()
 ])
 
 export type AssistantContentPart = z.infer<typeof assistantContentPartSchema>
@@ -98,10 +148,22 @@ export type AssistantContentPartsProjection = z.infer<typeof assistantContentPar
 export type AssistantContentProjectionChangedEvent = z.infer<
   typeof assistantContentProjectionChangedEventSchema
 >
+export type AssistantContentProjectionBlockedReason = z.infer<
+  typeof assistantContentProjectionBlockedReasonSchema
+>
 export type AssistantContentProjectionInspection = z.infer<
   typeof assistantContentProjectionInspectionSchema
 >
 export type AssistantContentPartsResult = z.infer<typeof assistantContentPartsResultSchema>
+
+export function assistantContentProjectionJobRevision(input: {
+  attemptCount: number
+  generation: number
+}): string {
+  return assistantContentProjectionJobRevisionSchema.parse(
+    `job:${input.generation}:${input.attemptCount}`
+  )
+}
 
 export function assistantContentProjectionFingerprint(projection: {
   contentRevision: string

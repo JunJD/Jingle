@@ -216,6 +216,15 @@ test("transient projection writes remain durable and retry without changing the 
   `)
 
   assert.equal(await markAssistantContentProjectionDirty("run-content-projection-failure"), true)
+  const issueStatesAtDelivery: Array<Promise<string | null>> = []
+  const issueEvents: Array<{ revision: string; status: string }> = []
+  const stopIssueEvents = assistantContentProjectionEvents.onChanged((event) => {
+    if (event.kind !== "issue" || event.runId !== "run-content-projection-failure") return
+    issueEvents.push({ revision: event.revision, status: event.status })
+    issueStatesAtDelivery.push(
+      readAssistantContentProjectionJob(event.runId).then((job) => job?.status ?? null)
+    )
+  })
   await startAssistantContentProjectionLifecycle()
   const failedJob = await waitFor(
     () => readAssistantContentProjectionJob("run-content-projection-failure"),
@@ -224,6 +233,15 @@ test("transient projection writes remain durable and retry without changing the 
   assert.equal(failedJob?.status, "failed")
   assert.equal(failedJob?.attemptCount, 1)
   assert.ok((failedJob?.lastError ?? "").length > 0)
+  assert.deepEqual(issueEvents, [{ revision: "job:1:1", status: "failed" }])
+  assert.deepEqual(await Promise.all(issueStatesAtDelivery), ["failed"])
+  assert.deepEqual(
+    await new ContentCardsService().getAssistantParts({
+      messageId: "assistant-message-failure",
+      threadId: "thread-content-projection-failure"
+    }),
+    { issue: { code: "retryable-failure" }, status: "failed" }
+  )
   await delay(100)
   assert.equal(
     (await readAssistantContentProjectionJob("run-content-projection-failure"))?.attemptCount,
@@ -248,6 +266,7 @@ test("transient projection writes remain durable and retry without changing the 
   assert.ok(
     (await readDiagnosticEventCodes()).includes("assistant_content_projection.execution_failed")
   )
+  stopIssueEvents()
   await flushAssistantContentProjection()
 })
 
@@ -313,9 +332,9 @@ test("a committed projection change is published when a newer generation wins co
   const changes: Array<{ contentRevision: string; projectionFingerprint: string }> = []
   const projectionsAtDelivery: Array<ReturnType<typeof readAssistantContentPartsProjection>> = []
   const stopChanges = assistantContentProjectionEvents.onChanged((event) => {
-    if (event.messageId === messageId && event.threadId === threadId) {
+    if (event.kind === "ready" && event.messageId === messageId && event.threadId === threadId) {
       changes.push({
-        contentRevision: event.contentRevision,
+        contentRevision: event.revision,
         projectionFingerprint: event.projectionFingerprint
       })
       projectionsAtDelivery.push(readAssistantContentPartsProjection({ messageId, threadId }))
@@ -877,6 +896,17 @@ test("a malformed assistant message blocks once while valid siblings remain repa
       }
     }
   })
+  assert.deepEqual(
+    await new ContentCardsService().getAssistantParts({
+      messageId: "assistant-message-core-boundary-good",
+      threadId: "thread-content-projection-core-boundary"
+    }),
+    { issue: { code: "source-invalid", reason: "invalid-json" }, status: "blocked" }
+  )
+  assert.equal(
+    (await readAssistantContentProjectionJob("run-content-projection-core-boundary"))?.attemptCount,
+    1
+  )
   await flushAssistantContentProjection()
   await closeDatabase()
   await initializeDatabase()
@@ -1020,12 +1050,26 @@ test("malformed input stays hidden without replacing durable card or annotation 
     data: { content: "{" },
     where: { threadId_messageId: { messageId, threadId } }
   })
+  const blockedStatesAtDelivery: Array<Promise<string | null>> = []
+  const blockedEvents: Array<{ revision: string; status: string }> = []
+  const stopBlockedEvents = assistantContentProjectionEvents.onChanged((event) => {
+    if (event.kind !== "issue" || event.runId !== runId) return
+    blockedEvents.push({ revision: event.revision, status: event.status })
+    blockedStatesAtDelivery.push(
+      readAssistantContentProjectionJob(event.runId).then((job) => job?.status ?? null)
+    )
+  })
   await enqueueAssistantContentProjection({ runId })
   await flushAssistantContentProjection()
+  stopBlockedEvents()
   assert.equal((await readAssistantContentProjectionJob(runId))?.status, "blocked")
+  assert.deepEqual(blockedEvents, [{ revision: "job:1:2", status: "blocked" }])
+  assert.deepEqual(await Promise.all(blockedStatesAtDelivery), ["blocked"])
   assert.deepEqual(await new ContentCardsService().getAssistantParts({ messageId, threadId }), {
-    status: "pending-stream"
+    issue: { code: "source-invalid", reason: "invalid-json" },
+    status: "blocked"
   })
+  assert.equal((await readAssistantContentProjectionJob(runId))?.attemptCount, 2)
   assert.deepEqual(
     (await readAssistantContentPartsProjection({ messageId, threadId }))?.parts.map(
       (part) => part.id
@@ -1196,8 +1240,8 @@ test("content-card hydrate rejects a stale projection and schedules the canonica
   const changedRevisions: string[] = []
   const changedFingerprints: string[] = []
   const stopChanges = assistantContentProjectionEvents.onChanged((event) => {
-    if (event.messageId === messageId && event.threadId === threadId) {
-      changedRevisions.push(event.contentRevision)
+    if (event.kind === "ready" && event.messageId === messageId && event.threadId === threadId) {
+      changedRevisions.push(event.revision)
       changedFingerprints.push(event.projectionFingerprint)
     }
   })

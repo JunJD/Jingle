@@ -3,7 +3,8 @@ import { useEffect, useState } from "react"
 import { extractMessageText } from "@shared/message-content"
 import {
   assistantContentProjectionFingerprint,
-  type AssistantContentPart
+  type AssistantContentPart,
+  type AssistantContentPartsResult
 } from "@shared/assistant-content-part"
 import type { ContentCardIdentity } from "@shared/content-card"
 import type { ContentSelectionDraft } from "@shared/content-selection"
@@ -18,7 +19,32 @@ import {
   createCanonicalHydrationOwner,
   reportCanonicalContentFailure
 } from "@/lib/canonical-content-hydration"
+import { useI18n } from "@/lib/i18n"
+import type { AppCopy } from "@/lib/i18n/messages"
 import { useContentWindowHydration } from "./ContentWindowHydrationContext"
+
+type DurableContentSyncIssue = Extract<
+  AssistantContentPartsResult,
+  { status: "blocked" | "failed" }
+>["issue"]
+type ContentSyncIssue = DurableContentSyncIssue | { code: "transport-failure" }
+
+function syncIssueMessage(issue: ContentSyncIssue, copy: AppCopy["chat"]): string {
+  if (issue.code === "transport-failure") return copy.contentCardSyncTransportFailure
+  if (issue.code === "retryable-failure") return copy.contentCardSyncRetryableFailure
+  return issue.reason === "invalid-json"
+    ? copy.contentCardSourceInvalidJson
+    : copy.contentCardSourceNoncanonical
+}
+
+function ContentSyncIssueNotice(props: { issue: ContentSyncIssue }): React.JSX.Element {
+  const { copy } = useI18n()
+  return (
+    <p className="mt-2 text-[var(--jingle-font-meta)] text-destructive" role="alert">
+      {syncIssueMessage(props.issue, copy.chat)}
+    </p>
+  )
+}
 
 function identityFor(
   message: ThreadMessage,
@@ -179,8 +205,13 @@ export function AssistantContentCards(props: {
   const [loadedProjection, setLoadedProjection] = useState<LoadedAssistantContentProjection | null>(
     null
   )
-  const [syncIssue, setSyncIssue] = useState<{ messageId: string; threadId: string } | null>(null)
-  const syncFailed = syncIssue?.messageId === message.id && syncIssue.threadId === threadId
+  const [syncIssue, setSyncIssue] = useState<{
+    issue: ContentSyncIssue
+    messageId: string
+    threadId: string
+  } | null>(null)
+  const currentSyncIssue =
+    syncIssue?.messageId === message.id && syncIssue.threadId === threadId ? syncIssue.issue : null
   const projection = projectionForAssistantContentSource({
     isStreaming,
     loaded: loadedProjection,
@@ -204,7 +235,7 @@ export function AssistantContentCards(props: {
           attemptController.signal
         ),
       onFailure: ({ attempt }) => {
-        setSyncIssue({ messageId: message.id, threadId })
+        setSyncIssue({ issue: { code: "transport-failure" }, messageId: message.id, threadId })
         if (attempt === 1) {
           reportCanonicalContentFailure({
             operation: "hydrate-content-card",
@@ -213,10 +244,16 @@ export function AssistantContentCards(props: {
         }
       },
       onSuccess: (result) => {
+        if (result.status === "blocked" || result.status === "failed") {
+          setLoadedProjection(null)
+          cardRegistration?.updateProjectionFingerprint(null)
+          setSyncIssue({ issue: result.issue, messageId: message.id, threadId })
+          return
+        }
         setSyncIssue((current) =>
           current?.messageId === message.id && current.threadId === threadId ? null : current
         )
-        if (result.status !== "ready") return
+        if (result.status === "pending-stream") return
         setLoadedProjection({
           messageId: message.id,
           projection: result.projection,
@@ -233,28 +270,9 @@ export function AssistantContentCards(props: {
       messageId: message.id,
       refresh: requestHydration
     })
-    const unsubscribe = window.api.contentCards.onChanged((event) => {
-      if (event.messageId !== message.id || event.threadId !== threadId) return
-      setLoadedProjection((current) => {
-        const currentFingerprint = current
-          ? assistantContentProjectionFingerprint(current.projection)
-          : null
-        if (
-          current?.messageId !== message.id ||
-          current.threadId !== threadId ||
-          currentFingerprint === event.projectionFingerprint
-        ) {
-          return current
-        }
-        return null
-      })
-      cardRegistration?.updateProjectionFingerprint(null)
-      void requestHydration()
-    })
     void requestHydration()
     return () => {
       attemptController.abort()
-      unsubscribe()
       cardRegistration?.dispose()
       hydration.dispose()
     }
@@ -264,55 +282,58 @@ export function AssistantContentCards(props: {
     return text.trim() ? (
       <>
         <MessageResponse isAnimating={isStreaming}>{text}</MessageResponse>
-        {syncFailed && !isStreaming ? (
-          <p className="mt-2 text-[var(--jingle-font-meta)] text-destructive" role="alert">
-            内容卡片暂时无法同步
-          </p>
+        {currentSyncIssue && !isStreaming ? (
+          <ContentSyncIssueNotice issue={currentSyncIssue} />
         ) : null}
       </>
     ) : null
   }
 
-  if (projection.parts.length === 0) return null
+  if (projection.parts.length === 0) {
+    return currentSyncIssue ? <ContentSyncIssueNotice issue={currentSyncIssue} /> : null
+  }
   return (
-    <div className="space-y-[var(--jingle-space-3)]">
-      {projection.parts.map((part) => {
-        const textValue = partText(part)
-        const identity = identityFor(message, part, threadId)
-        const selection = selectionFor(identity, textValue, false)
-        let content: React.ReactNode
-        if (part.kind === "code") {
-          content = <CodeSurface code={part.payload.code} language={part.payload.language} />
-        } else if (part.kind === "diff") {
-          content = <DiffSurface patch={part.payload.patch} />
-        } else if (part.kind === "table") {
-          content = <TableSurface payload={part.payload} />
-        } else if (part.kind === "mermaid") {
-          content = (
-            <MessageResponse
-              isAnimating={false}
-            >{`\`\`\`mermaid\n${part.payload.source}\n\`\`\``}</MessageResponse>
-          )
-        } else {
-          content = <MessageResponse isAnimating={false}>{part.payload.markdown}</MessageResponse>
-        }
-        return (
-          <ContentCardFrame
-            identity={identity}
-            key={identity.cardId}
-            selection={selection}
-            title={titleFor(part.kind)}
-          >
-            <div
-              data-assistant-message-id={message.id}
-              data-assistant-message-streaming={isStreaming ? "true" : "false"}
-              data-assistant-selection-source={part.kind === "mermaid" ? undefined : "true"}
+    <>
+      <div className="space-y-[var(--jingle-space-3)]">
+        {projection.parts.map((part) => {
+          const textValue = partText(part)
+          const identity = identityFor(message, part, threadId)
+          const selection = selectionFor(identity, textValue, false)
+          let content: React.ReactNode
+          if (part.kind === "code") {
+            content = <CodeSurface code={part.payload.code} language={part.payload.language} />
+          } else if (part.kind === "diff") {
+            content = <DiffSurface patch={part.payload.patch} />
+          } else if (part.kind === "table") {
+            content = <TableSurface payload={part.payload} />
+          } else if (part.kind === "mermaid") {
+            content = (
+              <MessageResponse
+                isAnimating={false}
+              >{`\`\`\`mermaid\n${part.payload.source}\n\`\`\``}</MessageResponse>
+            )
+          } else {
+            content = <MessageResponse isAnimating={false}>{part.payload.markdown}</MessageResponse>
+          }
+          return (
+            <ContentCardFrame
+              identity={identity}
+              key={identity.cardId}
+              selection={selection}
+              title={titleFor(part.kind)}
             >
-              {content}
-            </div>
-          </ContentCardFrame>
-        )
-      })}
-    </div>
+              <div
+                data-assistant-message-id={message.id}
+                data-assistant-message-streaming={isStreaming ? "true" : "false"}
+                data-assistant-selection-source={part.kind === "mermaid" ? undefined : "true"}
+              >
+                {content}
+              </div>
+            </ContentCardFrame>
+          )
+        })}
+      </div>
+      {currentSyncIssue ? <ContentSyncIssueNotice issue={currentSyncIssue} /> : null}
+    </>
   )
 }

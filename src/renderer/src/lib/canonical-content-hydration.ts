@@ -1,4 +1,7 @@
-import type { AssistantContentProjectionInspection } from "@shared/assistant-content-part"
+import type {
+  AssistantContentProjectionChangedEvent,
+  AssistantContentProjectionInspection
+} from "@shared/assistant-content-part"
 
 export interface CanonicalHydrationFailure {
   attempt: number
@@ -25,6 +28,7 @@ interface ContentWindowHydrationOptions {
 
 export interface ContentWindowHydrationOwner {
   dispose(): void
+  handleProjectionChange(event: AssistantContentProjectionChangedEvent): Promise<void>
   registerCard(input: { messageId: string; refresh: () => Promise<void> }): {
     dispose(): void
     updateProjectionFingerprint(fingerprint: string | null): void
@@ -250,30 +254,40 @@ export function createContentWindowHydrationOwner(
   let lifecycleGeneration = 0
   let stopFocus: (() => void) | null = null
 
+  const refreshCards = async (): Promise<void> => {
+    const registrations = [...cards.entries()]
+    const inspections = new Map<string, AssistantContentProjectionInspection>()
+    for (let index = 0; index < registrations.length; index += batchSize) {
+      const messageIds = registrations
+        .slice(index, index + batchSize)
+        .map(([messageId]) => messageId)
+      for (const inspection of await attemptGate.run(() => options.inspectCards(messageIds))) {
+        inspections.set(inspection.messageId, inspection)
+      }
+    }
+    const staleRefreshes = registrations.flatMap(([messageId, registration]) => {
+      const inspection = inspections.get(messageId)
+      if (
+        inspection?.status === "ready" &&
+        registration.projectionFingerprint === inspection.projectionFingerprint
+      ) {
+        return []
+      }
+      return [registration.refresh]
+    })
+    await runBounded(staleRefreshes, refreshConcurrency)
+  }
+
+  const cardHydration = createCanonicalHydrationOwner({
+    load: refreshCards,
+    onFailure: options.onFailure,
+    onSuccess: () => undefined
+  })
+
   const hydration = createCanonicalHydrationOwner({
     load: async () => {
       await runBounded([...snapshots.values()], refreshConcurrency)
-      const registrations = [...cards.entries()]
-      const inspections = new Map<string, AssistantContentProjectionInspection>()
-      for (let index = 0; index < registrations.length; index += batchSize) {
-        const messageIds = registrations
-          .slice(index, index + batchSize)
-          .map(([messageId]) => messageId)
-        for (const inspection of await attemptGate.run(() => options.inspectCards(messageIds))) {
-          inspections.set(inspection.messageId, inspection)
-        }
-      }
-      const staleRefreshes = registrations.flatMap(([messageId, registration]) => {
-        const inspection = inspections.get(messageId)
-        if (
-          inspection?.status === "ready" &&
-          registration.projectionFingerprint === inspection.projectionFingerprint
-        ) {
-          return []
-        }
-        return [registration.refresh]
-      })
-      await runBounded(staleRefreshes, refreshConcurrency)
+      await cardHydration.request({ resetFailures: true })
     },
     onFailure: options.onFailure,
     onSuccess: () => undefined
@@ -287,11 +301,22 @@ export function createContentWindowHydrationOwner(
     cards.clear()
     snapshots.clear()
     hydration.dispose()
+    cardHydration.dispose()
     attemptGate.dispose()
   }
 
   return {
     dispose,
+    handleProjectionChange: (event) => {
+      if (disposed) return Promise.resolve()
+      if (event.kind === "issue") return cardHydration.request({ resetFailures: true })
+      const registration = cards.get(event.messageId)
+      if (!registration || registration.projectionFingerprint === event.projectionFingerprint) {
+        return Promise.resolve()
+      }
+      registration.projectionFingerprint = null
+      return registration.refresh()
+    },
     registerCard: ({ messageId, refresh }) => {
       const registration: {
         projectionFingerprint: string | null

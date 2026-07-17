@@ -104,7 +104,9 @@ export class ContentCardsController {
           recoverable: true,
           refs: [
             { id: event.threadId, kind: "thread" },
-            { id: event.messageId, kind: "message" }
+            event.kind === "ready"
+              ? { id: event.messageId, kind: "message" }
+              : { id: event.runId, kind: "agent-run" }
           ],
           stateImpact: "content_cards_stale_notification_missed",
           summary: "Assistant content projection change delivery failed"

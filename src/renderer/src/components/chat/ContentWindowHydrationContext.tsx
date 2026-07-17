@@ -29,7 +29,16 @@ export function ContentWindowHydrationProvider(props: {
     [threadId]
   )
 
-  useEffect(() => hydration.start(window), [hydration])
+  useEffect(() => {
+    const stopHydration = hydration.start(window)
+    const stopChanges = window.api.contentCards.onChanged((event) => {
+      if (event.threadId === threadId) void hydration.handleProjectionChange(event)
+    })
+    return () => {
+      stopChanges()
+      stopHydration()
+    }
+  }, [hydration, threadId])
 
   return (
     <ContentWindowHydrationContext.Provider value={hydration}>

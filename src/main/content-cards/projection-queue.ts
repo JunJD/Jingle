@@ -10,7 +10,10 @@ import {
   resumeAssistantContentProjectionForRepairedMessage
 } from "../db/assistant-content-projection-jobs"
 import { createProjectionQueue } from "../projection/projection-queue"
-import { assistantContentProjectionChangedEventSchema } from "@shared/assistant-content-part"
+import {
+  assistantContentProjectionChangedEventSchema,
+  assistantContentProjectionJobRevision
+} from "@shared/assistant-content-part"
 import { assistantContentProjectionEvents } from "./events"
 
 interface AssistantContentProjectionJob {
@@ -66,9 +69,10 @@ async function publishChangedProjections(input: {
     try {
       assistantContentProjectionEvents.publish(
         assistantContentProjectionChangedEventSchema.parse({
-          contentRevision: changed.contentRevision,
+          kind: "ready",
           messageId: changed.messageId,
           projectionFingerprint: changed.projectionFingerprint,
+          revision: changed.contentRevision,
           threadId: input.threadId
         })
       )
@@ -82,6 +86,32 @@ async function publishChangedProjections(input: {
           "Assistant content projection changed but its renderer event could not be published"
       })
     }
+  }
+}
+
+async function publishProjectionIssueStatus(input: {
+  claim: NonNullable<Awaited<ReturnType<typeof claimAssistantContentProjection>>>
+  status: "blocked" | "failed"
+}): Promise<void> {
+  try {
+    assistantContentProjectionEvents.publish(
+      assistantContentProjectionChangedEventSchema.parse({
+        kind: "issue",
+        revision: assistantContentProjectionJobRevision(input.claim),
+        runId: input.claim.runId,
+        status: input.status,
+        threadId: input.claim.threadId
+      })
+    )
+  } catch (error) {
+    await recordProjectionIssue({
+      error,
+      eventCode: "assistant_content_projection.change_delivery_failed",
+      operation: "publish-projection-status-change",
+      runId: input.claim.runId,
+      summary:
+        "Assistant content projection status changed but its renderer event could not be published"
+    })
   }
 }
 
@@ -173,6 +203,7 @@ const assistantContentProjectionQueue = createProjectionQueue<AssistantContentPr
           return
         }
         clearRetry(job.runId)
+        await publishProjectionIssueStatus({ claim, status: "blocked" })
         await recordProjectionIssue({
           error: blocked.error,
           eventCode: "assistant_content_projection.input_blocked",
@@ -199,7 +230,8 @@ const assistantContentProjectionQueue = createProjectionQueue<AssistantContentPr
         return
       }
       try {
-        await failAssistantContentProjection(claim, error)
+        const persisted = await failAssistantContentProjection(claim, error)
+        if (persisted) await publishProjectionIssueStatus({ claim, status: "failed" })
         scheduleRetry(job, claim.attemptCount)
       } catch (persistenceError) {
         await recordProjectionIssue({
