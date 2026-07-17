@@ -85,6 +85,7 @@ function showMain(): void {
 let pendingSettingsNavigation: SettingsWindowNavigationPayload | null = null
 let settingsRendererReady = false
 let pendingOAuthCallbackUrl: string | null = null
+type OpenUrlHandling = { kind: "handled"; owner: "oauth" } | { kind: "unhandled" }
 let shutdownComplete = false
 let shutdownPromise: Promise<void> | null = null
 const DIAGNOSTICS_SHUTDOWN_FLUSH_TIMEOUT_MS = 1_500
@@ -200,19 +201,20 @@ function openIpcNetworkWindow(): void {
   showIpcNetworkWindow(getOrCreateIpcNetworkWindow())
 }
 
-function handleOpenUrl(rawUrl: string): void {
+function handleOpenUrl(rawUrl: string): OpenUrlHandling {
   if (!isJingleOAuthCallbackUrl(rawUrl)) {
-    return
+    return { kind: "unhandled" }
   }
 
   if (!mainCompositionRoot) {
     pendingOAuthCallbackUrl = rawUrl
-    return
+    return { kind: "handled", owner: "oauth" }
   }
 
   void mainCompositionRoot.handleOAuthCallback(rawUrl).catch((error) => {
     console.error("[Main] Failed to handle OAuth callback:", error)
   })
+  return { kind: "handled", owner: "oauth" }
 }
 
 function registerJingleProtocolClient(): void {
@@ -309,8 +311,7 @@ if (hasSingleInstanceLock) {
 
   app.on("second-instance", (_event, commandLine) => {
     const protocolUrl = findJingleProtocolUrl(commandLine)
-    if (protocolUrl) {
-      handleOpenUrl(protocolUrl)
+    if (protocolUrl && handleOpenUrl(protocolUrl).kind === "handled") {
       return
     }
 
@@ -319,7 +320,9 @@ if (hasSingleInstanceLock) {
 
   app.on("open-url", (event, rawUrl) => {
     event.preventDefault()
-    handleOpenUrl(rawUrl)
+    if (handleOpenUrl(rawUrl).kind === "unhandled") {
+      showMain()
+    }
   })
 
   app.whenReady().then(async () => {

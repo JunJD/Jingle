@@ -17,12 +17,40 @@ test("renderer loading always projects an explicit window kind", async () => {
 
 test("desktop lifecycle routes durable entry points to Main and keeps the resident process", async () => {
   const main = await source("src/main/index.ts")
-  assert.match(main, /app\.on\("second-instance"[\s\S]*?showMain\(\)/)
+  const secondInstance = main.match(
+    /app\.on\("second-instance"[\s\S]*?\n {2}\}\)\n\n {2}app\.on\("open-url"/
+  )
+  const openUrl = main.match(/app\.on\("open-url"[\s\S]*?\n {2}\}\)\n\n {2}app\.whenReady/)
+
+  assert.ok(secondInstance)
+  assert.ok(openUrl)
+  assert.match(secondInstance[0], /protocolUrl && handleOpenUrl\(protocolUrl\)\.kind === "handled"/)
+  assert.match(secondInstance[0], /showMain\(\)/)
+  assert.match(openUrl[0], /handleOpenUrl\(rawUrl\)\.kind === "unhandled"[\s\S]*?showMain\(\)/)
   assert.match(main, /app\.on\("activate"[\s\S]*?showMain\(\)/)
   assert.match(main, /openMainWindow: showMain/)
   const allClosed = main.match(/app\.on\("window-all-closed"[\s\S]*?\n\}\)/)
   assert.ok(allClosed)
   assert.doesNotMatch(allClosed[0], /app\.quit\(\)/)
+})
+
+test("custom URL handling claims only canonical OAuth callbacks", async () => {
+  const main = await source("src/main/index.ts")
+  const handler = main.match(
+    /function handleOpenUrl\(rawUrl: string\): OpenUrlHandling \{[\s\S]*?\n\}/
+  )
+
+  assert.ok(handler)
+  assert.match(handler[0], /if \(!isJingleOAuthCallbackUrl\(rawUrl\)\)/)
+  assert.match(handler[0], /return \{ kind: "unhandled" \}/)
+  assert.match(
+    handler[0],
+    /pendingOAuthCallbackUrl = rawUrl[\s\S]*?return \{ kind: "handled", owner: "oauth" \}/
+  )
+  assert.match(
+    handler[0],
+    /mainCompositionRoot\.handleOAuthCallback\(rawUrl\)[\s\S]*?return \{ kind: "handled", owner: "oauth" \}/
+  )
 })
 
 test("cold start requests Primary Main before restoring session windows", async () => {
