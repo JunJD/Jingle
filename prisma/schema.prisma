@@ -273,6 +273,15 @@ model AssistantContentProjectionBlockedInput {
   @@map("assistant_content_projection_blocked_inputs")
 }
 
+model ComputerUseAttempt {
+  attemptId   String @id @map("attempt_id")
+  phase       String
+  revision    Int
+  payloadJson String @map("payload_json")
+
+  @@map("computer_use_attempts")
+}
+
 model AgentMemory {
   memoryId       String                 @id @map("memory_id")
   type           String

@@ -33,6 +33,7 @@ const REQUIRED_TABLES = [
   "assistant_content_parts",
   "assistant_content_projection_jobs",
   "assistant_content_projection_blocked_inputs",
+  "computer_use_attempts",
   "assistants",
   "session_bindings",
   "hitl_requests",
@@ -81,7 +82,13 @@ const REQUIRED_TABLE_COLUMNS = {
     "created_at",
     "updated_at"
   ],
-  assistant_content_projection_blocked_inputs: ["run_id", "message_id", "source_revision", "reason"]
+  assistant_content_projection_blocked_inputs: [
+    "run_id",
+    "message_id",
+    "source_revision",
+    "reason"
+  ],
+  computer_use_attempts: ["attempt_id", "phase", "revision", "payload_json"]
 } as const
 const DATABASE_SCHEMA_RECOVERY_HINT =
   "The app applies packaged Prisma migrations automatically during startup; if this is a packaged install, restart Jingle and check the main-process logs. In development, run `node scripts/run-prisma-jingle-db.mjs migrate deploy`."

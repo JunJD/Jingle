@@ -78,6 +78,16 @@ export interface ComputerUseActionLedgerPort {
   }): Promise<ComputerUseActionLedgerPortTransition>
 }
 
+export function parseComputerUseActionAttempt(
+  input: unknown,
+  expectedAttemptId?: string
+): ComputerUseActionAttempt {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("Computer-use action attempt must be an object.")
+  }
+  return normalizeAttempt(input as ComputerUseActionAttempt, expectedAttemptId)
+}
+
 export class ComputerUseActionLedger {
   private readonly attempts = new Map<string, ComputerUseActionAttempt>()
   private readonly attemptSources = new Map<string, ComputerUseActionAttemptSource>()

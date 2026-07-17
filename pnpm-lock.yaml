@@ -26,6 +26,9 @@ importers:
       '@jingle/agent-react':
         specifier: workspace:*
         version: link:packages/agent-react
+      '@jingle/computer-use-core':
+        specifier: workspace:*
+        version: link:packages/computer-use-core
       '@jingle/devtools-network':
         specifier: workspace:*
         version: link:packages/devtools-network

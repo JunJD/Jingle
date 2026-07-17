@@ -60,6 +60,10 @@ export {
   upsertHitlRequest
 } from "./hitl"
 export type { HitlRequestRow, UpsertHitlRequestInput } from "./hitl"
+export {
+  createPrismaComputerUseActionLedgerPort,
+  PrismaComputerUseActionLedgerPort
+} from "./computer-use-action-ledger"
 export { rebuildMessageSearchIndexFromMessages } from "./message-search"
 export {
   checkpointMessageStateIncludesMessage,

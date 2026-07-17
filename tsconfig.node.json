@@ -48,6 +48,9 @@
       "@jingle/agent-react": [
         "packages/agent-react/src/index.ts"
       ],
+      "@jingle/computer-use-core": [
+        "packages/computer-use-core/src/index.ts"
+      ],
       "@jingle/langchain-agent-harness": [
         "packages/langchain-agent-harness/src/index.ts"
       ],
