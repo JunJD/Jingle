@@ -1,6 +1,7 @@
 import * as React from "react"
 import * as ReactJsxDevRuntime from "react/jsx-dev-runtime"
 import * as ReactJsxRuntime from "react/jsx-runtime"
+import { ExtensionRuntimeRequestError } from "@jingle/extension-api"
 import type {
   ExtensionHostRequest,
   ExtensionHostResponse,
@@ -118,6 +119,9 @@ async function startRuntime(
         send: (transportRequest) => requestHost(sessionId, transportRequest)
       })
     const resolvedContext = context
+    const reportFatalError = (error: unknown): void => {
+      postRuntimeError(sessionId, error)
+    }
 
     if (command.mode === "no-view") {
       const navigation = createExtensionRuntimeNavigation({
@@ -153,6 +157,7 @@ async function startRuntime(
         extensionName: context.extensionName
       },
       {
+        onError: reportFatalError,
         onHostRequest: (request) => requestHost(sessionId, request),
         onSnapshot: (surface) => {
           postToHost({
@@ -235,6 +240,12 @@ function postRuntimeError(sessionId: string, error: unknown): void {
 }
 
 function toRuntimeError(code: string, error: unknown): ExtensionRuntimeError {
+  if (error instanceof ExtensionRuntimeRequestError) {
+    return {
+      code: error.code,
+      message: error.message
+    }
+  }
   return {
     code,
     message: error instanceof Error ? error.message : String(error)

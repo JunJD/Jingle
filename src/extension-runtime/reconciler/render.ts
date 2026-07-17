@@ -204,6 +204,7 @@ export interface ExtensionRuntimeRenderer {
 export function createExtensionRuntimeRenderer(
   context: RuntimeSnapshotContext,
   params: {
+    onError?: (error: Error) => void
     onHostRequest?: RuntimeHostRequestHandler
     onSnapshot?: (snapshot: ReturnType<typeof createSurfaceSnapshot>) => void
   } = {}
@@ -235,7 +236,7 @@ export function createExtensionRuntimeRenderer(
     false,
     null,
     "jingle-extension-runtime",
-    reportRuntimeError,
+    params.onError ?? reportRuntimeError,
     reportRuntimeError,
     reportRuntimeError,
     () => {}

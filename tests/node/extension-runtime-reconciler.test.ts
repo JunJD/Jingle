@@ -12,6 +12,7 @@ import {
   Image,
   Keyboard,
   List,
+  ExtensionRuntimeRequestError,
   confirmAlert,
   createNativeExtensionClient,
   defineNativeExtensionClientMethod,
@@ -4268,6 +4269,96 @@ test("useLocalStorage reads and writes extension-scoped storage", async () => {
       }
     ]
   )
+})
+
+test("useLocalStorage keeps main issue snapshots as the only legacy recovery state", async () => {
+  let hasConflict = true
+
+  function StorageBackedList() {
+    const storageState = useLocalStorage<string[]>("visibleProperties", ["done"])
+    return createElement(
+      List,
+      { isLoading: storageState.isLoading, navigationTitle: "Test List" },
+      createElement(List.Item, {
+        id: "properties",
+        title: `${"error" in storageState ? "stale-error" : "main-owned"}:${(
+          storageState.value ?? []
+        ).join(",")}`
+      })
+    )
+  }
+
+  const requestHost = async (request: ExtensionRuntimeHostRequestInput) => {
+    if (request.capability === "storage" && request.method === "get") {
+      if (hasConflict) {
+        return {
+          error: {
+            code: "storage_legacy_unowned",
+            message: "Legacy LocalStorage key has no typed owner."
+          },
+          id: "storage-conflict",
+          ok: false as const
+        }
+      }
+      return { id: "storage-ready", ok: true as const, result: undefined }
+    }
+    throw new Error(`Unexpected ${request.capability} request`)
+  }
+
+  const conflicted = createTestRenderer()
+  conflicted.render(withRuntimeProvider(createElement(StorageBackedList), requestHost))
+  await conflicted.flushSnapshots()
+  await conflicted.flushSnapshots()
+  const conflictSnapshot = conflicted.getSnapshot()
+  assertListSnapshot(conflictSnapshot)
+  assert.equal(conflictSnapshot.sections[0]?.items[0]?.title, "main-owned:done")
+  assert.equal(conflictSnapshot.isLoading, false)
+
+  hasConflict = false
+  conflicted.render(withRuntimeProvider(createElement(StorageBackedList), requestHost))
+  await conflicted.flushSnapshots()
+  const recoveredSessionSnapshot = conflicted.getSnapshot()
+  assertListSnapshot(recoveredSessionSnapshot)
+  assert.equal(recoveredSessionSnapshot.sections[0]?.items[0]?.title, "main-owned:done")
+
+  const reloaded = createTestRenderer()
+  reloaded.render(withRuntimeProvider(createElement(StorageBackedList), requestHost))
+  await reloaded.flushSnapshots()
+  await reloaded.flushSnapshots()
+  const reloadedSnapshot = reloaded.getSnapshot()
+  assertListSnapshot(reloadedSnapshot)
+  assert.equal(reloadedSnapshot.sections[0]?.items[0]?.title, "main-owned:done")
+  assert.equal(reloadedSnapshot.isLoading, false)
+})
+
+test("useLocalStorage reports unexpected request failures through the runtime fatal owner", async () => {
+  const fatalErrors: Error[] = []
+
+  function StorageBackedList() {
+    const { isLoading } = useLocalStorage<string[]>("visibleProperties", [])
+    return createElement(List, { isLoading, navigationTitle: "Test List" })
+  }
+
+  const renderer = createTestRenderer({
+    onError: (error) => fatalErrors.push(error)
+  })
+  renderer.render(
+    withRuntimeProvider(createElement(StorageBackedList), async () => ({
+      error: {
+        code: "host_request_failed",
+        message: "Extension storage request failed."
+      },
+      id: "storage-failure",
+      ok: false as const
+    }))
+  )
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  assert.equal(fatalErrors.length, 1)
+  assert.ok(fatalErrors[0] instanceof ExtensionRuntimeRequestError)
+  assert.equal((fatalErrors[0] as ExtensionRuntimeRequestError).code, "host_request_failed")
+  assert.equal(fatalErrors[0]?.message, "Extension storage request failed.")
 })
 
 function resolveStorageRequest(

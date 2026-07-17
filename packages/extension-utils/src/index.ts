@@ -15,6 +15,7 @@ import {
 import {
   Action,
   ActionPanel,
+  ExtensionRuntimeRequestError,
   List,
   LocalStorage,
   Toast,
@@ -1187,10 +1188,15 @@ export function useLocalStorage<TValue extends LocalStorageStateValue>(
   key: string,
   initialValue?: TValue
 ): UseLocalStorageResult<TValue> {
+  const [fatalError, setFatalError] = useState<Error | null>(null)
   const [value, setLocalValue] = useState<TValue | undefined>(initialValue)
   const [isLoading, setIsLoading] = useState(true)
   const valueRef = useRef<TValue | undefined>(initialValue)
   const initialValueRef = useRef<TValue | undefined>(initialValue)
+
+  if (fatalError) {
+    throw fatalError
+  }
 
   useEffect(() => {
     valueRef.current = value
@@ -1201,7 +1207,26 @@ export function useLocalStorage<TValue extends LocalStorageStateValue>(
 
     async function loadValue() {
       setIsLoading(true)
-      const storedValue = await LocalStorage.getItem<TValue>(key)
+      let storedValue: TValue | undefined
+      try {
+        storedValue = await LocalStorage.getItem<TValue>(key)
+      } catch (cause) {
+        if (
+          cause instanceof ExtensionRuntimeRequestError &&
+          cause.code === "storage_legacy_unowned"
+        ) {
+          if (!cancelled) {
+            valueRef.current = initialValueRef.current
+            setLocalValue(initialValueRef.current)
+            setIsLoading(false)
+          }
+          return
+        }
+        if (!cancelled) {
+          setFatalError(cause instanceof Error ? cause : new Error(String(cause)))
+        }
+        return
+      }
       if (cancelled) {
         return
       }
