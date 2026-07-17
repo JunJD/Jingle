@@ -343,7 +343,7 @@ test("coordinator never replays an ambiguous background outcome", async () => {
       platform: "macos",
       protocolVersion: 1
     },
-    async disposeSession() {},
+    disposeSession: resolvedVoid,
     async execute(request) {
       calls.push(request.delivery)
       return result
@@ -356,7 +356,7 @@ test("coordinator never replays an ambiguous background outcome", async () => {
   const sessions = new ComputerUseSessionManager(backend)
   const ledger = new ComputerUseActionLedger({
     async reserve() { return "reserved" },
-    async write() {}
+    write: resolvedVoid
   })
   const coordinator = new ComputerUseTransactionCoordinator(
     backend,
@@ -465,7 +465,7 @@ test("settings off aborts a queued transaction before native dispatch", async ()
       platform: "macos",
       protocolVersion: 1
     },
-    async disposeSession() {},
+    disposeSession: resolvedVoid,
     async execute() {
       nativeDispatches += 1
       return {
@@ -483,7 +483,7 @@ test("settings off aborts a queued transaction before native dispatch", async ()
   const sessions = new ComputerUseSessionManager(backend)
   const ledger = new ComputerUseActionLedger({
     async reserve() { return "reserved" },
-    async write() {}
+    write: resolvedVoid
   })
   const coordinator = new ComputerUseTransactionCoordinator(backend, scheduler, sessions, ledger)
   const canonicalBase = await coordinator.observe({ applicationId: "com.example.fixture" })
@@ -518,7 +518,7 @@ test("transaction ids are single-use even after a result is lost", async () => {
       reserved.add(attempt.attemptId)
       return "reserved"
     },
-    async write() {}
+    write: resolvedVoid
   })
   await ledger.begin({ runId: "r", sessionId: "s", transactionId: "tx" })
   await assert.rejects(
@@ -534,7 +534,7 @@ test("empty transaction ids are rejected before durable reserve", async () => {
       reserves += 1
       return "reserved"
     },
-    async write() {}
+    write: resolvedVoid
   })
   await assert.rejects(ledger.begin({ runId: "r", sessionId: "s", transactionId: "   " }))
   assert.equal(reserves, 0)
