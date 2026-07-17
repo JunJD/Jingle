@@ -7,7 +7,7 @@ import { installExternalWindowOpenHandler } from "./external-window-open"
 import { startRendererWindowLoad } from "./load-renderer-window"
 import { createThemeTitleBarOverlay } from "./title-bar-overlay"
 import { installWindowPresentation, requestWindowPresentation } from "./window-presentation"
-import { registerWindowIdentity } from "./window-identity"
+import { registerDurableWindowIdentity } from "./window-identity"
 
 export interface CreateThreadWindowInput {
   bounds?: Rectangle
@@ -66,7 +66,7 @@ export function createThreadWindow(
       : { titleBarOverlay: createThemeTitleBarOverlay(appThemeSettings) }),
     webPreferences: { preload: join(__dirname, "../preload/index.js"), sandbox: false }
   })
-  registerWindowIdentity(window.webContents, {
+  registerDurableWindowIdentity(window.webContents, {
     kind: THREAD_WINDOW_KIND,
     threadId: input.threadId,
     windowId: input.windowId

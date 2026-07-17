@@ -7,7 +7,7 @@ import { startRendererWindowLoad } from "./load-renderer-window"
 import { attachMainWindowStatePersistence, getMainWindowPlacement } from "./main-window-state"
 import { createThemeTitleBarOverlay } from "./title-bar-overlay"
 import { installWindowPresentation, requestWindowPresentation } from "./window-presentation"
-import { registerWindowIdentity } from "./window-identity"
+import { registerDurableWindowIdentity } from "./window-identity"
 
 export const PRIMARY_MAIN_WINDOW_ID = "primary-main"
 
@@ -29,7 +29,7 @@ export function createMainWindow(threadId: string | null): BrowserWindow {
       : { titleBarOverlay: createThemeTitleBarOverlay(appThemeSettings) }),
     webPreferences: { preload: join(__dirname, "../preload/index.js"), sandbox: false }
   })
-  registerWindowIdentity(window.webContents, {
+  registerDurableWindowIdentity(window.webContents, {
     kind: "main",
     threadId,
     windowId: PRIMARY_MAIN_WINDOW_ID
