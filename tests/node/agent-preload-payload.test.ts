@@ -15,7 +15,6 @@ test("agent invoke IPC payload omits optional undefined fields", () => {
       content: "没理解",
       id: "message-1"
     },
-    modelId: "deepseek:deepseek-v4-pro",
     permissionMode: "ask-to-edit",
     temporaryMode: false,
     threadId: "thread-1"
@@ -26,7 +25,6 @@ test("agent invoke IPC payload omits optional undefined fields", () => {
       content: "没理解",
       id: "message-1"
     },
-    modelId: "deepseek:deepseek-v4-pro",
     permissionMode: "ask-to-edit",
     temporaryMode: false,
     threadId: "thread-1"
@@ -69,7 +67,6 @@ test("agent preload payload builders omit optional undefined route fields", () =
         tool_call_id: undefined,
         type: "approve"
       },
-      modelId: undefined,
       threadId: "thread-1"
     }),
     {

@@ -13,9 +13,11 @@ import type {
   CustomProviderConfig,
   CustomProviderEngine,
   CustomProviderInput,
-  ModelProviderPaths
+  ModelProviderPaths,
+  ThinkingEffort
 } from "@shared/app-types"
 import { InlineError, SectionHeader } from "./ProviderSetupPages"
+import { projectCustomProviderModelInputs } from "./model-setup-projection"
 
 interface CustomProviderHeaderDraft {
   key: string
@@ -31,6 +33,7 @@ interface CustomProviderFormState {
   engine: CustomProviderEngine
   errorText: string | null
   headers: CustomProviderHeaderDraft[]
+  modelEfforts: Record<string, ThinkingEffort[]>
   modelsText: string
   newHeaderKey: string
   newHeaderValue: string
@@ -52,11 +55,27 @@ type CustomProviderFormAction =
   | { type: "set-new-header-value"; value: string }
   | { type: "set-requires-auth"; requiresAuth: boolean }
   | { type: "set-supports-streaming"; supportsStreaming: boolean }
+  | {
+      type: "toggle-model-effort"
+      checked: boolean
+      effort: ThinkingEffort
+      modelName: string
+    }
   | { type: "add-header"; header: CustomProviderHeaderDraft }
   | { type: "remove-header"; key: string }
   | { type: "submit-start" }
   | { type: "submit-failure"; errorText: string }
   | { type: "submit-end" }
+
+const CUSTOM_REASONING_EFFORT_OPTIONS = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max"
+] satisfies ThinkingEffort[]
 
 function createCustomProviderFormState(
   initialProvider: CustomProviderConfig | undefined
@@ -73,6 +92,11 @@ function createCustomProviderFormState(
       key,
       value
     })),
+    modelEfforts: Object.fromEntries(
+      (initialProvider?.models ?? []).flatMap((model) =>
+        model.reasoning_efforts ? [[model.name, [...model.reasoning_efforts]]] : []
+      )
+    ),
     modelsText: initialProvider ? initialProvider.models.map((model) => model.name).join(", ") : "",
     newHeaderKey: "",
     newHeaderValue: "",
@@ -111,6 +135,21 @@ function customProviderFormReducer(
       return { ...state, requiresAuth: action.requiresAuth }
     case "set-supports-streaming":
       return { ...state, supportsStreaming: action.supportsStreaming }
+    case "toggle-model-effort": {
+      const current = state.modelEfforts[action.modelName] ?? []
+      const next = action.checked
+        ? CUSTOM_REASONING_EFFORT_OPTIONS.filter(
+            (effort) => effort === action.effort || current.includes(effort)
+          )
+        : current.filter((effort) => effort !== action.effort)
+      return {
+        ...state,
+        modelEfforts: {
+          ...state.modelEfforts,
+          [action.modelName]: next
+        }
+      }
+    }
     case "add-header":
       return {
         ...state,
@@ -176,6 +215,7 @@ export function CustomProviderForm(props: {
     engine,
     errorText,
     headers,
+    modelEfforts,
     modelsText,
     newHeaderKey,
     newHeaderValue,
@@ -192,9 +232,13 @@ export function CustomProviderForm(props: {
     [modelsText]
   )
   const requiresBaseUrl = engine === "openai" || engine === "anthropic"
+  const duplicateModelName = modelNames.find(
+    (modelName, index) => modelNames.indexOf(modelName) !== index
+  )
   const canSave =
     displayName.trim().length > 0 &&
     modelNames.length > 0 &&
+    duplicateModelName === undefined &&
     (!requiresBaseUrl || baseUrl.trim().length > 0) &&
     (!requiresAuth || Boolean(initialProvider) || apiKey.trim().length > 0)
 
@@ -233,7 +277,7 @@ export function CustomProviderForm(props: {
         displayName,
         engine,
         headers: Object.fromEntries(headers.map((header) => [header.key, header.value])),
-        models: modelNames,
+        models: projectCustomProviderModelInputs({ engine, modelEfforts, modelNames }),
         providerId: initialProvider?.name,
         requiresAuth,
         supportsStreaming
@@ -322,6 +366,45 @@ export function CustomProviderForm(props: {
               }
             />
           </SettingsField>
+          {engine === "openai" && modelNames.length > 0 ? (
+            <SettingsField label="Reasoning effort capabilities">
+              <div className="divide-y divide-border border-y border-border">
+                {modelNames.map((modelName) => (
+                  <div
+                    key={modelName}
+                    className="grid gap-[var(--jingle-space-2)] py-[var(--jingle-space-3)] sm:grid-cols-[minmax(8rem,0.45fr)_minmax(0,1fr)] sm:items-start"
+                  >
+                    <span className="truncate [font-size:var(--jingle-font-body)] text-foreground">
+                      {modelName}
+                    </span>
+                    <div className="flex flex-wrap gap-x-[var(--jingle-space-3)] gap-y-[var(--jingle-space-2)]">
+                      {CUSTOM_REASONING_EFFORT_OPTIONS.map((effort) => (
+                        <label
+                          key={effort}
+                          className="inline-flex min-h-8 items-center gap-[var(--jingle-space-1)] [font-size:var(--jingle-font-meta)] text-muted-foreground"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={modelEfforts[modelName]?.includes(effort) ?? false}
+                            className="h-4 w-4 accent-accent"
+                            onChange={(event) =>
+                              dispatchForm({
+                                checked: event.target.checked,
+                                effort,
+                                modelName,
+                                type: "toggle-model-effort"
+                              })
+                            }
+                          />
+                          {effort}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </SettingsField>
+          ) : null}
           <div className="flex items-center justify-between rounded-[var(--jingle-radius-md)] border border-border bg-background-secondary px-[var(--jingle-space-3)] py-[var(--jingle-space-2)]">
             <span className="[font-size:var(--jingle-font-body)] text-foreground">
               This provider requires an API key
@@ -406,7 +489,11 @@ export function CustomProviderForm(props: {
           <div className="rounded-[var(--jingle-radius-md)] border border-border bg-background-secondary px-[var(--jingle-space-3)] py-[var(--jingle-space-2)] [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-body)] text-muted-foreground">
             自定义 provider 会写入 {modelProviderPaths.customProvidersDir}
           </div>
-          {errorText ? <InlineError text={errorText} /> : null}
+          {errorText ? (
+            <InlineError text={errorText} />
+          ) : duplicateModelName ? (
+            <InlineError text={`Model name is duplicated: ${duplicateModelName}`} />
+          ) : null}
           <div className="flex items-center justify-between gap-[var(--jingle-space-3)]">
             <button
               type="button"

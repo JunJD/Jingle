@@ -11,6 +11,8 @@ import {
   createJingleTitleGenerator
 } from "@jingle/langchain-agent-harness/transitional"
 import { getDefaultHitlAllowedDecisions } from "@shared/hitl"
+import { parseModelRuntimeSelection } from "@shared/model-runtime-selection"
+import type { ModelRuntimeSelection } from "@shared/app-types"
 import { withMutationPrediction } from "@shared/mutation-prediction"
 import { withExecuteCommandPolicy } from "@shared/execute-command-policy"
 import type { AgentContextInclusion } from "@shared/jingle-memory"
@@ -93,8 +95,14 @@ function createAgentRuntimeInput(input: CreateAgentRuntimeInput): JingleRuntimeI
     jingleMemoryService: input.jingleMemoryService
   })
   const bindExecution: JingleRuntimeInput["bindExecution"] = {
-    invoke: ({ invoke, start }) => createAgentExecutionCapabilities(input, invoke, start.modelId),
-    resume: ({ resume, start }) => createAgentExecutionCapabilities(input, resume, start.modelId)
+    invoke: ({ invoke, start }) =>
+      createAgentExecutionCapabilities(input, invoke, start.modelId, invoke.selection),
+    resume: ({ resume, start }) => {
+      if (start.executionDisposition !== "resume") {
+        throw new Error("Terminal resume cannot bind model execution capabilities.")
+      }
+      return createAgentExecutionCapabilities(input, resume, start.modelId, resume.selection)
+    }
   }
 
   return {
@@ -104,7 +112,11 @@ function createAgentRuntimeInput(input: CreateAgentRuntimeInput): JingleRuntimeI
       summarization: (scope) =>
         createRuntimeCompactionSummarizationController({
           model: getChatModelInstance({
-            modelId: scope.modelId,
+            selection: requireModelRuntimeSelection({
+              modelId: scope.modelId,
+              thinkingEffort: scope.thinkingEffort,
+              version: scope.version
+            }),
             parallelToolCalls: false
           })
         })
@@ -119,8 +131,13 @@ function createAgentRuntimeInput(input: CreateAgentRuntimeInput): JingleRuntimeI
 function createAgentExecutionCapabilities(
   input: CreateAgentRuntimeInput,
   executionInput: JingleExecutionInput,
-  modelId: string
+  modelId: string,
+  selectionInput: unknown
 ): JingleExecutionCapabilities {
+  const selection = requireModelRuntimeSelection(selectionInput)
+  if (selection.modelId !== modelId) {
+    throw new Error("Runtime model selection does not match the durable run start.")
+  }
   const {
     extensionAiRuntime,
     jingleMemoryContextPack,
@@ -133,7 +150,7 @@ function createAgentExecutionCapabilities(
     model: {
       model: () =>
         getChatModelInstance({
-          modelId,
+          selection,
           parallelToolCalls: false
         })
     },
@@ -296,6 +313,14 @@ function createAgentExecutionCapabilities(
   }
 }
 
+function requireModelRuntimeSelection(value: unknown): ModelRuntimeSelection {
+  const selection = parseModelRuntimeSelection(value)
+  if (!selection) {
+    throw new Error("Runtime model selection is invalid or uses an unsupported version.")
+  }
+  return selection
+}
+
 function resolveManagedRuntimeCheckpointer(
   threadId: string,
   signal: AbortSignal
@@ -354,6 +379,6 @@ function createThreadTitleModel(): JingleTitleGenerationModel {
   return getChatModelInstance({
     modelPreference: "fast",
     temperature: 0,
-    thinkingEffort: "off"
+    thinkingEffort: null
   })
 }

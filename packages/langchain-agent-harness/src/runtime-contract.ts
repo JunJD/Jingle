@@ -99,16 +99,23 @@ export interface RuntimeRunLifecycleSubmittedFacts<TContextInclusion = unknown> 
   submittedRecordingRefs: readonly RuntimeRecordingRef[]
 }
 
-export interface RuntimeRunStart {
-  modelId: string
+export interface RuntimeRunStartBase {
   recordingRefs: RuntimeRecordingRef[]
   runId: string
 }
 
-export interface RuntimeResumeRunStart extends RuntimeRunStart {
-  cancelAfterDecision?: () => Promise<void> | void
-  executionDisposition: "resume" | "terminal"
+export interface RuntimeRunStart extends RuntimeRunStartBase {
+  modelId: string
 }
+
+export type RuntimeResumeRunStart =
+  | (RuntimeRunStart & {
+      executionDisposition: "resume"
+    })
+  | (RuntimeRunStartBase & {
+      cancelAfterDecision?: () => Promise<void> | void
+      executionDisposition: "terminal"
+    })
 
 export interface RuntimeRunLifecycleControllerContract<
   TContextInclusion = unknown,

@@ -38,6 +38,11 @@ import { FakeToolCallingModel } from "langchain"
 const repoRoot = process.cwd()
 const originalJingleHome = process.env.JINGLE_HOME
 let jingleHome = ""
+const MODEL_SELECTION = {
+  modelId: "provider/model-selected",
+  thinkingEffort: "high",
+  version: 1
+} as const
 
 async function loadDbModules() {
   const db = await import("../../src/main/db")
@@ -85,7 +90,9 @@ test("manual compact commits owned values while preserving checkpoint facts", as
     modelId: "  provider/model-selected  ",
     operationId: "  compact-success-1  ",
     reason: "manual verification",
-    trigger: "manual"
+    thinkingEffort: "high",
+    trigger: "manual",
+    version: 1
   })
 
   const latest = await fixture.saver.getTuple({
@@ -100,7 +107,7 @@ test("manual compact commits owned values while preserving checkpoint facts", as
     expectedCheckpointId: fixture.checkpointId,
     messageCountAfterCompaction: 1,
     messageCountBeforeCompaction: 2,
-    modelId: "provider/model-selected",
+    ...MODEL_SELECTION,
     operationId: "compact-success-1",
     preserveLastUserMessageCount: null,
     preserveLastUserMessageCountPresent: false,
@@ -127,10 +134,12 @@ test("manual compact commits owned values while preserving checkpoint facts", as
       preserveLastUserMessageCount: receipt.preserveLastUserMessageCount,
       preserveLastUserMessageCountPresent: receipt.preserveLastUserMessageCountPresent,
       reason: receipt.reason,
-      trigger: receipt.trigger
+      thinkingEffort: receipt.thinkingEffort,
+      trigger: receipt.trigger,
+      version: receipt.version
     },
     {
-      modelId: "provider/model-selected",
+      ...MODEL_SELECTION,
       preserveLastUserMessageCount: null,
       preserveLastUserMessageCountPresent: false,
       reason: "manual verification",
@@ -155,7 +164,7 @@ test("manual compact rejects malformed input before any compact side effect", as
     }
   })
   const validInput = {
-    modelId: "provider/model-selected",
+    ...MODEL_SELECTION,
     operationId: "compact-invalid-base",
     trigger: "manual"
   } as const
@@ -188,7 +197,11 @@ test("manual compact rejects malformed input before any compact side effect", as
     { ...validInput, operationId: 42 },
     { ...validInput, modelId: "   " },
     { ...validInput, modelId: { provider: "invalid" } },
+    { ...validInput, thinkingEffort: undefined },
+    { ...validInput, thinkingEffort: "" },
+    { ...validInput, thinkingEffort: " high" },
     { ...validInput, trigger: "pre-run" },
+    { ...validInput, version: 2 },
     { ...validInput, reason: { text: "invalid" } },
     { ...validInput, preserveLastUserMessageCount: -1 },
     { ...validInput, preserveLastUserMessageCount: 1.5 },
@@ -213,7 +226,9 @@ test("manual compact parser returns a detached frozen canonical command", () => 
     modelId: "  provider/model-selected  ",
     operationId: "  compact-canonical-1  ",
     reason: undefined,
-    trigger: "manual"
+    thinkingEffort: "high",
+    trigger: "manual",
+    version: 1
   }
 
   const canonical = parseRuntimeCompactInput(original)
@@ -223,7 +238,7 @@ test("manual compact parser returns a detached frozen canonical command", () => 
   assert.ok(Object.isFrozen(canonical))
   assert.notEqual(canonical, original)
   assert.deepEqual(canonical, {
-    modelId: "provider/model-selected",
+    ...MODEL_SELECTION,
     operationId: "compact-canonical-1",
     reason: null,
     trigger: "manual"
@@ -253,7 +268,7 @@ test("manual compact snapshots transitional command and scope descriptors exactl
     calls
   )
   const target = {
-    modelId: "provider/model-selected",
+    ...MODEL_SELECTION,
     operationId: "compact-scope-snapshot-1",
     threadId: fixture.threadId,
     trigger: "manual" as const,
@@ -292,7 +307,7 @@ test("manual compact rejects a checkpoint with pending HITL before summarization
 
   await assert.rejects(
     controller.compact({
-      modelId: "provider/model-selected",
+      ...MODEL_SELECTION,
       operationId: "compact-hitl-1",
       threadId: fixture.threadId,
       trigger: "manual",
@@ -328,7 +343,7 @@ test("retrying a compact operation after response loss returns its committed res
   }
   const controller = createController(responseLossStore, calls)
   const compactInput = {
-    modelId: "provider/model-selected",
+    ...MODEL_SELECTION,
     operationId: "compact-retry-1",
     preserveLastUserMessageCount: Number.MAX_SAFE_INTEGER,
     reason: "response lost",
@@ -370,7 +385,7 @@ test("same compact operation ID rejects canonical request identity drift without
   const calls = { count: 0 }
   const controller = createController(fixture.store, calls)
   const requestWithoutPreserve = {
-    modelId: "provider/model-selected",
+    ...MODEL_SELECTION,
     operationId: "compact-identity-1",
     reason: "baseline",
     threadId: fixture.threadId,
@@ -396,6 +411,7 @@ test("same compact operation ID rejects canonical request identity drift without
   const driftedInputs = [
     { ...baseline, modelId: "provider/model-drifted" },
     { ...baseline, reason: "changed" },
+    { ...baseline, thinkingEffort: "max" },
     requestWithoutPreserve,
     { ...baseline, preserveLastUserMessageCount: 0 }
   ] as const
@@ -418,7 +434,7 @@ test("transaction already-committed path replays matching identity and rejects d
   const initialCalls = { count: 0 }
   const operationId = "compact-transaction-identity-1"
   const baseline = {
-    modelId: "provider/model-selected",
+    ...MODEL_SELECTION,
     operationId,
     reason: "baseline",
     threadId: fixture.threadId,
@@ -461,7 +477,7 @@ test("production manual compact keeps history in checkpoint facts without filesy
   const calls = { count: 0 }
   try {
     const result = await createProductionController(fixture.store, calls).compact({
-      modelId: "provider/model-selected",
+      ...MODEL_SELECTION,
       operationId: "compact-pure-summary-1",
       threadId: fixture.threadId,
       trigger: "manual",
@@ -491,7 +507,7 @@ test("compact CAS conflict leaves the workspace unchanged", async () => {
   try {
     await assert.rejects(
       createProductionController(staleStore, calls).compact({
-        modelId: "provider/model-selected",
+        ...MODEL_SELECTION,
         operationId: "compact-pure-cas-conflict-1",
         threadId: fixture.threadId,
         trigger: "manual",
@@ -526,7 +542,7 @@ test("compact database failure leaves the workspace and checkpoint unchanged", a
   try {
     await assert.rejects(
       createProductionController(fixture.store, calls).compact({
-        modelId: "provider/model-selected",
+        ...MODEL_SELECTION,
         operationId: "compact-pure-db-failure-1",
         threadId: fixture.threadId,
         trigger: "manual",
@@ -550,7 +566,7 @@ test("compact ledger survives checkpoint retention and is deleted with its threa
   const calls = { count: 0 }
   const controller = createController(fixture.store, calls)
   const compactInput = {
-    modelId: "provider/model-selected",
+    ...MODEL_SELECTION,
     operationId: "compact-ledger-retention-1",
     threadId: fixture.threadId,
     trigger: "manual" as const,
@@ -574,6 +590,66 @@ test("compact ledger survives checkpoint retention and is deleted with its threa
   assert.equal(await countCompactionCommits(fixture.threadId), 0)
 })
 
+test("legacy compact ledger rows stay version zero and fail visibly without side effects", async () => {
+  const fixture = await createFixture("thread-compact-legacy-ledger")
+  const operationId = "compact-legacy-ledger-1"
+  const compaction = JSON.stringify({
+    compactionCount: 1,
+    compactionId: operationId,
+    createdAt: "2026-07-17T00:00:00.000Z",
+    cutoffIndex: 1,
+    historyRef: null,
+    preservedUserMessageCount: 1,
+    reason: null,
+    status: "completed",
+    summaryPreview: "legacy",
+    trigger: "manual",
+    updatedAt: "2026-07-17T00:00:00.000Z",
+    warning: null
+  })
+  const { getPrismaClient } = await loadDbModules()
+  await getPrismaClient().$executeRaw`
+    INSERT INTO "runtime_compaction_commits" (
+      "thread_id",
+      "operation_id",
+      "checkpoint_ns",
+      "checkpoint_id",
+      "expected_checkpoint_id",
+      "compaction",
+      "message_count_after_compaction",
+      "message_count_before_compaction",
+      "model_id",
+      "preserve_last_user_message_count_present",
+      "reason",
+      "requested_preserve_last_user_message_count",
+      "trigger"
+    ) VALUES (
+      ${fixture.threadId},
+      ${operationId},
+      ${""},
+      ${fixture.checkpointId},
+      ${fixture.checkpointId},
+      ${compaction},
+      ${1},
+      ${2},
+      ${"provider/legacy-model"},
+      ${false},
+      ${null},
+      ${null},
+      ${"manual"}
+    )
+  `
+
+  assert.equal(await countCheckpoints(fixture.threadId), 1)
+  assert.equal(await countCompactionCommits(fixture.threadId), 1)
+  await assert.rejects(
+    fixture.saver.readCompactionCommit({ operationId, threadId: fixture.threadId }),
+    /invalid request identity/
+  )
+  assert.equal(await countCheckpoints(fixture.threadId), 1)
+  assert.equal(await countCompactionCommits(fixture.threadId), 1)
+})
+
 test("different compact operation IDs conflict against the same checkpoint envelope", async () => {
   const fixture = await createFixture("thread-compact-conflict")
   const prepared = await fixture.store.prepare({ threadId: fixture.threadId })
@@ -587,7 +663,7 @@ test("different compact operation IDs conflict against the same checkpoint envel
   const controller = createController(staleStore, calls)
 
   const committed = await controller.compact({
-    modelId: "provider/model-selected",
+    ...MODEL_SELECTION,
     operationId: "compact-conflict-winner",
     threadId: fixture.threadId,
     trigger: "manual",
@@ -595,7 +671,7 @@ test("different compact operation IDs conflict against the same checkpoint envel
   })
   await assert.rejects(
     controller.compact({
-      modelId: "provider/model-selected",
+      ...MODEL_SELECTION,
       operationId: "compact-conflict-loser",
       threadId: fixture.threadId,
       trigger: "manual",

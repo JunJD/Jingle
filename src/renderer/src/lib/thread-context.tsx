@@ -101,6 +101,12 @@ export function ThreadProvider({
     })
   }, [threadStore])
 
+  useEffect(() => {
+    return window.api.threads.onModelRuntimeSelectionChanged((event) => {
+      threadStore.applyModelRuntimeSelectionChanged(event)
+    })
+  }, [threadStore])
+
   const contextValue = useMemo<ThreadContextInternalValue>(
     () => ({
       getAgentCommandState,

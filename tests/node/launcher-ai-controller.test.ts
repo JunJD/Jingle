@@ -5,6 +5,7 @@ import {
   createLauncherComposerRevisionLedger,
   createLauncherCommandSubmissionGate,
   canSubmitLauncherApprovalDecision,
+  canSelectLauncherAiModel,
   clearLauncherApprovalCorrectionDraft,
   createLauncherApprovalCorrectionKey,
   isLauncherCommandTargetCurrent,
@@ -21,6 +22,18 @@ import type { PermissionModeName } from "../../src/shared/permission-mode"
 import type { ThreadWorkspaceKind } from "../../src/shared/thread-workspace"
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "../../src/shared/launcher-ai"
 import type { HITLRequest } from "../../src/shared/hitl"
+import type { ModelRuntimeSelection } from "../../src/shared/app-types"
+import {
+  createPendingModelSelection,
+  resolvePendingModelId
+} from "../../src/renderer/src/features/model-selection/model-selection-projection"
+
+function runtimeSelection(
+  modelId: string,
+  thinkingEffort: ModelRuntimeSelection["thinkingEffort"] = null
+): ModelRuntimeSelection {
+  return { modelId, thinkingEffort, version: 1 }
+}
 
 function createApprovalRequest(review: HITLRequest["review"]): HITLRequest {
   return {
@@ -121,7 +134,7 @@ test("launcher command acceptance stays bound to its submitted navigation target
   const submittedThread = { kind: "thread", threadId: "thread-1" } as const
   const submittedDraft = {
     kind: "draft",
-    modelId: null,
+    modelRuntimeSelection: null,
     permissionMode: "ask-to-edit",
     workspaceKind: "projectless",
     workspacePath: null
@@ -169,7 +182,10 @@ test("launcher target configuration fails closed while a durable thread is hydra
       isHydratingThread: true,
       target,
       threadConfiguration: {
-        modelId: "durable-model",
+        modelRuntimeSelection: {
+          kind: "ready",
+          selection: runtimeSelection("durable-model", "high")
+        },
         permissionMode: "auto",
         threadId: "thread-1",
         workspacePath: "/workspace"
@@ -184,6 +200,60 @@ test("launcher target configuration fails closed while a durable thread is hydra
       threadConfiguration: null
     }),
     { kind: "unavailable", reason: "thread-state-unavailable" }
+  )
+})
+
+test("launcher exposes model reselection while a durable selection requires recovery", () => {
+  const target = { kind: "thread", threadId: "thread-legacy" } as const
+  for (const modelRuntimeSelection of [
+    { kind: "legacy_missing_effort", modelId: "openai:gpt-5" } as const,
+    { kind: "invalid" } as const,
+    { kind: "missing" } as const
+  ]) {
+    const projection = projectLauncherAiTargetConfiguration({
+      isHydratingThread: false,
+      target,
+      threadConfiguration: {
+        modelRuntimeSelection,
+        permissionMode: "ask-to-edit",
+        threadId: "thread-legacy",
+        workspacePath: "/workspace"
+      }
+    })
+    assert.deepEqual(projection, {
+      kind: "model-selection-required",
+      modelRuntimeSelectionState: modelRuntimeSelection,
+      permissionMode: "ask-to-edit",
+      source: "thread",
+      threadId: "thread-legacy",
+      workspacePath: "/workspace"
+    })
+    assert.equal(canSelectLauncherAiModel(projection), true)
+  }
+})
+
+test("external model selection revisions invalidate stale picker drafts", () => {
+  const currentSelection = runtimeSelection("deepseek:deepseek-v4-pro", "high")
+  const pendingSelection = createPendingModelSelection({
+    currentSelection,
+    modelId: "openai:gpt-5.6-sol",
+    selectionRevision: 3
+  })
+  assert.equal(
+    resolvePendingModelId({ currentSelection, pendingSelection, selectionRevision: 3 }),
+    "openai:gpt-5.6-sol"
+  )
+  assert.equal(
+    resolvePendingModelId({ currentSelection, pendingSelection, selectionRevision: 4 }),
+    "deepseek:deepseek-v4-pro"
+  )
+  assert.equal(
+    resolvePendingModelId({
+      currentSelection: { ...currentSelection, thinkingEffort: "max" },
+      pendingSelection,
+      selectionRevision: 3
+    }),
+    "deepseek:deepseek-v4-pro"
   )
 })
 
@@ -235,6 +305,7 @@ function createControllerHarness(input?: {
   resumeResult?: boolean
   threadId?: string | null
   targetUnavailable?: boolean
+  targetSelectionRequired?: boolean
 }): {
   acceptedInputs: Array<{ input: ComposerMessageInput; threadId: string }>
   controller: ReturnType<typeof createLauncherAiController>
@@ -247,10 +318,10 @@ function createControllerHarness(input?: {
   localComposerTexts: string[]
   navigationErrors: Array<string | null>
   resumedDecisions: unknown[]
-  selectedModels: string[]
+  selectedModels: ModelRuntimeSelection[]
   selectedPermissionModes: PermissionModeName[]
   startedDrafts: Array<{
-    modelId: string | null
+    modelRuntimeSelection: ModelRuntimeSelection | null
     permissionMode: PermissionModeName
     workspaceKind?: ThreadWorkspaceKind
     workspacePath?: string | null
@@ -270,10 +341,10 @@ function createControllerHarness(input?: {
   const localComposerTexts: string[] = []
   const navigationErrors: Array<string | null> = []
   const resumedDecisions: unknown[] = []
-  const selectedModels: string[] = []
+  const selectedModels: ModelRuntimeSelection[] = []
   const selectedPermissionModes: PermissionModeName[] = []
   const startedDrafts: Array<{
-    modelId: string | null
+    modelRuntimeSelection: ModelRuntimeSelection | null
     permissionMode: PermissionModeName
     workspaceKind?: ThreadWorkspaceKind
     workspacePath?: string | null
@@ -320,30 +391,39 @@ function createControllerHarness(input?: {
       createThread: async (createInput) => {
         createdThreads.push(createInput)
         return {
-          modelId: createInput.modelId ?? "default-model",
+          modelId: createInput.modelRuntimeSelection?.modelId ?? "default-model",
           threadId: "created-thread",
           workspacePath: "/workspace"
         }
       },
       targetConfiguration: input?.targetUnavailable
         ? { kind: "unavailable", reason: "thread-state-unavailable" }
-        : input?.threadId
+        : input?.targetSelectionRequired
           ? {
-              kind: "configured",
-              modelId: "current-model",
+              kind: "model-selection-required",
+              modelRuntimeSelectionState: { kind: "legacy_missing_effort", modelId: "legacy" },
               permissionMode: "ask-to-edit",
               source: "thread",
-              threadId: input.threadId,
+              threadId: input.threadId ?? "existing-thread",
               workspacePath: "/workspace"
             }
-          : {
-              kind: "configured",
-              modelId: "draft-model",
-              permissionMode: "explore",
-              source: "draft",
-              workspaceKind: input?.draftWorkspaceKind ?? "projectless",
-              workspacePath: input?.draftWorkspacePath ?? null
-            },
+          : input?.threadId
+            ? {
+                kind: "configured",
+                modelRuntimeSelection: runtimeSelection("current-model", "high"),
+                permissionMode: "ask-to-edit",
+                source: "thread",
+                threadId: input.threadId,
+                workspacePath: "/workspace"
+              }
+            : {
+                kind: "configured",
+                modelRuntimeSelection: runtimeSelection("draft-model", "low"),
+                permissionMode: "explore",
+                source: "draft",
+                workspaceKind: input?.draftWorkspaceKind ?? "projectless",
+                workspacePath: input?.draftWorkspacePath ?? null
+              },
       goToNextThread: async () => null,
       goToPreviousThread: async () => null,
       hasPendingCommand: input?.hasPendingCommand ?? false,
@@ -368,12 +448,7 @@ function createControllerHarness(input?: {
         threadUpdates.push({ metadata: update.metadata, threadId })
       },
       updateAgentThreadModel: async (commandInput) => {
-        selectedModels.push(commandInput.modelId)
-        await commandInput.updateThread(commandInput.threadId, {
-          metadata: {
-            model: commandInput.modelId
-          }
-        })
+        selectedModels.push(commandInput.selection)
       },
       updateAgentThreadPermissionMode: async (commandInput) => {
         selectedPermissionModes.push(commandInput.permissionMode)
@@ -410,7 +485,7 @@ test("launcher AI controller creates a draft thread before invoking agent comman
 
   assert.deepEqual(harness.createdThreads, [
     {
-      modelId: "draft-model",
+      modelRuntimeSelection: runtimeSelection("draft-model", "low"),
       permissionMode: "explore",
       source: AI_THREAD_SOURCE,
       title: "AI Thread",
@@ -438,9 +513,37 @@ test("launcher AI controller does not submit or mutate settings without target c
     null,
     "Launcher target configuration is unavailable."
   ])
-  assert.equal(await harness.controller.selectModel("fallback-model"), false)
+  assert.equal(
+    await harness.controller.selectModel(runtimeSelection("fallback-model", "high")),
+    false
+  )
   assert.equal(await harness.controller.selectPermissionMode("auto"), false)
   assert.deepEqual(harness.selectedModels, [])
+  assert.deepEqual(harness.selectedPermissionModes, [])
+})
+
+test("launcher AI controller only permits model reselection during durable selection recovery", async () => {
+  const harness = createControllerHarness({
+    targetSelectionRequired: true,
+    threadId: "existing-thread"
+  })
+  const messageInput: ComposerMessageInput = { refs: [], text: "must wait for reselection" }
+
+  harness.controller.runPrimaryAction(messageInput)
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(
+    await harness.controller.selectModel(runtimeSelection("recovered-model", "high")),
+    true
+  )
+  assert.equal(await harness.controller.selectPermissionMode("auto"), false)
+  assert.equal(await harness.controller.startFreshDraft(), false)
+  assert.equal(
+    await harness.controller.editLastUserMessage({ messageId: "user-1", messageInput }),
+    false
+  )
+  assert.deepEqual(harness.selectedModels, [runtimeSelection("recovered-model", "high")])
+  assert.deepEqual(harness.invoked, [])
   assert.deepEqual(harness.selectedPermissionModes, [])
 })
 
@@ -456,7 +559,7 @@ test("launcher AI controller starts a workspace draft without creating an empty 
   assert.deepEqual(harness.createdThreads, [])
   assert.deepEqual(harness.startedDrafts, [
     {
-      modelId: "current-model",
+      modelRuntimeSelection: runtimeSelection("current-model", "high"),
       permissionMode: "ask-to-edit",
       workspaceKind: "project",
       workspacePath: "/tmp/jingle"
@@ -480,7 +583,7 @@ test("launcher AI controller creates workspace draft thread only when submitted"
 
   assert.deepEqual(harness.createdThreads, [
     {
-      modelId: "draft-model",
+      modelRuntimeSelection: runtimeSelection("draft-model", "low"),
       permissionMode: "explore",
       source: AI_THREAD_SOURCE,
       title: "AI Thread",
@@ -656,20 +759,14 @@ test("launcher AI controller routes query writes to local composer state", () =>
 test("launcher AI controller routes selected thread settings through command layer", async () => {
   const harness = createControllerHarness({ threadId: "existing-thread" })
 
-  const didSelectModel = await harness.controller.selectModel("model-b")
+  const didSelectModel = await harness.controller.selectModel(runtimeSelection("model-b", "max"))
   const didSelectPermissionMode = await harness.controller.selectPermissionMode("auto")
 
   assert.equal(didSelectModel, true)
   assert.equal(didSelectPermissionMode, true)
-  assert.deepEqual(harness.selectedModels, ["model-b"])
+  assert.deepEqual(harness.selectedModels, [runtimeSelection("model-b", "max")])
   assert.deepEqual(harness.selectedPermissionModes, ["auto"])
   assert.deepEqual(harness.threadUpdates, [
-    {
-      metadata: {
-        model: "model-b"
-      },
-      threadId: "existing-thread"
-    },
     {
       metadata: {
         permissionMode: "auto"

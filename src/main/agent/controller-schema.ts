@@ -89,7 +89,6 @@ export const agentInvokeParamsSchema = z
         refs: z.array(composerMessageRefSchema).optional()
       })
       .strict(),
-    modelId: optionalNormalizedTrimmedStringSchema,
     permissionMode: permissionModeSchema.optional(),
     temporaryMode: z.boolean().optional(),
     followUpAction: followUpActionSchema.optional()
@@ -115,7 +114,6 @@ const hitlDecisionSchema = z.union([
 export const agentResumeParamsSchema = z
   .object({
     decision: hitlDecisionSchema,
-    modelId: optionalNormalizedTrimmedStringSchema,
     threadId: nonEmptyTrimmedStringSchema
   })
   .strict()

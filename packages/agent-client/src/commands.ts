@@ -229,9 +229,7 @@ export type JingleAgentCommandStateSource<TPermissionMode = string> = Omit<
 }
 
 export type JingleReadyAgentCommandState<TPermissionMode = string> =
-  JingleAgentCommandState<TPermissionMode> & {
-    currentModel: string
-  }
+  JingleAgentCommandState<TPermissionMode>
 
 export type JingleAgentCommandReadiness<TPermissionMode = string> =
   | {
@@ -247,7 +245,7 @@ export type JingleAgentCommandReadiness<TPermissionMode = string> =
     }
 
 export type JingleAgentResumeReadyState<TPermissionMode = string> =
-  JingleReadyAgentCommandState<TPermissionMode> & {
+  JingleAgentCommandState<TPermissionMode> & {
     pendingApproval: JingleAgentPendingApprovalRef
   }
 
@@ -299,21 +297,11 @@ export function resolveJingleAgentInvokeReadiness<TPermissionMode = string>(inpu
     }
   }
 
-  if (
-    !input.state.currentModel ||
-    input.state.pendingApproval ||
-    input.state.status === "recovery_required"
-  ) {
+  if (input.state.pendingApproval || input.state.status === "recovery_required") {
     return { type: "blocked" }
   }
 
-  return {
-    state: {
-      ...input.state,
-      currentModel: input.state.currentModel
-    },
-    type: "ready"
-  }
+  return { state: input.state, type: "ready" }
 }
 
 export function resolveJingleAgentEditReadiness<TPermissionMode = string>(input: {
@@ -328,7 +316,6 @@ export function resolveJingleAgentEditReadiness<TPermissionMode = string>(input:
   }
 
   if (
-    !input.state.currentModel ||
     input.state.activeRun?.status === "running" ||
     input.state.pendingApproval ||
     input.state.status === "recovery_required"
@@ -336,13 +323,7 @@ export function resolveJingleAgentEditReadiness<TPermissionMode = string>(input:
     return { type: "blocked" }
   }
 
-  return {
-    state: {
-      ...input.state,
-      currentModel: input.state.currentModel
-    },
-    type: "ready"
-  }
+  return { state: input.state, type: "ready" }
 }
 
 export function resolveJingleAgentResumeReadiness<TPermissionMode = string>(input: {
@@ -356,18 +337,13 @@ export function resolveJingleAgentResumeReadiness<TPermissionMode = string>(inpu
     }
   }
 
-  if (
-    !input.state.pendingApproval ||
-    !input.state.currentModel ||
-    input.state.status === "recovery_required"
-  ) {
+  if (!input.state.pendingApproval || input.state.status === "recovery_required") {
     return { type: "blocked" }
   }
 
   return {
     state: {
       ...input.state,
-      currentModel: input.state.currentModel,
       pendingApproval: input.state.pendingApproval
     },
     type: "ready"
@@ -397,34 +373,10 @@ export function buildJingleAgentCommandEnvelope(input: {
   }
 }
 
-function buildJingleAgentThreadMetadataUpdate(input: {
-  currentMetadata?: JingleAgentThreadMetadata | null
-  patch: JingleAgentThreadMetadata
-}): JingleAgentThreadMetadata {
-  return {
-    ...(input.currentMetadata ?? {}),
-    ...input.patch
-  }
-}
-
-export function buildJingleAgentModelMetadataUpdate(input: {
-  currentMetadata?: JingleAgentThreadMetadata | null
-  modelId: string
-}): JingleAgentThreadMetadata {
-  return buildJingleAgentThreadMetadataUpdate({
-    currentMetadata: input.currentMetadata,
-    patch: { model: input.modelId }
-  })
-}
-
 export function buildJingleAgentPermissionMetadataUpdate(input: {
-  currentMetadata?: JingleAgentThreadMetadata | null
   permissionMode: string
 }): JingleAgentThreadMetadata {
-  return buildJingleAgentThreadMetadataUpdate({
-    currentMetadata: input.currentMetadata,
-    patch: { permissionMode: input.permissionMode }
-  })
+  return { permissionMode: input.permissionMode }
 }
 
 export function buildJingleAgentCommandMessage(input: {

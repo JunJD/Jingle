@@ -65,7 +65,9 @@ export interface RuntimeCompactRequestIdentity {
   preserveLastUserMessageCount: number | null
   preserveLastUserMessageCountPresent: boolean
   reason: string | null
+  thinkingEffort: string | null
   trigger: "manual"
+  version: 1
 }
 
 export interface RuntimeCompactionCommitMetadata extends RuntimeCompactRequestIdentity {
@@ -144,7 +146,9 @@ export function createRuntimeCompactRequestIdentity(
     preserveLastUserMessageCount: canonical.preserveLastUserMessageCount ?? null,
     preserveLastUserMessageCountPresent,
     reason: canonical.reason ?? null,
-    trigger: "manual"
+    thinkingEffort: canonical.thinkingEffort,
+    trigger: "manual",
+    version: canonical.version
   })
 }
 
@@ -159,7 +163,9 @@ export function assertRuntimeCompactRequestIdentity(
     committed.preserveLastUserMessageCountPresent !==
       requested.preserveLastUserMessageCountPresent ||
     committed.reason !== requested.reason ||
-    committed.trigger !== requested.trigger
+    committed.thinkingEffort !== requested.thinkingEffort ||
+    committed.trigger !== requested.trigger ||
+    committed.version !== requested.version
   ) {
     throw new CompactOperationIdentityConflict(operationId)
   }
@@ -206,7 +212,12 @@ function readRuntimeCompactRequestIdentity(
     typeof preserveLastUserMessageCountPresent !== "boolean" ||
     (preserveLastUserMessageCount !== null && !isMessageCount(preserveLastUserMessageCount)) ||
     (!preserveLastUserMessageCountPresent && preserveLastUserMessageCount !== null) ||
-    record.trigger !== "manual"
+    (record.thinkingEffort !== null &&
+      (typeof record.thinkingEffort !== "string" ||
+        record.thinkingEffort.length === 0 ||
+        record.thinkingEffort !== record.thinkingEffort.trim())) ||
+    record.trigger !== "manual" ||
+    record.version !== 1
   ) {
     return null
   }
@@ -216,7 +227,9 @@ function readRuntimeCompactRequestIdentity(
     preserveLastUserMessageCount,
     preserveLastUserMessageCountPresent,
     reason: record.reason,
-    trigger: "manual"
+    thinkingEffort: record.thinkingEffort,
+    trigger: "manual",
+    version: 1
   }
 }
 

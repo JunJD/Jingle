@@ -42,6 +42,7 @@ import { ArtifactsService } from "../artifacts/service"
 import type { ArtifactRecord } from "@shared/artifacts"
 import { JingleIpcError } from "../ipc/error"
 import { ModelProviderService } from "../model-provider/service"
+import { requirePersistedModelRuntimeSelectionSnapshot } from "../model-provider/runtime-selection-admission"
 import { SettingsService } from "../settings/service"
 import { ThreadWorkspaceService } from "../thread-workspace/service"
 import { ThreadWorkflowService } from "../thread-workflow/service"
@@ -56,6 +57,17 @@ import {
   toDisplayUserMessageContent
 } from "@shared/message-content"
 import { THREAD_PINNED_METADATA_KEY } from "@shared/thread-sidebar"
+import {
+  MODEL_RUNTIME_SELECTION_METADATA_KEY,
+  MODEL_RUNTIME_SELECTION_REVISION_METADATA_KEY,
+  readThreadModelRuntimeSelection,
+  readThreadModelRuntimeSelectionRevision,
+  withThreadModelRuntimeSelection
+} from "@shared/model-runtime-selection"
+import type {
+  ModelRuntimeSelection,
+  ThreadModelRuntimeSelectionChangedEvent
+} from "@shared/app-types"
 import type { ArchivedThreadItem, ArchivedThreadsView } from "@shared/thread-archive"
 import {
   buildProvidedContextInclusions,
@@ -277,6 +289,11 @@ type ResolvedCreateThreadWorkspace =
     }
 
 export class ThreadsService {
+  private readonly metadataMutationQueues = new Map<string, Promise<void>>()
+  private readonly modelRuntimeSelectionChangedListeners = new Set<
+    (event: ThreadModelRuntimeSelectionChangedEvent) => void
+  >()
+
   constructor(
     private readonly artifactsService: ArtifactsService,
     private readonly modelProviderService: ModelProviderService,
@@ -287,6 +304,13 @@ export class ThreadsService {
     private readonly threadLifecycleGate = new ThreadLifecycleGate(),
     private readonly threadWorkflowService = new ThreadWorkflowService()
   ) {}
+
+  onModelRuntimeSelectionChanged(
+    listener: (event: ThreadModelRuntimeSelectionChangedEvent) => void
+  ): () => void {
+    this.modelRuntimeSelectionChangedListeners.add(listener)
+    return () => this.modelRuntimeSelectionChangedListeners.delete(listener)
+  }
 
   async getLatestRunSummary(threadId: string): Promise<{
     error: AgentRunFailure | null
@@ -428,11 +452,19 @@ export class ThreadsService {
     return row ? mapThreadRowToThread(row) : null
   }
 
-  private async resolveCreateThreadWorkspacePath(input?: CreateThreadInput): Promise<string> {
+  private async resolveCreateThreadWorkspacePath(
+    input: CreateThreadInput | undefined,
+    title: string
+  ): Promise<string> {
+    if (input?.createDefaultWorkspace && input.workspacePath !== undefined) {
+      throw new Error("A default workspace cannot be created with an explicit workspace path.")
+    }
     const workspacePath =
       input && "workspacePath" in input && input.workspacePath !== undefined
         ? input.workspacePath
-        : await this.workspaceService.resolveGlobalWorkspacePath()
+        : input?.createDefaultWorkspace
+          ? await this.workspaceService.createDefaultWorkspace({ title })
+          : await this.workspaceService.resolveGlobalWorkspacePath()
 
     if (workspacePath === null) {
       throw new Error("No workspace root folder linked.")
@@ -446,10 +478,11 @@ export class ThreadsService {
   }
 
   private async resolveCreateThreadWorkspace(
-    input?: CreateThreadInput
+    input: CreateThreadInput | undefined,
+    title: string
   ): Promise<ResolvedCreateThreadWorkspace> {
     const workspaceKind = input?.workspaceKind ?? "projectless"
-    const workspacePath = await this.resolveCreateThreadWorkspacePath(input)
+    const workspacePath = await this.resolveCreateThreadWorkspacePath(input, title)
 
     if (workspaceKind === "project") {
       return {
@@ -469,16 +502,19 @@ export class ThreadsService {
     if (input?.workflow && input.workspaceKind !== "project") {
       throw new Error("A classified thread workflow requires workspaceKind=project.")
     }
-    const { workspaceKind, workspacePath } = await this.resolveCreateThreadWorkspace(input)
-    const nextMetadata: Record<string, unknown> = {
-      model: this.modelProviderService.getDefaultModel("llm"),
-      ...input?.metadata
-    }
+    assertMetadataDoesNotOwnModelRuntimeSelection("threads:create", input?.metadata)
+    const runtimeSelection = this.resolveThreadModelRuntimeSelection({
+      channel: "threads:create",
+      selection: input?.modelRuntimeSelection
+    })
+    const threadSelection = withThreadModelRuntimeSelection(input?.metadata, runtimeSelection)
+    const nextMetadata = threadSelection.metadata
     const requestedTitle = nextMetadata.title
     const title =
       typeof requestedTitle === "string" && requestedTitle.length > 0
         ? requestedTitle
         : formatDefaultThreadTitle(this.settingsService.getAgentConfig().locale)
+    const { workspaceKind, workspacePath } = await this.resolveCreateThreadWorkspace(input, title)
     const { title: _ignoredTitle, ...threadMetadata } = nextMetadata
     void _ignoredTitle
 
@@ -512,12 +548,29 @@ export class ThreadsService {
   }
 
   async update(params: ThreadUpdateParams): Promise<Thread> {
+    if (params.updates.metadata !== undefined) {
+      const metadataPatch = requireMetadataPatch("threads:update", params.updates.metadata)
+      return this.withThreadMetadataMutation(params.threadId, async (current) => {
+        const updateData: Parameters<typeof dbUpdateThread>[1] = {
+          metadata: JSON.stringify({
+            ...(current.metadata ? (JSON.parse(current.metadata) as Record<string, unknown>) : {}),
+            ...metadataPatch
+          })
+        }
+        if (params.updates.title !== undefined) updateData.title = params.updates.title
+        if (params.updates.status !== undefined) updateData.status = params.updates.status
+        if (params.updates.thread_values !== undefined)
+          updateData.thread_values = JSON.stringify(params.updates.thread_values)
+        const row = await dbUpdateThread(params.threadId, updateData)
+        if (!row) throw new Error("Thread not found")
+        return mapThreadRowToThread(row)
+      })
+    }
+
     const updateData: Parameters<typeof dbUpdateThread>[1] = {}
 
     if (params.updates.title !== undefined) updateData.title = params.updates.title
     if (params.updates.status !== undefined) updateData.status = params.updates.status
-    if (params.updates.metadata !== undefined)
-      updateData.metadata = JSON.stringify(params.updates.metadata)
     if (params.updates.thread_values !== undefined)
       updateData.thread_values = JSON.stringify(params.updates.thread_values)
 
@@ -527,22 +580,67 @@ export class ThreadsService {
     return mapThreadRowToThread(row)
   }
 
+  async setModel(threadId: string, selection: ModelRuntimeSelection): Promise<Thread> {
+    const result = await this.threadLifecycleGate.withIdleMutation(threadId, async () => {
+      if (await hasPendingHitlRequest(threadId)) {
+        throw new JingleIpcError({
+          channel: "threads:setModel",
+          code: "CONFLICT",
+          message: "Resolve the pending approval before changing this thread's model."
+        })
+      }
+
+      return this.withThreadMetadataMutation(threadId, async (row) => {
+        const runtimeSelection = this.resolveThreadModelRuntimeSelection({
+          channel: "threads:setModel",
+          selection
+        })
+        const metadata = row.metadata
+          ? (JSON.parse(row.metadata) as Record<string, unknown>)
+          : undefined
+        const nextSelection = withThreadModelRuntimeSelection(metadata, runtimeSelection)
+        const updated = await updateThreadMetadata(threadId, nextSelection.metadata)
+        this.publishModelRuntimeSelectionChanged({
+          revision: nextSelection.revision,
+          selection: nextSelection.selection,
+          threadId
+        })
+        return mapThreadRowToThread(updated)
+      })
+    })
+    if (result.status === "accepted") {
+      return result.value
+    }
+
+    const messages = {
+      deleting: "This thread is being deleted and its model cannot be changed.",
+      recovery_required: "Restart Jingle before changing this thread's model.",
+      running: "Stop the active run before changing this thread's model.",
+      shutting_down: "Jingle is shutting down and cannot change this thread's model."
+    } satisfies Record<Exclude<typeof result.status, "accepted">, string>
+    throw new JingleIpcError({
+      channel: "threads:setModel",
+      code:
+        result.status === "recovery_required" || result.status === "shutting_down"
+          ? "UNAVAILABLE"
+          : "CONFLICT",
+      message: messages[result.status]
+    })
+  }
+
   async setPinned(threadId: string, pinned: boolean): Promise<Thread> {
-    const row = await getThread(threadId)
-    if (!row) {
-      throw new Error("Thread not found")
-    }
+    return this.withThreadMetadataMutation(threadId, async (row) => {
+      const metadata = row.metadata ? (JSON.parse(row.metadata) as Record<string, unknown>) : {}
+      const nextMetadata = { ...metadata }
+      if (pinned) {
+        nextMetadata[THREAD_PINNED_METADATA_KEY] = true
+      } else {
+        delete nextMetadata[THREAD_PINNED_METADATA_KEY]
+      }
 
-    const metadata = row.metadata ? (JSON.parse(row.metadata) as Record<string, unknown>) : {}
-    const nextMetadata = { ...metadata }
-    if (pinned) {
-      nextMetadata[THREAD_PINNED_METADATA_KEY] = true
-    } else {
-      delete nextMetadata[THREAD_PINNED_METADATA_KEY]
-    }
-
-    const updated = await updateThreadMetadata(threadId, nextMetadata)
-    return mapThreadRowToThread(updated)
+      const updated = await updateThreadMetadata(threadId, nextMetadata)
+      return mapThreadRowToThread(updated)
+    })
   }
 
   async setArchived(threadId: string, archived: boolean): Promise<Thread> {
@@ -573,6 +671,11 @@ export class ThreadsService {
     const nextMetadata = sourceThread.metadata
       ? (JSON.parse(sourceThread.metadata) as Record<string, unknown>)
       : {}
+    requirePersistedModelRuntimeSelectionSnapshot({
+      channel: "threads:clone",
+      metadata: nextMetadata,
+      owner: "thread"
+    })
     const clonedThread = await dbCloneThread(sourceThreadId, threadId, {
       metadata: nextMetadata,
       threadValues: sourceThread.thread_values
@@ -610,6 +713,15 @@ export class ThreadsService {
       threadId: sourceThreadId
     })
 
+    const nextMetadata = sourceThread.metadata
+      ? (JSON.parse(sourceThread.metadata) as Record<string, unknown>)
+      : {}
+    requirePersistedModelRuntimeSelectionSnapshot({
+      channel: "threads:cloneUntilMessage",
+      metadata: nextMetadata,
+      owner: "thread"
+    })
+
     const sourceMessages = await listProjectedThreadMessages(sourceThreadId)
     const targetMessage = sourceMessages.find((message) => message.message_id === messageId)
 
@@ -640,9 +752,6 @@ export class ThreadsService {
     }
 
     const threadId = uuid()
-    const nextMetadata = sourceThread.metadata
-      ? (JSON.parse(sourceThread.metadata) as Record<string, unknown>)
-      : {}
     const clonedThread = await dbCloneThreadUntilCheckpoint(sourceThreadId, threadId, {
       checkpointId: targetConfig.checkpointId,
       checkpointNs: targetConfig.checkpointNs,
@@ -693,7 +802,13 @@ export class ThreadsService {
     ])
 
     return {
-      thread: facts.thread,
+      thread: {
+        ...facts.thread,
+        modelRuntimeSelection: readThreadModelRuntimeSelection(facts.thread.metadata),
+        modelRuntimeSelectionRevision: readThreadModelRuntimeSelectionRevision(
+          facts.thread.metadata
+        )
+      },
       messages: {
         artifacts: facts.artifacts,
         messages: facts.messages
@@ -722,4 +837,104 @@ export class ThreadsService {
   async getAgentThreadData(threadId: string): Promise<AgentThreadDataSnapshot> {
     return this.getPersistedAgentThreadData(threadId)
   }
+
+  private resolveThreadModelRuntimeSelection(input: {
+    channel: "threads:create" | "threads:setModel"
+    selection?: ModelRuntimeSelection
+  }): ModelRuntimeSelection {
+    try {
+      return input.selection === undefined
+        ? this.modelProviderService.getDefaultRuntimeSelection()
+        : this.modelProviderService.validateRuntimeSelection(input.selection)
+    } catch (error) {
+      if (error instanceof JingleIpcError) {
+        throw error
+      }
+      throw new JingleIpcError({
+        channel: input.channel,
+        code: "FAILED_PRECONDITION",
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : "The model runtime selection is not supported. Select the model again."
+      })
+    }
+  }
+
+  private publishModelRuntimeSelectionChanged(
+    event: ThreadModelRuntimeSelectionChangedEvent
+  ): void {
+    for (const listener of this.modelRuntimeSelectionChangedListeners) {
+      try {
+        listener(event)
+      } catch (error) {
+        console.warn("[Threads] Model runtime selection listener failed after persistence.", {
+          error,
+          revision: event.revision,
+          threadId: event.threadId
+        })
+      }
+    }
+  }
+
+  private async withThreadMetadataMutation<T>(
+    threadId: string,
+    operation: (row: ThreadRow) => Promise<T>
+  ): Promise<T> {
+    const previous = this.metadataMutationQueues.get(threadId) ?? Promise.resolve()
+    let release!: () => void
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const queued = previous.catch(() => undefined).then(() => barrier)
+    this.metadataMutationQueues.set(threadId, queued)
+
+    await previous.catch(() => undefined)
+    try {
+      const row = await getThread(threadId)
+      if (!row) {
+        throw new Error("Thread not found")
+      }
+      return await operation(row)
+    } finally {
+      release()
+      if (this.metadataMutationQueues.get(threadId) === queued) {
+        this.metadataMutationQueues.delete(threadId)
+      }
+    }
+  }
+}
+
+function assertMetadataDoesNotOwnModelRuntimeSelection(
+  channel: string,
+  metadata: Record<string, unknown> | undefined
+): void {
+  const protectedKey = metadata
+    ? [
+        MODEL_RUNTIME_SELECTION_METADATA_KEY,
+        MODEL_RUNTIME_SELECTION_REVISION_METADATA_KEY,
+        "model",
+        "modelId"
+      ].find((key) => Object.hasOwn(metadata, key))
+    : undefined
+  if (protectedKey) {
+    throw new JingleIpcError({
+      channel,
+      code: "INVALID_ARGUMENT",
+      message: `Thread metadata cannot write ${protectedKey}. Use threads:setModel.`
+    })
+  }
+}
+
+function requireMetadataPatch(channel: string, value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new JingleIpcError({
+      channel,
+      code: "INVALID_ARGUMENT",
+      message: "Thread metadata update must be an object patch."
+    })
+  }
+  const patch = value as Record<string, unknown>
+  assertMetadataDoesNotOwnModelRuntimeSelection(channel, patch)
+  return patch
 }

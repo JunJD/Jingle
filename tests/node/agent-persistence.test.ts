@@ -9,6 +9,7 @@ import type { SerializerProtocol } from "@langchain/langgraph-checkpoint"
 import { appleRemindersManifest } from "../../installable-extensions/apple-reminders/manifest"
 import { appleRemindersMain } from "../../installable-extensions/apple-reminders/main"
 import type { AgentService, AgentStreamPayload } from "../../src/main/agent/service"
+import { ThreadLifecycleGate } from "../../src/main/agent/thread-lifecycle-gate"
 import {
   AGENT_RUN_FAILURE_METADATA_KEY,
   parseAgentRunFailure,
@@ -18,15 +19,55 @@ import { toAgentRunFailure } from "../../src/main/agent/errors"
 import { ExtensionMainDefinitionRegistry } from "../../src/main/extensions/registry/main-definition-registry"
 import type { ExtensionMainRef } from "../../src/main/extensions/registry/types"
 import { ThreadsService } from "../../src/main/threads/service"
+import {
+  MODEL_RUNTIME_SELECTION_METADATA_KEY,
+  MODEL_RUNTIME_SELECTION_REVISION_METADATA_KEY,
+  readRunModelRuntimeSelection,
+  readThreadModelRuntimeSelection,
+  readThreadModelRuntimeSelectionRevision
+} from "../../src/shared/model-runtime-selection"
 
 const repoRoot = process.cwd()
 const originalJingleHome = process.env.JINGLE_HOME
+const originalDeepSeekApiKey = process.env.DEEPSEEK_API_KEY
 let jingleHome = ""
+
+function createTestModelRuntimeSelection(modelId: string) {
+  return { modelId, thinkingEffort: "high" as const, version: 1 as const }
+}
+
+function createTestRunMetadata(metadata: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    ...metadata,
+    [MODEL_RUNTIME_SELECTION_METADATA_KEY]: createTestModelRuntimeSelection(
+      "deepseek:deepseek-v4-pro"
+    )
+  }
+}
 
 async function loadDbModules() {
   const db = await import("../../src/main/db")
   const { getPrismaClient } = await import("../../src/main/db/client")
-  return { ...db, getPrismaClient }
+  const createThread: typeof db.createThread = (threadId, input) => {
+    const metadata = input?.metadata
+    const preservesExplicitSelectionState =
+      metadata &&
+      (Object.hasOwn(metadata, MODEL_RUNTIME_SELECTION_METADATA_KEY) ||
+        Object.hasOwn(metadata, "model"))
+    return db.createThread(threadId, {
+      ...input,
+      metadata: preservesExplicitSelectionState
+        ? metadata
+        : {
+            ...(metadata ?? {}),
+            [MODEL_RUNTIME_SELECTION_METADATA_KEY]: createTestModelRuntimeSelection(
+              "deepseek:deepseek-v4-pro"
+            ),
+            [MODEL_RUNTIME_SELECTION_REVISION_METADATA_KEY]: 1
+          }
+    })
+  }
+  return { ...db, createThread, getPrismaClient }
 }
 
 async function bindThreadWorkspace(threadId: string, workspacePath: string): Promise<void> {
@@ -148,7 +189,12 @@ function createAppleRemindersSourceRef() {
 }
 
 async function createThreadsServiceForTest(
-  input: { threadDigestService?: unknown; threadLifecycleGate?: unknown } = {}
+  input: {
+    modelProviderService?: unknown
+    threadDigestService?: unknown
+    threadLifecycleGate?: unknown
+    workspaceService?: unknown
+  } = {}
 ) {
   const { ArtifactsService } = await import("../../src/main/artifacts/service")
   const { ThreadsService } = await import("../../src/main/threads/service")
@@ -159,15 +205,22 @@ async function createThreadsServiceForTest(
 
   return new ThreadsService(
     new ArtifactsService(),
-    { getDefaultModel: () => "openai:gpt-test" } as unknown as ConstructorParameters<
-      typeof ThreadsService
-    >[1],
-    { getAgentConfig: () => ({ locale: "en_US" }) } as unknown as ConstructorParameters<
+    (input.modelProviderService ?? {
+      getDefaultRuntimeSelection: () => ({
+        modelId: "deepseek:deepseek-v4-pro",
+        thinkingEffort: "high",
+        version: 1
+      }),
+      validateRuntimeSelection: (selection: ReturnType<typeof createTestModelRuntimeSelection>) =>
+        selection
+    }) as ConstructorParameters<typeof ThreadsService>[1],
+    { getAgentConfig: () => ({ locale: "en-US" }) } as unknown as ConstructorParameters<
       typeof ThreadsService
     >[2],
-    { resolveGlobalWorkspacePath: async () => repoRoot } as unknown as ConstructorParameters<
-      typeof ThreadsService
-    >[3],
+    (input.workspaceService ?? {
+      createDefaultWorkspace: async () => repoRoot,
+      resolveGlobalWorkspacePath: async () => repoRoot
+    }) as ConstructorParameters<typeof ThreadsService>[3],
     new ThreadWorkspaceService(new ThreadWorkspaceRepository()) as unknown as ConstructorParameters<
       typeof ThreadsService
     >[4],
@@ -183,6 +236,10 @@ async function createThreadsServiceForTest(
 test.before(async () => {
   jingleHome = await mkdtemp(join(tmpdir(), "jingle-agent-persistence-"))
   process.env.JINGLE_HOME = jingleHome
+  process.env.DEEPSEEK_API_KEY = "sk-test-reasoning-admission"
+  const { API_KEY_CREDENTIAL_VARIABLE } = await import("../../src/main/model-provider/catalog")
+  const { setProviderCredential } = await import("../../src/main/model-provider/secrets")
+  setProviderCredential("deepseek", API_KEY_CREDENTIAL_VARIABLE, "sk-test-reasoning-admission")
 
   execFileSync("node", ["scripts/run-prisma-jingle-db.mjs", "migrate", "deploy"], {
     cwd: repoRoot,
@@ -199,6 +256,318 @@ test.beforeEach(async () => {
   await initializeDatabase()
   await getPrismaClient().thread.deleteMany()
   await getPrismaClient().agentMemory.deleteMany()
+})
+
+test("threads create and model switch persist one canonical runtime selection owner", async () => {
+  const service = await createThreadsServiceForTest()
+  const created = await service.create({
+    metadata: { source: "runtime-selection-test" },
+    workspacePath: repoRoot
+  })
+
+  assert.deepEqual(readThreadModelRuntimeSelection(created.metadata), {
+    kind: "ready",
+    selection: {
+      modelId: "deepseek:deepseek-v4-pro",
+      thinkingEffort: "high",
+      version: 1
+    }
+  })
+
+  const switched = await service.setModel(created.thread_id, {
+    modelId: "deepseek:deepseek-v4-flash",
+    thinkingEffort: "max",
+    version: 1
+  })
+  assert.deepEqual(readThreadModelRuntimeSelection(switched.metadata), {
+    kind: "ready",
+    selection: {
+      modelId: "deepseek:deepseek-v4-flash",
+      thinkingEffort: "max",
+      version: 1
+    }
+  })
+  assert.equal(switched.metadata?.source, "runtime-selection-test")
+})
+
+test("threads create validates the model before creating a default workspace", async () => {
+  let workspaceCreateCalls = 0
+  const service = await createThreadsServiceForTest({
+    modelProviderService: {
+      getDefaultRuntimeSelection: () => {
+        throw new Error("Configure a model provider before creating a thread.")
+      }
+    },
+    workspaceService: {
+      createDefaultWorkspace: async () => {
+        workspaceCreateCalls += 1
+        return repoRoot
+      },
+      resolveGlobalWorkspacePath: async () => repoRoot
+    }
+  })
+
+  await assert.rejects(
+    service.create({
+      createDefaultWorkspace: true,
+      metadata: { title: "No provider draft" }
+    }),
+    /Configure a model provider before creating a thread/
+  )
+  assert.equal(workspaceCreateCalls, 0)
+  assert.equal(await service.list().then((threads) => threads.length), 0)
+})
+
+test("generic thread metadata cannot forge or delete the runtime selection", async () => {
+  const service = await createThreadsServiceForTest()
+  const created = await service.create({ workspacePath: repoRoot })
+  for (const protectedKey of [
+    MODEL_RUNTIME_SELECTION_METADATA_KEY,
+    MODEL_RUNTIME_SELECTION_REVISION_METADATA_KEY,
+    "model",
+    "modelId"
+  ]) {
+    await assert.rejects(
+      service.create({
+        metadata: {
+          [protectedKey]: undefined
+        },
+        workspacePath: repoRoot
+      }),
+      new RegExp(`Thread metadata cannot write ${protectedKey}`)
+    )
+    await assert.rejects(
+      service.update({
+        threadId: created.thread_id,
+        updates: {
+          metadata: {
+            [protectedKey]: undefined
+          }
+        }
+      }),
+      new RegExp(`Thread metadata cannot write ${protectedKey}`)
+    )
+  }
+})
+
+test("serialized metadata mutations cannot roll back a concurrent model switch", async () => {
+  const service = await createThreadsServiceForTest()
+  const created = await service.create({
+    metadata: { source: "runtime-selection-race" },
+    workspacePath: repoRoot
+  })
+
+  await Promise.all([
+    service.update({
+      threadId: created.thread_id,
+      updates: { metadata: { permissionMode: "auto" } }
+    }),
+    service.setModel(created.thread_id, {
+      modelId: "deepseek:deepseek-v4-flash",
+      thinkingEffort: "max",
+      version: 1
+    }),
+    service.setPinned(created.thread_id, true)
+  ])
+
+  const persisted = await service.get(created.thread_id)
+  assert.deepEqual(readThreadModelRuntimeSelection(persisted?.metadata), {
+    kind: "ready",
+    selection: {
+      modelId: "deepseek:deepseek-v4-flash",
+      thinkingEffort: "max",
+      version: 1
+    }
+  })
+  assert.equal(persisted?.metadata?.permissionMode, "auto")
+  assert.equal(persisted?.metadata?.pinned, true)
+  assert.equal(persisted?.metadata?.source, "runtime-selection-race")
+})
+
+test("pending HITL rejects model changes without writes, revision increments, or events", async () => {
+  const { upsertHitlRequest } = await loadDbModules()
+  const service = await createThreadsServiceForTest()
+  const created = await service.create({ workspacePath: repoRoot })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve", "user_declined"],
+    request_id: "request-model-switch-pending",
+    thread_id: created.thread_id,
+    tool_args: {},
+    tool_call_id: "tool-model-switch-pending",
+    tool_name: "execute"
+  })
+  const events: unknown[] = []
+  service.onModelRuntimeSelectionChanged((event) => events.push(event))
+
+  await assert.rejects(
+    service.setModel(created.thread_id, {
+      modelId: "deepseek:deepseek-v4-flash",
+      thinkingEffort: "max",
+      version: 1
+    }),
+    /Resolve the pending approval/
+  )
+
+  const persisted = await service.get(created.thread_id)
+  assert.deepEqual(readThreadModelRuntimeSelection(persisted?.metadata), {
+    kind: "ready",
+    selection: {
+      modelId: "deepseek:deepseek-v4-pro",
+      thinkingEffort: "high",
+      version: 1
+    }
+  })
+  assert.equal(readThreadModelRuntimeSelectionRevision(persisted?.metadata), 1)
+  assert.deepEqual(events, [])
+})
+
+test("corrupt thread selection revision fails closed without resetting fan-out ordering", async () => {
+  const { updateThread } = await loadDbModules()
+  const service = await createThreadsServiceForTest()
+  const created = await service.create({ workspacePath: repoRoot })
+  const corruptedMetadata = {
+    ...created.metadata,
+    [MODEL_RUNTIME_SELECTION_REVISION_METADATA_KEY]: "corrupt"
+  }
+  await updateThread(created.thread_id, { metadata: JSON.stringify(corruptedMetadata) })
+  const events: unknown[] = []
+  service.onModelRuntimeSelectionChanged((event) => events.push(event))
+
+  await assert.rejects(
+    service.setModel(created.thread_id, {
+      modelId: "deepseek:deepseek-v4-flash",
+      thinkingEffort: "max",
+      version: 1
+    }),
+    /revision is invalid/
+  )
+
+  const persisted = await service.get(created.thread_id)
+  assert.equal(persisted?.metadata?.[MODEL_RUNTIME_SELECTION_REVISION_METADATA_KEY], "corrupt")
+  assert.deepEqual(readThreadModelRuntimeSelection(persisted?.metadata), { kind: "invalid" })
+  assert.deepEqual(events, [])
+})
+
+test("invoke setup lease rejects a racing model change and preserves the admitted pair", async () => {
+  let releaseClaim!: () => void
+  const claimBarrier = new Promise<void>((resolve) => {
+    releaseClaim = resolve
+  })
+  let signalClaimed!: (claim: Awaited<ReturnType<ThreadLifecycleGate["claimRun"]>>) => void
+  const claimed = new Promise<Awaited<ReturnType<ThreadLifecycleGate["claimRun"]>>>((resolve) => {
+    signalClaimed = resolve
+  })
+  class HoldingThreadLifecycleGate extends ThreadLifecycleGate {
+    override async claimRun(threadId: string) {
+      const claim = await super.claimRun(threadId)
+      signalClaimed(claim)
+      await claimBarrier
+      return claim
+    }
+  }
+  const gate = new HoldingThreadLifecycleGate()
+  const threadsService = await createThreadsServiceForTest({ threadLifecycleGate: gate })
+  const created = await threadsService.create({ workspacePath: repoRoot })
+  const agentService = await createAgentServiceForTest({
+    threadLifecycleGate: gate
+  })
+  const events: unknown[] = []
+  threadsService.onModelRuntimeSelectionChanged((event) => events.push(event))
+  const invoke = agentService.dispatchInvoke(
+    {
+      message: { content: "hold setup", id: "message-model-switch-race" },
+      threadId: created.thread_id
+    },
+    { send: () => undefined }
+  )
+  const activeClaim = await claimed
+
+  await assert.rejects(
+    threadsService.setModel(created.thread_id, {
+      modelId: "deepseek:deepseek-v4-flash",
+      thinkingEffort: "max",
+      version: 1
+    }),
+    /Stop the active run/
+  )
+  assert.equal(activeClaim.status, "accepted")
+  if (activeClaim.status === "accepted") {
+    activeClaim.lease.abortController.abort()
+  }
+  releaseClaim()
+  await invoke
+
+  const persisted = await threadsService.get(created.thread_id)
+  assert.deepEqual(readThreadModelRuntimeSelection(persisted?.metadata), {
+    kind: "ready",
+    selection: {
+      modelId: "deepseek:deepseek-v4-pro",
+      thinkingEffort: "high",
+      version: 1
+    }
+  })
+  assert.equal(readThreadModelRuntimeSelectionRevision(persisted?.metadata), 1)
+  assert.deepEqual(events, [])
+})
+
+test("invalid runtime selections fail before core admission or durable run writes", async () => {
+  const { createThread, getPrismaClient, getThread } = await loadDbModules()
+  const service = await createAgentServiceForTest()
+  const cases: Array<{ metadata: Record<string, unknown>; name: string }> = [
+    {
+      metadata: { model: "deepseek:deepseek-v4-pro" },
+      name: "legacy"
+    },
+    {
+      metadata: {
+        [MODEL_RUNTIME_SELECTION_METADATA_KEY]: {
+          extra: true,
+          modelId: "deepseek:deepseek-v4-pro",
+          thinkingEffort: "high",
+          version: 1
+        }
+      },
+      name: "invalid"
+    },
+    {
+      metadata: {
+        [MODEL_RUNTIME_SELECTION_METADATA_KEY]: {
+          modelId: "deepseek:deepseek-v4-pro",
+          thinkingEffort: "low",
+          version: 1
+        }
+      },
+      name: "unsupported"
+    }
+  ]
+
+  for (const testCase of cases) {
+    const threadId = `thread-runtime-selection-${testCase.name}`
+    await createThread(threadId, { metadata: testCase.metadata })
+    await bindThreadWorkspace(threadId, repoRoot)
+    const events: AgentStreamPayload[] = []
+    let coreAdmissions = 0
+    const outcome = await service.dispatchInvoke(
+      {
+        message: {
+          content: `must reject ${testCase.name} selection`,
+          id: `message-runtime-selection-${testCase.name}`
+        },
+        threadId
+      },
+      { send: (event) => events.push(event) },
+      { onCoreAdmitted: () => (coreAdmissions += 1) }
+    )
+
+    assert.equal(outcome.type, "rejected")
+    assert.equal(outcome.type === "rejected" ? outcome.error.code : null, "FAILED_PRECONDITION")
+    assert.equal(coreAdmissions, 0)
+    assert.deepEqual(events, [])
+    assert.equal(await getPrismaClient().run.count({ where: { threadId } }), 0)
+    assert.equal(await getPrismaClient().agentEvent.count({ where: { threadId } }), 0)
+    assert.equal(await getPrismaClient().message.count({ where: { threadId } }), 0)
+    assert.equal((await getThread(threadId))?.status, "idle")
+  }
 })
 
 test("database startup interrupts agent state left active by a previous process", async () => {
@@ -241,6 +610,11 @@ test.after(async () => {
     delete process.env.JINGLE_HOME
   } else {
     process.env.JINGLE_HOME = originalJingleHome
+  }
+  if (originalDeepSeekApiKey === undefined) {
+    delete process.env.DEEPSEEK_API_KEY
+  } else {
+    process.env.DEEPSEEK_API_KEY = originalDeepSeekApiKey
   }
 
   if (jingleHome) {
@@ -413,7 +787,10 @@ test("concurrent HITL resolution accepts exactly one terminal decision", async (
   const requestId = "request-hitl-concurrent-cas"
 
   await createThread(threadId)
-  await createRun(runId, threadId, { status: "interrupted" })
+  await createRun(runId, threadId, {
+    metadata: createTestRunMetadata(),
+    status: "interrupted"
+  })
   await upsertHitlRequest({
     allowed_decisions: ["approve", "user_declined", "corrected"],
     request_id: requestId,
@@ -510,7 +887,10 @@ test("HITL resume admission accepts exactly one decision and one event batch", a
   const toolCallId = "tool-call-hitl-cas-loser-event"
 
   await createThread(threadId)
-  await createRun(runId, threadId, { status: "interrupted" })
+  await createRun(runId, threadId, {
+    metadata: createTestRunMetadata(),
+    status: "interrupted"
+  })
   await upsertHitlRequest({
     allowed_decisions: ["approve", "user_declined", "corrected"],
     request_id: requestId,
@@ -527,7 +907,7 @@ test("HITL resume admission accepts exactly one decision and one event batch", a
     controller.beginResumeRun({
       resume: {
         decision: { request_id: requestId, tool_call_id: toolCallId, type },
-        modelId: "bdd",
+        ...(type === "approve" ? { selection: createTestModelRuntimeSelection("bdd") } : {}),
         runId,
         source: "resume"
       } as never,
@@ -543,8 +923,14 @@ test("HITL resume admission accepts exactly one decision and one event batch", a
   assert.equal((rejected[0]?.reason as { code?: string }).code, "CONFLICT")
   const request = await getHitlRequest(requestId)
   const run = await getRun(runId)
+  const runMetadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
   assert.ok(request)
   assert.equal(run?.status, request.status === "user_declined" ? "cancelled" : "running")
+  assert.equal(Object.hasOwn(runMetadata, "modelId"), false)
+  assert.deepEqual(readRunModelRuntimeSelection(runMetadata), {
+    kind: "ready",
+    selection: createTestModelRuntimeSelection("deepseek:deepseek-v4-pro")
+  })
   assert.equal(
     await getPrismaClient().agentEvent.count({
       where: { runId, threadId, type: "approval.resolved" }
@@ -667,7 +1053,7 @@ test("beginAgentRun rolls back the run row when marking the thread busy fails", 
 
   try {
     await assert.rejects(
-      beginAgentRun(threadId, "gpt-test", {
+      beginAgentRun(threadId, createTestModelRuntimeSelection("gpt-test"), {
         startEvent: {
           contentPreview: "rollback invoke",
           refs: [],
@@ -1048,7 +1434,10 @@ test("agent resume commits HITL before a resumed stream can fail on its first ch
   const requestId = "request-resume-failure"
   await createThread(threadId)
   await bindThreadWorkspace(threadId, repoRoot)
-  await createRun(runId, threadId, { status: "interrupted" })
+  await createRun(runId, threadId, {
+    metadata: createTestRunMetadata(),
+    status: "interrupted"
+  })
   await upsertHitlRequest({
     request_id: requestId,
     thread_id: threadId,
@@ -1079,7 +1468,6 @@ test("agent resume commits HITL before a resumed stream can fail on its first ch
           tool_call_id: "tool-call-resume-failure",
           type: "corrected"
         },
-        modelId: "bdd",
         threadId
       },
       {
@@ -1165,7 +1553,10 @@ test("admission binding failures preserve invoke rejection and resume acceptance
     bindThreadWorkspace(resumeThreadId, repoRoot),
     bindThreadWorkspace(recoveryThreadId, repoRoot)
   ])
-  await createRun(resumeRunId, resumeThreadId, { status: "interrupted" })
+  await createRun(resumeRunId, resumeThreadId, {
+    metadata: createTestRunMetadata(),
+    status: "interrupted"
+  })
   await upsertHitlRequest({
     allowed_decisions: ["corrected"],
     request_id: resumeRequestId,
@@ -1190,11 +1581,11 @@ test("admission binding failures preserve invoke rejection and resume acceptance
     value: {
       thread: ({ threadId }: { threadId: string }) => ({
         startInvoke: async (invoke: {
-          modelId: string
           permissionMode: "ask-to-edit" | "auto" | "explore"
+          selection: ReturnType<typeof createTestModelRuntimeSelection>
           userMessage: { id: string }
         }) => {
-          const started = await beginAgentRun(threadId, invoke.modelId, {
+          const started = await beginAgentRun(threadId, invoke.selection, {
             permissionMode: invoke.permissionMode,
             startEvent: {
               contentPreview: "binding failure",
@@ -1218,7 +1609,7 @@ test("admission binding failures preserve invoke rejection and resume acceptance
         },
         startResume: async (resume: {
           decision: Parameters<typeof commitAgentResumeDecision>[2]
-          modelId: string
+          selection: ReturnType<typeof createTestModelRuntimeSelection>
           runId: string
         }) => {
           const committed = await commitAgentResumeDecision(
@@ -1226,7 +1617,7 @@ test("admission binding failures preserve invoke rejection and resume acceptance
             resume.runId,
             resume.decision,
             undefined,
-            { resumeEvent: { modelId: resume.modelId } }
+            { resumeEvent: { modelId: resume.selection.modelId } }
           )
           assert.ok(committed)
           const status = await markRunFailed(threadId, resume.runId, resumeFailure)
@@ -1246,7 +1637,6 @@ test("admission binding failures preserve invoke rejection and resume acceptance
     const invokeOutcome = await service.dispatchInvoke(
       {
         message: { content: "invoke binding failure", id: "message-invoke-binding-failure" },
-        modelId: "bdd",
         threadId: invokeThreadId
       },
       { send: (event) => invokeEvents.push(event) },
@@ -1281,7 +1671,6 @@ test("admission binding failures preserve invoke rejection and resume acceptance
     await service.invoke(
       {
         message: { content: "edit binding failure", id: "message-edit-binding-failure" },
-        modelId: "bdd",
         threadId: editThreadId
       },
       { send: (event) => editEvents.push(event) },
@@ -1312,7 +1701,6 @@ test("admission binding failures preserve invoke rejection and resume acceptance
           tool_call_id: "tool-resume-binding-failure",
           type: "corrected"
         },
-        modelId: "bdd",
         threadId: resumeThreadId
       },
       { send: (event) => resumeEvents.push(event) },
@@ -1347,7 +1735,6 @@ test("admission binding failures preserve invoke rejection and resume acceptance
     const recoveryOutcome = await service.dispatchInvoke(
       {
         message: { content: "admission persistence failure", id: "message-admission-recovery" },
-        modelId: "bdd",
         threadId: recoveryThreadId
       },
       { send: (event) => recoveryEvents.push(event) }
@@ -1417,7 +1804,10 @@ test("terminal transaction failure emits restart-required recovery without a dur
 
   await createThread(threadId)
   await bindThreadWorkspace(threadId, repoRoot)
-  await createRun(runId, threadId, { metadata: { existing: true }, status: "interrupted" })
+  await createRun(runId, threadId, {
+    metadata: createTestRunMetadata({ existing: true }),
+    status: "interrupted"
+  })
   await upsertHitlRequest({
     allowed_decisions: ["corrected"],
     request_id: requestId,
@@ -1447,7 +1837,6 @@ test("terminal transaction failure emits restart-required recovery without a dur
           tool_call_id: "tool-call-resume-persistence-recovery",
           type: "corrected"
         },
-        modelId: "bdd",
         threadId
       },
       {
@@ -1520,11 +1909,11 @@ test("terminal transaction failure emits restart-required recovery without a dur
   const sink = { send: (event: AgentStreamPayload) => rejectedEvents.push(event) }
   const [invokeOutcome, editOutcome, resumeOutcome] = await Promise.all([
     service.dispatchInvoke(
-      { message: { content: "blocked", id: "blocked-invoke" }, modelId: "bdd", threadId },
+      { message: { content: "blocked", id: "blocked-invoke" }, threadId },
       sink
     ),
     service.dispatchEditLastUserMessageAndInvoke(
-      { message: { content: "blocked", id: "blocked-edit" }, modelId: "bdd", threadId },
+      { message: { content: "blocked", id: "blocked-edit" }, threadId },
       sink
     ),
     service.dispatchResume(
@@ -1534,7 +1923,6 @@ test("terminal transaction failure emits restart-required recovery without a dur
           tool_call_id: "tool-call-resume-persistence-recovery",
           type: "approve"
         },
-        modelId: "bdd",
         threadId
       },
       sink
@@ -1568,7 +1956,7 @@ test("agent resume rejects workspace mismatch before mutating the run", async ()
   await createThread(threadId)
   await bindThreadWorkspace(threadId, currentWorkspacePath)
   await createRun(runId, threadId, {
-    metadata: {
+    metadata: createTestRunMetadata({
       [JINGLE_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY]: {
         canonicalWorkspacePath: originalWorkspacePath,
         generatedAt: 1,
@@ -1580,7 +1968,7 @@ test("agent resume rejects workspace mismatch before mutating the run", async ()
         },
         workspaceKey: originalWorkspacePath
       }
-    },
+    }),
     status: "interrupted"
   })
   await upsertHitlRequest({
@@ -1606,7 +1994,6 @@ test("agent resume rejects workspace mismatch before mutating the run", async ()
           tool_call_id: "tool-call-resume-workspace-mismatch",
           type: "approve"
         },
-        modelId: "bdd",
         threadId
       },
       {
@@ -1655,7 +2042,7 @@ test("agent resume seeds frozen provided context inclusions into resumed runtime
   await createThread(threadId)
   await bindThreadWorkspace(threadId, repoRoot)
   await createRun(runId, threadId, {
-    metadata: {
+    metadata: createTestRunMetadata({
       [JINGLE_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY]: {
         canonicalWorkspacePath: repoRoot,
         generatedAt: 123,
@@ -1673,7 +2060,7 @@ test("agent resume seeds frozen provided context inclusions into resumed runtime
         workspaceIdentity,
         workspaceKey: repoRoot
       }
-    },
+    }),
     status: "interrupted"
   })
   await updateThread(threadId, { status: "interrupted" })
@@ -1702,7 +2089,6 @@ test("agent resume seeds frozen provided context inclusions into resumed runtime
           tool_call_id: "tool-call-resume-context-inclusions",
           type: "approve"
         },
-        modelId: "bdd",
         threadId
       },
       {
@@ -1779,7 +2165,6 @@ test("agent cancel releases pending invoke setup and ignores its late fulfillmen
         content: "cancel before run id",
         id: "message-cancel-before-run"
       },
-      modelId: "bdd",
       threadId
     },
     {
@@ -1860,7 +2245,6 @@ test("agent cancel releases pending resume setup and observes its late rejection
         tool_call_id: "tool-call-cancel-resume-before-run",
         type: "approve"
       },
-      modelId: "bdd",
       threadId
     },
     { send: () => undefined }
@@ -1906,7 +2290,6 @@ test("invoke admission atomically records one start and one user message event",
           content: "atomic invoke admission",
           id: "message-atomic-invoke"
         },
-        modelId: "bdd",
         threadId
       },
       {
@@ -1957,7 +2340,6 @@ test("invoke command reports missing workspace before accepting the command", as
   const outcome = await agentService.dispatchInvoke(
     {
       message: { content: "hello", id: "message-missing-workspace" },
-      modelId: "bdd",
       threadId
     },
     { send: (event) => events.push(event.type) }
@@ -1999,7 +2381,6 @@ test("invoke admission rejects a required extension whose process definition is 
           id: "message-extension-main-pending",
           refs: [createAppleRemindersSourceRef()]
         },
-        modelId: "bdd",
         threadId
       },
       { send: () => undefined }
@@ -2041,7 +2422,6 @@ test("invoke admission rejects a required extension whose process definition fai
           id: "message-extension-main-failed",
           refs: [createAppleRemindersSourceRef()]
         },
-        modelId: "bdd",
         threadId
       },
       { send: () => undefined }
@@ -2086,7 +2466,6 @@ test("invoke admission uses a ready required definition without waiting for unre
           id: "message-extension-main-ready",
           refs: [createAppleRemindersSourceRef()]
         },
-        modelId: "bdd",
         threadId
       },
       { send: (event) => events.push(event.type) }
@@ -2136,7 +2515,6 @@ test("concurrent invoke cannot replace an active run while its projection is pen
         content: "bdd:long",
         id: "message-concurrent-invoke-first"
       },
-      modelId: "bdd",
       threadId
     },
     {
@@ -2166,7 +2544,6 @@ test("concurrent invoke cannot replace an active run while its projection is pen
           content: "must not replace the first run",
           id: "message-concurrent-invoke-second"
         },
-        modelId: "bdd",
         threadId
       },
       {
@@ -2274,7 +2651,6 @@ test("agent cancel records one aborted lifecycle for an active run", async () =>
         content: "bdd:long",
         id: "message-cancel-active-run"
       },
-      modelId: "bdd",
       threadId
     },
     {
@@ -2393,7 +2769,6 @@ test("agent deletion gate rejects invoke while thread deletion is active", async
           content: "invoke while deleting",
           id: "message-deleting-rejects-invoke"
         },
-        modelId: "bdd",
         threadId
       },
       {
@@ -2778,7 +3153,7 @@ test("agent run metadata snapshots permission mode and preserves it through resu
     }
   )
 
-  const { runId } = await beginAgentRun(threadId, "gpt-test", {
+  const { runId } = await beginAgentRun(threadId, createTestModelRuntimeSelection("gpt-test"), {
     aiCapabilities,
     permissionMode: "auto",
     startEvent: {
@@ -2790,6 +3165,10 @@ test("agent run metadata snapshots permission mode and preserves it through resu
   const createdRun = await getRun(runId)
   assert.equal(readRunPermissionModeSnapshot(createdRun), "auto")
   const createdMetadata = JSON.parse(createdRun?.metadata ?? "{}") as Record<string, unknown>
+  assert.deepEqual(readRunModelRuntimeSelection(createdMetadata), {
+    kind: "ready",
+    selection: createTestModelRuntimeSelection("gpt-test")
+  })
   const aiCapabilitiesSnapshot =
     createdMetadata[RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY]
   assert.ok(Array.isArray(aiCapabilitiesSnapshot))
@@ -3105,7 +3484,7 @@ test("agent run memory snapshot stores frozen context content", async () => {
   await createThread(threadId)
   await createRun("run-memory-snapshot-source", threadId)
 
-  const { runId } = await beginAgentRun(threadId, "gpt-test", {
+  const { runId } = await beginAgentRun(threadId, createTestModelRuntimeSelection("gpt-test"), {
     jingleMemoryContextSnapshot: service.createContextSnapshot(contextPack),
     startEvent: {
       contentPreview: "memory snapshot",
@@ -3292,7 +3671,7 @@ test("run metadata updates preserve loaded extension snapshots and resume metada
   const threadId = "thread-extension-metadata-merge"
   await createThread(threadId)
 
-  const { runId } = await beginAgentRun(threadId, "gpt-test", {
+  const { runId } = await beginAgentRun(threadId, createTestModelRuntimeSelection("gpt-test"), {
     aiCapabilities: [],
     permissionMode: "ask-to-edit",
     startEvent: {
@@ -4520,7 +4899,6 @@ test("thread delete cancels never-resolving read-only runtime setup before remov
         content: "delete while starting",
         id: "message-delete-while-starting"
       },
-      modelId: "bdd",
       threadId
     },
     {
@@ -4552,7 +4930,10 @@ test("cloneUntilMessage branches from the checkpoint that first contains the tar
 
   await createThread(sourceThreadId, {
     metadata: {
-      model: "openai:gpt-test",
+      [MODEL_RUNTIME_SELECTION_METADATA_KEY]: createTestModelRuntimeSelection(
+        "deepseek:deepseek-v4-pro"
+      ),
+      [MODEL_RUNTIME_SELECTION_REVISION_METADATA_KEY]: 1,
       source: "launcher-ai",
       [THREAD_PERMISSION_MODE_METADATA_KEY]: "ask-to-edit",
       visibility: "launcher-ai",
@@ -4663,6 +5044,69 @@ test("cloneUntilMessage branches from the checkpoint that first contains the tar
   assert.deepEqual(
     clonedCheckpoint?.checkpoint.channel_values.messages,
     firstCheckpoint.channel_values.messages
+  )
+})
+
+test("thread fork requires a ready runtime selection before any clone write", async () => {
+  const { createThread, getPrismaClient, getThread } = await loadDbModules()
+  const service = await createThreadsServiceForTest()
+  const prisma = getPrismaClient()
+  const nonReadyMetadata = [
+    { model: "openai:gpt-legacy" },
+    {
+      [MODEL_RUNTIME_SELECTION_METADATA_KEY]: { modelId: "broken", version: 2 },
+      [MODEL_RUNTIME_SELECTION_REVISION_METADATA_KEY]: 1
+    },
+    { [MODEL_RUNTIME_SELECTION_METADATA_KEY]: undefined }
+  ]
+
+  for (const [index, metadata] of nonReadyMetadata.entries()) {
+    const sourceThreadId = `thread-non-ready-fork-${index}`
+    await createThread(sourceThreadId, { metadata })
+    await bindThreadWorkspace(sourceThreadId, repoRoot)
+    const countsBefore = {
+      checkpoints: await prisma.checkpoint.count(),
+      threads: await prisma.thread.count(),
+      workspaceBindings: await prisma.threadWorkspaceBinding.count()
+    }
+
+    for (const fork of [
+      () => service.clone(sourceThreadId),
+      () => service.cloneUntilMessage(sourceThreadId, "missing-message")
+    ]) {
+      await assert.rejects(
+        fork(),
+        (error: unknown) =>
+          (error as { code?: string }).code === "FAILED_PRECONDITION" &&
+          /Select (?:a |the )?model/.test((error as Error).message)
+      )
+      assert.deepEqual(
+        {
+          checkpoints: await prisma.checkpoint.count(),
+          threads: await prisma.thread.count(),
+          workspaceBindings: await prisma.threadWorkspaceBinding.count()
+        },
+        countsBefore
+      )
+    }
+  }
+
+  const readySourceThreadId = "thread-ready-fork"
+  await createThread(readySourceThreadId)
+  await bindThreadWorkspace(readySourceThreadId, repoRoot)
+  const cloned = await service.clone(readySourceThreadId)
+  const persistedClone = await getThread(cloned.thread_id)
+  const persistedCloneMetadata = persistedClone?.metadata
+    ? (JSON.parse(persistedClone.metadata) as Record<string, unknown>)
+    : undefined
+  assert.deepEqual(readThreadModelRuntimeSelection(persistedCloneMetadata), {
+    kind: "ready",
+    selection: createTestModelRuntimeSelection("deepseek:deepseek-v4-pro")
+  })
+  assert.ok(
+    await prisma.threadWorkspaceBinding.findUnique({
+      where: { threadId: cloned.thread_id }
+    })
   )
 })
 

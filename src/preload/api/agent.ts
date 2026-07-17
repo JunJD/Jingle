@@ -67,7 +67,6 @@ export const agentApi = {
   invoke: (
     threadId: string,
     message: AgentInvokeMessage,
-    modelId?: string,
     permissionMode?: PermissionModeName,
     temporaryMode?: boolean,
     followUpAction?: JingleAgentFollowUpAction,
@@ -80,7 +79,6 @@ export const agentApi = {
         expectedRunId,
         threadId,
         message,
-        modelId,
         permissionMode,
         temporaryMode,
         followUpAction,
@@ -91,29 +89,22 @@ export const agentApi = {
   editLastUserMessageAndInvoke: (
     threadId: string,
     message: AgentInvokeMessage,
-    modelId?: string,
     permissionMode?: PermissionModeName,
     temporaryMode?: boolean
   ): Promise<AgentCommandOutcome> => {
     return invokeIpc<AgentCommandOutcome>("agent:editLastUserMessageAndInvoke", {
       threadId,
       message,
-      modelId,
       permissionMode,
       temporaryMode
     })
   },
-  resume: (
-    threadId: string,
-    decision: HITLDecision,
-    modelId?: string
-  ): Promise<AgentCommandOutcome> => {
+  resume: (threadId: string, decision: HITLDecision): Promise<AgentCommandOutcome> => {
     return invokeIpc<AgentCommandOutcome>(
       "agent:resume",
       buildAgentResumeIpcPayload({
         threadId,
-        decision,
-        modelId
+        decision
       })
     )
   },

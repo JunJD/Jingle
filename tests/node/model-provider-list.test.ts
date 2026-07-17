@@ -1,5 +1,8 @@
 import assert from "node:assert/strict"
+import { once } from "node:events"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { createServer } from "node:http"
+import type { AddressInfo } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -14,7 +17,10 @@ import {
   validateRemoteProviderCredentials
 } from "../../src/main/model-provider/adapters"
 import { getModelConfig } from "../../src/main/model-provider/catalog"
-import { createOpenAICompatibleToolCallOptions } from "../../src/main/model-provider/protocols/openai-compatible"
+import {
+  createOpenAICompatibleChatModel,
+  createOpenAICompatibleToolCallOptions
+} from "../../src/main/model-provider/protocols/openai-compatible"
 import { getModelProviderStateForUI } from "../../src/main/model-provider/service"
 import type { ProviderId, ResolvedModelRuntimeConfig } from "../../src/main/model-provider/types"
 
@@ -137,6 +143,79 @@ test("OpenAI native effort preserves xhigh and maps explicit off to none", () =>
     "xhigh"
   )
   assert.equal((offModel.invocationParams({}) as Record<string, unknown>).reasoning_effort, "none")
+})
+
+test("OpenAI native adapter preserves max through LangChain invocation params", () => {
+  const model = createProviderChatModelFromAdapter(
+    createRuntimeConfig("openai", "gpt-5.6-sol", {
+      reasoningEffortTransport: "openai-native",
+      thinkingEffort: "max"
+    })
+  ) as ChatOpenAI
+
+  assert.equal((model.invocationParams({}) as Record<string, unknown>).reasoning_effort, "max")
+})
+
+test("OpenAI-compatible adapter sends validated max in the SDK request body", async () => {
+  let requestBody: Record<string, unknown> | null = null
+  const server = createServer(async (request, response) => {
+    const chunks: Buffer[] = []
+    for await (const chunk of request) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    }
+    requestBody = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>
+    response.writeHead(200, { "content-type": "application/json" })
+    response.end(
+      JSON.stringify({
+        choices: [
+          {
+            finish_reason: "stop",
+            index: 0,
+            logprobs: null,
+            message: { content: "ok", role: "assistant" }
+          }
+        ],
+        created: 1,
+        id: "chatcmpl-jingle-smoke",
+        model: "gpt-5.6-sol",
+        object: "chat.completion",
+        usage: { completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 }
+      })
+    )
+  })
+  server.listen(0, "127.0.0.1")
+  await once(server, "listening")
+  const address = server.address() as AddressInfo
+
+  try {
+    const model = createOpenAICompatibleChatModel({
+      apiKey: "sk-test",
+      baseURL: `http://127.0.0.1:${address.port}/v1`,
+      options: { parallelToolCalls: false },
+      runtimeConfig: createRuntimeConfig("openai", "gpt-5.6-sol", {
+        reasoningEffortTransport: "openai-native",
+        thinkingEffort: "max"
+      })
+    })
+    await model.invoke("transport smoke")
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()))
+    })
+  }
+
+  assert.equal((requestBody as Record<string, unknown> | null)?.reasoning_effort, "max")
+})
+
+test("OpenAI native adapter preserves GPT-5 minimal through LangChain invocation params", () => {
+  const model = createProviderChatModelFromAdapter(
+    createRuntimeConfig("openai", "gpt-5", {
+      reasoningEffortTransport: "openai-native",
+      thinkingEffort: "minimal"
+    })
+  ) as ChatOpenAI
+
+  assert.equal((model.invocationParams({}) as Record<string, unknown>).reasoning_effort, "minimal")
 })
 
 test("custom OpenAI-compatible adapter preserves explicitly declared off", () => {

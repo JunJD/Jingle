@@ -132,6 +132,33 @@ test("fast model preference resolves through the active provider declaration", a
   assert.equal(runtimeConfig.thinkingEffort, "off")
 })
 
+test("non-reasoning fast models omit effort instead of forging an off capability", async () => {
+  const { setDefaultModelForUI, setProviderCredentialsForUI } =
+    await import("../../src/main/model-provider/service")
+  const { resolveModelRuntimeConfig } = await import("../../src/main/model-provider/resolver")
+
+  globalThis.fetch = async (input) => {
+    const url = String(input)
+    const data = url.includes("dashscope") ? [{ id: "qwen-plus" }] : [{ id: "gpt-4o-mini" }]
+    return new Response(JSON.stringify({ data }), { status: 200, statusText: "OK" })
+  }
+
+  await setProviderCredentialsForUI("openai", { apiKey: "sk-openai-fast-null" })
+  await setDefaultModelForUI("llm", "openai:gpt-4o-mini", { thinkingEffort: null })
+  const openAiFast = resolveModelRuntimeConfig({ modelPreference: "fast", thinkingEffort: null })
+  assert.equal(openAiFast.modelId, "openai:gpt-4o-mini")
+  assert.equal(openAiFast.thinkingEffort, null)
+
+  await setProviderCredentialsForUI("dashscope", { apiKey: "sk-dashscope-fast-null" })
+  await setDefaultModelForUI("llm", "dashscope:qwen-plus", { thinkingEffort: null })
+  const dashScopeFast = resolveModelRuntimeConfig({
+    modelPreference: "fast",
+    thinkingEffort: null
+  })
+  assert.equal(dashScopeFast.modelId, "dashscope:qwen-plus")
+  assert.equal(dashScopeFast.thinkingEffort, null)
+})
+
 test("chat model instances can override output budget for derived projections", async () => {
   const { setProviderCredentialsForUI } = await import("../../src/main/model-provider/service")
   const { setActiveModelProvider } = await import("../../src/main/model-provider/settings")
@@ -167,7 +194,8 @@ test("custom providers are persisted under the Jingle custom provider directory"
     await import("../../src/main/model-provider/service")
   const { getCustomProviderConfig } = await import("../../src/main/model-provider/custom-providers")
   const { getModelProviderPaths } = await import("../../src/main/model-provider/paths")
-  const { resolveModelRuntimeConfig } = await import("../../src/main/model-provider/resolver")
+  const { resolveDefaultModelRuntimeSelection } =
+    await import("../../src/main/model-provider/resolver")
 
   upsertCustomProviderForUI({
     apiKey: "sk-custom-key",
@@ -192,7 +220,7 @@ test("custom providers are persisted under the Jingle custom provider directory"
   )
 
   await setDefaultModelForUI("llm", "custom_test_provider:gpt-5.5")
-  assert.equal(resolveModelRuntimeConfig().modelId, "custom_test_provider:gpt-5.5")
+  assert.equal(resolveDefaultModelRuntimeSelection().modelId, "custom_test_provider:gpt-5.5")
 })
 
 test("custom provider fast_model is used for fast model preference", async () => {
@@ -226,10 +254,13 @@ test("custom provider fast_model is used for fast model preference", async () =>
   await setDefaultModelForUI("llm", "custom_fastlane:main-model")
 
   assert.equal(
-    resolveModelRuntimeConfig({ modelPreference: "fast" }).modelId,
+    resolveModelRuntimeConfig({ modelPreference: "fast", thinkingEffort: null }).modelId,
     "custom_fastlane:fast-model"
   )
-  assert.equal(resolveModelRuntimeConfig({ modelPreference: "fast" }).modelName, "fast-model")
+  assert.equal(
+    resolveModelRuntimeConfig({ modelPreference: "fast", thinkingEffort: null }).modelName,
+    "fast-model"
+  )
 })
 
 test("custom providers cannot overwrite declarative provider ids", async () => {
@@ -247,6 +278,27 @@ test("custom providers cannot overwrite declarative provider ids", async () => {
         supportsStreaming: true
       }),
     /Custom provider id conflicts with a built-in provider: custom_deepseek/
+  )
+})
+
+test("custom provider writes reject ambiguous duplicate model declarations", async () => {
+  const { upsertCustomProviderForUI } = await import("../../src/main/model-provider/service")
+
+  assert.throws(
+    () =>
+      upsertCustomProviderForUI({
+        apiKey: "sk-duplicate-model",
+        baseUrl: "https://duplicate-model.example.test/v1",
+        displayName: "duplicate model",
+        engine: "openai",
+        models: [
+          { name: "same-model", reasoningEfforts: ["low"] },
+          { name: "same-model", reasoningEfforts: ["high"] }
+        ],
+        requiresAuth: true,
+        supportsStreaming: true
+      }),
+    /model names must be unique/
   )
 })
 
@@ -379,7 +431,8 @@ test("default model thinking effort is persisted in Jingle config", async () => 
 test("legacy unsupported effort stays persisted and blocks runtime until user changes it", async () => {
   const { upsertCustomProviderForUI } = await import("../../src/main/model-provider/service")
   const { getModelProviderPaths } = await import("../../src/main/model-provider/paths")
-  const { resolveModelRuntimeConfig } = await import("../../src/main/model-provider/resolver")
+  const { resolveDefaultModelRuntimeSelection } =
+    await import("../../src/main/model-provider/resolver")
   const { setActiveModelProvider } = await import("../../src/main/model-provider/settings")
 
   upsertCustomProviderForUI({
@@ -394,7 +447,7 @@ test("legacy unsupported effort stays persisted and blocks runtime until user ch
   setActiveModelProvider("custom_legacy_effort", "legacy-model", { thinkingEffort: "max" })
 
   assert.throws(
-    () => resolveModelRuntimeConfig(),
+    () => resolveDefaultModelRuntimeSelection(),
     /Thinking effort "max" is not supported by custom_legacy_effort:legacy-model/
   )
   assert.match(
@@ -483,7 +536,13 @@ test("custom provider edits keep the original provider id", async () => {
 
   await setDefaultModelForUI("llm", "custom_editable_provider:gpt-6")
   assert.equal(
-    resolveModelRuntimeConfig({ modelId: "custom_editable_provider:gpt-6" }).modelId,
+    resolveModelRuntimeConfig({
+      selection: {
+        modelId: "custom_editable_provider:gpt-6",
+        thinkingEffort: "high",
+        version: 1
+      }
+    }).modelId,
     "custom_editable_provider:gpt-6"
   )
 })
@@ -521,7 +580,13 @@ test("unlisted custom provider models require an explicit user choice", async ()
     thinkingEffort: null
   })
 
-  const runtimeConfig = resolveModelRuntimeConfig({ modelId: "custom_unlisted_provider:gpt-7" })
+  const runtimeConfig = resolveModelRuntimeConfig({
+    selection: {
+      modelId: "custom_unlisted_provider:gpt-7",
+      thinkingEffort: null,
+      version: 1
+    }
+  })
   assert.equal(runtimeConfig.modelId, "custom_unlisted_provider:gpt-7")
   const paths = getModelProviderPaths()
   assert.match(
@@ -555,9 +620,110 @@ test("unlisted custom provider models can be selected when remote listing fails"
   })
 
   assert.equal(
-    resolveModelRuntimeConfig({ modelId: "custom_list_failure_provider:gpt-unlisted" }).modelId,
+    resolveModelRuntimeConfig({
+      selection: {
+        modelId: "custom_list_failure_provider:gpt-unlisted",
+        thinkingEffort: null,
+        version: 1
+      }
+    }).modelId,
     "custom_list_failure_provider:gpt-unlisted"
   )
+})
+
+test("model switches validate the effort that would be preserved before writing config", async () => {
+  const { setDefaultModelForUI, upsertCustomProviderForUI } =
+    await import("../../src/main/model-provider/service")
+  const { getModelProviderDefaultRuntimeSelection } =
+    await import("../../src/main/model-provider/settings")
+
+  upsertCustomProviderForUI({
+    apiKey: "sk-switch-effort-key",
+    baseUrl: "https://switch-effort.example.test/v1",
+    displayName: "switch effort",
+    engine: "openai",
+    models: [
+      { name: "max-model", reasoningEfforts: ["max"] },
+      { name: "high-model", reasoningEfforts: ["high"] }
+    ],
+    requiresAuth: true,
+    supportsStreaming: true
+  })
+  await setDefaultModelForUI("llm", "custom_switch_effort:max-model", {
+    thinkingEffort: "max"
+  })
+
+  await assert.rejects(
+    setDefaultModelForUI("llm", "custom_switch_effort:high-model"),
+    /Thinking effort "max" is not supported/
+  )
+  assert.deepEqual(getModelProviderDefaultRuntimeSelection(), {
+    modelId: "custom_switch_effort:max-model",
+    thinkingEffort: "max",
+    version: 1
+  })
+})
+
+test("thread model selection preserves the target provider preference instead of choosing highest", async () => {
+  const { setDefaultModelForUI, upsertCustomProviderForUI } =
+    await import("../../src/main/model-provider/service")
+  const { resolveModelRuntimeSelectionFromStoredPreference } =
+    await import("../../src/main/model-provider/resolver")
+
+  upsertCustomProviderForUI({
+    apiKey: "sk-thread-preference-key",
+    baseUrl: "https://thread-preference.example.test/v1",
+    displayName: "thread preference",
+    engine: "openai",
+    models: [
+      { name: "primary-model", reasoningEfforts: ["high", "max"] },
+      { name: "alternate-model", reasoningEfforts: ["high", "max"] }
+    ],
+    requiresAuth: true,
+    supportsStreaming: true
+  })
+  await setDefaultModelForUI("llm", "custom_thread_preference:primary-model", {
+    thinkingEffort: "high"
+  })
+
+  assert.deepEqual(
+    resolveModelRuntimeSelectionFromStoredPreference("custom_thread_preference:alternate-model"),
+    {
+      modelId: "custom_thread_preference:alternate-model",
+      thinkingEffort: "high",
+      version: 1
+    }
+  )
+})
+
+test("malformed stored thinking effort fails visibly instead of becoming null", async () => {
+  const { getJingleModelProviderConfig } = await import("../../src/main/model-provider/settings")
+  const { getModelProviderPaths } = await import("../../src/main/model-provider/paths")
+  const paths = getModelProviderPaths()
+  const originalConfig = await readFile(paths.configPath, "utf8")
+  try {
+    await writeFile(
+      paths.configPath,
+      [
+        "active_provider: openai",
+        "providers:",
+        "  openai:",
+        "    enabled: true",
+        "    model: gpt-5.2",
+        "    configured: true",
+        "    thinking_effort: extreme",
+        ""
+      ].join("\n"),
+      "utf8"
+    )
+
+    assert.throws(
+      () => getJingleModelProviderConfig(),
+      /Invalid thinking effort in model provider config: extreme/
+    )
+  } finally {
+    await writeFile(paths.configPath, originalConfig, "utf8")
+  }
 })
 
 test("selected custom default models are included in the settings model list", async () => {

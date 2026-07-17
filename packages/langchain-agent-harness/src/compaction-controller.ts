@@ -27,7 +27,8 @@ import type { RuntimeCheckpointState, RuntimeCompaction } from "./runtime-state"
 import type { RuntimeThreadScope } from "./runtime-scope"
 
 export type JingleCompactionInput = RuntimeCompactInput
-export type JingleCompactionRunContext = RuntimeThreadScope & Pick<RuntimeCompactInput, "modelId">
+export type JingleCompactionRunContext = RuntimeThreadScope &
+  Pick<RuntimeCompactInput, "modelId" | "thinkingEffort" | "version">
 
 export interface JingleCompactionRuntimeState {
   _summarizationEvent?: unknown
@@ -75,7 +76,9 @@ export function createJingleCompactionController(
         reason: admittedInput.reason,
         runId: operationId,
         threadId: scope.threadId,
+        thinkingEffort: admittedInput.thinkingEffort,
         trigger: admittedInput.trigger,
+        version: admittedInput.version,
         workspacePath: scope.workspacePath
       }
       const preparedCheckpoint = await input.checkpointStore.prepare({
@@ -106,7 +109,12 @@ export function createJingleCompactionController(
       )
       const planWithState = preparedWithState.privateState.compactPlan
       const summarized = await new CompactSummarizeNode(
-        input.summarization({ modelId: admittedInput.modelId, ...scope })
+        input.summarization({
+          modelId: admittedInput.modelId,
+          thinkingEffort: admittedInput.thinkingEffort,
+          version: admittedInput.version,
+          ...scope
+        })
       ).invoke(
         { plan: planWithState },
         {

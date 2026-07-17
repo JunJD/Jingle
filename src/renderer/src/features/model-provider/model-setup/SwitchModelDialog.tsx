@@ -26,6 +26,7 @@ const UNLISTED_MODEL_OPTION = "__jingle_unlisted_model__"
 
 const THINKING_EFFORT_OPTIONS: Array<{ label: string; value: ThinkingEffort }> = [
   { label: "Off - No extended thinking", value: "off" },
+  { label: "Minimal - Very light reasoning", value: "minimal" },
   { label: "Low - Minimal thinking, fastest responses", value: "low" },
   { label: "Medium - Moderate thinking", value: "medium" },
   { label: "High - Deep reasoning", value: "high" },

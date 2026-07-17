@@ -1,18 +1,20 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ModelSelectionContent } from "@/features/model-selection/ModelSelectionContent"
-import { resolveModelSelectionModelId } from "@/features/model-selection/model-selection-projection"
+import { resolveModelSelection } from "@/features/model-selection/model-selection-projection"
 import { useModelSelectionController } from "@/features/model-selection/use-model-selection-controller"
 import { useI18n } from "@/lib/i18n"
+import type { ModelRuntimeSelection } from "@shared/app-types"
 
 export function LauncherAiModelPicker(props: {
-  currentModelId: string | null
+  currentSelection: ModelRuntimeSelection | null
   onClose: () => void
-  onSelectModel: (modelId: string) => Promise<boolean>
+  onSelectSelection: (selection: ModelRuntimeSelection) => Promise<boolean>
+  selectionRevision: number | null
 }): React.JSX.Element {
-  const { currentModelId, onClose, onSelectModel } = props
+  const { currentSelection, onClose, onSelectSelection, selectionRevision } = props
   const { copy } = useI18n()
   const { catalog, loadState, openProviderSettings, reload } = useModelSelectionController()
-  const effectiveModelId = resolveModelSelectionModelId(catalog, currentModelId)
+  const effectiveSelection = resolveModelSelection(catalog, currentSelection)
 
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
@@ -27,12 +29,13 @@ export function LauncherAiModelPicker(props: {
         </DialogHeader>
         <ModelSelectionContent
           catalog={catalog}
-          currentModelId={effectiveModelId}
+          currentSelection={effectiveSelection}
           loadState={loadState}
           onDone={onClose}
           onOpenProviderSettings={openProviderSettings}
           onRetry={reload}
-          onSelectModel={onSelectModel}
+          onSelectSelection={onSelectSelection}
+          selectionRevision={selectionRevision}
         />
       </DialogContent>
     </Dialog>

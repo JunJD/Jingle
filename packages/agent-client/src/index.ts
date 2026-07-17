@@ -32,7 +32,6 @@ export {
   buildJingleAgentCommandMessage,
   createJingleAgentFollowUpDrainRegistry,
   createEmptyJingleAgentFollowUpQueueSummary,
-  buildJingleAgentModelMetadataUpdate,
   buildJingleAgentPermissionMetadataUpdate,
   buildJingleAgentResumeDecision,
   getJingleAgentSteerRejectionMessage,

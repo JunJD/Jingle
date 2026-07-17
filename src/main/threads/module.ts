@@ -12,6 +12,7 @@ import { WorkspaceService } from "../workspace/service"
 import { AgentThreadDataSnapshotService } from "./agent-thread-data-snapshot-service"
 import { ThreadsController } from "./controller"
 import { ThreadsService } from "./service"
+import { getWindowIdentity } from "../windows/window-identity"
 
 export function registerThreadsModule(container: DependencyContainer): void {
   container.register(ThreadsService, {
@@ -40,7 +41,16 @@ export function registerThreadsModule(container: DependencyContainer): void {
     useFactory: instanceCachingFactory((dependencyContainer) => {
       return new ThreadsController(
         dependencyContainer.resolve(ThreadsService),
-        dependencyContainer.resolve(AgentThreadDataSnapshotService)
+        dependencyContainer.resolve(AgentThreadDataSnapshotService),
+        {
+          getMainThreadId: (sender) => {
+            const identity = getWindowIdentity(sender)
+            return identity?.kind === "main" || identity?.kind === "thread-window"
+              ? identity.threadId
+              : null
+          },
+          isLauncher: (sender) => getWindowIdentity(sender)?.kind === "launcher"
+        }
       )
     })
   })

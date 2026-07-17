@@ -59,11 +59,12 @@ export function createOpenAICompatibleToolCallOptions(
 function toOpenAIReasoningEffort(
   thinkingEffort: ProtocolCreateModelInput["runtimeConfig"]["thinkingEffort"],
   transport: ProtocolCreateModelInput["runtimeConfig"]["reasoningEffortTransport"]
-): "off" | "none" | "low" | "medium" | "high" | "xhigh" | "max" | undefined {
+): "off" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | undefined {
   if (thinkingEffort === "off") {
     return transport === "openai-native" ? "none" : "off"
   }
   if (
+    thinkingEffort === "minimal" ||
     thinkingEffort === "low" ||
     thinkingEffort === "medium" ||
     thinkingEffort === "high" ||

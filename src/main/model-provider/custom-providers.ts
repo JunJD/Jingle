@@ -150,6 +150,10 @@ export function upsertCustomProvider(input: CustomProviderInput): CustomProvider
   if (config.models.length === 0) {
     throw new Error("Custom provider needs at least one model.")
   }
+  const modelNames = config.models.map((model) => model.name)
+  if (new Set(modelNames).size !== modelNames.length) {
+    throw new Error("Custom provider model names must be unique.")
+  }
 
   writeCustomProviderConfig(config)
 
@@ -282,7 +286,15 @@ function normalizeReasoningEfforts(value: unknown): ThinkingEffort[] | undefined
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error("Custom provider reasoning_efforts must be a non-empty array.")
   }
-  const allowed = new Set<ThinkingEffort>(["off", "low", "medium", "high", "xhigh", "max"])
+  const allowed = new Set<ThinkingEffort>([
+    "off",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max"
+  ])
   const efforts = value.map((item) => {
     if (typeof item !== "string" || !allowed.has(item as ThinkingEffort)) {
       throw new Error(`Custom provider reasoning effort is not supported: ${String(item)}`)

@@ -41,15 +41,66 @@ test("AgentService rejects new commands after shutdown begins", async () => {
   const outcome = await service.dispatchInvoke(
     {
       message: { content: "too late", id: "message-after-shutdown" },
-      modelId: "bdd",
       threadId: "thread-after-shutdown"
     },
     {
-      send: (event) => events.push({ code: "code" in event ? event.code : undefined, type: event.type })
+      send: (event) =>
+        events.push({ code: "code" in event ? event.code : undefined, type: event.type })
     }
   )
 
   assert.equal(outcome.type, "rejected")
   assert.equal(outcome.type === "rejected" ? outcome.error.code : null, "UNAVAILABLE")
   assert.deepEqual(events, [{ code: "UNAVAILABLE", type: "run_rejected" }])
+})
+
+test("ThreadLifecycleGate rejects idle mutations while a run lease is active", async () => {
+  const gate = new ThreadLifecycleGate()
+  const claim = await gate.claimRun("thread-race")
+  assert.equal(claim.status, "accepted")
+  assert.equal(
+    (
+      await gate.withIdleMutation("thread-race", async () => {
+        assert.fail("active run must prevent the mutation callback")
+      })
+    ).status,
+    "running"
+  )
+  if (claim.status === "accepted") {
+    claim.lease.complete()
+  }
+})
+
+test("ThreadLifecycleGate holds run admission until an idle mutation commits", async () => {
+  const gate = new ThreadLifecycleGate()
+  let releaseMutation!: () => void
+  const mutationBarrier = new Promise<void>((resolve) => {
+    releaseMutation = resolve
+  })
+  let mutationEntered!: () => void
+  const entered = new Promise<void>((resolve) => {
+    mutationEntered = resolve
+  })
+  const mutation = gate.withIdleMutation("thread-race", async () => {
+    mutationEntered()
+    await mutationBarrier
+    return "persisted"
+  })
+  await entered
+
+  let claimSettled = false
+  const claimPromise = gate.claimRun("thread-race").then((claim) => {
+    claimSettled = true
+    return claim
+  })
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(claimSettled, false)
+
+  releaseMutation()
+  assert.deepEqual(await mutation, { status: "accepted", value: "persisted" })
+  const claim = await claimPromise
+  assert.equal(claim.status, "accepted")
+  if (claim.status === "accepted") {
+    claim.lease.complete()
+  }
 })

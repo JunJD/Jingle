@@ -5,6 +5,7 @@ import type { HITLDecision } from "@shared/hitl"
 import type { AgentContextInclusion } from "@shared/jingle-memory"
 import type { ResolvedExtensionAiCapability } from "@shared/extension-sources"
 import type { PermissionModeName } from "@shared/permission-mode"
+import type { ModelRuntimeSelection } from "@shared/app-types"
 import type {
   JingleMemoryContextPack,
   JingleMemoryContextSnapshot,
@@ -33,7 +34,7 @@ export interface JingleInvokeRunLifecycleInput {
   jingleMemoryContextPack: JingleMemoryContextPack | null
   jingleMemoryContextSnapshot: JingleMemoryContextSnapshot | null
   jingleMemoryTemporaryMode: boolean
-  modelId: string
+  selection: ModelRuntimeSelection
   permissionMode: PermissionModeName
   userMessage: {
     contentPreview: string
@@ -49,7 +50,7 @@ export interface JingleResumeRunLifecycleInput {
   extensionAiRuntime: ReturnType<typeof createExtensionAiRuntime>
   jingleMemoryContextPack: JingleMemoryContextPack | null
   jingleMemoryTemporaryMode: boolean
-  modelId: string
+  selection?: ModelRuntimeSelection
   permissionMode: PermissionModeName
   runId: string
   source: "resume"
@@ -69,7 +70,7 @@ export function createRuntimeRunLifecycleController(input: {
 
   return {
     beginInvokeRun: async ({ invoke, threadId }) => {
-      const { run, runId } = await beginAgentRun(threadId, invoke.modelId, {
+      const { run, runId } = await beginAgentRun(threadId, invoke.selection, {
         aiCapabilities: invoke.aiCapabilities,
         jingleMemoryContextSnapshot: invoke.jingleMemoryContextSnapshot,
         jingleMemoryTemporaryMode: invoke.jingleMemoryTemporaryMode,
@@ -81,7 +82,7 @@ export function createRuntimeRunLifecycleController(input: {
         }
       })
       return {
-        modelId: invoke.modelId,
+        modelId: invoke.selection.modelId,
         recordingRefs: [
           createJingleAgentTraceRecordingRef({
             createdAt: new Date(run.created_at).toISOString(),
@@ -93,18 +94,28 @@ export function createRuntimeRunLifecycleController(input: {
       }
     },
     beginResumeRun: async ({ resume, threadId }) => {
+      const declinedDecision = resume.decision.type === "user_declined" ? resume.decision : null
+      if ((declinedDecision === null) !== (resume.selection !== undefined)) {
+        throw new JingleIpcError({
+          channel: "agent:resume",
+          code: "FAILED_PRECONDITION",
+          message: declinedDecision
+            ? "A declined approval cannot resume model execution."
+            : "The persisted run model runtime selection is missing."
+        })
+      }
+      const selection = resume.selection
       const committed = await commitAgentResumeDecision(
         threadId,
         resume.runId,
         resume.decision,
         {
           source: resume.source,
-          modelId: resume.modelId ?? null,
           requestId: resume.decision.request_id
         },
         {
           resumeEvent: {
-            modelId: resume.modelId
+            modelId: selection?.modelId
           }
         }
       )
@@ -116,24 +127,30 @@ export function createRuntimeRunLifecycleController(input: {
         })
       }
       const { run, runId } = committed
-      const declinedDecision = resume.decision.type === "user_declined" ? resume.decision : null
+      const recordingRefs = [
+        createJingleAgentTraceRecordingRef({
+          createdAt: new Date(run.created_at).toISOString(),
+          runId,
+          threadId
+        })
+      ]
+      if (declinedDecision) {
+        return {
+          cancelAfterDecision: async () => {
+            void enqueueAssistantContentProjection({ runId })
+          },
+          executionDisposition: "terminal",
+          recordingRefs,
+          runId
+        }
+      }
+      if (!selection) {
+        throw new Error("Resume model runtime selection validation drifted after commit.")
+      }
       return {
-        ...(declinedDecision
-          ? {
-              cancelAfterDecision: async () => {
-                void enqueueAssistantContentProjection({ runId })
-              }
-            }
-          : {}),
-        executionDisposition: declinedDecision ? "terminal" : "resume",
-        modelId: resume.modelId,
-        recordingRefs: [
-          createJingleAgentTraceRecordingRef({
-            createdAt: new Date(run.created_at).toISOString(),
-            runId,
-            threadId
-          })
-        ],
+        executionDisposition: "resume",
+        modelId: selection.modelId,
+        recordingRefs,
         runId
       }
     },

@@ -1,6 +1,6 @@
 import type { RuntimeExecutionContext } from "./runtime-execution-context"
 import { RuntimeThreadBusyError } from "./runtime-execution-context"
-import type { RuntimeRunStart } from "./runtime-contract"
+import type { RuntimeRunStartBase } from "./runtime-contract"
 import type { RuntimeExecutionFactory } from "./runtime-execution-factory"
 import type { RuntimeThreadScope } from "./runtime-scope"
 
@@ -11,7 +11,7 @@ interface RuntimeThreadRunReservation {
 
 type RuntimeThreadRunState =
   | RuntimeExecutionContext
-  | (RuntimeRunStart & {
+  | (RuntimeRunStartBase & {
       createRunExecution: RuntimeExecutionFactory
       status: "admitted"
     })
@@ -26,7 +26,7 @@ export interface RuntimeThreadContext {
   activateRun(executionContext: RuntimeExecutionContext): void
   admitRun(
     reservation: RuntimeThreadRunReservation,
-    admission: RuntimeRunStart & {
+    admission: RuntimeRunStartBase & {
       createRunExecution: RuntimeExecutionFactory
     }
   ): void
@@ -58,8 +58,7 @@ export function createRuntimeThreadContextRegistry(): RuntimeThreadContextRegist
           if (
             !("runId" in currentRun) ||
             currentRun.runId !== executionContext.runId ||
-            !("modelId" in currentRun) ||
-            currentRun.modelId !== executionContext.modelId
+            ("modelId" in currentRun ? currentRun.modelId : null) !== executionContext.modelId
           ) {
             throw new Error(
               `[RuntimeThread] Run execution scope does not match run "${executionContext.runId}".`

@@ -2,6 +2,7 @@ export {
   getActiveProviderId,
   getJingleModelProviderConfig,
   getModelProviderDefaultModelOptions,
+  getModelProviderDefaultRuntimeSelection,
   getModelProviderDefaultModel,
   getModelProviderDefaultModels,
   markProviderConfigured,

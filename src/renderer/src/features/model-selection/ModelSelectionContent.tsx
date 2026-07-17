@@ -6,36 +6,51 @@ import { Spinner } from "@/components/ui/spinner"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import type { ProviderId } from "@/types"
+import type { ModelRuntimeSelection } from "@shared/app-types"
+import { MODEL_RUNTIME_SELECTION_VERSION } from "@shared/model-runtime-selection"
 import {
+  createPendingModelSelection,
   projectModelSelectionContent,
+  resolvePendingModelId,
   type ModelSelectionCatalogProjection,
-  type ModelSelectionLoadState
+  type ModelSelectionLoadState,
+  type PendingModelSelection
 } from "./model-selection-projection"
 import { ProviderIcon } from "./provider-icon"
+import { ReasoningEffortPicker } from "./ReasoningEffortPicker"
 
 export function ModelSelectionContent(props: {
   catalog: ModelSelectionCatalogProjection
-  currentModelId: string | null
+  currentSelection: ModelRuntimeSelection | null
   loadState: ModelSelectionLoadState
   onDone?: () => void
   onOpenProviderSettings: (providerId: ProviderId) => void
   onRetry: () => Promise<void>
-  onSelectModel: (modelId: string) => boolean | void | Promise<boolean | void>
+  onSelectSelection: (selection: ModelRuntimeSelection) => boolean | void | Promise<boolean | void>
+  selectionRevision: number | null
 }): React.JSX.Element {
   const {
     catalog,
-    currentModelId,
+    currentSelection,
     loadState,
     onDone,
     onOpenProviderSettings,
     onRetry,
-    onSelectModel
+    onSelectSelection,
+    selectionRevision
   } = props
   const { copy } = useI18n()
   const [selectedProviderId, setSelectedProviderId] = useState<ProviderId | null>(null)
+  const [pendingSelection, setPendingSelection] = useState<PendingModelSelection | null>(null)
+  const pendingModelId = resolvePendingModelId({
+    currentSelection,
+    pendingSelection,
+    selectionRevision
+  })
   const projection = useMemo(
-    () => projectModelSelectionContent(catalog, currentModelId, selectedProviderId),
-    [catalog, currentModelId, selectedProviderId]
+    () =>
+      projectModelSelectionContent(catalog, currentSelection?.modelId ?? null, selectedProviderId),
+    [catalog, currentSelection?.modelId, selectedProviderId]
   )
   const selectedProvider = projection.selectedProvider
 
@@ -43,8 +58,8 @@ export function ModelSelectionContent(props: {
     setSelectedProviderId(providerId)
   }
 
-  function handleModelSelect(modelId: string): void {
-    void Promise.resolve(onSelectModel(modelId)).then((didSelect) => {
+  function handleSelectionSelect(selection: ModelRuntimeSelection): void {
+    void Promise.resolve(onSelectSelection(selection)).then((didSelect) => {
       if (didSelect !== false) {
         onDone?.()
       }
@@ -175,24 +190,58 @@ export function ModelSelectionContent(props: {
             ) : null}
             <div className="flex-1 space-y-[var(--jingle-space-0-5)] overflow-y-auto">
               {projection.models.map((model) => (
-                <Button
-                  key={model.id}
-                  type="button"
-                  onClick={() => handleModelSelect(model.id)}
-                  size="sm"
-                  variant="ghost"
-                  className={cn(
-                    "h-auto w-full justify-start gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-model-selector-row-radius)] px-[var(--jingle-space-2)] py-[var(--jingle-space-1)] text-left [font-size:var(--jingle-font-meta)] font-mono font-normal",
-                    model.isSelected
-                      ? "bg-background-secondary text-foreground"
-                      : "text-muted-foreground hover:bg-background-secondary/70 hover:text-foreground"
-                  )}
-                >
-                  <span className="flex-1 truncate">{model.modelCode}</span>
-                  {model.isSelected ? (
-                    <Check className="size-[var(--jingle-icon-sm)] shrink-0 text-foreground" />
+                <div key={model.id}>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      if (model.reasoningEfforts.length === 0) {
+                        handleSelectionSelect({
+                          modelId: model.id,
+                          thinkingEffort: null,
+                          version: MODEL_RUNTIME_SELECTION_VERSION
+                        })
+                        return
+                      }
+                      setPendingSelection(
+                        createPendingModelSelection({
+                          currentSelection,
+                          modelId: model.id,
+                          selectionRevision
+                        })
+                      )
+                    }}
+                    size="sm"
+                    variant="ghost"
+                    className={cn(
+                      "h-auto w-full justify-start gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-model-selector-row-radius)] px-[var(--jingle-space-2)] py-[var(--jingle-space-1)] text-left [font-size:var(--jingle-font-meta)] font-mono font-normal",
+                      model.isSelected
+                        ? "bg-background-secondary text-foreground"
+                        : "text-muted-foreground hover:bg-background-secondary/70 hover:text-foreground"
+                    )}
+                  >
+                    <span className="flex-1 truncate">{model.modelCode}</span>
+                    {model.isSelected ? (
+                      <Check className="size-[var(--jingle-icon-sm)] shrink-0 text-foreground" />
+                    ) : null}
+                  </Button>
+                  {pendingModelId === model.id && model.reasoningEfforts.length > 0 ? (
+                    <ReasoningEffortPicker
+                      allowedValues={model.reasoningEfforts}
+                      selectedValue={
+                        currentSelection?.modelId === model.id
+                          ? currentSelection.thinkingEffort
+                          : null
+                      }
+                      onSelect={(thinkingEffort) =>
+                        handleSelectionSelect({
+                          modelId: model.id,
+                          thinkingEffort,
+                          version: MODEL_RUNTIME_SELECTION_VERSION
+                        })
+                      }
+                    />
                   ) : null}
-                </Button>
+                </div>
               ))}
 
               {projection.models.length === 0 ? (

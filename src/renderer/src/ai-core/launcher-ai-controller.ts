@@ -2,6 +2,7 @@ import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "@shared/launcher-ai"
 import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
 import type { PermissionModeName } from "@shared/permission-mode"
 import type { ThreadWorkspaceKind } from "@shared/thread-workspace"
+import type { ModelRuntimeSelection, ThreadModelRuntimeSelectionState } from "@shared/app-types"
 import type {
   AgentCommandActivity,
   AgentControl,
@@ -13,11 +14,16 @@ import type { AiCoreThreadCreateInput, AiCoreThreadHandle } from "./AiCoreHost"
 import type { LauncherAiActiveTarget } from "./useLauncherAiThreadNavigation"
 
 interface LauncherAiThreadConfiguration {
-  modelId: string
+  modelRuntimeSelection: ThreadModelRuntimeSelectionState
   permissionMode: PermissionModeName
   threadId: string
   workspacePath: string | null
 }
+
+type LauncherAiModelSelectionRequiredState = Exclude<
+  ThreadModelRuntimeSelectionState,
+  { kind: "ready" }
+>
 
 export interface LauncherApprovalActionsProjection {
   canApprove: boolean
@@ -112,7 +118,7 @@ export function canSubmitLauncherApprovalDecision(
 export type LauncherAiTargetConfigurationProjection =
   | {
       kind: "configured"
-      modelId: string | null
+      modelRuntimeSelection: ModelRuntimeSelection | null
       permissionMode: PermissionModeName
       source: "draft"
       workspaceKind: ThreadWorkspaceKind
@@ -120,7 +126,15 @@ export type LauncherAiTargetConfigurationProjection =
     }
   | {
       kind: "configured"
-      modelId: string
+      modelRuntimeSelection: ModelRuntimeSelection
+      permissionMode: PermissionModeName
+      source: "thread"
+      threadId: string
+      workspacePath: string | null
+    }
+  | {
+      kind: "model-selection-required"
+      modelRuntimeSelectionState: LauncherAiModelSelectionRequiredState
       permissionMode: PermissionModeName
       source: "thread"
       threadId: string
@@ -169,7 +183,7 @@ export function projectLauncherAiTargetConfiguration(input: {
   if (input.target.kind === "draft") {
     return {
       kind: "configured",
-      modelId: input.target.modelId,
+      modelRuntimeSelection: input.target.modelRuntimeSelection,
       permissionMode: input.target.permissionMode,
       source: "draft",
       workspaceKind: input.target.workspaceKind,
@@ -188,14 +202,31 @@ export function projectLauncherAiTargetConfiguration(input: {
     return { kind: "unavailable", reason: "thread-state-unavailable" }
   }
 
+  if (input.threadConfiguration.modelRuntimeSelection.kind !== "ready") {
+    return {
+      kind: "model-selection-required",
+      modelRuntimeSelectionState: input.threadConfiguration.modelRuntimeSelection,
+      permissionMode: input.threadConfiguration.permissionMode,
+      source: "thread",
+      threadId: input.threadConfiguration.threadId,
+      workspacePath: input.threadConfiguration.workspacePath
+    }
+  }
+
   return {
     kind: "configured",
-    modelId: input.threadConfiguration.modelId,
+    modelRuntimeSelection: input.threadConfiguration.modelRuntimeSelection.selection,
     permissionMode: input.threadConfiguration.permissionMode,
     source: "thread",
     threadId: input.threadConfiguration.threadId,
     workspacePath: input.threadConfiguration.workspacePath
   }
+}
+
+export function canSelectLauncherAiModel(
+  configuration: LauncherAiTargetConfigurationProjection
+): boolean {
+  return configuration.kind !== "unavailable"
 }
 
 export function projectLauncherAiForkCapability(input: {
@@ -295,9 +326,8 @@ export interface LauncherAiControllerInput {
   title: string
   updateThread: UpdateAgentThreadRecord
   updateAgentThreadModel: (input: {
-    modelId: string
+    selection: ModelRuntimeSelection
     threadId: string
-    updateThread: UpdateAgentThreadRecord
   }) => Promise<void>
   updateAgentThreadPermissionMode: (input: {
     permissionMode: PermissionModeName
@@ -306,14 +336,14 @@ export interface LauncherAiControllerInput {
   }) => Promise<void>
   updateFreshDraft: (
     input: Partial<{
-      modelId: string | null
+      modelRuntimeSelection: ModelRuntimeSelection | null
       permissionMode: PermissionModeName
       workspaceKind: ThreadWorkspaceKind
       workspacePath: string | null
     }>
   ) => void
   startFreshDraftTarget: (input: {
-    modelId: string | null
+    modelRuntimeSelection: ModelRuntimeSelection | null
     permissionMode: PermissionModeName
     workspaceKind?: ThreadWorkspaceKind
     workspacePath?: string | null
@@ -329,7 +359,7 @@ export interface LauncherAiController {
   goToPreviousChat: () => Promise<string | null>
   handleApprovalDecision: (decision: HITLDecision) => Promise<boolean>
   runPrimaryAction: (input: ComposerMessageInput) => void
-  selectModel: (modelId: string) => Promise<boolean>
+  selectModel: (selection: ModelRuntimeSelection) => Promise<boolean>
   selectPermissionMode: (permissionMode: PermissionModeName) => Promise<boolean>
   setQuery: (value: string) => void
   startFreshDraft: (input?: {
@@ -356,7 +386,7 @@ function resolveDraftWorkspacePath(workspacePath: string | null): string | undef
 
 export function createLauncherAiController(input: LauncherAiControllerInput): LauncherAiController {
   const ensureThreadForInvoke = async (): Promise<string> => {
-    if (input.targetConfiguration.kind === "unavailable") {
+    if (input.targetConfiguration.kind !== "configured") {
       throw new Error("Launcher target configuration is unavailable.")
     }
 
@@ -369,7 +399,7 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
     }
 
     const createInput: AiCoreThreadCreateInput = {
-      modelId: input.targetConfiguration.modelId ?? undefined,
+      modelRuntimeSelection: input.targetConfiguration.modelRuntimeSelection ?? undefined,
       permissionMode: input.targetConfiguration.permissionMode,
       source: AI_THREAD_SOURCE,
       title: input.title,
@@ -436,7 +466,7 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
         input.isBusy ||
         input.hasPendingCommand ||
         input.hasPendingApproval ||
-        input.targetConfiguration.kind === "unavailable" ||
+        input.targetConfiguration.kind !== "configured" ||
         !input.threadId ||
         !hasComposerMessageInputContent(editInput.messageInput)
       ) {
@@ -523,8 +553,8 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
           submissionLease.release()
         })
     },
-    async selectModel(modelId) {
-      if (input.targetConfiguration.kind === "unavailable") {
+    async selectModel(selection) {
+      if (!canSelectLauncherAiModel(input.targetConfiguration)) {
         return false
       }
 
@@ -532,9 +562,8 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
         try {
           input.setNavigationError(null)
           await input.updateAgentThreadModel({
-            modelId,
-            threadId: input.threadId,
-            updateThread: input.updateThread
+            selection,
+            threadId: input.threadId
           })
           return true
         } catch (error) {
@@ -543,11 +572,11 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
         }
       }
 
-      input.updateFreshDraft({ modelId })
+      input.updateFreshDraft({ modelRuntimeSelection: selection })
       return true
     },
     async selectPermissionMode(permissionMode) {
-      if (input.targetConfiguration.kind === "unavailable") {
+      if (input.targetConfiguration.kind !== "configured") {
         return false
       }
 
@@ -574,14 +603,14 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
       input.setLocalComposerText(value)
     },
     async startFreshDraft(draftInput) {
-      if (input.targetConfiguration.kind === "unavailable") {
+      if (input.targetConfiguration.kind !== "configured") {
         return false
       }
 
       try {
         input.setNavigationError(null)
         await input.startFreshDraftTarget({
-          modelId: input.targetConfiguration.modelId,
+          modelRuntimeSelection: input.targetConfiguration.modelRuntimeSelection,
           permissionMode: input.targetConfiguration.permissionMode,
           workspaceKind: draftInput?.workspaceKind,
           workspacePath: draftInput?.workspacePath

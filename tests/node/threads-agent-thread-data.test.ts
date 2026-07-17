@@ -101,6 +101,11 @@ function createThreadDataSnapshot(input: {
       metadata: {
         model: "openai:gpt-4o"
       },
+      modelRuntimeSelection: {
+        kind: "ready",
+        selection: { modelId: "openai:gpt-4o", thinkingEffort: null, version: 1 }
+      },
+      modelRuntimeSelectionRevision: 1,
       status: input.status ?? "idle",
       thread_id: "thread-1",
       title: input.title ?? "Demo Thread"
@@ -143,6 +148,10 @@ test("threads service splits persisted agent thread data into messages and runSt
   assert.equal(snapshot.thread.title, "Demo Thread")
   assert.deepEqual(snapshot.thread.metadata, {
     model: "openai:gpt-4o"
+  })
+  assert.deepEqual(snapshot.thread.modelRuntimeSelection, {
+    kind: "legacy_missing_effort",
+    modelId: "openai:gpt-4o"
   })
   assert.deepEqual(snapshot.messages.artifacts, [])
   assert.deepEqual(

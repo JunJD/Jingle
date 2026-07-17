@@ -7,28 +7,48 @@ import { Spinner } from "@/components/ui/spinner"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import type { ProviderId } from "@/types"
+import type { ModelRuntimeSelection } from "@shared/app-types"
+import { MODEL_RUNTIME_SELECTION_VERSION } from "@shared/model-runtime-selection"
 import {
+  createPendingModelSelection,
   projectModelQuickPicker,
+  resolvePendingModelId,
   type ModelSelectionCatalogProjection,
-  type ModelSelectionLoadState
+  type ModelSelectionLoadState,
+  type PendingModelSelection
 } from "./model-selection-projection"
 import { ProviderIcon } from "./provider-icon"
+import { ReasoningEffortPicker } from "./ReasoningEffortPicker"
 
 export function ModelQuickPickerContent(props: {
   catalog: ModelSelectionCatalogProjection
-  currentModelId: string | null
+  currentSelection: ModelRuntimeSelection | null
   loadState: ModelSelectionLoadState
   onOpenProviderSettings: (providerId: ProviderId) => void
   onRetry: () => Promise<void>
-  onSelectModel: (modelId: string) => void
+  onSelectSelection: (selection: ModelRuntimeSelection) => void
+  selectionRevision: number | null
 }): React.JSX.Element {
-  const { catalog, currentModelId, loadState, onOpenProviderSettings, onRetry, onSelectModel } =
-    props
+  const {
+    catalog,
+    currentSelection,
+    loadState,
+    onOpenProviderSettings,
+    onRetry,
+    onSelectSelection,
+    selectionRevision
+  } = props
   const { copy } = useI18n()
   const [searchQuery, setSearchQuery] = useState("")
+  const [pendingSelection, setPendingSelection] = useState<PendingModelSelection | null>(null)
+  const pendingModelId = resolvePendingModelId({
+    currentSelection,
+    pendingSelection,
+    selectionRevision
+  })
   const projection = useMemo(
-    () => projectModelQuickPicker(catalog, currentModelId, searchQuery),
-    [catalog, currentModelId, searchQuery]
+    () => projectModelQuickPicker(catalog, currentSelection?.modelId ?? null, searchQuery),
+    [catalog, currentSelection?.modelId, searchQuery]
   )
   const notice = projection.notice
 
@@ -114,30 +134,64 @@ export function ModelQuickPickerContent(props: {
             {projection.rows.length > 0 ? (
               projection.rows.map((model) => {
                 return (
-                  <Button
-                    key={model.id}
-                    type="button"
-                    onClick={() => onSelectModel(model.id)}
-                    size="sm"
-                    variant="ghost"
-                    className={cn(
-                      "h-[34px] w-full justify-start gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] px-[var(--jingle-space-2)] text-left font-normal",
-                      model.isSelected
-                        ? "bg-background-secondary text-foreground"
-                        : "text-muted-foreground hover:bg-background-secondary/72 hover:text-foreground"
-                    )}
-                  >
-                    <ProviderIcon
-                      className="size-[var(--jingle-icon-sm)] shrink-0"
-                      providerId={model.providerId}
-                    />
-                    <span className="min-w-0 flex-1 truncate [font-size:var(--jingle-font-control)] font-medium leading-[var(--jingle-line-control)]">
-                      {model.name}
-                    </span>
-                    <span className="max-w-[96px] shrink-0 truncate text-right [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-tight)] text-muted-foreground">
-                      {model.providerName}
-                    </span>
-                  </Button>
+                  <div key={model.id}>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        if (model.reasoningEfforts.length === 0) {
+                          onSelectSelection({
+                            modelId: model.id,
+                            thinkingEffort: null,
+                            version: MODEL_RUNTIME_SELECTION_VERSION
+                          })
+                          return
+                        }
+                        setPendingSelection(
+                          createPendingModelSelection({
+                            currentSelection,
+                            modelId: model.id,
+                            selectionRevision
+                          })
+                        )
+                      }}
+                      size="sm"
+                      variant="ghost"
+                      className={cn(
+                        "h-[34px] w-full justify-start gap-[var(--jingle-gap-sm)] rounded-[var(--jingle-radius-md)] px-[var(--jingle-space-2)] text-left font-normal",
+                        model.isSelected
+                          ? "bg-background-secondary text-foreground"
+                          : "text-muted-foreground hover:bg-background-secondary/72 hover:text-foreground"
+                      )}
+                    >
+                      <ProviderIcon
+                        className="size-[var(--jingle-icon-sm)] shrink-0"
+                        providerId={model.providerId}
+                      />
+                      <span className="min-w-0 flex-1 truncate [font-size:var(--jingle-font-control)] font-medium leading-[var(--jingle-line-control)]">
+                        {model.name}
+                      </span>
+                      <span className="max-w-[96px] shrink-0 truncate text-right [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-tight)] text-muted-foreground">
+                        {model.providerName}
+                      </span>
+                    </Button>
+                    {pendingModelId === model.id && model.reasoningEfforts.length > 0 ? (
+                      <ReasoningEffortPicker
+                        allowedValues={model.reasoningEfforts}
+                        selectedValue={
+                          currentSelection?.modelId === model.id
+                            ? currentSelection.thinkingEffort
+                            : null
+                        }
+                        onSelect={(thinkingEffort) =>
+                          onSelectSelection({
+                            modelId: model.id,
+                            thinkingEffort,
+                            version: MODEL_RUNTIME_SELECTION_VERSION
+                          })
+                        }
+                      />
+                    ) : null}
+                  </div>
                 )
               })
             ) : notice.kind !== "none" && !searchQuery.trim() ? null : (

@@ -1,7 +1,10 @@
-import { DEFAULT_MODELS } from "@shared/models"
 import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permission-mode"
 import type { ArtifactRecord } from "@shared/artifacts"
-import type { AgentThreadDataSnapshot } from "@shared/app-types"
+import type {
+  AgentThreadDataSnapshot,
+  ThreadModelRuntimeSelectionChangedEvent,
+  ThreadModelRuntimeSelectionState
+} from "@shared/app-types"
 import {
   createJingleThreadStateStore,
   type JingleAgentFollowUpQueueItem,
@@ -39,7 +42,9 @@ export interface AgentSourceState extends AgentThreadRuntimeState {
   artifacts: ArtifactRecord[]
   forkState: ThreadForkState
   workspacePath: string | null
-  currentModel: string
+  currentModel: string | null
+  modelRuntimeSelection: ThreadModelRuntimeSelectionState
+  modelRuntimeSelectionRevision: number
   permissionMode: PermissionModeName
 }
 
@@ -93,6 +98,7 @@ export interface ThreadControl {
 
 export interface ThreadStore {
   applyArtifactsChanged: (threadId: string, artifacts: ArtifactRecord[]) => void
+  applyModelRuntimeSelectionChanged: (event: ThreadModelRuntimeSelectionChangedEvent) => void
   applyRuntimeEvents: (threadId: string, events: AgentThreadEvent[]) => void
   applyThreadDataSnapshot: (threadId: string, snapshot: AgentThreadDataSnapshot) => void
   deleteThreadState: (threadId: string) => void
@@ -112,7 +118,9 @@ export function createDefaultThreadState(threadId = ""): ThreadState {
         canFork: true
       },
       workspacePath: null,
-      currentModel: DEFAULT_MODELS.llm,
+      currentModel: null,
+      modelRuntimeSelection: { kind: "missing" },
+      modelRuntimeSelectionRevision: 0,
       permissionMode: DEFAULT_PERMISSION_MODE
     },
     view: {
@@ -129,6 +137,10 @@ export function createDefaultThreadState(threadId = ""): ThreadState {
 
 export function createThreadStore(): ThreadStore {
   const controlCache: Record<string, ThreadControl> = {}
+  const pendingModelRuntimeSelectionEvents = new Map<
+    string,
+    ThreadModelRuntimeSelectionChangedEvent
+  >()
   const stateStore = createJingleThreadStateStore<ThreadState>({
     createState: createDefaultThreadState
   })
@@ -216,6 +228,30 @@ export function createThreadStore(): ThreadStore {
     updateThreadState(threadId, () => ({
       agent: { artifacts }
     }))
+  }
+
+  const applyModelRuntimeSelectionChanged = (
+    event: ThreadModelRuntimeSelectionChangedEvent
+  ): void => {
+    if (!getThreadState(event.threadId)) {
+      const pending = pendingModelRuntimeSelectionEvents.get(event.threadId)
+      if (!pending || pending.revision < event.revision) {
+        pendingModelRuntimeSelectionEvents.set(event.threadId, event)
+      }
+      return
+    }
+    updateThreadState(event.threadId, (state) => {
+      if (event.revision <= state.agent.modelRuntimeSelectionRevision) {
+        return {}
+      }
+      return {
+        agent: {
+          currentModel: event.selection.modelId,
+          modelRuntimeSelection: { kind: "ready", selection: event.selection },
+          modelRuntimeSelectionRevision: event.revision
+        }
+      }
+    })
   }
 
   const getThreadControl = (threadId: string): ThreadControl => {
@@ -345,16 +381,24 @@ export function createThreadStore(): ThreadStore {
   }
 
   const ensureThreadState = (threadId: string): boolean => {
-    return stateStore.ensureThreadState(threadId)
+    const created = stateStore.ensureThreadState(threadId)
+    const pending = pendingModelRuntimeSelectionEvents.get(threadId)
+    if (pending) {
+      pendingModelRuntimeSelectionEvents.delete(threadId)
+      applyModelRuntimeSelectionChanged(pending)
+    }
+    return created
   }
 
   const deleteThreadState = (threadId: string): void => {
     stateStore.deleteThreadState(threadId)
+    pendingModelRuntimeSelectionEvents.delete(threadId)
     delete controlCache[threadId]
   }
 
   return {
     applyArtifactsChanged,
+    applyModelRuntimeSelectionChanged,
     applyRuntimeEvents,
     applyThreadDataSnapshot,
     deleteThreadState,

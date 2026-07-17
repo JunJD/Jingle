@@ -1,6 +1,6 @@
 import type { BaseCallbackHandler } from "@langchain/core/callbacks/base"
 import type { AgentRunSteeringBufferPort } from "./run-steering"
-import type { RuntimeRunStart } from "./runtime-contract"
+import type { RuntimeRunStartBase } from "./runtime-contract"
 import type { RuntimeRunExecution } from "./runtime-execution"
 import type { RuntimeExecutionFactory } from "./runtime-execution-factory"
 import {
@@ -23,7 +23,7 @@ export interface RuntimeExecutionActivation {
 }
 
 export interface RuntimeExecutionContext<TContextInclusion = unknown> {
-  readonly modelId: string
+  readonly modelId: string | null
   readonly runId: string
   readonly signal: AbortSignal
   readonly terminal: RuntimeThreadTerminalReferee<TContextInclusion>
@@ -37,7 +37,7 @@ export interface RuntimeExecutionContext<TContextInclusion = unknown> {
 
 export function createRuntimeExecutionContext<TContextInclusion>(input: {
   lifecycle: RuntimeThreadTerminalLifecycle<TContextInclusion>
-  start: RuntimeRunStart
+  start: RuntimeRunStartBase
 }): RuntimeExecutionContext<TContextInclusion> {
   const { start } = input
   const abortController = new AbortController()
@@ -97,7 +97,7 @@ export function createRuntimeExecutionContext<TContextInclusion>(input: {
       createRunExecution = factory
     },
     dispose,
-    modelId: start.modelId,
+    modelId: "modelId" in start && typeof start.modelId === "string" ? start.modelId : null,
     resolveExecution() {
       assertActive()
       if (!activation) {
@@ -114,10 +114,16 @@ export function createRuntimeExecutionContext<TContextInclusion>(input: {
       const factory = createRunExecution
       const currentActivation = activation
       createRunExecution = null
+      if (!("modelId" in start) || typeof start.modelId !== "string") {
+        throw new Error(
+          `[RuntimeExecutionContext] Terminal run "${start.runId}" has no model execution.`
+        )
+      }
+      const modelId = start.modelId
       execution = Promise.resolve().then(() =>
         factory({
           callbacks: currentActivation.callbacks ? [...currentActivation.callbacks] : undefined,
-          modelId: start.modelId,
+          modelId,
           runId: start.runId,
           signal: abortController.signal,
           steeringBuffer: currentActivation.steeringBuffer

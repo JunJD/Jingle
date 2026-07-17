@@ -87,14 +87,34 @@ function createActiveRun(): JingleActiveAgentRun {
 }
 
 function createThreadDataSnapshot(
-  input: Partial<AgentThreadDataSnapshot>
+  input: Omit<Partial<AgentThreadDataSnapshot>, "thread"> & {
+    thread?: Omit<
+      AgentThreadDataSnapshot["thread"],
+      "modelRuntimeSelection" | "modelRuntimeSelectionRevision"
+    > & {
+      modelRuntimeSelection?: AgentThreadDataSnapshot["thread"]["modelRuntimeSelection"]
+      modelRuntimeSelectionRevision?: number
+    }
+  }
 ): AgentThreadDataSnapshot {
+  const { thread, ...snapshot } = input
+  const metadata = thread?.metadata
+  const modelId = typeof metadata?.model === "string" ? metadata.model : null
   return {
     thread: {
-      metadata: undefined,
-      status: "idle",
-      thread_id: "thread-a",
-      title: undefined
+      metadata,
+      modelRuntimeSelection:
+        thread?.modelRuntimeSelection ??
+        (modelId
+          ? {
+              kind: "ready",
+              selection: { modelId, thinkingEffort: null, version: 1 }
+            }
+          : { kind: "missing" }),
+      modelRuntimeSelectionRevision: thread?.modelRuntimeSelectionRevision ?? (modelId ? 1 : 0),
+      status: thread?.status ?? "idle",
+      thread_id: thread?.thread_id ?? "thread-a",
+      title: thread?.title
     },
     messages: {
       artifacts: [],
@@ -111,7 +131,7 @@ function createThreadDataSnapshot(
       todos: [],
       workspacePath: null
     },
-    ...input
+    ...snapshot
   }
 }
 
@@ -480,6 +500,57 @@ test("thread data snapshot and events update thread state through store reducer"
     state.agent.messagesPage.map((message) => message.id),
     ["user-1", "assistant-1"]
   )
+})
+
+test("revisioned model selection events survive pre-hydration and reject stale snapshots", () => {
+  const store = createThreadStore()
+  store.applyModelRuntimeSelectionChanged({
+    revision: 2,
+    selection: {
+      modelId: "openai:gpt-5.6-sol",
+      thinkingEffort: "max",
+      version: 1
+    },
+    threadId: "thread-a"
+  })
+  store.ensureThreadState("thread-a")
+
+  let state = getThreadState(store, "thread-a")
+  assert.equal(state.agent.modelRuntimeSelectionRevision, 2)
+  assert.equal(state.agent.currentModel, "openai:gpt-5.6-sol")
+
+  store.applyThreadDataSnapshot(
+    "thread-a",
+    createThreadDataSnapshot({
+      thread: {
+        metadata: undefined,
+        modelRuntimeSelection: {
+          kind: "ready",
+          selection: { modelId: "openai:gpt-4o", thinkingEffort: null, version: 1 }
+        },
+        modelRuntimeSelectionRevision: 1,
+        status: "idle",
+        thread_id: "thread-a",
+        title: undefined
+      }
+    })
+  )
+  state = getThreadState(store, "thread-a")
+  assert.equal(state.agent.modelRuntimeSelectionRevision, 2)
+  assert.equal(state.agent.currentModel, "openai:gpt-5.6-sol")
+
+  store.applyModelRuntimeSelectionChanged({
+    revision: 3,
+    selection: {
+      modelId: "deepseek:deepseek-v4-pro",
+      thinkingEffort: "high",
+      version: 1
+    },
+    threadId: "thread-a"
+  })
+  state = getThreadState(store, "thread-a")
+  assert.equal(state.agent.modelRuntimeSelectionRevision, 3)
+  assert.equal(state.agent.currentModel, "deepseek:deepseek-v4-pro")
 })
 
 test("runtime event path maps shared reducer state into renderer source facts", () => {

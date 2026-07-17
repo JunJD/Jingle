@@ -185,7 +185,7 @@ async function generateThreadDigestWithModel(input: {
     maxOutputTokens: THREAD_DIGEST_MAX_OUTPUT_TOKENS,
     modelPreference: "fast",
     temperature: 0,
-    thinkingEffort: "off"
+    thinkingEffort: null
   })
   const response = await model
     .withConfig({ runName: "thread_digest" })

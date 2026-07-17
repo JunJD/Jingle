@@ -2,7 +2,8 @@ import { abortJingleAgentRun, completeJingleAgentRun, failJingleAgentRun } from 
 import type {
   RuntimeResumeRunStart,
   RuntimeRunLifecycleControllerContract,
-  RuntimeRunStart
+  RuntimeRunStart,
+  RuntimeRunStartBase
 } from "./runtime-contract"
 import type { JingleContextInclusionStateItem } from "./context-inclusion-state"
 import type {
@@ -138,12 +139,22 @@ export function createRuntimeThreadRunLifecycleControlFromController<
           })
         )
         const admittedStart = runStart
-        const publicStart = {
-          executionDisposition: admittedStart.executionDisposition,
-          modelId: admittedStart.modelId,
-          recordingRefs: [...admittedStart.recordingRefs],
-          runId: admittedStart.runId
-        }
+        const publicStart: RuntimeResumeRunStart =
+          admittedStart.executionDisposition === "terminal"
+            ? {
+                ...(admittedStart.cancelAfterDecision
+                  ? { cancelAfterDecision: admittedStart.cancelAfterDecision }
+                  : {}),
+                executionDisposition: "terminal",
+                recordingRefs: [...admittedStart.recordingRefs],
+                runId: admittedStart.runId
+              }
+            : {
+                executionDisposition: "resume",
+                modelId: admittedStart.modelId,
+                recordingRefs: [...admittedStart.recordingRefs],
+                runId: admittedStart.runId
+              }
         const admission = {
           ...admittedStart,
           createRunExecution:
@@ -224,7 +235,7 @@ export function createRuntimeThreadRunLifecycleControlFromController<
 async function failStartedRunAdmission(input: {
   error: unknown
   lifecycle: Pick<RuntimeRunLifecycleControllerContract, "markRunFailed" | "settleRun">
-  runStart: RuntimeRunStart
+  runStart: RuntimeRunStartBase
   threadId: string
 }): Promise<never> {
   const compensationErrors: unknown[] = []

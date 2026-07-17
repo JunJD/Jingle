@@ -86,7 +86,9 @@ export interface RuntimeCompactInput {
   operationId: string
   preserveLastUserMessageCount?: number
   reason?: string | null
+  thinkingEffort: string | null
   trigger: "manual"
+  version: 1
 }
 
 export function parseRuntimeCompactInput(input: unknown): Readonly<RuntimeCompactInput> {
@@ -100,6 +102,18 @@ export function parseRuntimeCompactInput(input: unknown): Readonly<RuntimeCompac
   const snapshot = readRuntimeCompactDataProperties(input)
   const operationId = readNormalizedCompactIdentifier(snapshot.get("operationId"), "operationId")
   const modelId = readNormalizedCompactIdentifier(snapshot.get("modelId"), "modelId")
+  const thinkingEffort = snapshot.get("thinkingEffort")
+  if (
+    thinkingEffort !== null &&
+    (typeof thinkingEffort !== "string" ||
+      thinkingEffort.length === 0 ||
+      thinkingEffort !== thinkingEffort.trim())
+  ) {
+    throw new Error("[RuntimeCompact] thinkingEffort must be null or a non-empty trimmed string.")
+  }
+  if (snapshot.get("version") !== 1) {
+    throw new Error("[RuntimeCompact] model runtime selection version must be 1.")
+  }
   if (snapshot.get("trigger") !== "manual") {
     throw new Error('[RuntimeCompact] trigger must be "manual".')
   }
@@ -122,7 +136,9 @@ export function parseRuntimeCompactInput(input: unknown): Readonly<RuntimeCompac
     modelId,
     operationId,
     reason: (reason ?? null) as string | null,
-    trigger: "manual"
+    thinkingEffort,
+    trigger: "manual",
+    version: 1
   }
   if (snapshot.has("preserveLastUserMessageCount")) {
     canonical.preserveLastUserMessageCount = preserveLastUserMessageCount as number | undefined

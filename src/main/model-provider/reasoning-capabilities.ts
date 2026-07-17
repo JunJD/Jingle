@@ -7,11 +7,11 @@ import type {
 } from "./types"
 
 export const REASONING_CAPABILITY_REGISTRY_VERSION = "2026-07-17"
+export const CUSTOM_REASONING_EFFORT_DECLARATION_VERSION = "v1"
 
 export type ReasoningEffortTransport =
   | "anthropic-legacy-budget"
   | "deepseek-v4"
-  | "google-existing"
   | "openai-compatible"
   | "openai-native"
 
@@ -26,6 +26,7 @@ const OPENAI_GPT_5_2 = [...OPENAI_GPT_5_1, "xhigh"] satisfies ThinkingEffort[]
 const OPENAI_GPT_5_6 = [...OPENAI_GPT_5_2, "max"] satisfies ThinkingEffort[]
 const REASONING_EFFORT_ORDER = [
   "off",
+  "minimal",
   "low",
   "medium",
   "high",
@@ -38,35 +39,35 @@ const REASONING_EFFORT_ORDER = [
 const BUILTIN_REGISTRY = new Map<string, RegistryEntry>([
   ...entries(
     "openai",
-    ["gpt-5"],
-    ["low", "medium", "high"],
+    ["gpt-5", "gpt-5-2025-08-07"],
+    ["minimal", "low", "medium", "high"],
     "openai-native",
     "https://developers.openai.com/api/docs/models/gpt-5"
   ),
   ...entries(
     "openai",
-    ["gpt-5.1"],
+    ["gpt-5.1", "gpt-5.1-2025-11-13"],
     OPENAI_GPT_5_1,
     "openai-native",
     "https://developers.openai.com/api/docs/models/gpt-5.1"
   ),
   ...entries(
     "openai",
-    ["gpt-5.2"],
+    ["gpt-5.2", "gpt-5.2-2025-12-11"],
     OPENAI_GPT_5_2,
     "openai-native",
     "https://developers.openai.com/api/docs/models/gpt-5.2"
   ),
   ...entries(
     "openai",
-    ["gpt-5.4"],
+    ["gpt-5.4", "gpt-5.4-2026-03-05"],
     OPENAI_GPT_5_2,
     "openai-native",
     "https://developers.openai.com/api/docs/models/gpt-5.4"
   ),
   ...entries(
     "openai",
-    ["gpt-5.5"],
+    ["gpt-5.5", "gpt-5.5-2026-04-23"],
     OPENAI_GPT_5_2,
     "openai-native",
     "https://developers.openai.com/api/docs/models/gpt-5.5"
@@ -101,7 +102,16 @@ const BUILTIN_REGISTRY = new Map<string, RegistryEntry>([
   ),
   ...entries(
     "openai",
-    ["o1", "o3", "o3-mini", "o4-mini"],
+    [
+      "o1",
+      "o1-2024-12-17",
+      "o3",
+      "o3-2025-04-16",
+      "o3-mini",
+      "o3-mini-2025-01-31",
+      "o4-mini",
+      "o4-mini-2025-04-16"
+    ],
     ["low", "medium", "high"],
     "openai-native",
     "https://developers.openai.com/api/docs/guides/reasoning"
@@ -171,13 +181,13 @@ export function createCustomReasoningEffortCapability(input: {
   return {
     allowedValues: [...input.model.reasoning_efforts],
     source: "custom-declaration",
-    version: REASONING_CAPABILITY_REGISTRY_VERSION
+    version: CUSTOM_REASONING_EFFORT_DECLARATION_VERSION
   }
 }
 
 export function resolveModelReasoningEffortCapability(input: {
   customProvider?: CustomProviderConfig | null
-  model: Pick<ModelConfig, "model" | "provider" | "reasoning" | "reasoningEffortCapability">
+  model: Pick<ModelConfig, "model" | "provider" | "reasoning">
 }): ResolvedReasoningEffortCapability {
   if (input.customProvider?.name === input.model.provider) {
     const matchingModels = input.customProvider.models.filter(
@@ -230,7 +240,7 @@ export function resolveModelReasoningEffortCapability(input: {
     return {
       capability: null,
       reference: "existing Jingle Google behavior",
-      transport: "google-existing"
+      transport: null
     }
   }
 
@@ -243,9 +253,6 @@ export function assertReasoningEffortSupported(input: {
   modelId: string
 }): void {
   if (input.effort === null || input.effort === undefined) {
-    return
-  }
-  if (input.capability.transport === "google-existing" && input.effort !== "xhigh") {
     return
   }
   if (!input.capability.capability?.allowedValues.includes(input.effort)) {

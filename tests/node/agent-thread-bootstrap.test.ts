@@ -31,6 +31,8 @@ test("thread bootstrap derives interrupted state and approval-owned active run",
   const bootstrap = deriveThreadBootstrapState({
     thread: {
       metadata: undefined,
+      modelRuntimeSelection: { kind: "missing" },
+      modelRuntimeSelectionRevision: 0,
       status: "interrupted",
       thread_id: "thread-1",
       title: undefined
@@ -66,6 +68,8 @@ test("thread bootstrap maps persisted error string into runtime error payload", 
   const bootstrap = deriveThreadBootstrapState({
     thread: {
       metadata: undefined,
+      modelRuntimeSelection: { kind: "missing" },
+      modelRuntimeSelectionRevision: 0,
       status: "error",
       thread_id: "thread-1",
       title: undefined
@@ -97,6 +101,8 @@ test("thread bootstrap preserves persisted context inclusions", () => {
   const bootstrap = deriveThreadBootstrapState({
     thread: {
       metadata: undefined,
+      modelRuntimeSelection: { kind: "missing" },
+      modelRuntimeSelectionRevision: 0,
       status: "idle",
       thread_id: "thread-1",
       title: undefined

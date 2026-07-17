@@ -64,6 +64,9 @@ export interface AppCopy {
     describeOutcome: string
     dismissError: string
     inputNeedsWorkspace: string
+    modelRuntimeSelectionInvalid: string
+    modelRuntimeSelectionLegacyMissingEffort: string
+    modelRuntimeSelectionMissing: string
     messageContentUnavailable: string
     memoryTemporaryOff: string
     memoryTemporaryOn: string
@@ -445,6 +448,9 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       describeOutcome: "描述你想达成的结果。workspace 和 tools 会随后接上。",
       dismissError: "关闭错误",
       inputNeedsWorkspace: "请先选择一个 workspace 文件夹，再发送消息。",
+      modelRuntimeSelectionInvalid: "这个对话的模型运行配置无效，请重新选择模型。",
+      modelRuntimeSelectionLegacyMissingEffort: "这个对话缺少推理强度，请重新选择模型。",
+      modelRuntimeSelectionMissing: "这个对话尚未选择模型，请先选择模型。",
       messageContentUnavailable: "这条消息包含无法显示的内容。",
       memoryTemporaryOff: "使用记忆",
       memoryTemporaryOn: "临时模式",
@@ -854,6 +860,12 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       describeOutcome: "Describe the outcome you want. The workspace and tools will follow.",
       dismissError: "Dismiss error",
       inputNeedsWorkspace: "Please select a workspace folder before sending messages.",
+      modelRuntimeSelectionInvalid:
+        "This conversation has an invalid model runtime selection. Select the model again.",
+      modelRuntimeSelectionLegacyMissingEffort:
+        "This conversation has no saved reasoning effort. Select the model again.",
+      modelRuntimeSelectionMissing:
+        "This conversation has no model runtime selection. Select a model first.",
       messageContentUnavailable: "This message contains content that cannot be displayed.",
       memoryTemporaryOff: "Use memory",
       memoryTemporaryOn: "Temporary",

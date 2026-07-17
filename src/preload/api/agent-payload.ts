@@ -13,7 +13,6 @@ export interface AgentInvokeIpcPayload {
   readonly expectedTurnId?: string | null
   readonly followUpAction?: JingleAgentFollowUpAction
   readonly message: AgentInvokeMessage
-  readonly modelId?: string
   readonly permissionMode?: PermissionModeName
   readonly temporaryMode?: boolean
   readonly threadId: string
@@ -21,7 +20,6 @@ export interface AgentInvokeIpcPayload {
 
 export interface AgentResumeIpcPayload {
   readonly decision: HITLDecision
-  readonly modelId?: string
   readonly threadId: string
 }
 
@@ -69,7 +67,6 @@ export function buildAgentInvokeIpcPayload(input: {
   readonly expectedTurnId?: string | null
   readonly followUpAction?: JingleAgentFollowUpAction
   readonly message: AgentInvokeMessage
-  readonly modelId?: string
   readonly permissionMode?: PermissionModeName
   readonly temporaryMode?: boolean
   readonly threadId: string
@@ -80,7 +77,6 @@ export function buildAgentInvokeIpcPayload(input: {
       threadId: input.threadId
     },
     [
-      ["modelId", input.modelId],
       ["permissionMode", input.permissionMode],
       ["temporaryMode", input.temporaryMode],
       ["followUpAction", input.followUpAction],
@@ -92,17 +88,12 @@ export function buildAgentInvokeIpcPayload(input: {
 
 export function buildAgentResumeIpcPayload(input: {
   readonly decision: HITLDecision
-  readonly modelId?: string
   readonly threadId: string
 }): AgentResumeIpcPayload {
-  return withOptionalProperty(
-    {
-      decision: input.decision,
-      threadId: input.threadId
-    },
-    "modelId",
-    input.modelId
-  )
+  return {
+    decision: input.decision,
+    threadId: input.threadId
+  }
 }
 
 export function buildAgentConnectThreadEventsIpcPayload(

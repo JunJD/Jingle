@@ -1,4 +1,4 @@
-import type { RuntimeRunStart } from "./runtime-contract"
+import type { RuntimeRunStartBase } from "./runtime-contract"
 import type { CompleteJingleAgentRunResult } from "./run-completion"
 import type { RuntimeThreadRunLifecycleControl } from "./runtime-thread"
 
@@ -134,7 +134,7 @@ export function isRuntimeThreadAdmissionPersistenceError(
 export function createRuntimeThreadTerminalReferee<TContextInclusion>(input: {
   lifecycle: RuntimeThreadTerminalLifecycle<TContextInclusion>
   observeIgnoredTerminal: (diagnostic: RuntimeThreadIgnoredTerminalDiagnostic) => void
-  start: RuntimeRunStart
+  start: RuntimeRunStartBase
 }): RuntimeThreadTerminalReferee<TContextInclusion> {
   const { lifecycle, start } = input
   let winner: {
@@ -206,7 +206,7 @@ function observeIgnoredTerminalSafely(
 async function commitRuntimeThreadTerminal<TContextInclusion>(input: {
   intent: RuntimeThreadTerminalIntent<TContextInclusion>
   lifecycle: RuntimeThreadTerminalLifecycle<TContextInclusion>
-  start: RuntimeRunStart
+  start: RuntimeRunStartBase
 }): Promise<RuntimeThreadTerminalResult<TContextInclusion>> {
   const persistence = await captureResult(() =>
     persistRuntimeThreadTerminal(input.lifecycle, input.start, input.intent)
@@ -244,7 +244,7 @@ async function commitRuntimeThreadTerminal<TContextInclusion>(input: {
 
 async function persistRuntimeThreadTerminal<TContextInclusion>(
   lifecycle: RuntimeThreadTerminalLifecycle<TContextInclusion>,
-  start: RuntimeRunStart,
+  start: RuntimeRunStartBase,
   intent: RuntimeThreadTerminalIntent<TContextInclusion>
 ): Promise<RuntimeThreadTerminalResult<TContextInclusion>> {
   if (intent.status === "aborted") {

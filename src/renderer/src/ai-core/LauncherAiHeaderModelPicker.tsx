@@ -3,41 +3,43 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
-  projectSelectedModelSummary,
-  resolveModelSelectionModelId
+  resolveModelSelection,
+  projectSelectedModelSummary
 } from "@/features/model-selection/model-selection-projection"
 import { ProviderIcon } from "@/features/model-selection/provider-icon"
 import { ModelQuickPickerContent } from "@/features/model-selection/ModelQuickPickerContent"
 import { useI18n } from "@/lib/i18n"
 import type { ProviderId } from "@/types"
+import type { ModelRuntimeSelection } from "@shared/app-types"
 import { useLauncherAiModelPickerController } from "./use-launcher-ai-model-picker-controller"
 
 interface LauncherAiHeaderModelPickerProps {
-  currentModelId: string | null
+  currentSelection: ModelRuntimeSelection | null
   fallbackLabel: string
-  onSelectModel: (modelId: string) => Promise<boolean>
+  onSelectSelection: (selection: ModelRuntimeSelection) => Promise<boolean>
+  selectionRevision: number | null
 }
 
 export function LauncherAiHeaderModelPicker(
   props: LauncherAiHeaderModelPickerProps
 ): React.JSX.Element {
-  const { currentModelId, fallbackLabel, onSelectModel } = props
+  const { currentSelection, fallbackLabel, onSelectSelection, selectionRevision } = props
   const { copy } = useI18n()
   const [open, setOpen] = useState(false)
   const { catalog, loadState, openProviderSettings, reload } = useLauncherAiModelPickerController()
-  const effectiveModelId = resolveModelSelectionModelId(catalog, currentModelId)
-  const selectedModel = projectSelectedModelSummary(catalog, effectiveModelId)
+  const effectiveSelection = resolveModelSelection(catalog, currentSelection)
+  const selectedModel = projectSelectedModelSummary(catalog, effectiveSelection?.modelId ?? null)
   const displayName =
     loadState === "loading"
       ? copy.modelSwitcher.loading
       : loadState === "error"
         ? copy.modelSwitcher.loadError
         : selectedModel.kind === "configured"
-          ? selectedModel.name
+          ? `${selectedModel.name}${effectiveSelection?.thinkingEffort ? ` · ${effectiveSelection.thinkingEffort}` : ""}`
           : fallbackLabel
 
-  function handleSelectModel(modelId: string): void {
-    void onSelectModel(modelId).then((didSelect) => {
+  function handleSelectSelection(selection: ModelRuntimeSelection): void {
+    void onSelectSelection(selection).then((didSelect) => {
       if (didSelect) {
         setOpen(false)
       }
@@ -81,11 +83,12 @@ export function LauncherAiHeaderModelPicker(
       >
         <ModelQuickPickerContent
           catalog={catalog}
-          currentModelId={effectiveModelId}
+          currentSelection={effectiveSelection}
           loadState={loadState}
           onOpenProviderSettings={handleOpenProviderSettings}
           onRetry={reload}
-          onSelectModel={handleSelectModel}
+          onSelectSelection={handleSelectSelection}
+          selectionRevision={selectionRevision}
         />
       </PopoverContent>
     </Popover>

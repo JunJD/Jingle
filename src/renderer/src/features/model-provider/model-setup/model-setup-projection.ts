@@ -1,4 +1,9 @@
-import type { ProviderId, ThinkingEffort } from "@shared/app-types"
+import type {
+  CustomProviderEngine,
+  CustomProviderInput,
+  ProviderId,
+  ThinkingEffort
+} from "@shared/app-types"
 import { resolveLocalizedText } from "@shared/i18n"
 import type { ModelSetupModel, ModelSetupProvider, ModelSetupSnapshot } from "@shared/model-setup"
 
@@ -25,6 +30,20 @@ export function projectReasoningEffortSelection(input: {
         ? input.selectedValue
         : null
   }
+}
+
+export function projectCustomProviderModelInputs(input: {
+  engine: CustomProviderEngine
+  modelEfforts: Record<string, ThinkingEffort[]>
+  modelNames: string[]
+}): CustomProviderInput["models"] {
+  return input.modelNames.map((name) => ({
+    name,
+    reasoningEfforts:
+      input.engine === "openai" && input.modelEfforts[name]?.length
+        ? [...input.modelEfforts[name]]
+        : undefined
+  }))
 }
 
 export function projectModelSetupSnapshot(input: {

@@ -13,7 +13,15 @@ import type {
 } from "../types"
 
 const providerIdArgsSchema = z.tuple([nonEmptyTrimmedStringSchema])
-const thinkingEffortValueSchema = z.enum(["off", "low", "medium", "high", "xhigh", "max"])
+const thinkingEffortValueSchema = z.enum([
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max"
+])
 const thinkingEffortSchema = thinkingEffortValueSchema.nullable()
 
 const customProviderModelSchema = z.union([

@@ -9,6 +9,19 @@ import { DEFAULT_PERMISSION_MODE } from "../../src/shared/permission-mode"
 import { applyRuntimeSnapshotToThreadState } from "../../src/renderer/src/lib/agent-runtime-snapshot-reducer"
 import { createDefaultThreadState } from "../../src/renderer/src/lib/thread-store-core"
 
+const READY_MODEL_RUNTIME_SELECTION = {
+  kind: "ready",
+  selection: {
+    modelId: "openai:gpt-4o",
+    thinkingEffort: null,
+    version: 1
+  }
+} as const
+
+const INVALID_MODEL_RUNTIME_SELECTION = {
+  kind: "invalid"
+} as const
+
 function createMessage(input: { content: string; id: string; role: Message["role"] }): Message {
   return {
     content: input.content,
@@ -26,6 +39,8 @@ test("agent runtime snapshot reducer applies messages, metadata, and non-runtime
         model: "openai:gpt-4o",
         permissionMode: "ask-to-edit"
       },
+      modelRuntimeSelection: READY_MODEL_RUNTIME_SELECTION,
+      modelRuntimeSelectionRevision: 1,
       status: "idle",
       thread_id: "thread-1",
       title: "Demo"
@@ -81,6 +96,8 @@ test("agent runtime snapshot reducer hydrates context inclusions from run state"
   const next = applyRuntimeSnapshotToThreadState(state, {
     thread: {
       metadata: {},
+      modelRuntimeSelection: INVALID_MODEL_RUNTIME_SELECTION,
+      modelRuntimeSelectionRevision: 0,
       status: "idle",
       thread_id: "thread-1",
       title: undefined
@@ -152,6 +169,8 @@ test("agent runtime snapshot reducer does not produce runtime facts from snapsho
   const next = applyRuntimeSnapshotToThreadState(state, {
     thread: {
       metadata: {},
+      modelRuntimeSelection: INVALID_MODEL_RUNTIME_SELECTION,
+      modelRuntimeSelectionRevision: 0,
       status: "idle",
       thread_id: "thread-1",
       title: undefined
@@ -200,6 +219,8 @@ test("agent runtime snapshot reducer clears missing metadata instead of keeping 
   const next = applyRuntimeSnapshotToThreadState(state, {
     thread: {
       metadata: {},
+      modelRuntimeSelection: INVALID_MODEL_RUNTIME_SELECTION,
+      modelRuntimeSelectionRevision: 0,
       status: "idle",
       thread_id: "thread-1",
       title: undefined
@@ -233,6 +254,8 @@ test("agent runtime snapshot reducer applies only metadata from busy snapshots",
       metadata: {
         model: "openai:gpt-4o"
       },
+      modelRuntimeSelection: READY_MODEL_RUNTIME_SELECTION,
+      modelRuntimeSelectionRevision: 1,
       status: "busy",
       thread_id: "thread-1",
       title: "Busy Thread"
@@ -271,6 +294,8 @@ test("agent runtime snapshot reducer hydrates interrupted approval snapshots", (
       metadata: {
         model: "openai:gpt-4o"
       },
+      modelRuntimeSelection: READY_MODEL_RUNTIME_SELECTION,
+      modelRuntimeSelectionRevision: 1,
       status: "interrupted",
       thread_id: "thread-1",
       title: "Interrupted Thread"

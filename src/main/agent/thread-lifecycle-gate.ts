@@ -43,6 +43,15 @@ export type ThreadRunClaim =
       status: "shutting_down"
     }
 
+export type ThreadIdleMutationResult<T> =
+  | {
+      status: "accepted"
+      value: T
+    }
+  | {
+      status: "deleting" | "recovery_required" | "running" | "shutting_down"
+    }
+
 export class ThreadLifecycleGate {
   private readonly deletions = new Map<string, Promise<void>>()
   private readonly runs = new Map<string, ActiveThreadRun>()
@@ -102,6 +111,31 @@ export class ThreadLifecycleGate {
           signal: controller.signal
         },
         status: "accepted"
+      }
+    })
+  }
+
+  async withIdleMutation<T>(
+    threadId: string,
+    operation: () => Promise<T>
+  ): Promise<ThreadIdleMutationResult<T>> {
+    return this.runTransition(threadId, async () => {
+      if (this.shuttingDown) {
+        return { status: "shutting_down" }
+      }
+      if (this.deletions.has(threadId)) {
+        return { status: "deleting" }
+      }
+      if (this.recoveryRequired.has(threadId)) {
+        return { status: "recovery_required" }
+      }
+      if (this.runs.has(threadId)) {
+        return { status: "running" }
+      }
+
+      return {
+        status: "accepted",
+        value: await operation()
       }
     })
   }

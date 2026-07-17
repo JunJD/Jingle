@@ -5,10 +5,9 @@ import {
   stabilizeJingleReferences
 } from "@jingle/agent-react"
 import { isPermissionModeName, THREAD_PERMISSION_MODE_METADATA_KEY } from "@shared/permission-mode"
-import { DEFAULT_MODELS } from "@shared/models"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
 import { deriveThreadBootstrapState } from "@shared/agent-thread-bootstrap"
-import type { AgentThreadDataSnapshot } from "@shared/app-types"
+import type { AgentThreadDataSnapshot, ThreadModelRuntimeSelectionState } from "@shared/app-types"
 import { parseAgentRunRecoveryRequired } from "@shared/agent-run-recovery"
 import { projectMessages } from "./message-projection"
 import type { ThreadState } from "./thread-store-core"
@@ -71,6 +70,23 @@ export function applyRuntimeSnapshotToThreadState(
     ? stabilizeJingleMessageList(state.agent.messagesPage, sourceState.messagesPage)
     : sourceState.messagesPage
   const permissionMode = metadata[THREAD_PERMISSION_MODE_METADATA_KEY]
+  const canApplyModelRuntimeSelection =
+    snapshot.thread.modelRuntimeSelectionRevision >= state.agent.modelRuntimeSelectionRevision
+  const modelRuntimeSelection = canApplyModelRuntimeSelection
+    ? stabilizeModelRuntimeSelection(
+        state.agent.modelRuntimeSelection,
+        snapshot.thread.modelRuntimeSelection
+      )
+    : state.agent.modelRuntimeSelection
+  const modelRuntimeSelectionRevision = canApplyModelRuntimeSelection
+    ? snapshot.thread.modelRuntimeSelectionRevision
+    : state.agent.modelRuntimeSelectionRevision
+  const currentModel =
+    modelRuntimeSelection.kind === "ready"
+      ? modelRuntimeSelection.selection.modelId
+      : modelRuntimeSelection.kind === "legacy_missing_effort"
+        ? modelRuntimeSelection.modelId
+        : null
 
   const artifacts = snapshotPolicy.canApplyContent
     ? stabilizeJingleReferences(state.agent.artifacts, snapshot.messages.artifacts)
@@ -90,12 +106,14 @@ export function applyRuntimeSnapshotToThreadState(
     approvals,
     artifacts,
     contextInclusions,
-    currentModel: typeof metadata.model === "string" ? metadata.model : DEFAULT_MODELS.llm,
+    currentModel,
     error: bootstrapState?.error ?? sourceState.error,
     forkState,
     hasMoreBefore: false,
     followUpQueue: sourceState.followUpQueue,
     messagesPage,
+    modelRuntimeSelection,
+    modelRuntimeSelectionRevision,
     pendingApproval: bootstrapState?.pendingApproval ?? sourceState.pendingApproval,
     permissionMode: isPermissionModeName(permissionMode) ? permissionMode : DEFAULT_PERMISSION_MODE,
     latestRunId: bootstrapState?.latestRunId ?? sourceState.latestRunId,
@@ -118,4 +136,24 @@ export function applyRuntimeSnapshotToThreadState(
       )
     }
   }
+}
+
+function stabilizeModelRuntimeSelection(
+  current: ThreadModelRuntimeSelectionState,
+  next: ThreadModelRuntimeSelectionState
+): ThreadModelRuntimeSelectionState {
+  if (current.kind !== next.kind) {
+    return next
+  }
+  if (current.kind === "ready" && next.kind === "ready") {
+    return current.selection.version === next.selection.version &&
+      current.selection.modelId === next.selection.modelId &&
+      current.selection.thinkingEffort === next.selection.thinkingEffort
+      ? current
+      : next
+  }
+  if (current.kind === "legacy_missing_effort" && next.kind === "legacy_missing_effort") {
+    return current.modelId === next.modelId ? current : next
+  }
+  return current
 }

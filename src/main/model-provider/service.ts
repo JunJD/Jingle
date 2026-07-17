@@ -46,11 +46,14 @@ import type {
   ModelProviderPaths,
   ModelProviderState,
   ModelType,
+  ModelRuntimeSelection,
   Provider,
   ProviderDefinition,
   ProviderId,
   ProviderModelsResponse
 } from "./types"
+import { resolveDefaultModelRuntimeSelection, resolveModelRuntimeConfig } from "./resolver"
+import { parseModelRuntimeSelection } from "@shared/model-runtime-selection"
 
 export class ModelProviderService {
   getSetupSnapshot(): ModelSetupSnapshot {
@@ -78,6 +81,19 @@ export class ModelProviderService {
 
   getDefaultModel(modelType: string): string {
     return getDefaultModelForUI(modelType)
+  }
+
+  getDefaultRuntimeSelection(): ModelRuntimeSelection {
+    return resolveDefaultModelRuntimeSelection()
+  }
+
+  validateRuntimeSelection(selection: unknown): ModelRuntimeSelection {
+    const canonicalSelection = parseModelRuntimeSelection(selection)
+    if (!canonicalSelection) {
+      throw new Error("Model runtime selection is invalid or uses an unsupported version.")
+    }
+    resolveModelRuntimeConfig({ selection: canonicalSelection })
+    return canonicalSelection
   }
 
   setDefaultModel(
@@ -382,6 +398,10 @@ export async function setDefaultModelForUI(
 ): Promise<void> {
   const supportedModelType = requireSupportedDefaultModelType(modelType)
   const parsedModelId = parseProviderModelId(modelId)
+  const thinkingEffort =
+    options.thinkingEffort === undefined
+      ? (getJingleModelProviderConfig().providers[parsedModelId.providerId]?.thinkingEffort ?? null)
+      : options.thinkingEffort
   const adapter = getProviderAdapter(parsedModelId.providerId)
   requireProviderSupportsModelType(adapter.definition, supportedModelType)
   const credentials = adapter.getCredentials()
@@ -422,12 +442,12 @@ export async function setDefaultModelForUI(
   if (targetModel) {
     assertReasoningEffortSupported({
       capability: resolveCapabilityForModel(targetModel),
-      effort: options.thinkingEffort,
+      effort: thinkingEffort,
       modelId
     })
     setModelProviderDefaultModel(supportedModelType, modelId, {
       ...options,
-      thinkingEffort: options.thinkingEffort
+      thinkingEffort
     })
     return
   }
@@ -436,12 +456,12 @@ export async function setDefaultModelForUI(
     const unlistedModel = resolveDefaultModelConfig(modelId, supportedModelType)
     assertReasoningEffortSupported({
       capability: resolveCapabilityForModel(unlistedModel),
-      effort: options.thinkingEffort,
+      effort: thinkingEffort,
       modelId
     })
     setModelProviderDefaultModel(supportedModelType, modelId, {
       ...options,
-      thinkingEffort: options.thinkingEffort ?? null
+      thinkingEffort
     })
     return
   }

@@ -68,11 +68,13 @@ type RuntimeCompactionCommitRow = {
   messageCountAfterCompaction: number
   messageCountBeforeCompaction: number
   modelId: string
+  modelSelectionVersion: number
   operationId: string
   preserveLastUserMessageCountPresent: bigint | boolean | number
   reason: string | null
   requestedPreserveLastUserMessageCount: bigint | number | null
   threadId: string
+  thinkingEffort: string | null
   trigger: string
 }
 
@@ -170,11 +172,16 @@ function mapRuntimeCompactionCommitRow(
     )
   }
   if (
+    row.modelSelectionVersion !== 1 ||
     preserveLastUserMessageCountPresent === null ||
     (row.reason !== null && typeof row.reason !== "string") ||
     (row.requestedPreserveLastUserMessageCount !== null &&
       requestedPreserveLastUserMessageCount === null) ||
     (!preserveLastUserMessageCountPresent && requestedPreserveLastUserMessageCount !== null) ||
+    (row.thinkingEffort !== null &&
+      (typeof row.thinkingEffort !== "string" ||
+        row.thinkingEffort.length === 0 ||
+        row.thinkingEffort !== row.thinkingEffort.trim())) ||
     row.trigger !== "manual"
   ) {
     throw new Error(
@@ -203,7 +210,9 @@ function mapRuntimeCompactionCommitRow(
     preserveLastUserMessageCount: requestedPreserveLastUserMessageCount,
     preserveLastUserMessageCountPresent,
     reason: row.reason,
-    trigger: "manual"
+    thinkingEffort: row.thinkingEffort,
+    trigger: "manual",
+    version: 1
   }
 }
 
@@ -663,9 +672,11 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
             "message_count_after_compaction" AS "messageCountAfterCompaction",
             "message_count_before_compaction" AS "messageCountBeforeCompaction",
             "model_id" AS "modelId",
+            "model_selection_version" AS "modelSelectionVersion",
             "preserve_last_user_message_count_present" AS "preserveLastUserMessageCountPresent",
             "reason",
             "requested_preserve_last_user_message_count" AS "requestedPreserveLastUserMessageCount",
+            "thinking_effort" AS "thinkingEffort",
             "trigger"
           FROM "runtime_compaction_commits"
           WHERE "thread_id" = ${input.threadId}
@@ -778,9 +789,11 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
             "message_count_after_compaction",
             "message_count_before_compaction",
             "model_id",
+            "model_selection_version",
             "preserve_last_user_message_count_present",
             "reason",
             "requested_preserve_last_user_message_count",
+            "thinking_effort",
             "trigger"
           ) VALUES (
             ${input.threadId},
@@ -792,6 +805,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
             ${input.result.messageCountAfterCompaction},
             ${input.result.messageCountBeforeCompaction},
             ${input.requestIdentity.modelId},
+            ${input.requestIdentity.version},
             ${input.requestIdentity.preserveLastUserMessageCountPresent},
             ${input.requestIdentity.reason},
             ${
@@ -799,6 +813,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
                 ? null
                 : BigInt(input.requestIdentity.preserveLastUserMessageCount)
             },
+            ${input.requestIdentity.thinkingEffort},
             ${input.requestIdentity.trigger}
           )
         `
@@ -862,9 +877,11 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
         "message_count_after_compaction" AS "messageCountAfterCompaction",
         "message_count_before_compaction" AS "messageCountBeforeCompaction",
         "model_id" AS "modelId",
+        "model_selection_version" AS "modelSelectionVersion",
         "preserve_last_user_message_count_present" AS "preserveLastUserMessageCountPresent",
         "reason",
         "requested_preserve_last_user_message_count" AS "requestedPreserveLastUserMessageCount",
+        "thinking_effort" AS "thinkingEffort",
         "trigger"
       FROM "runtime_compaction_commits"
       WHERE "thread_id" = ${input.threadId}

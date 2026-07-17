@@ -1,5 +1,10 @@
 import type { ProviderId } from "@/types"
 import type { ModelSetupModel, ModelSetupProvider, ModelSetupSnapshot } from "@shared/model-setup"
+import type { ModelRuntimeSelection, ThinkingEffort } from "@shared/app-types"
+import {
+  MODEL_RUNTIME_SELECTION_VERSION,
+  parseModelRuntimeSelection
+} from "@shared/model-runtime-selection"
 import { getProviderReadiness } from "../model-provider/model-setup/model-setup-projection"
 
 export type ModelSelectionLoadState = "error" | "loading" | "ready"
@@ -21,11 +26,13 @@ export interface ModelSelectionModelProjection {
   modelCode: string
   name: string
   providerId: ProviderId
+  reasoningEfforts: readonly ThinkingEffort[]
   status: ModelSetupModel["status"]
 }
 
 export interface ModelSelectionCatalogProjection {
   contractIssueCount: number
+  defaultSelection: ModelRuntimeSelection | null
   defaultModelId: string | null
   models: readonly ModelSelectionModelProjection[]
   providers: readonly ModelSelectionProviderProjection[]
@@ -55,11 +62,17 @@ export interface ModelQuickPickerRowProjection {
   name: string
   providerId: ProviderId
   providerName: string
+  reasoningEfforts: readonly ThinkingEffort[]
 }
 
 export interface ModelQuickPickerProjection {
   notice: ModelQuickPickerNotice
   rows: readonly ModelQuickPickerRowProjection[]
+}
+
+export interface PendingModelSelection {
+  baseSelectionIdentity: string
+  modelId: string
 }
 
 export type ModelQuickPickerNotice =
@@ -147,15 +160,24 @@ export function projectModelSelectionCatalog(
     (count, model) => count + (providerIds.has(model.provider) ? 0 : 1),
     0
   )
+  const defaultSelection = snapshot
+    ? parseModelRuntimeSelection({
+        modelId: snapshot.defaultModel.id,
+        thinkingEffort: snapshot.defaultModelOptions.thinkingEffort ?? null,
+        version: MODEL_RUNTIME_SELECTION_VERSION
+      })
+    : null
 
   return {
     contractIssueCount,
+    defaultSelection,
     defaultModelId: snapshot?.defaultModel.id ?? null,
     models: models.map((model) => ({
       id: model.id,
       modelCode: model.model,
       name: model.name,
       providerId: model.provider,
+      reasoningEfforts: model.reasoningCapability.allowedValues,
       status: model.status
     })),
     providers: providers.map((provider) => ({
@@ -171,6 +193,53 @@ export function resolveModelSelectionModelId(
   currentModelId: string | null
 ): string | null {
   return currentModelId ?? catalog.defaultModelId
+}
+
+export function resolveModelSelection(
+  catalog: ModelSelectionCatalogProjection,
+  currentSelection: ModelRuntimeSelection | null
+): ModelRuntimeSelection | null {
+  return currentSelection ?? catalog.defaultSelection
+}
+
+export function createPendingModelSelection(input: {
+  currentSelection: ModelRuntimeSelection | null
+  modelId: string
+  selectionRevision: number | null
+}): PendingModelSelection {
+  return {
+    baseSelectionIdentity: createModelSelectionIdentity(
+      input.currentSelection,
+      input.selectionRevision
+    ),
+    modelId: input.modelId
+  }
+}
+
+export function resolvePendingModelId(input: {
+  currentSelection: ModelRuntimeSelection | null
+  pendingSelection: PendingModelSelection | null
+  selectionRevision: number | null
+}): string | null {
+  const currentIdentity = createModelSelectionIdentity(
+    input.currentSelection,
+    input.selectionRevision
+  )
+  return input.pendingSelection?.baseSelectionIdentity === currentIdentity
+    ? input.pendingSelection.modelId
+    : (input.currentSelection?.modelId ?? null)
+}
+
+function createModelSelectionIdentity(
+  selection: ModelRuntimeSelection | null,
+  revision: number | null
+): string {
+  return JSON.stringify([
+    revision,
+    selection?.version ?? null,
+    selection?.modelId ?? null,
+    selection?.thinkingEffort ?? null
+  ])
 }
 
 function resolveEffectiveProvider(
@@ -292,7 +361,8 @@ export function projectModelQuickPicker(
       isSelected: model.id === currentModelId,
       name: model.name,
       providerId: provider.id,
-      providerName: provider.name
+      providerName: provider.name,
+      reasoningEfforts: model.reasoningEfforts
     }))
   const hasSelectableModels = catalog.models.some((model) => {
     const provider = providerById.get(model.providerId)

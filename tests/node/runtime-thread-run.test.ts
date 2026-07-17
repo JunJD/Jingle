@@ -662,7 +662,6 @@ test("RuntimeThreadRun commits user_declined without creating a resume stream", 
         events.push("cancelled")
       },
       executionDisposition: "terminal",
-      modelId: "model-1",
       recordingRefs: [],
       runId: "run-declined"
     }
@@ -780,7 +779,9 @@ test("RuntimeThread compact rejects while a run owns the thread", async () => {
     thread.compact({
       modelId: "model-selected",
       operationId: "compact-while-run-active",
-      trigger: "manual"
+      thinkingEffort: "high",
+      trigger: "manual",
+      version: 1
     }),
     RuntimeThreadBusyError
   )
@@ -841,7 +842,9 @@ test("RuntimeThread compact owns run admission until the compact operation settl
   const compact = thread.compact({
     modelId: "model-compact",
     operationId: "compact-admission",
-    trigger: "manual"
+    thinkingEffort: "high",
+    trigger: "manual",
+    version: 1
   })
   await compactStarted.promise
   await assert.rejects(thread.startInvoke({}), RuntimeThreadBusyError)
@@ -869,7 +872,9 @@ test("BDD RuntimeThread supports idle compact with the caller operation identity
     const result = await handle.thread.compact({
       modelId: "provider/bdd-model",
       operationId: "bdd-compact-stable-operation",
-      trigger: "manual"
+      thinkingEffort: "high",
+      trigger: "manual",
+      version: 1
     })
 
     assert.equal(result.compaction.compactionId, "bdd-compact-stable-operation")
@@ -1271,7 +1276,7 @@ test("RuntimeThreadTerminalReferee records ignored terminal diagnostics without 
   const referee = createRuntimeThreadTerminalReferee({
     lifecycle: createLifecycleControl(),
     observeIgnoredTerminal: (diagnostic) => diagnostics.push(diagnostic),
-    start: { modelId: "model-1", recordingRefs: [], runId: "run-diagnostic" }
+    start: { recordingRefs: [], runId: "run-diagnostic" }
   })
 
   referee.submit({ status: "aborted" })
@@ -1304,7 +1309,7 @@ test("RuntimeThreadTerminalReferee lets a committed decline supersede an uncommi
       }
     }),
     observeIgnoredTerminal: () => undefined,
-    start: { modelId: "model-1", recordingRefs: [], runId: "run-decline-race" }
+    start: { recordingRefs: [], runId: "run-decline-race" }
   })
 
   const abort = referee.submit({ status: "aborted" })
@@ -1336,7 +1341,7 @@ test("RuntimeThreadTerminalReferee isolates an ignored-terminal diagnostic failu
       observeIgnoredTerminal: () => {
         throw diagnosticError
       },
-      start: { modelId: "model-1", recordingRefs: [], runId: "run-diagnostic-failure" }
+      start: { recordingRefs: [], runId: "run-diagnostic-failure" }
     })
 
     referee.submit({ status: "aborted" })

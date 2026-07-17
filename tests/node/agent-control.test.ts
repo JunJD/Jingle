@@ -2,7 +2,6 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import {
   buildJingleAgentCommandEnvelope,
-  buildJingleAgentModelMetadataUpdate,
   buildJingleAgentPermissionMetadataUpdate,
   createJingleAgentFollowUpDrainRegistry,
   getJingleAgentSteerRejectionMessage,
@@ -43,8 +42,19 @@ function getAgentCommandState(
 }
 
 function createThreadDataSnapshot(
-  input: Partial<AgentThreadDataSnapshot>
+  input: Omit<Partial<AgentThreadDataSnapshot>, "thread"> & {
+    thread?: Omit<
+      AgentThreadDataSnapshot["thread"],
+      "modelRuntimeSelection" | "modelRuntimeSelectionRevision"
+    > & {
+      modelRuntimeSelection?: AgentThreadDataSnapshot["thread"]["modelRuntimeSelection"]
+      modelRuntimeSelectionRevision?: number
+    }
+  }
 ): AgentThreadDataSnapshot {
+  const { thread, ...snapshot } = input
+  const metadata = thread?.metadata
+  const modelId = typeof metadata?.model === "string" ? metadata.model : null
   return {
     messages: {
       artifacts: [],
@@ -62,12 +72,23 @@ function createThreadDataSnapshot(
       workspacePath: null
     },
     thread: {
-      metadata: undefined,
-      status: "idle",
-      thread_id: "thread-a",
-      title: undefined
+      metadata,
+      modelRuntimeSelection:
+        thread?.modelRuntimeSelection ??
+        (modelId
+          ? {
+              kind: "ready",
+              selection: { modelId, thinkingEffort: null, version: 1 }
+            }
+          : {
+              kind: "missing"
+            }),
+      modelRuntimeSelectionRevision: thread?.modelRuntimeSelectionRevision ?? (modelId ? 1 : 0),
+      status: thread?.status ?? "idle",
+      thread_id: thread?.thread_id ?? "thread-a",
+      title: thread?.title
     },
-    ...input
+    ...snapshot
   }
 }
 
@@ -80,7 +101,6 @@ function installWindowApiStub(input?: {
 }): {
   edited: Array<{
     message: unknown
-    modelId: string
     permissionMode: string
     temporaryMode: boolean
     threadId: string
@@ -88,13 +108,15 @@ function installWindowApiStub(input?: {
   invoked: Array<{
     followUpAction?: string
     message: unknown
-    modelId: string
     permissionMode: string
     temporaryMode: boolean
     threadId: string
   }>
+  modelUpdates: Array<{
+    selection: import("../../src/shared/app-types").ModelRuntimeSelection
+    threadId: string
+  }>
   resumed: Array<{
-    modelId: string
     requestId: string
     threadId: string
     toolCallId: string
@@ -106,7 +128,6 @@ function installWindowApiStub(input?: {
 } {
   const edited: Array<{
     message: unknown
-    modelId: string
     permissionMode: string
     temporaryMode: boolean
     threadId: string
@@ -116,13 +137,15 @@ function installWindowApiStub(input?: {
     expectedTurnId?: string | null
     followUpAction?: string
     message: unknown
-    modelId: string
     permissionMode: string
     temporaryMode: boolean
     threadId: string
   }> = []
+  const modelUpdates: Array<{
+    selection: import("../../src/shared/app-types").ModelRuntimeSelection
+    threadId: string
+  }> = []
   const resumed: Array<{
-    modelId: string
     requestId: string
     threadId: string
     toolCallId: string
@@ -175,13 +198,11 @@ function installWindowApiStub(input?: {
           editLastUserMessageAndInvoke: async (
             threadId: string,
             message: unknown,
-            modelId: string,
             permissionMode: string,
             temporaryMode: boolean
           ) => {
             edited.push({
               message,
-              modelId,
               permissionMode,
               temporaryMode,
               threadId
@@ -199,7 +220,6 @@ function installWindowApiStub(input?: {
           invoke: async (
             threadId: string,
             message: unknown,
-            modelId: string,
             permissionMode: string,
             temporaryMode: boolean,
             followUpAction?: string,
@@ -211,7 +231,6 @@ function installWindowApiStub(input?: {
               ...(expectedTurnId !== undefined ? { expectedTurnId } : {}),
               ...(followUpAction ? { followUpAction } : {}),
               message,
-              modelId,
               permissionMode,
               temporaryMode,
               threadId
@@ -228,11 +247,9 @@ function installWindowApiStub(input?: {
           },
           resume: async (
             threadId: string,
-            decision: { request_id: string; tool_call_id: string },
-            modelId: string
+            decision: { request_id: string; tool_call_id: string }
           ) => {
             resumed.push({
-              modelId,
               requestId: decision.request_id,
               threadId,
               toolCallId: decision.tool_call_id
@@ -255,7 +272,10 @@ function installWindowApiStub(input?: {
             status: "idle",
             thread_id: threadId,
             updated_at: new Date("2026-01-01T00:00:00.000Z")
-          })
+          }),
+          setModel: async (threadId, selection) => {
+            modelUpdates.push({ selection, threadId })
+          }
         },
         settings: {
           getAgentConfig: async () => ({
@@ -276,7 +296,7 @@ function installWindowApiStub(input?: {
     }
   })
 
-  return { edited, invoked, resumed, threadUpdates }
+  return { edited, invoked, modelUpdates, resumed, threadUpdates }
 }
 
 function createPendingApproval(): HITLRequest {
@@ -360,7 +380,14 @@ test("jingle agent client owns command readiness policy", () => {
       },
       threadId: "thread-a"
     }),
-    { type: "blocked" }
+    {
+      state: {
+        ...idleState,
+        currentModel: null,
+        pendingApproval: pendingApprovalRef
+      },
+      type: "ready"
+    }
   )
   assert.deepEqual(
     resolveJingleAgentInvokeReadiness({
@@ -370,7 +397,13 @@ test("jingle agent client owns command readiness policy", () => {
       },
       threadId: "thread-a"
     }),
-    { type: "blocked" }
+    {
+      state: {
+        ...idleState,
+        currentModel: null
+      },
+      type: "ready"
+    }
   )
 
   const resumeReadiness = resolveJingleAgentResumeReadiness({
@@ -460,31 +493,11 @@ test("follow-up drain leases are isolated by thread and stale releases cannot cl
 
 test("jingle agent client owns thread metadata command patches", () => {
   assert.deepEqual(
-    buildJingleAgentModelMetadataUpdate({
-      currentMetadata: {
-        permissionMode: "explore",
-        source: "launcher-ai"
-      },
-      modelId: "model-b"
-    }),
-    {
-      model: "model-b",
-      permissionMode: "explore",
-      source: "launcher-ai"
-    }
-  )
-  assert.deepEqual(
     buildJingleAgentPermissionMetadataUpdate({
-      currentMetadata: {
-        model: "model-a",
-        source: "launcher-ai"
-      },
       permissionMode: "auto"
     }),
     {
-      model: "model-a",
-      permissionMode: "auto",
-      source: "launcher-ai"
+      permissionMode: "auto"
     }
   )
 })
@@ -528,7 +541,6 @@ test("invokeAgentThread invokes runtime through command layer without local UI m
         content: "hello",
         id: "message-id"
       },
-      modelId: "model-a",
       permissionMode: "explore",
       temporaryMode: true,
       threadId: "thread-a"
@@ -790,7 +802,6 @@ test("invokeAgentThread sends assistant selection refs as model context and meta
           }
         ]
       },
-      modelId: "model-a",
       permissionMode: "explore",
       temporaryMode: false,
       threadId: "thread-a"
@@ -894,7 +905,6 @@ test("editLastUserMessageAndInvokeAgentThread preserves refs as edited message c
           }
         ]
       },
-      modelId: "model-a",
       permissionMode: "explore",
       temporaryMode: false,
       threadId: "thread-a"
@@ -1137,7 +1147,6 @@ test("invokeAgentThread sends running follow-ups with the configured follow-up a
         content: "hello",
         id: "message-id"
       },
-      modelId: "model-a",
       permissionMode: "explore",
       temporaryMode: false,
       threadId: "thread-a"
@@ -1219,7 +1228,6 @@ test("invokeAgentThread preserves an explicit steer action after a queued item i
         content: "steer queued item",
         id: "message-id"
       },
-      modelId: "model-a",
       permissionMode: "explore",
       temporaryMode: false,
       threadId: "thread-a"
@@ -1276,7 +1284,7 @@ test("invokeAgentThread validates with command facts instead of full thread stat
   assert.deepEqual(invoked, [])
 })
 
-test("resumeAgentThread reads approval and model from command-time thread state", async () => {
+test("resumeAgentThread sends approval without an ambient model override", async () => {
   const { resumed } = installWindowApiStub()
   const admitted: unknown[] = []
   const settled: unknown[] = []
@@ -1320,7 +1328,6 @@ test("resumeAgentThread reads approval and model from command-time thread state"
   assert.deepEqual(settled, admitted)
   assert.deepEqual(resumed, [
     {
-      modelId: "model-a",
       requestId: "hitl:thread-a:run-a:tool-a",
       threadId: "thread-a",
       toolCallId: "tool-a"
@@ -1367,43 +1374,28 @@ test("resumeAgentThread surfaces a typed admission rejection", async () => {
   assert.deepEqual(errors, [null, "Agent run is already in progress"])
 })
 
-test("updateAgentThreadModel persists metadata and reloads source snapshot", async () => {
-  installWindowApiStub({
+test("updateAgentThreadModel sends the explicit pair through the protected route", async () => {
+  const { modelUpdates } = installWindowApiStub({
     threadMetadata: {
       permissionMode: "explore",
       source: "launcher-ai"
     }
   })
-  const loadCalls: string[] = []
-  const updates: Array<{
-    metadata: Record<string, unknown>
-    threadId: string
-  }> = []
-
   await updateAgentThreadModel({
-    modelId: "model-b",
-    threadContext: {
-      loadThreadData: async (threadId) => {
-        loadCalls.push(threadId)
-      }
+    selection: {
+      modelId: "model-b",
+      thinkingEffort: "high",
+      version: 1
     },
-    threadId: "thread-a",
-    updateThread: async (threadId, update) => {
-      updates.push({ metadata: update.metadata, threadId })
-    }
+    threadId: "thread-a"
   })
 
-  assert.deepEqual(updates, [
+  assert.deepEqual(modelUpdates, [
     {
-      metadata: {
-        model: "model-b",
-        permissionMode: "explore",
-        source: "launcher-ai"
-      },
+      selection: { modelId: "model-b", thinkingEffort: "high", version: 1 },
       threadId: "thread-a"
     }
   ])
-  assert.deepEqual(loadCalls, ["thread-a"])
 })
 
 test("updateAgentThreadPermissionMode persists metadata and reloads source snapshot", async () => {
@@ -1432,9 +1424,7 @@ test("updateAgentThreadPermissionMode persists metadata and reloads source snaps
   assert.deepEqual(updates, [
     {
       metadata: {
-        model: "model-a",
-        permissionMode: "auto",
-        source: "launcher-ai"
+        permissionMode: "auto"
       },
       threadId: "thread-a"
     }

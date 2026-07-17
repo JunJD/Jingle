@@ -89,6 +89,8 @@ function createApi(overrides: Partial<HistoryShellApi> = {}): HistoryShellApi {
       clone: async () => createThread("thread-clone"),
       cloneUntilMessage: async () => createThread("thread-clone"),
       update: async (threadId: string, updates: Partial<Thread>) => createThread(threadId, updates),
+      setModel: async (threadId: string) => createThread(threadId),
+      onModelRuntimeSelectionChanged: () => () => {},
       setPinned: async (threadId: string, pinned: boolean) =>
         createThread(threadId, { metadata: pinned ? { pinned } : {} }),
       setArchived: async (threadId: string, archived: boolean) =>
@@ -98,7 +100,7 @@ function createApi(overrides: Partial<HistoryShellApi> = {}): HistoryShellApi {
       delete: async () => undefined,
       getAgentThreadData: async (): Promise<AgentThreadDataSnapshot> => {
         throw new Error("Not implemented in test stub")
-      },
+      }
     },
     threadSidebar: {
       getView: async () => ({
@@ -251,7 +253,8 @@ test("setThreadPinned updates thread metadata without re-sorting recency", async
         setPinned: async (threadId: string, pinned: boolean) =>
           createThread(threadId, {
             metadata: { pinned },
-            updated_at: threadId === "thread-older" ? threads[1]!.updated_at : threads[0]!.updated_at
+            updated_at:
+              threadId === "thread-older" ? threads[1]!.updated_at : threads[0]!.updated_at
           })
       }
     })
@@ -281,7 +284,8 @@ test("setThreadArchived removes archived threads from active history state", asy
         setArchived: async (threadId: string, archived: boolean) =>
           createThread(threadId, {
             archived_at: archived ? new Date("2026-01-03T00:00:00.000Z") : null,
-            updated_at: threadId === "thread-newer" ? threads[0]!.updated_at : threads[1]!.updated_at
+            updated_at:
+              threadId === "thread-newer" ? threads[0]!.updated_at : threads[1]!.updated_at
           })
       }
     })

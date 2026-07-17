@@ -61,6 +61,7 @@ function createThreadDataSnapshot(input: {
   status?: AgentThreadDataSnapshot["thread"]["status"]
   workspacePath?: string | null
 }): AgentThreadDataSnapshot {
+  const modelId = typeof input.metadata?.model === "string" ? input.metadata.model : null
   return {
     messages: {
       artifacts: [],
@@ -79,6 +80,13 @@ function createThreadDataSnapshot(input: {
     },
     thread: {
       metadata: input.metadata,
+      modelRuntimeSelection: modelId
+        ? {
+            kind: "ready",
+            selection: { modelId, thinkingEffort: null, version: 1 }
+          }
+        : { kind: "missing" },
+      modelRuntimeSelectionRevision: modelId ? 1 : 0,
       status: input.status ?? "idle",
       thread_id: "thread-a",
       title: undefined

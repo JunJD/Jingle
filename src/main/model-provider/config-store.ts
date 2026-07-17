@@ -1,10 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs"
 import { dirname } from "path"
 import { DEFAULT_MODELS } from "@shared/models"
+import { MODEL_RUNTIME_SELECTION_VERSION } from "@shared/model-runtime-selection"
 import { getJingleModelConfigPath } from "./paths"
 import type {
   DefaultModelOptions,
   DefaultModels,
+  ModelRuntimeSelection,
   ProviderId,
   SetDefaultModelOptions,
   SupportedDefaultModelType,
@@ -51,6 +53,31 @@ export function getModelProviderDefaultModels(): DefaultModels {
       activeProvider && activeProviderConfig
         ? `${activeProvider}:${activeProviderConfig.model}`
         : DEFAULT_MODELS.llm
+  }
+}
+
+export function getModelProviderDefaultRuntimeSelection(): ModelRuntimeSelection {
+  const config = getJingleModelProviderConfig()
+  const activeProvider = config.activeProvider
+  const activeProviderConfig = activeProvider ? config.providers[activeProvider] : null
+
+  if (
+    activeProviderConfig &&
+    (!Object.hasOwn(activeProviderConfig, "thinkingEffort") ||
+      activeProviderConfig.thinkingEffort === undefined)
+  ) {
+    throw new Error(
+      `Model provider ${activeProvider} predates durable reasoning effort. Open model settings and select the model and effort again.`
+    )
+  }
+
+  return {
+    modelId:
+      activeProvider && activeProviderConfig
+        ? `${activeProvider}:${activeProviderConfig.model}`
+        : DEFAULT_MODELS.llm,
+    thinkingEffort: activeProviderConfig?.thinkingEffort ?? null,
+    version: MODEL_RUNTIME_SELECTION_VERSION
   }
 }
 
@@ -281,8 +308,12 @@ function parseBoolean(value: string): boolean {
 
 function parseThinkingEffort(value: string): ThinkingEffort | null {
   const parsed = parseNullableString(value)
+  if (parsed === null) {
+    return null
+  }
   if (
     parsed === "off" ||
+    parsed === "minimal" ||
     parsed === "low" ||
     parsed === "medium" ||
     parsed === "high" ||
@@ -292,7 +323,7 @@ function parseThinkingEffort(value: string): ThinkingEffort | null {
     return parsed
   }
 
-  return null
+  throw new Error(`Invalid thinking effort in model provider config: ${parsed}`)
 }
 
 function formatNullableString(value: string | null): string {

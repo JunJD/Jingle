@@ -488,9 +488,11 @@ model RuntimeCompactionCommit {
   messageCountAfterCompaction             Int     @map("message_count_after_compaction")
   messageCountBeforeCompaction            Int     @map("message_count_before_compaction")
   modelId                                 String  @map("model_id")
+  modelSelectionVersion                   Int     @default(0) @map("model_selection_version")
   preserveLastUserMessageCountPresent     Boolean @map("preserve_last_user_message_count_present")
   reason                                  String?
   requestedPreserveLastUserMessageCount   BigInt? @map("requested_preserve_last_user_message_count")
+  thinkingEffort                          String? @map("thinking_effort")
   trigger                                 String
   thread                                  Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
 

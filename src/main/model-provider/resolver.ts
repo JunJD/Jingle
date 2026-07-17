@@ -6,24 +6,42 @@ import {
   toProviderModelId
 } from "./catalog"
 import { resolveModelContextLimit, resolveModelMaxOutputTokens } from "./model-limits"
-import { getModelProviderDefaultModel, getModelProviderDefaultModelOptions } from "./settings"
-import type { ResolvedModelRuntimeConfig, ThinkingEffort } from "./types"
+import {
+  getJingleModelProviderConfig,
+  getModelProviderDefaultModel,
+  getModelProviderDefaultRuntimeSelection
+} from "./settings"
+import {
+  MODEL_RUNTIME_SELECTION_VERSION,
+  parseModelRuntimeSelection
+} from "@shared/model-runtime-selection"
+import type { ModelRuntimeSelection, ResolvedModelRuntimeConfig, ThinkingEffort } from "./types"
 import { getCustomProviderConfig } from "./custom-providers"
 import {
   assertReasoningEffortSupported,
   resolveModelReasoningEffortCapability
 } from "./reasoning-capabilities"
 
-export interface ResolveModelRuntimeConfigOptions {
-  modelPreference?: "fast"
-  modelId?: string
-  thinkingEffort?: ThinkingEffort | null
-}
+export type ResolveModelRuntimeConfigOptions =
+  | { selection: ModelRuntimeSelection }
+  | { modelPreference: "fast"; thinkingEffort: ThinkingEffort | null }
 
 export function resolveModelRuntimeConfig(
-  options: ResolveModelRuntimeConfigOptions = {}
+  options: ResolveModelRuntimeConfigOptions
 ): ResolvedModelRuntimeConfig {
-  const resolvedModelId = options.modelId || resolvePreferredModelId(options.modelPreference)
+  let resolvedModelId: string
+  let thinkingEffort: ThinkingEffort | null
+  if ("selection" in options) {
+    const selection = parseModelRuntimeSelection(options.selection)
+    if (!selection) {
+      throw new Error("Model runtime selection is invalid or uses an unsupported version.")
+    }
+    resolvedModelId = selection.modelId
+    thinkingEffort = selection.thinkingEffort
+  } else {
+    resolvedModelId = resolvePreferredModelId(options.modelPreference)
+    thinkingEffort = options.thinkingEffort
+  }
   const parsedModelId = parseProviderModelId(resolvedModelId)
   const configuredModel = getModelConfig(resolvedModelId)
   const providerId = parsedModelId.providerId
@@ -39,10 +57,6 @@ export function resolveModelRuntimeConfig(
   }
 
   const modelName = configuredModel?.model ?? parsedModelId.modelName
-  const thinkingEffort =
-    options.thinkingEffort === undefined
-      ? (getModelProviderDefaultModelOptions().llm.thinkingEffort ?? null)
-      : options.thinkingEffort
   const reasoningCapability = resolveModelReasoningEffortCapability({
     customProvider: getCustomProviderConfig(providerId),
     model: configuredModel ?? {
@@ -68,6 +82,36 @@ export function resolveModelRuntimeConfig(
     reasoningEffortTransport: reasoningCapability.transport,
     thinkingEffort
   }
+}
+
+export function resolveDefaultModelRuntimeSelection(): ModelRuntimeSelection {
+  const selection = getModelProviderDefaultRuntimeSelection()
+  resolveModelRuntimeConfig({ selection })
+  return selection
+}
+
+export function resolveModelRuntimeSelectionFromStoredPreference(
+  modelId: string
+): ModelRuntimeSelection {
+  const parsedModelId = parseProviderModelId(modelId)
+  const providerConfig = getJingleModelProviderConfig().providers[parsedModelId.providerId]
+  if (
+    !providerConfig ||
+    !Object.hasOwn(providerConfig, "thinkingEffort") ||
+    providerConfig.thinkingEffort === undefined
+  ) {
+    throw new Error(
+      `Model provider ${parsedModelId.providerId} has no durable reasoning effort preference. Open model settings and select the model and effort before switching this thread.`
+    )
+  }
+
+  const selection = {
+    modelId,
+    thinkingEffort: providerConfig.thinkingEffort,
+    version: MODEL_RUNTIME_SELECTION_VERSION
+  }
+  resolveModelRuntimeConfig({ selection })
+  return selection
 }
 
 function resolvePreferredModelId(modelPreference: "fast" | undefined): string {

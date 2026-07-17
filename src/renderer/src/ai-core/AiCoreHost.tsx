@@ -13,6 +13,7 @@ import type { LauncherShellConfig } from "@shared/launcher"
 import type { PermissionModeName } from "@shared/permission-mode"
 import type { ThreadWorkspaceKind } from "@shared/thread-workspace"
 import type { ThreadWorkflowCreateInput } from "@shared/thread-workflow"
+import type { ModelRuntimeSelection } from "@shared/app-types"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 import type { LauncherInputElement } from "@launcher-shell/input-element"
 import type { ComposerAreaHandle } from "@/composer-area"
@@ -39,7 +40,7 @@ export interface AiCoreThreadHandle {
 }
 
 export interface AiCoreThreadCreateInput {
-  modelId?: string
+  modelRuntimeSelection?: ModelRuntimeSelection
   permissionMode?: PermissionModeName
   source: string
   title: string

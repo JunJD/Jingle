@@ -2,7 +2,6 @@ import type { HITLDecision } from "@/types"
 import {
   buildJingleAgentCommandEnvelope,
   buildJingleAgentCommandMessage,
-  buildJingleAgentModelMetadataUpdate,
   buildJingleAgentPermissionMetadataUpdate,
   buildJingleAgentResumeDecision,
   resolveJingleAgentEditReadiness,
@@ -56,10 +55,8 @@ export type UpdateAgentThreadRecord = (
 ) => Promise<void>
 
 export interface UpdateAgentThreadModelInput {
-  modelId: string
-  threadContext: Pick<ThreadContextValue, "loadThreadData">
+  selection: import("@shared/app-types").ModelRuntimeSelection
   threadId: string
-  updateThread: UpdateAgentThreadRecord
 }
 
 export interface UpdateAgentThreadPermissionModeInput {
@@ -171,44 +168,28 @@ async function resolveAgentCommandProjection(input: {
 }
 
 async function updateAgentThreadMetadata(input: {
-  metadata: (currentMetadata: Record<string, unknown> | undefined) => Record<string, unknown>
+  metadataPatch: Record<string, unknown>
   threadContext: Pick<ThreadContextValue, "loadThreadData">
   threadId: string
   updateThread: UpdateAgentThreadRecord
 }): Promise<void> {
-  const thread = await window.api.threads.get(input.threadId)
-  if (!thread) {
-    throw new Error(`Agent thread is not found: ${input.threadId}`)
-  }
-
   await input.updateThread(input.threadId, {
-    metadata: input.metadata(thread.metadata)
+    metadata: input.metadataPatch
   })
   await input.threadContext.loadThreadData(input.threadId)
 }
 
 export async function updateAgentThreadModel(input: UpdateAgentThreadModelInput): Promise<void> {
-  await updateAgentThreadMetadata({
-    metadata: (currentMetadata) =>
-      buildJingleAgentModelMetadataUpdate({
-        currentMetadata,
-        modelId: input.modelId
-      }),
-    threadContext: input.threadContext,
-    threadId: input.threadId,
-    updateThread: input.updateThread
-  })
+  await window.api.threads.setModel(input.threadId, input.selection)
 }
 
 export async function updateAgentThreadPermissionMode(
   input: UpdateAgentThreadPermissionModeInput
 ): Promise<void> {
   await updateAgentThreadMetadata({
-    metadata: (currentMetadata) =>
-      buildJingleAgentPermissionMetadataUpdate({
-        currentMetadata,
-        permissionMode: input.permissionMode
-      }),
+    metadataPatch: buildJingleAgentPermissionMetadataUpdate({
+      permissionMode: input.permissionMode
+    }),
     threadContext: input.threadContext,
     threadId: input.threadId,
     updateThread: input.updateThread
@@ -292,7 +273,6 @@ export async function invokeAgentThread(input: InvokeAgentThreadInput): Promise<
           envelope: commandEnvelope,
           messageId: commandId
         }),
-        commandState.currentModel,
         commandState.permissionMode,
         input.temporaryMode ?? false,
         followUpPlan.action,
@@ -384,7 +364,6 @@ export async function editLastUserMessageAndInvokeAgentThread(
           envelope: commandEnvelope,
           messageId: input.messageId
         }),
-        commandState.currentModel,
         commandState.permissionMode,
         input.temporaryMode ?? false
       )
@@ -457,8 +436,7 @@ export async function resumeAgentThread(input: {
         buildJingleAgentResumeDecision({
           decision: input.decision,
           pendingApproval: commandState.pendingApproval
-        }),
-        commandState.currentModel
+        })
       )
       if (!acceptAgentCommandOutcome(outcome, input.onLocalError)) {
         return false

@@ -9,6 +9,10 @@ import type {
 import type { ExtensionConfirmAlertPayload } from "@shared/extension-runtime-protocol"
 import type { ExtensionToastPayload } from "@shared/extension-runtime-protocol"
 import { getChatModelInstance } from "../../llm/get-chat-model"
+import {
+  resolveDefaultModelRuntimeSelection,
+  resolveModelRuntimeSelectionFromStoredPreference
+} from "../../model-provider/resolver"
 import type { SettingsWindowRoutingService } from "../../settings-window-routing/service"
 import type { ExternalLinksService } from "../../external-links/service"
 import type { ExtensionQuicklinkService } from "../../extension-quicklinks/service"
@@ -23,6 +27,7 @@ import {
   type ExtensionRuntimeStorageParams
 } from "./runtime-manager"
 import type { ExtensionRuntimeRendererBridge } from "./renderer-bridge"
+import { parseExtensionAiModelTarget } from "./ai-model-target"
 import {
   discardQuarantinedLegacyRuntimeStorageValue,
   encodeRuntimeStorageKey,
@@ -59,12 +64,21 @@ export class DefaultExtensionRuntimeHostCapabilities implements ExtensionRuntime
   ) {}
 
   async askAI(input: ExtensionAiAskPayload): Promise<string> {
-    const model = getChatModelInstance({
-      modelPreference: input.modelPreference,
-      modelId: input.modelId?.trim() || undefined,
-      temperature: input.temperature,
-      thinkingEffort: input.modelPreference === "fast" ? "off" : undefined
-    })
+    const target = parseExtensionAiModelTarget(input)
+    const model =
+      target.kind === "fast"
+        ? getChatModelInstance({
+            modelPreference: "fast",
+            temperature: input.temperature,
+            thinkingEffort: null
+          })
+        : getChatModelInstance({
+            selection:
+              target.kind === "explicit"
+                ? resolveModelRuntimeSelectionFromStoredPreference(target.modelId)
+                : resolveDefaultModelRuntimeSelection(),
+            temperature: input.temperature
+          })
     const messages = input.system
       ? [new SystemMessage(input.system), new HumanMessage(input.prompt)]
       : [new HumanMessage(input.prompt)]

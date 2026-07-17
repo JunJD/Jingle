@@ -10,6 +10,7 @@ import {
 } from "@shared/jingle-memory"
 import { readRunExtensionAiCapabilitiesSnapshotFromMetadata } from "@shared/extension-sources"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
+import type { ModelRuntimeSelection } from "@shared/app-types"
 import {
   hydrateNativeExtensionAiCapabilitiesFromManifests,
   listNativeExtensionAiCapabilityCatalogFromManifests,
@@ -60,8 +61,9 @@ import { diagnosticsGraph } from "../diagnostics/instance"
 import { JingleMemoryService } from "../jingle-memory/service"
 import { WorkspaceService } from "../workspace/service"
 import { readRunPermissionModeSnapshot, readThreadPermissionMode } from "./permission-mode"
+import { requirePersistedModelRuntimeSelection } from "../model-provider/runtime-selection-admission"
 import { resolveJingleWorkspaceIdentity } from "../workspace/identity"
-import { getAgentConfig, getDefaultModelId } from "../preferences"
+import { getAgentConfig } from "../preferences"
 import {
   listNativeExtensionManifests,
   readNativeExtensionMainDefinitionRegistrySnapshot
@@ -120,6 +122,50 @@ type JingleAgentRunSteeringBuffer = AgentRunSteeringBuffer<AgentRunSteerContent,
 interface AgentExtensionRegistryReader {
   listManifests: () => ReturnType<typeof listNativeExtensionManifests>
   readMainDefinitionSnapshot: () => ExtensionMainDefinitionRegistrySnapshot
+}
+
+function parsePersistedMetadata(
+  channel: AgentRunChannel,
+  value: string | null | undefined
+): Record<string, unknown> | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>
+    }
+  } catch {
+    // Report the durable fact as invalid below.
+  }
+  throw new JingleIpcError({
+    channel,
+    code: "FAILED_PRECONDITION",
+    message: "The persisted model runtime selection is invalid. Select the model again."
+  })
+}
+
+function resolveResumeModelRuntimeSelection(input: {
+  channel: "agent:resume"
+  decision: HITLDecision
+  sourceRun: NonNullable<Awaited<ReturnType<typeof getRun>>>
+}): ModelRuntimeSelection | null {
+  if (input.decision.type === "user_declined") {
+    return null
+  }
+  return requirePersistedModelRuntimeSelection({
+    channel: input.channel,
+    metadata: parsePersistedMetadata(input.channel, input.sourceRun.metadata),
+    owner: "run"
+  })
+}
+
+function requireResumeExecutionModelId(selection: ModelRuntimeSelection | null): string {
+  if (!selection) {
+    throw new Error("Terminal resume cannot emit model execution events.")
+  }
+  return selection.modelId
 }
 
 const DEFAULT_AGENT_EXTENSION_REGISTRY_READER: AgentExtensionRegistryReader = {
@@ -844,7 +890,6 @@ export class AgentService {
     {
       threadId,
       message,
-      modelId: requestedModelId,
       permissionMode: requestedPermissionMode,
       temporaryMode = false
     }: AgentInvokeParams,
@@ -853,14 +898,12 @@ export class AgentService {
   ): Promise<void> {
     const channel = options?.channel ?? "agent:invoke"
     const commandOutcome = createAgentCommandOutcomeReporter(options?.onCommandOutcome)
-    const modelId = requestedModelId ?? getDefaultModelId("llm")
     const messagePreview = summarizeMessageContent(message.content)
 
     console.log("[Agent] Received invoke request:", {
       channel,
       threadId,
       message: messagePreview.substring(0, 50),
-      modelId,
       permissionMode: requestedPermissionMode
     })
 
@@ -882,12 +925,25 @@ export class AgentService {
     let didReportRuntimeError = false
     let runExecutionStarted = false
     this.activeRuns.set(threadId, activeRun)
-    options?.onCoreAdmitted?.()
 
     try {
       const thread = await awaitAbortableSetupRead(abortController.signal, () =>
         getThread(threadId)
       )
+      if (!thread) {
+        throw new JingleIpcError({
+          channel,
+          code: "FAILED_PRECONDITION",
+          message: "Agent thread is not found."
+        })
+      }
+      const selection = requirePersistedModelRuntimeSelection({
+        channel,
+        metadata: parsePersistedMetadata(channel, thread.metadata),
+        owner: "thread"
+      })
+      const modelId = selection.modelId
+      options?.onCoreAdmitted?.()
       const workspacePath = await awaitAbortableSetupRead(abortController.signal, () =>
         this.workspaceService.getWorkspacePath(threadId)
       )
@@ -1005,7 +1061,7 @@ export class AgentService {
         jingleMemoryContextSnapshot:
           this.jingleMemoryService.createContextSnapshot(jingleMemoryContextPack),
         jingleMemoryTemporaryMode: jingleMemoryContextPack?.temporaryMode === true,
-        modelId,
+        selection,
         permissionMode,
         userMessage: {
           contentPreview: messagePreview,
@@ -1182,7 +1238,7 @@ export class AgentService {
   }
 
   async resume(
-    { threadId, decision, modelId: requestedModelId }: AgentResumeParams,
+    { threadId, decision }: AgentResumeParams,
     sink: AgentStreamSink,
     options?: AgentRunOptions<ResolvedHitlDecision>
   ): Promise<void> {
@@ -1190,8 +1246,7 @@ export class AgentService {
     const commandOutcome = createAgentCommandOutcomeReporter(options?.onCommandOutcome)
     console.log("[Agent] Received resume request:", {
       threadId,
-      decision,
-      modelId: requestedModelId
+      decision
     })
 
     const claim = await this.claimThreadRun(threadId, "agent:resume", sink)
@@ -1213,7 +1268,6 @@ export class AgentService {
     let durableResumeDecision: ResolvedHitlDecision | null = null
     let runExecutionStarted = false
     this.activeRuns.set(threadId, activeRun)
-    options?.onCoreAdmitted?.()
     try {
       const workspacePath = await awaitAbortableSetupRead(abortController.signal, () =>
         this.workspaceService.getWorkspacePath(threadId)
@@ -1232,10 +1286,13 @@ export class AgentService {
       const resumeTarget = await awaitAbortableSetupRead(abortController.signal, () =>
         resolveResumeTarget(threadId, decision)
       )
-      const targetRun = await awaitAbortableSetupRead(abortController.signal, () =>
+      const sourceRun = await awaitAbortableSetupRead(abortController.signal, () =>
         getRun(resumeTarget.runId)
       )
-      const targetJingleMemoryContextSnapshot = readJingleMemoryContextSnapshot(targetRun?.metadata)
+      if (!sourceRun) {
+        throw new Error(`[Agent] Missing resume source run "${resumeTarget.runId}".`)
+      }
+      const targetJingleMemoryContextSnapshot = readJingleMemoryContextSnapshot(sourceRun.metadata)
       const currentWorkspaceIdentity = await awaitAbortableSetupRead(abortController.signal, () =>
         resolveJingleWorkspaceIdentity(workspacePath, { signal: abortController.signal })
       )
@@ -1253,13 +1310,8 @@ export class AgentService {
         return
       }
 
-      const sourceRun = await awaitAbortableSetupRead(abortController.signal, () =>
-        getRun(resumeTarget.runId)
-      )
-      if (!sourceRun) {
-        throw new Error(`[Agent] Missing resume source run "${resumeTarget.runId}".`)
-      }
-      const modelId = requestedModelId ?? getDefaultModelId("llm")
+      const selection = resolveResumeModelRuntimeSelection({ channel, decision, sourceRun })
+      options?.onCoreAdmitted?.()
       const permissionMode = readRunPermissionModeSnapshot(sourceRun)
       const resumedJingleMemoryContextSnapshot = readJingleMemoryContextSnapshot(sourceRun.metadata)
       const jingleMemoryContextPack = this.jingleMemoryService.rebuildContextPackFromSnapshot(
@@ -1360,7 +1412,7 @@ export class AgentService {
         extensionAiRuntime,
         jingleMemoryContextPack,
         jingleMemoryTemporaryMode: jingleMemoryContextPack?.temporaryMode === true,
-        modelId,
+        ...(selection ? { selection } : {}),
         permissionMode,
         runId: resumeTarget.runId,
         source: "resume",
@@ -1420,7 +1472,7 @@ export class AgentService {
           await recordAgentStreamBoundaryEvents({
             data: serializedData,
             mode,
-            modelId,
+            modelId: requireResumeExecutionModelId(selection),
             runId: resumedRunId,
             state: boundaryRecorderState,
             threadId

@@ -40,6 +40,7 @@ import {
   createLauncherAiController,
   createLauncherComposerRevisionLedger,
   createLauncherCommandSubmissionGate,
+  canSelectLauncherAiModel,
   canSubmitLauncherApprovalDecision,
   clearLauncherApprovalCorrectionDraft,
   createLauncherApprovalCorrectionKey,
@@ -383,7 +384,14 @@ export function LauncherAiPage(): React.JSX.Element {
     threadId,
     (state) => state?.agent.messagesPage ?? EMPTY_MESSAGES
   )
-  const durableModelId = useThreadSelector(threadId, (state) => state?.agent.currentModel ?? null)
+  const durableModelRuntimeSelection = useThreadSelector(
+    threadId,
+    (state) => state?.agent.modelRuntimeSelection ?? null
+  )
+  const durableModelRuntimeSelectionRevision = useThreadSelector(
+    threadId,
+    (state) => state?.agent.modelRuntimeSelectionRevision ?? 0
+  )
   const durablePermissionMode = useThreadSelector(
     threadId,
     (state) => state?.agent.permissionMode ?? null
@@ -398,9 +406,9 @@ export function LauncherAiPage(): React.JSX.Element {
         isHydratingThread,
         target: threadNavigation.target,
         threadConfiguration:
-          threadId && durableModelId && durablePermissionMode
+          threadId && durableModelRuntimeSelection && durablePermissionMode
             ? {
-                modelId: durableModelId,
+                modelRuntimeSelection: durableModelRuntimeSelection,
                 permissionMode: durablePermissionMode,
                 threadId,
                 workspacePath: durableWorkspacePath
@@ -408,7 +416,7 @@ export function LauncherAiPage(): React.JSX.Element {
             : null
       }),
     [
-      durableModelId,
+      durableModelRuntimeSelection,
       durablePermissionMode,
       durableWorkspacePath,
       isHydratingThread,
@@ -416,8 +424,10 @@ export function LauncherAiPage(): React.JSX.Element {
       threadNavigation.target
     ]
   )
-  const currentModelId =
-    targetConfiguration.kind === "configured" ? targetConfiguration.modelId : null
+  const currentModelRuntimeSelection =
+    targetConfiguration.kind === "configured" ? targetConfiguration.modelRuntimeSelection : null
+  const canSelectModel = canSelectLauncherAiModel(targetConfiguration)
+  const currentModelId = currentModelRuntimeSelection?.modelId ?? null
   const currentPermissionMode =
     targetConfiguration.kind === "configured" ? targetConfiguration.permissionMode : null
   const workspacePath =
@@ -639,10 +649,8 @@ export function LauncherAiPage(): React.JSX.Element {
         updateThread,
         updateAgentThreadModel: (commandInput) =>
           updateAgentThreadModel({
-            modelId: commandInput.modelId,
-            threadContext,
-            threadId: commandInput.threadId,
-            updateThread: commandInput.updateThread
+            selection: commandInput.selection,
+            threadId: commandInput.threadId
           }),
         updateAgentThreadPermissionMode: (commandInput) =>
           updateAgentThreadPermissionMode({
@@ -807,12 +815,12 @@ export function LauncherAiPage(): React.JSX.Element {
     await stop()
   }, [pendingCommandForCurrentThread, stop])
   const handleOpenModelPicker = useCallback(async (): Promise<void> => {
-    if (targetConfiguration.kind === "unavailable") {
+    if (!canSelectModel) {
       return
     }
 
     setShowModelPicker(true)
-  }, [targetConfiguration.kind])
+  }, [canSelectModel])
   const submitCurrentInput = useCallback((): void => {
     const input = getCurrentMessageInput()
     composerRevision.register(input)
@@ -1374,7 +1382,7 @@ export function LauncherAiPage(): React.JSX.Element {
     canGoToPreviousChat: canNavigateAcrossThreads && canGoToPreviousChat,
     canStartNewQuestion: canNavigateAcrossThreads && canStartNewQuestion,
     copy: copy.launcher,
-    canConfigureTarget: targetConfiguration.kind === "configured",
+    canConfigureTarget: canSelectModel,
     currentPermissionMode,
     goToNextChat: handleGoToNextChat,
     goToPreviousChat: handleGoToPreviousChat,
@@ -1482,14 +1490,15 @@ export function LauncherAiPage(): React.JSX.Element {
               title={sidebarTitle}
               titleAccessory={
                 <div className="flex h-5 w-full min-w-0 items-center gap-[var(--jingle-space-1)] overflow-hidden">
-                  {targetConfiguration.kind === "configured" ? (
+                  {canSelectModel ? (
                     <LauncherAiHeaderModelPicker
-                      currentModelId={currentModelId}
+                      currentSelection={currentModelRuntimeSelection}
                       fallbackLabel={copy.launcher.aiThreadTitle}
-                      onSelectModel={selectModel}
+                      onSelectSelection={selectModel}
+                      selectionRevision={threadId ? durableModelRuntimeSelectionRevision : null}
                     />
                   ) : null}
-                  {targetConfiguration.kind === "configured" && threadId ? (
+                  {canSelectModel && threadId ? (
                     <span aria-hidden="true" className="h-2.5 w-px shrink-0 bg-border/64" />
                   ) : null}
                   {threadId ? (
@@ -1946,11 +1955,12 @@ export function LauncherAiPage(): React.JSX.Element {
           />
         ) : null}
 
-        {showModelPicker && targetConfiguration.kind === "configured" ? (
+        {showModelPicker && canSelectModel ? (
           <LauncherAiModelPicker
-            currentModelId={currentModelId}
+            currentSelection={currentModelRuntimeSelection}
             onClose={() => setShowModelPicker(false)}
-            onSelectModel={selectModel}
+            onSelectSelection={selectModel}
+            selectionRevision={threadId ? durableModelRuntimeSelectionRevision : null}
           />
         ) : null}
 

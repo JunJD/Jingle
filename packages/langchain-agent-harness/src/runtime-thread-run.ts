@@ -1,4 +1,8 @@
-import type { RuntimeResumeRunStart, RuntimeRunStart } from "./runtime-contract"
+import type {
+  RuntimeResumeRunStart,
+  RuntimeRunStart,
+  RuntimeRunStartBase
+} from "./runtime-contract"
 import {
   createRuntimeExecutionContext,
   type RuntimeExecutionActivation,
@@ -163,7 +167,7 @@ async function executeRuntimeThreadRunWork<TContextInclusion>(input: {
 
 function createRuntimeThreadRunBase<TContextInclusion>(
   lifecycle: RuntimeThreadTerminalLifecycle<TContextInclusion>,
-  start: RuntimeRunStart
+  start: RuntimeRunStartBase
 ): RuntimeThreadRunInternals<TContextInclusion> {
   const executionContext = createRuntimeExecutionContext({ lifecycle, start })
   const terminal = executionContext.terminal

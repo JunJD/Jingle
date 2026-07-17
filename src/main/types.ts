@@ -62,7 +62,6 @@ export interface AgentInvokeParams {
   followUpAction?: JingleAgentFollowUpAction
   threadId: string
   message: AgentInvokeMessage
-  modelId?: string
   permissionMode?: PermissionModeName
   temporaryMode?: boolean
 }
@@ -72,7 +71,6 @@ export interface AgentEditLastUserMessageAndInvokeParams extends AgentInvokePara
 export interface AgentResumeParams {
   threadId: string
   decision: JingleAgentResumeDecision
-  modelId?: string
 }
 
 export interface AgentCancelParams {
@@ -201,6 +199,8 @@ export interface AgentThreadMessagesSnapshot {
 
 export interface AgentThreadInfoSnapshot {
   metadata?: Record<string, unknown>
+  modelRuntimeSelection: import("@shared/app-types").ThreadModelRuntimeSelectionState
+  modelRuntimeSelectionRevision: number
   status: ThreadStatus
   thread_id: string
   title?: string

@@ -28,7 +28,9 @@ export interface Thread {
 }
 
 export interface CreateThreadInput {
+  createDefaultWorkspace?: true
   metadata?: Record<string, unknown>
+  modelRuntimeSelection?: ModelRuntimeSelection
   workflow?: ThreadWorkflowCreateInput
   workspaceKind?: ThreadWorkspaceKind
   workspacePath?: string
@@ -105,7 +107,25 @@ export interface DefaultModels {
   llm: string
 }
 
-export type ThinkingEffort = "off" | "low" | "medium" | "high" | "xhigh" | "max"
+export type ThinkingEffort = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
+
+export interface ModelRuntimeSelection {
+  modelId: string
+  thinkingEffort: ThinkingEffort | null
+  version: 1
+}
+
+export type ThreadModelRuntimeSelectionState =
+  | { kind: "ready"; selection: ModelRuntimeSelection }
+  | { kind: "legacy_missing_effort"; modelId: string }
+  | { kind: "invalid" }
+  | { kind: "missing" }
+
+export interface ThreadModelRuntimeSelectionChangedEvent {
+  revision: number
+  selection: ModelRuntimeSelection
+  threadId: string
+}
 
 export interface ModelReasoningEffortCapability {
   allowedValues: ThinkingEffort[]
@@ -363,6 +383,8 @@ export interface AgentThreadMessagesSnapshot {
 
 export interface AgentThreadInfoSnapshot {
   metadata?: Record<string, unknown>
+  modelRuntimeSelection: ThreadModelRuntimeSelectionState
+  modelRuntimeSelectionRevision: number
   status: ThreadStatus
   thread_id: string
   title?: string

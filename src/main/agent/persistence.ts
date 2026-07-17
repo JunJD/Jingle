@@ -1,5 +1,7 @@
 import { randomUUID } from "crypto"
 import type { HITLDecision } from "@shared/hitl"
+import type { ModelRuntimeSelection } from "@shared/app-types"
+import { withModelRuntimeSelection } from "@shared/model-runtime-selection"
 import {
   AGENT_RUN_FAILURE_METADATA_KEY,
   encodeAgentRunFailure,
@@ -70,28 +72,29 @@ interface BeginAgentRunOptions {
 const runMetadataUpdateQueues = new Map<string, Promise<unknown>>()
 export async function beginAgentRun(
   threadId: string,
-  modelId: string | undefined,
+  selection: ModelRuntimeSelection,
   options: BeginAgentRunOptions
 ): Promise<{ run: ExistingRun; runId: string }> {
   const runId = randomUUID()
   const permissionMode = options?.permissionMode ?? DEFAULT_PERMISSION_MODE
   const aiCapabilities = options?.aiCapabilities ?? []
 
-  const metadata = {
-    modelId: modelId ?? null,
-    [RUN_PERMISSION_MODE_SNAPSHOT_METADATA_KEY]: permissionMode,
-    [JINGLE_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY]: options?.jingleMemoryContextSnapshot ?? null,
-    [JINGLE_MEMORY_TEMPORARY_MODE_METADATA_KEY]: options?.jingleMemoryTemporaryMode ?? false,
-    [RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY]: createRunExtensionAiCapabilitiesSnapshot(
-      {
-        aiCapabilities,
-        runId
-      }
-    )
-  }
+  const metadata = withModelRuntimeSelection(
+    {
+      [RUN_PERMISSION_MODE_SNAPSHOT_METADATA_KEY]: permissionMode,
+      [JINGLE_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY]: options?.jingleMemoryContextSnapshot ?? null,
+      [JINGLE_MEMORY_TEMPORARY_MODE_METADATA_KEY]: options?.jingleMemoryTemporaryMode ?? false,
+      [RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY]:
+        createRunExtensionAiCapabilitiesSnapshot({
+          aiCapabilities,
+          runId
+        })
+    },
+    selection
+  )
   const startEventInputs: AppendAgentEventInput[] = [
     createRunStartedEventInput({
-      modelId,
+      modelId: selection.modelId,
       permissionMode,
       runId,
       threadId,

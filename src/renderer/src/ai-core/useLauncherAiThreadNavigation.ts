@@ -3,6 +3,7 @@ import { AI_THREAD_SOURCE } from "@shared/launcher-ai"
 import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permission-mode"
 import type { ThreadWorkspaceKind } from "@shared/thread-workspace"
 import type { Thread } from "@/types"
+import type { ModelRuntimeSelection } from "@shared/app-types"
 import type { AiCoreThreadCreateInput, AiCoreThreadHandle } from "./AiCoreHost"
 import { useAiCoreThreads } from "./AiCoreHost"
 import {
@@ -18,7 +19,7 @@ interface UseLauncherAiThreadNavigationOptions {
 export type LauncherAiActiveTarget =
   | {
       kind: "draft"
-      modelId: string | null
+      modelRuntimeSelection: ModelRuntimeSelection | null
       permissionMode: PermissionModeName
       workspaceKind: ThreadWorkspaceKind
       workspacePath: string | null
@@ -46,7 +47,7 @@ export interface LauncherAiThreadNavigation {
   isHydratingThread: boolean
   threadLoadingReason: LauncherAiThreadLoadingReason | null
   startFreshDraft: (input: {
-    modelId: string | null
+    modelRuntimeSelection: ModelRuntimeSelection | null
     permissionMode: PermissionModeName
     workspaceKind?: ThreadWorkspaceKind
     workspacePath?: string | null
@@ -54,7 +55,7 @@ export interface LauncherAiThreadNavigation {
   target: LauncherAiActiveTarget | null
   updateFreshDraft: (
     input: Partial<{
-      modelId: string | null
+      modelRuntimeSelection: ModelRuntimeSelection | null
       permissionMode: PermissionModeName
       workspaceKind: ThreadWorkspaceKind
       workspacePath: string | null
@@ -133,7 +134,7 @@ export function useLauncherAiThreadNavigation(
       : shouldStartFreshThread
         ? {
             kind: "draft",
-            modelId: null,
+            modelRuntimeSelection: null,
             permissionMode: DEFAULT_PERMISSION_MODE,
             workspaceKind: "projectless",
             workspacePath: null
@@ -299,7 +300,7 @@ export function useLauncherAiThreadNavigation(
   )
   const startFreshDraft = useCallback(
     async (input: {
-      modelId: string | null
+      modelRuntimeSelection: ModelRuntimeSelection | null
       permissionMode: PermissionModeName
       workspaceKind?: ThreadWorkspaceKind
       workspacePath?: string | null
@@ -314,7 +315,7 @@ export function useLauncherAiThreadNavigation(
       })
       setTarget({
         kind: "draft",
-        modelId: input.modelId,
+        modelRuntimeSelection: input.modelRuntimeSelection,
         permissionMode: input.permissionMode,
         workspaceKind: input.workspaceKind ?? "projectless",
         workspacePath: input.workspacePath ?? null
@@ -340,7 +341,7 @@ export function useLauncherAiThreadNavigation(
   const updateFreshDraft = useCallback(
     (
       input: Partial<{
-        modelId: string | null
+        modelRuntimeSelection: ModelRuntimeSelection | null
         permissionMode: PermissionModeName
         workspaceKind: ThreadWorkspaceKind
         workspacePath: string | null
@@ -350,7 +351,8 @@ export function useLauncherAiThreadNavigation(
         if (!currentTarget) {
           return {
             kind: "draft",
-            modelId: input.modelId !== undefined ? input.modelId : null,
+            modelRuntimeSelection:
+              input.modelRuntimeSelection !== undefined ? input.modelRuntimeSelection : null,
             permissionMode: input.permissionMode ?? DEFAULT_PERMISSION_MODE,
             workspaceKind: input.workspaceKind ?? "projectless",
             workspacePath: input.workspacePath ?? null
@@ -429,7 +431,7 @@ export function useLauncherAiThreadNavigation(
         if (!restoredThreadId) {
           setTarget({
             kind: "draft",
-            modelId: null,
+            modelRuntimeSelection: null,
             permissionMode: DEFAULT_PERMISSION_MODE,
             workspaceKind: "projectless",
             workspacePath: null

@@ -104,7 +104,9 @@ function readRequestIdentity(
     preserveLastUserMessageCount: metadata.preserveLastUserMessageCount,
     preserveLastUserMessageCountPresent: metadata.preserveLastUserMessageCountPresent,
     reason: metadata.reason,
-    trigger: metadata.trigger
+    thinkingEffort: metadata.thinkingEffort,
+    trigger: metadata.trigger,
+    version: metadata.version
   }
 }
 

@@ -127,6 +127,8 @@ function createThreadData(
   return {
     thread: {
       metadata: undefined,
+      modelRuntimeSelection: { kind: "missing" },
+      modelRuntimeSelectionRevision: 0,
       status: input.status ?? (pendingApproval ? "interrupted" : "idle"),
       thread_id: "thread-1",
       title: undefined
@@ -793,6 +795,8 @@ test("AgentThreadRunner hydrates an empty thread only once", async () => {
       return {
         thread: {
           metadata: undefined,
+          modelRuntimeSelection: { kind: "missing" },
+          modelRuntimeSelectionRevision: 0,
           status: "idle",
           thread_id: "empty-thread",
           title: undefined
@@ -819,6 +823,8 @@ test("AgentThreadRunner hydrates an empty thread only once", async () => {
       return {
         thread: {
           metadata: undefined,
+          modelRuntimeSelection: { kind: "missing" },
+          modelRuntimeSelectionRevision: 0,
           status: "idle",
           thread_id: "empty-thread",
           title: undefined
