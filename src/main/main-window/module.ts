@@ -7,6 +7,7 @@ import {
   setThreadWindowRestoreState
 } from "../preferences"
 import { diagnosticsLogger } from "../diagnostics/instance"
+import { serializeProcessError } from "../diagnostics/process-errors"
 import { setDurableWindowIdentityThread } from "../windows/window-identity"
 import { DurableWindowController } from "./controller"
 import { PrimaryMainWindowService, type PrimaryMainWindowRuntime } from "./service"
@@ -51,6 +52,11 @@ export function registerMainWindowModule(
         onWindowOpened: () => lifecycle.windowOpened(),
         recordResourceRefusal: (details) =>
           diagnosticsLogger.warn("Thread window resource limit reached", details),
+        recordRestoreFailure: ({ error, windowId }) =>
+          diagnosticsLogger.error("Thread window restore failed", {
+            error: serializeProcessError(error),
+            windowId
+          }),
         setRestoreState: setThreadWindowRestoreState,
         setWindowThread: (window, threadId) =>
           setDurableWindowIdentityThread(window.webContents, threadId)

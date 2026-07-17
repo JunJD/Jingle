@@ -1,24 +1,25 @@
 import type { BrowserWindow } from "electron"
 
 interface WindowPresentationState {
-  presentationRequested: boolean
+  presentationRequest: "activate" | "visible" | null
   rendererReady: boolean
 }
 
 const windowPresentationStates = new WeakMap<BrowserWindow, WindowPresentationState>()
 
 function presentIfReady(window: BrowserWindow, state: WindowPresentationState): void {
-  if (!state.presentationRequested || !state.rendererReady || window.isDestroyed()) {
+  const presentationRequest = state.presentationRequest
+  if (!presentationRequest || !state.rendererReady || window.isDestroyed()) {
     return
   }
 
-  state.presentationRequested = false
-  if (window.isMinimized()) {
-    window.restore()
+  state.presentationRequest = null
+  if (presentationRequest === "visible") {
+    if (!window.isVisible()) window.showInactive()
+    return
   }
-  if (!window.isVisible()) {
-    window.show()
-  }
+  if (window.isMinimized()) window.restore()
+  if (!window.isVisible()) window.show()
   window.focus()
 }
 
@@ -31,7 +32,7 @@ export function installWindowPresentation(window: BrowserWindow): void {
   }
 
   const state: WindowPresentationState = {
-    presentationRequested: false,
+    presentationRequest: null,
     rendererReady: false
   }
   const markRendererReady = (): void => {
@@ -43,7 +44,10 @@ export function installWindowPresentation(window: BrowserWindow): void {
   window.once("ready-to-show", markRendererReady)
 }
 
-export function requestWindowPresentation(window: BrowserWindow): void {
+export function requestWindowPresentation(
+  window: BrowserWindow,
+  options: { activate?: boolean } = {}
+): void {
   if (window.isDestroyed()) {
     throw new Error("Cannot present a destroyed window.")
   }
@@ -53,6 +57,7 @@ export function requestWindowPresentation(window: BrowserWindow): void {
     throw new Error("Window presentation must be installed before it is requested.")
   }
 
-  state.presentationRequested = true
+  const request = options.activate === false ? "visible" : "activate"
+  if (state.presentationRequest !== "activate") state.presentationRequest = request
   presentIfReady(window, state)
 }

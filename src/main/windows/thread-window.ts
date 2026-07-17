@@ -16,6 +16,11 @@ export interface CreateThreadWindowInput {
   windowId: string
 }
 
+export interface CreateThreadWindowOptions {
+  activate: boolean
+  onRendererFailure: () => void
+}
+
 function defaultBounds(): Rectangle {
   const { workArea } = screen.getPrimaryDisplay()
   const width = Math.min(1280, Math.max(760, Math.round(workArea.width * 0.82)))
@@ -41,7 +46,10 @@ function visibleBounds(bounds?: Rectangle): Rectangle {
   }
 }
 
-export function createThreadWindow(input: CreateThreadWindowInput): BrowserWindow {
+export function createThreadWindow(
+  input: CreateThreadWindowInput,
+  options: CreateThreadWindowOptions
+): BrowserWindow {
   const isMac = process.platform === "darwin"
   const appThemeSettings = getAppThemeSettings()
   const window = new BrowserWindow({
@@ -71,8 +79,9 @@ export function createThreadWindow(input: CreateThreadWindowInput): BrowserWindo
   installExternalWindowOpenHandler(window.webContents)
   startRendererWindowLoad(window, THREAD_WINDOW_KIND, {
     onFailure: observeFailure,
+    onTerminalFailure: options.onRendererFailure,
     query: { windowId: input.windowId, ...(input.threadId ? { threadId: input.threadId } : {}) }
   })
-  requestWindowPresentation(window)
+  requestWindowPresentation(window, { activate: options.activate })
   return window
 }

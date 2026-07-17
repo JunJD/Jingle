@@ -7,10 +7,7 @@ import { AgentController } from "./agent/controller"
 import { registerAgentIpcHandlers, registerAgentModule } from "./agent/module"
 import { AgentService } from "./agent/service"
 import { registerMainWindowIpcHandlers, registerMainWindowModule } from "./main-window/module"
-import {
-  PrimaryMainWindowService,
-  type PrimaryMainWindowRuntime
-} from "./main-window/service"
+import { PrimaryMainWindowService, type PrimaryMainWindowRuntime } from "./main-window/service"
 import { ThreadWindowService, type ThreadWindowRuntime } from "./thread-window/service"
 import { installApplicationMenu } from "./app-menu"
 import { registerArtifactsIpcHandlers, registerArtifactsModule } from "./artifacts/module"
@@ -20,6 +17,8 @@ import {
 } from "./content-annotations/module"
 import { registerContentCardsIpcHandlers, registerContentCardsModule } from "./content-cards/module"
 import { registerDiagnosticsIpcHandlers } from "./diagnostics/controller"
+import { diagnosticsLogger } from "./diagnostics/instance"
+import { serializeProcessError } from "./diagnostics/process-errors"
 import {
   registerExternalLinksIpcHandlers,
   registerExternalLinksModule
@@ -140,6 +139,17 @@ export class MainCompositionRoot {
     this.dependencyContainer.resolve(PrimaryMainWindowService).open(threadId ? { threadId } : {})
   }
 
+  restoreThreadWindows(): void {
+    void this.dependencyContainer
+      .resolve(ThreadWindowService)
+      .restore()
+      .catch((error) => {
+        diagnosticsLogger.error("Thread window restore pipeline failed", {
+          error: serializeProcessError(error)
+        })
+      })
+  }
+
   registerIpcHandlers(): void {
     const { ipcMain } = this.context
 
@@ -210,7 +220,6 @@ export class MainCompositionRoot {
       }
     })
     void warmLauncherSearchProviders()
-    this.dependencyContainer.resolve(ThreadWindowService).restore()
   }
 
   async dispose(): Promise<void> {

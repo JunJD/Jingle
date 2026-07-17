@@ -38,6 +38,7 @@ export type RendererWindowLoadFailureObserver = (failure: RendererWindowLoadFail
 
 export interface StartRendererWindowLoadOptions {
   onFailure: RendererWindowLoadFailureObserver
+  onTerminalFailure?: RendererWindowLoadFailureObserver
   query?: Record<string, string>
 }
 
@@ -88,7 +89,7 @@ export function startRendererWindowLoad(
   options: StartRendererWindowLoadOptions
 ): void {
   let terminal = false
-  const { onFailure, query } = options
+  const { onFailure, onTerminalFailure, query } = options
 
   const destroyFailedWindow = (failure: RendererWindowLoadFailure, reportFailure = true): void => {
     if (terminal || browserWindow.isDestroyed() || rendererWindowShutdownStarted) {
@@ -96,6 +97,14 @@ export function startRendererWindowLoad(
     }
 
     terminal = true
+    try {
+      onTerminalFailure?.(failure)
+    } catch (observationError) {
+      console.error(
+        "[window] Failed to observe terminal renderer window failure.",
+        observationError
+      )
+    }
     browserWindow.destroy()
     if (!reportFailure) {
       return

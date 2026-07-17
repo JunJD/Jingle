@@ -65,14 +65,11 @@ let launcherWindow: BrowserWindow | null = null
 let ipcNetworkWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 let mainCompositionRoot: MainCompositionRoot | null = null
-let pendingMainWindowOpen = false
 
 function showMain(): void {
   if (!mainCompositionRoot) {
-    pendingMainWindowOpen = true
     return
   }
-  pendingMainWindowOpen = false
   mainCompositionRoot.showMainWindow()
 }
 let pendingSettingsNavigation: SettingsWindowNavigationPayload | null = null
@@ -376,6 +373,7 @@ if (hasSingleInstanceLock) {
       toggleLauncherWindow: toggleLauncher
     })
     mainCompositionRoot.registerIpcHandlers()
+    showMain()
     mainCompositionRoot.startServices()
     const launchProtocolUrl = findJingleProtocolUrl(process.argv)
     if (launchProtocolUrl) {
@@ -400,12 +398,10 @@ if (hasSingleInstanceLock) {
       quit: () => app.quit()
     })
 
-    showMain()
-    if (pendingMainWindowOpen) showMain()
-
     app.on("activate", () => {
       showMain()
     })
+    mainCompositionRoot.restoreThreadWindows()
   })
 }
 

@@ -64,6 +64,7 @@ class FakeBrowserWindow extends EventEmitter {
   minimized = false
   restoreCount = 0
   showCount = 0
+  showInactiveCount = 0
   visible = false
   readonly webContents = new FakeWebContents(this.id + 10_000)
 
@@ -108,6 +109,11 @@ class FakeBrowserWindow extends EventEmitter {
     this.visible = true
     this.showCount += 1
   }
+
+  showInactive(): void {
+    this.visible = true
+    this.showInactiveCount += 1
+  }
 }
 
 function asBrowserWindow(window: FakeBrowserWindow): BrowserWindow {
@@ -118,11 +124,15 @@ function startLoad(
   window: FakeBrowserWindow,
   options: {
     logger?: FakeDiagnosticsLogger
+    onTerminalFailure?: () => void
   } = {}
 ): FakeDiagnosticsLogger {
   const logger = options.logger ?? new FakeDiagnosticsLogger()
   const onFailure = attachWindowDiagnosticsWithLogger(asBrowserWindow(window), "settings", logger)
-  startRendererWindowLoad(asBrowserWindow(window), "settings", { onFailure })
+  startRendererWindowLoad(asBrowserWindow(window), "settings", {
+    onFailure,
+    onTerminalFailure: options.onTerminalFailure
+  })
   return logger
 }
 
@@ -149,6 +159,16 @@ describe("window presentation", () => {
     requestWindowPresentation(asBrowserWindow(window))
 
     assert.deepEqual([window.showCount, window.focusCount], [1, 1])
+  })
+
+  it("shows a restored window without taking activation", () => {
+    const window = new FakeBrowserWindow()
+    installWindowPresentation(asBrowserWindow(window))
+    requestWindowPresentation(asBrowserWindow(window), { activate: false })
+
+    window.emit("ready-to-show")
+
+    assert.deepEqual([window.showInactiveCount, window.showCount, window.focusCount], [1, 0, 0])
   })
 
   it("restores minimized windows and does not reshow visible windows", () => {
@@ -182,6 +202,17 @@ describe("window presentation", () => {
 })
 
 describe("renderer window load lifecycle", () => {
+  it("reports a terminal renderer failure before closing its window", () => {
+    const window = new FakeBrowserWindow()
+    const order: string[] = []
+    window.once("closed", () => order.push("closed"))
+    startLoad(window, { onTerminalFailure: () => order.push("failure") })
+
+    window.webContents.emit("preload-error", {}, "preload.js", new Error("preload failed"))
+
+    assert.deepEqual(order, ["failure", "closed"])
+  })
+
   it("destroys a pending presentation after a main-frame load failure exactly once", async () => {
     const window = new FakeBrowserWindow()
     let rejectLoad: (error: Error) => void = () => undefined

@@ -24,3 +24,24 @@ test("desktop lifecycle routes durable entry points to Main and keeps the reside
   assert.ok(allClosed)
   assert.doesNotMatch(allClosed[0], /app\.quit\(\)/)
 })
+
+test("cold start requests Primary Main before restoring session windows", async () => {
+  const main = await source("src/main/index.ts")
+  const compositionRoot = await source("src/main/composition-root.ts")
+  const mainOpen = main.indexOf(
+    "showMain()",
+    main.indexOf("mainCompositionRoot.registerIpcHandlers()")
+  )
+  const serviceStartup = main.indexOf("mainCompositionRoot.startServices()")
+  const sessionRestore = main.indexOf("mainCompositionRoot.restoreThreadWindows()")
+  const startServices = compositionRoot.match(
+    /startServices\(\): void \{[\s\S]*?\n {2}\}\n\n {2}async dispose/
+  )
+
+  assert.notEqual(mainOpen, -1)
+  assert.notEqual(serviceStartup, -1)
+  assert.notEqual(sessionRestore, -1)
+  assert.equal(mainOpen < serviceStartup && serviceStartup < sessionRestore, true)
+  assert.ok(startServices)
+  assert.doesNotMatch(startServices[0], /ThreadWindowService|restoreThreadWindows/)
+})
