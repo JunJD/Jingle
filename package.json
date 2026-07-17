@@ -68,7 +68,7 @@
     "audit:frontend-packages": "node scripts/audit-frontend-package-relations.mjs --root . --frontend src/renderer/src",
     "test:bdd:smoke": "npm run build && cucumber-js --config tests/bdd/cucumber.config.cjs --tags @smoke",
     "test:bdd": "npm run build && cucumber-js --config tests/bdd/cucumber.config.cjs",
-    "test:node": "tsx --tsconfig tests/node/tsconfig.json --test tests/node/*.test.ts",
+    "test:node": "node scripts/run-node-tests.mjs",
     "test": "npm run test:node && npm run test:bdd:smoke"
   },
   "dependencies": {

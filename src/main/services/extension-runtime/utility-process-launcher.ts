@@ -4,6 +4,7 @@ import type {
   ExtensionHostToRuntimeMessage,
   ExtensionRuntimeToHostMessage
 } from "@shared/extension-runtime-protocol"
+import { EXTENSION_RUNTIME_VM_MODULE_EXEC_ARGV } from "@shared/extension-runtime-protocol"
 import { EXTENSION_RUNTIME_CACHE_DIR_ENV } from "../../../extension-runtime/cache-backend"
 import { getJingleHomeDir } from "../../storage"
 import type { ExtensionRuntimeProcess, ExtensionRuntimeProcessLauncher } from "./runtime-process"
@@ -21,6 +22,7 @@ export class UtilityProcessExtensionRuntimeProcessLauncher implements ExtensionR
         ...process.env,
         [EXTENSION_RUNTIME_CACHE_DIR_ENV]: join(getJingleHomeDir(), "extension-runtime-cache")
       },
+      execArgv: [...EXTENSION_RUNTIME_VM_MODULE_EXEC_ARGV],
       serviceName: "Jingle Extension Runtime"
     })
 

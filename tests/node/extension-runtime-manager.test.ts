@@ -58,6 +58,7 @@ import {
 } from "../../src/shared/extension-runtime-protocol"
 import {
   createExtensionRuntimeUtilityExecutionLease,
+  ExtensionRuntimeExecutionLeaseError,
   type ExtensionRuntimeExecutionLease,
   type ExtensionRuntimeExecutionLeaseOwner
 } from "../../src/main/services/extension-runtime/execution-lease"
@@ -792,22 +793,19 @@ test("utility execution lease only exposes preferences to entitled runtimes", ()
       }
     }
   }
-  const runtimeArtifactRevision = {
-    kind: "available" as const,
-    revision: `sha256:${"a".repeat(64)}` as `sha256:${string}`
-  }
+  const expectedRuntimeArtifactRevision = `sha256:${"a".repeat(64)}` as const
   const installedUtility = createExtensionRuntimeUtilityExecutionLease({
     intent,
     invokeContext: installedInvokeContext,
     locale: "zh-CN",
     mode: "view",
     runtime: {
+      expectedRuntimeArtifactRevision,
       extensionName: intent.extensionName,
       kind: "module",
       modulePath: "/immutable/github/1.2.3/runtime.js",
       version: "1.2.3"
     },
-    runtimeArtifactRevision,
     runtimeCapabilities: withPreferences.runtimeCapabilities
   })
   assert.equal(installedUtility.context.dataIdentity.kind, "available")
@@ -819,7 +817,7 @@ test("utility execution lease only exposes preferences to entitled runtimes", ()
     connectionConfigGeneration: 4,
     extensionConfigGeneration: 2,
     kind: "available",
-    runtimeArtifactRevision: runtimeArtifactRevision.revision,
+    runtimeArtifactRevision: expectedRuntimeArtifactRevision,
     runtimePackageRevision: "1.2.3"
   })
   assert.deepEqual(installedUtility.context.dataIdentity.localStorage, {
@@ -827,31 +825,62 @@ test("utility execution lease only exposes preferences to entitled runtimes", ()
     credentialGeneration: 3
   })
   assert.equal(JSON.stringify(installedUtility.context.dataIdentity).includes("/immutable/"), false)
-  assert.equal(Object.hasOwn(installedUtility.runtime, "runtimeArtifactRevision"), false)
+  assert.equal(installedUtility.runtime.kind, "module")
+  if (installedUtility.runtime.kind !== "module") {
+    throw new Error("Expected installed runtime module launch reference")
+  }
+  assert.equal(
+    installedUtility.runtime.expectedRuntimeArtifactRevision,
+    expectedRuntimeArtifactRevision
+  )
 
-  const legacyInstalledUtility = createExtensionRuntimeUtilityExecutionLease({
-    intent,
-    invokeContext: installedInvokeContext,
-    locale: "zh-CN",
-    mode: "view",
-    runtime: installedUtility.runtime as Extract<
-      typeof installedUtility.runtime,
-      { kind: "module" }
-    >,
-    runtimeArtifactRevision: { kind: "unavailable", reason: "legacy-descriptor" },
-    runtimeCapabilities: withPreferences.runtimeCapabilities
-  })
-  assert.deepEqual(legacyInstalledUtility.context.dataIdentity, {
-    cache: {
-      kind: "unavailable",
-      reason: "artifact-revision-unavailable"
-    },
-    kind: "available",
-    localStorage: {
-      connectionId: "default",
-      credentialGeneration: 3
+  assert.throws(
+    () =>
+      createExtensionRuntimeUtilityExecutionLease({
+        intent,
+        invokeContext: installedInvokeContext,
+        locale: "zh-CN",
+        mode: "view",
+        runtime: {
+          extensionName: "github",
+          kind: "module",
+          modulePath: "/legacy/github/runtime.js",
+          version: "1.2.3"
+        } as Extract<typeof installedUtility.runtime, { kind: "module" }>,
+        runtimeCapabilities: withPreferences.runtimeCapabilities
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof ExtensionRuntimeExecutionLeaseError)
+      assert.equal(error.code, "runtime_artifact_revision_unavailable")
+      assert.doesNotMatch(error.message, /\/legacy\//)
+      return true
     }
+  )
+})
+
+test("runtime manager rejects an unavailable runtime revision before launch or recovery", async () => {
+  const issueSnapshots: ExtensionRuntimeSessionIssueSnapshot[] = []
+  const executionLeaseOwner: ExtensionRuntimeExecutionLeaseOwner = {
+    isCurrent: () => true,
+    resolve: () => {
+      throw new ExtensionRuntimeExecutionLeaseError("private-extension")
+    }
+  }
+  const { launcher, manager } = createManager({
+    executionLeaseOwner,
+    onIssue: (snapshot) => issueSnapshots.push(snapshot)
   })
+
+  const result = await manager.runOnce(createLaunchIntent(), { sessionId: "revision-unavailable" })
+
+  assert.equal(result.status, "error")
+  if (result.status !== "error") {
+    throw new Error("Expected unavailable artifact revision to reject launch")
+  }
+  assert.equal(result.error.code, "runtime_artifact_revision_unavailable")
+  assert.doesNotMatch(result.error.message, /\/private\/|sha256:/)
+  assert.equal(launcher.processes.length, 0)
+  assert.deepEqual(issueSnapshots, [])
 })
 
 test("foreground launch intent projection ignores renderer preference and locale facts", () => {

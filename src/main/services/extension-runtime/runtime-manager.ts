@@ -36,6 +36,7 @@ import type {
   ExtensionRuntimeExecutionLease,
   ExtensionRuntimeExecutionLeaseOwner
 } from "./execution-lease"
+import { ExtensionRuntimeExecutionLeaseError } from "./execution-lease"
 import type { ExtensionRuntimeProcess, ExtensionRuntimeProcessLauncher } from "./runtime-process"
 
 export type {
@@ -1357,7 +1358,8 @@ function assertRuntimeCapability(
 
 function getRuntimeErrorCode(error: unknown, fallback: string): string {
   return error instanceof ExtensionRuntimeLifecycleError ||
-    error instanceof ExtensionRuntimeHostError
+    error instanceof ExtensionRuntimeHostError ||
+    error instanceof ExtensionRuntimeExecutionLeaseError
     ? error.code
     : fallback
 }

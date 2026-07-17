@@ -1,5 +1,9 @@
 import type * as CommonProtocol from "@jingle/extension-api/host-runtime"
 
+export const EXTENSION_RUNTIME_VM_MODULE_EXEC_ARGV = Object.freeze([
+  "--experimental-vm-modules"
+] as const)
+
 export {
   normalizeExtensionRuntimeJsonFact,
   normalizeExtensionRuntimeErrorDetails,
@@ -40,6 +44,7 @@ export type ExtensionRuntimeLaunchPackageRef =
       version: string
     }
   | {
+      expectedRuntimeArtifactRevision: `sha256:${string}`
       extensionName: string
       kind: "module"
       modulePath: string

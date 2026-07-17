@@ -10,7 +10,6 @@ import type {
 } from "@shared/extension-runtime-protocol"
 import { normalizeExtensionRuntimeLaunchIntent } from "@shared/extension-runtime-protocol"
 import { getDefaultExtensionRegistryService } from "../../extensions/registry/default-registry"
-import type { ExtensionRuntimeArtifactRevision } from "../../extensions/registry/types"
 import {
   getNativeExtensionConfigurationSnapshot,
   type NativeExtensionConfigurationToken
@@ -19,6 +18,8 @@ import {
   resolveNativeExtensionExecutionContextFromSnapshot,
   type NativeExtensionExecutionContextSnapshot
 } from "../../native-extensions/execution-context"
+
+const RUNTIME_ARTIFACT_REVISION_PATTERN = /^sha256:[a-f0-9]{64}$/
 
 export interface ExtensionRuntimeExecutionLease {
   configurationToken: NativeExtensionConfigurationToken
@@ -34,6 +35,17 @@ export interface ExtensionRuntimeExecutionLeaseOwner {
     kind: ExtensionRuntimeSessionKind,
     intent: ExtensionRuntimeLaunchIntent
   ) => ExtensionRuntimeExecutionLease
+}
+
+export class ExtensionRuntimeExecutionLeaseError extends Error {
+  readonly code = "runtime_artifact_revision_unavailable"
+
+  constructor(extensionName: string) {
+    super(
+      `Installed extension runtime artifact revision is unavailable [artifact=${extensionName}:missing]. Reinstall or rebuild the extension.`
+    )
+    this.name = "ExtensionRuntimeExecutionLeaseError"
+  }
 }
 
 export function createExtensionRuntimeExecutionLeaseOwner(options: {
@@ -108,20 +120,10 @@ function resolveExtensionRuntimeExecutionLease(
     mode: expectedMode,
     runtimeCapabilities
   }
-  const utility =
-    runtime.kind === "module"
-      ? createExtensionRuntimeUtilityExecutionLease({
-          ...utilityInput,
-          runtime,
-          runtimeArtifactRevision: getModuleRuntimeArtifactRevision(
-            extensionPackage.runtime,
-            intent.extensionName
-          )
-        })
-      : createExtensionRuntimeUtilityExecutionLease({
-          ...utilityInput,
-          runtime
-        })
+  const utility = createExtensionRuntimeUtilityExecutionLease({
+    ...utilityInput,
+    runtime
+  })
 
   return deepFreeze({
     configurationToken: snapshot.token,
@@ -142,28 +144,17 @@ interface ExtensionRuntimeUtilityExecutionLeaseCommonInput {
 
 export function createExtensionRuntimeUtilityExecutionLease(
   input: ExtensionRuntimeUtilityExecutionLeaseCommonInput & {
-    runtime: Extract<ExtensionRuntimeLaunchPackageRef, { kind: "built-in" }>
-    runtimeArtifactRevision?: never
-  }
-): ExtensionRuntimeUtilityExecutionLease
-export function createExtensionRuntimeUtilityExecutionLease(
-  input: ExtensionRuntimeUtilityExecutionLeaseCommonInput & {
-    runtime: Extract<ExtensionRuntimeLaunchPackageRef, { kind: "module" }>
-    runtimeArtifactRevision: ExtensionRuntimeArtifactRevision
-  }
-): ExtensionRuntimeUtilityExecutionLease
-export function createExtensionRuntimeUtilityExecutionLease(
-  input: ExtensionRuntimeUtilityExecutionLeaseCommonInput & {
     runtime: ExtensionRuntimeLaunchPackageRef
-    runtimeArtifactRevision?: ExtensionRuntimeArtifactRevision
   }
 ): ExtensionRuntimeUtilityExecutionLease {
+  if (
+    input.runtime.kind === "module" &&
+    !RUNTIME_ARTIFACT_REVISION_PATTERN.test(input.runtime.expectedRuntimeArtifactRevision)
+  ) {
+    throw new ExtensionRuntimeExecutionLeaseError(input.runtime.extensionName)
+  }
   const canReadPreferences = input.runtimeCapabilities.includes("preferences")
-  const dataIdentity = createExtensionRuntimeDataIdentity(
-    input.invokeContext,
-    input.runtime,
-    input.runtimeArtifactRevision
-  )
+  const dataIdentity = createExtensionRuntimeDataIdentity(input.invokeContext, input.runtime)
   const context: ExtensionRuntimeLaunchContext = {
     commandName: input.intent.commandName,
     commandPreferences: canReadPreferences
@@ -187,8 +178,7 @@ export function createExtensionRuntimeUtilityExecutionLease(
 
 function createExtensionRuntimeDataIdentity(
   context: NativeExtensionExecutionContextSnapshot,
-  runtime: ExtensionRuntimeLaunchPackageRef,
-  runtimeArtifactRevision: ExtensionRuntimeArtifactRevision | undefined
+  runtime: ExtensionRuntimeLaunchPackageRef
 ): ExtensionRuntimeLaunchContext["dataIdentity"] {
   const revisions = context.configurationToken.revisions
   const localStorage = {
@@ -199,13 +189,13 @@ function createExtensionRuntimeDataIdentity(
   return {
     kind: "available",
     cache:
-      runtime.kind === "module" && runtimeArtifactRevision?.kind === "available"
+      runtime.kind === "module"
         ? {
             commandConfigGeneration: revisions.commandConfigRevision,
             connectionConfigGeneration: revisions.connectionConfigRevision,
             extensionConfigGeneration: revisions.extensionConfigRevision,
             kind: "available",
-            runtimeArtifactRevision: runtimeArtifactRevision.revision,
+            runtimeArtifactRevision: runtime.expectedRuntimeArtifactRevision,
             runtimePackageRevision: runtime.version
           }
         : {
@@ -214,18 +204,6 @@ function createExtensionRuntimeDataIdentity(
           },
     localStorage
   }
-}
-
-function getModuleRuntimeArtifactRevision(
-  runtime: ReturnType<
-    ReturnType<typeof getDefaultExtensionRegistryService>["getRuntimePackageRef"]
-  >,
-  extensionName: string
-): ExtensionRuntimeArtifactRevision {
-  if (!runtime || runtime.kind !== "module" || runtime.extensionName !== extensionName) {
-    throw new Error(`Native extension "${extensionName}" runtime artifact owner is unavailable`)
-  }
-  return runtime.runtimeArtifactRevision
 }
 
 function getExpectedCommandMode(
@@ -257,17 +235,34 @@ function toRuntimePackageRef(
   }
 
   return runtime.kind === "module"
-    ? {
-        extensionName: runtime.extensionName,
-        kind: "module",
-        modulePath: runtime.modulePath,
-        version: runtime.version
-      }
+    ? toModuleRuntimePackageRef(runtime, extensionName)
     : {
         extensionName: runtime.extensionName,
         kind: "built-in",
         version: runtime.version
       }
+}
+
+function toModuleRuntimePackageRef(
+  runtime: Extract<
+    NonNullable<
+      ReturnType<ReturnType<typeof getDefaultExtensionRegistryService>["getRuntimePackageRef"]>
+    >,
+    { kind: "module" }
+  >,
+  extensionName: string
+): Extract<ExtensionRuntimeLaunchPackageRef, { kind: "module" }> {
+  if (runtime.runtimeArtifactRevision.kind !== "available") {
+    throw new ExtensionRuntimeExecutionLeaseError(extensionName)
+  }
+
+  return {
+    expectedRuntimeArtifactRevision: runtime.runtimeArtifactRevision.revision,
+    extensionName: runtime.extensionName,
+    kind: "module",
+    modulePath: runtime.modulePath,
+    version: runtime.version
+  }
 }
 
 function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {

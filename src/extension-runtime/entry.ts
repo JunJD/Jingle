@@ -11,7 +11,10 @@ import type {
   ExtensionRuntimeUtilityExecutionLease,
   ExtensionRuntimeToHostMessage
 } from "@shared/extension-runtime-protocol"
-import { loadNativeExtensionRuntimeCommand } from "./runtime-package-loader"
+import {
+  ExtensionRuntimeArtifactLoadError,
+  loadNativeExtensionRuntimeCommand
+} from "./runtime-package-loader"
 import {
   createFileExtensionRuntimeCacheBackend,
   EXTENSION_RUNTIME_CACHE_DIR_ENV
@@ -259,6 +262,12 @@ function postRuntimeError(sessionId: string, error: unknown): void {
 }
 
 function toRuntimeError(code: string, error: unknown): ExtensionRuntimeError {
+  if (error instanceof ExtensionRuntimeArtifactLoadError) {
+    return {
+      code: error.code,
+      message: error.message
+    }
+  }
   if (error instanceof ExtensionRuntimeRequestError) {
     return {
       code: error.code,

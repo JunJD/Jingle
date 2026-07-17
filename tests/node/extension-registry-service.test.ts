@@ -260,6 +260,10 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
     assert.equal(runtimeRef.kind, "module")
     const command = await loadNativeExtensionRuntimeCommand(
       {
+        expectedRuntimeArtifactRevision:
+          runtimeRef.runtimeArtifactRevision.kind === "available"
+            ? runtimeRef.runtimeArtifactRevision.revision
+            : assert.fail("Expected verified apple-reminders runtime artifact revision"),
         extensionName: runtimeRef.extensionName,
         kind: "module",
         modulePath: runtimeRef.modulePath,
@@ -279,6 +283,10 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
     assert.equal(coffeeRuntimeRef.kind, "module")
     const coffeeCommand = await loadNativeExtensionRuntimeCommand(
       {
+        expectedRuntimeArtifactRevision:
+          coffeeRuntimeRef.runtimeArtifactRevision.kind === "available"
+            ? coffeeRuntimeRef.runtimeArtifactRevision.revision
+            : assert.fail("Expected verified coffee runtime artifact revision"),
         extensionName: coffeeRuntimeRef.extensionName,
         kind: "module",
         modulePath: coffeeRuntimeRef.modulePath,
@@ -297,6 +305,10 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
     assert.equal(githubRuntimeRef.kind, "module")
     const githubCommand = await loadNativeExtensionRuntimeCommand(
       {
+        expectedRuntimeArtifactRevision:
+          githubRuntimeRef.runtimeArtifactRevision.kind === "available"
+            ? githubRuntimeRef.runtimeArtifactRevision.revision
+            : assert.fail("Expected verified github runtime artifact revision"),
         extensionName: githubRuntimeRef.extensionName,
         kind: "module",
         modulePath: githubRuntimeRef.modulePath,
@@ -315,6 +327,10 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
     assert.equal(figmaFilesRuntimeRef.kind, "module")
     const figmaFilesCommand = await loadNativeExtensionRuntimeCommand(
       {
+        expectedRuntimeArtifactRevision:
+          figmaFilesRuntimeRef.runtimeArtifactRevision.kind === "available"
+            ? figmaFilesRuntimeRef.runtimeArtifactRevision.revision
+            : assert.fail("Expected verified figma-files runtime artifact revision"),
         extensionName: figmaFilesRuntimeRef.extensionName,
         kind: "module",
         modulePath: figmaFilesRuntimeRef.modulePath,
@@ -333,6 +349,10 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
     assert.equal(notionRuntimeRef.kind, "module")
     const notionCommand = await loadNativeExtensionRuntimeCommand(
       {
+        expectedRuntimeArtifactRevision:
+          notionRuntimeRef.runtimeArtifactRevision.kind === "available"
+            ? notionRuntimeRef.runtimeArtifactRevision.revision
+            : assert.fail("Expected verified notion runtime artifact revision"),
         extensionName: notionRuntimeRef.extensionName,
         kind: "module",
         modulePath: notionRuntimeRef.modulePath,
@@ -348,6 +368,10 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
 
     const menuBarCommand = await loadNativeExtensionRuntimeCommand(
       {
+        expectedRuntimeArtifactRevision:
+          runtimeRef.runtimeArtifactRevision.kind === "available"
+            ? runtimeRef.runtimeArtifactRevision.revision
+            : assert.fail("Expected verified apple-reminders runtime artifact revision"),
         extensionName: runtimeRef.extensionName,
         kind: "module",
         modulePath: runtimeRef.modulePath,
