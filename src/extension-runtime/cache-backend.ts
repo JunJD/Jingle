@@ -11,13 +11,14 @@ import {
   renameSync,
   rmSync,
   unlinkSync,
+  watch,
   writeSync,
   writeFileSync,
   type Stats
 } from "node:fs"
 import { lstat, mkdir, open, readFile, readdir, rename, rm, unlink } from "node:fs/promises"
 import { createHash, randomUUID } from "node:crypto"
-import { dirname, join } from "node:path"
+import { basename, dirname, join } from "node:path"
 import * as properLockfile from "proper-lockfile"
 import {
   normalizeExtensionRuntimeCacheWriterLease,
@@ -28,6 +29,8 @@ import {
   type RuntimeCacheBackend,
   type RuntimeCacheBackendFailureListener,
   type RuntimeCacheBackendMutation,
+  type RuntimeCacheBackendSnapshot,
+  type RuntimeCacheBackendSnapshotListener,
   type RuntimeCacheBackendScope,
   type RuntimeCacheEntry
 } from "@jingle/extension-api/host-runtime"
@@ -50,7 +53,41 @@ export interface RuntimeCacheFileBackendOptions {
     staleMs: number
     updateMs: number
   }
+  watchDirectory?: RuntimeCacheDirectoryWatch
   writerLease?: ExtensionRuntimeCacheWriterLease
+}
+
+export interface RuntimeCacheDirectoryWatcher {
+  close: () => void
+}
+
+export type RuntimeCacheDirectoryWatch = (
+  directoryPath: string,
+  listeners: {
+    onChange: (fileName: string | null) => void
+    onError: (error: Error) => void
+  }
+) => RuntimeCacheDirectoryWatcher
+
+interface RuntimeCacheStoreSubscriptionState {
+  listeners: Set<RuntimeCacheStoreSubscriptionRegistration>
+  notificationQueue: RuntimeCacheSnapshotNotificationBatch[]
+  notifyingListeners: boolean
+  revision: number
+}
+
+interface RuntimeCacheStoreSubscriptionRegistration {
+  active: boolean
+  listener: RuntimeCacheBackendSnapshotListener
+}
+
+interface RuntimeCacheSnapshotNotificationBatch {
+  listeners: readonly RuntimeCacheStoreSubscriptionRegistration[]
+  snapshot: RuntimeCacheBackendSnapshot
+}
+
+interface RuntimeCacheFileSubscriptionState {
+  stores: Map<string, RuntimeCacheStoreSubscriptionState>
 }
 
 export const EXTENSION_RUNTIME_CACHE_DIR_ENV = "JINGLE_EXTENSION_RUNTIME_CACHE_DIR"
@@ -88,6 +125,8 @@ const CACHE_WRITER_LEASE_TEMPORARY_FILE_PATTERN =
   /^writer-lease-[a-f0-9]{64}\.json\.[0-9]+\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/
 const CACHE_WRITER_LEASE_FILE_VERSION = 1
 const CACHE_WRITER_LEASE_MAX_FILE_BYTES = 512
+const CACHE_CHANGE_FEED_MAX_FILES = EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES
+const CACHE_CHANGE_FEED_MAX_STORES_PER_FILE = EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE
 
 const lockSync = (
   properLockfile as typeof properLockfile & {
@@ -162,6 +201,17 @@ export function createFileExtensionRuntimeCacheBackend(
   let failureReported = false
   let acceptingWrites = true
   let writeQueue = Promise.resolve()
+  let pendingWriteCount = 0
+  const subscribedFiles = new Map<string, RuntimeCacheFileSubscriptionState>()
+  const pendingRefreshPaths = new Set<string>()
+  let directoryWatcher: RuntimeCacheDirectoryWatcher | null = null
+  let refreshLoop: Promise<void> | null = null
+
+  const closeDirectoryWatcher = (): void => {
+    directoryWatcher?.close()
+    directoryWatcher = null
+    pendingRefreshPaths.clear()
+  }
 
   const drainWrites = async (): Promise<void> => {
     let pendingWrites: Promise<void>
@@ -188,6 +238,7 @@ export function createFileExtensionRuntimeCacheBackend(
   const recordFailure = (error: unknown): Error => {
     if (!failure) {
       failure = toCachePersistenceError(error)
+      closeDirectoryWatcher()
       reportFailure(failure)
     }
     return failure
@@ -203,9 +254,94 @@ export function createFileExtensionRuntimeCacheBackend(
     return closeViolation
   }
 
+  const waitForStableWrites = async (): Promise<void> => {
+    let pendingWrites: Promise<void>
+    do {
+      pendingWrites = writeQueue
+      await pendingWrites
+    } while (pendingWrites !== writeQueue)
+  }
+
+  const refreshSubscribedFile = (cacheFilePath: string): void => {
+    const fileState = subscribedFiles.get(cacheFilePath)
+    if (!fileState) {
+      return
+    }
+    const result = readCacheFileWithRecoverySync(
+      cacheDir,
+      cacheFilePath,
+      options.lock ?? DEFAULT_LOCK_OPTIONS,
+      options.writerLease
+    )
+    if (result.corruption) {
+      reportCacheCorruptionRecovery()
+    }
+    for (const [storeKey, storeState] of fileState.stores) {
+      applyStoreSubscriptionSnapshot(storeState, {
+        entries: result.cacheFile.stores[storeKey]?.entries ?? [],
+        revision: storeState.revision + 1
+      })
+    }
+  }
+
+  const runRefreshLoop = async (): Promise<void> => {
+    try {
+      while (pendingRefreshPaths.size > 0 && acceptingWrites && !failure) {
+        await waitForStableWrites()
+        const refreshPaths = Array.from(pendingRefreshPaths)
+        pendingRefreshPaths.clear()
+        for (const cacheFilePath of refreshPaths) {
+          refreshSubscribedFile(cacheFilePath)
+        }
+      }
+    } catch (error) {
+      recordFailure(error)
+    } finally {
+      refreshLoop = null
+      if (pendingRefreshPaths.size > 0 && acceptingWrites && !failure) {
+        refreshLoop = runRefreshLoop()
+      }
+    }
+  }
+
+  const scheduleRefresh = (cacheFilePath: string): void => {
+    if (!acceptingWrites || failure || !subscribedFiles.has(cacheFilePath)) {
+      return
+    }
+    pendingRefreshPaths.add(cacheFilePath)
+    refreshLoop ??= runRefreshLoop()
+  }
+
+  const ensureDirectoryWatcher = (): void => {
+    if (directoryWatcher) {
+      return
+    }
+    mkdirSync(cacheDir, { recursive: true })
+    directoryWatcher = (options.watchDirectory ?? watchRuntimeCacheDirectory)(cacheDir, {
+      onChange: (fileName) => {
+        if (fileName === null) {
+          for (const cacheFilePath of subscribedFiles.keys()) {
+            scheduleRefresh(cacheFilePath)
+          }
+          return
+        }
+        for (const cacheFilePath of subscribedFiles.keys()) {
+          if (basename(cacheFilePath) === fileName) {
+            scheduleRefresh(cacheFilePath)
+          }
+        }
+      },
+      onError: (error) => {
+        recordFailure(error)
+      }
+    })
+  }
+
   return {
     async close() {
       acceptingWrites = false
+      closeDirectoryWatcher()
+      subscribedFiles.clear()
       await drainWrites()
     },
     flush: drainWrites,
@@ -237,6 +373,7 @@ export function createFileExtensionRuntimeCacheBackend(
       const cacheFilePath = getStoreFilePath(cacheDir, scope)
       const storeKey = encodeRuntimeCacheBackendScopeKey(scope)
       const mutationSnapshot = cloneMutation(mutation)
+      pendingWriteCount++
       writeQueue = writeQueue
         .then(async () => {
           if (failure) {
@@ -255,6 +392,9 @@ export function createFileExtensionRuntimeCacheBackend(
         .catch((error: unknown) => {
           throw recordFailure(error)
         })
+        .finally(() => {
+          pendingWriteCount--
+        })
       void writeQueue.catch(() => undefined)
     },
     onFailure(listener) {
@@ -266,7 +406,153 @@ export function createFileExtensionRuntimeCacheBackend(
       return () => {
         failureListeners.delete(listener)
       }
+    },
+    subscribeStore(scope, listener) {
+      if (!acceptingWrites) {
+        throw failure ?? recordCloseViolation()
+      }
+      if (failure) {
+        throw failure
+      }
+
+      const cacheFilePath = getStoreFilePath(cacheDir, scope)
+      const storeKey = encodeRuntimeCacheBackendScopeKey(scope)
+      let fileState = subscribedFiles.get(cacheFilePath)
+      if (!fileState) {
+        if (subscribedFiles.size >= CACHE_CHANGE_FEED_MAX_FILES) {
+          throw new RangeError("Extension runtime cache change feed file limit exceeded.")
+        }
+        fileState = { stores: new Map() }
+        subscribedFiles.set(cacheFilePath, fileState)
+      }
+      let storeState = fileState.stores.get(storeKey)
+      if (!storeState) {
+        if (fileState.stores.size >= CACHE_CHANGE_FEED_MAX_STORES_PER_FILE) {
+          throw new RangeError("Extension runtime cache change feed store limit exceeded.")
+        }
+        storeState = {
+          listeners: new Set(),
+          notificationQueue: [],
+          notifyingListeners: false,
+          revision: -1
+        }
+        fileState.stores.set(storeKey, storeState)
+      }
+      const registration: RuntimeCacheStoreSubscriptionRegistration = {
+        active: true,
+        listener
+      }
+      storeState.listeners.add(registration)
+
+      try {
+        ensureDirectoryWatcher()
+        if (pendingWriteCount === 0) {
+          refreshSubscribedFile(cacheFilePath)
+        } else {
+          scheduleRefresh(cacheFilePath)
+        }
+      } catch (error) {
+        registration.active = false
+        storeState.listeners.delete(registration)
+        removeEmptyStoreSubscription(subscribedFiles, cacheFilePath, storeKey)
+        if (subscribedFiles.size === 0) {
+          closeDirectoryWatcher()
+        }
+        throw toCachePersistenceError(error)
+      }
+
+      return () => {
+        const currentFileState = subscribedFiles.get(cacheFilePath)
+        const currentStoreState = currentFileState?.stores.get(storeKey)
+        registration.active = false
+        currentStoreState?.listeners.delete(registration)
+        removeEmptyStoreSubscription(subscribedFiles, cacheFilePath, storeKey)
+        if (subscribedFiles.size === 0) {
+          closeDirectoryWatcher()
+        }
+      }
     }
+  }
+}
+
+function watchRuntimeCacheDirectory(
+  directoryPath: string,
+  listeners: {
+    onChange: (fileName: string | null) => void
+    onError: (error: Error) => void
+  }
+): RuntimeCacheDirectoryWatcher {
+  const watcher = watch(directoryPath, { persistent: false }, (_eventType, fileName) => {
+    listeners.onChange(fileName?.toString() ?? null)
+  })
+  const handleError = (error: Error): void => {
+    listeners.onError(error)
+  }
+  watcher.on("error", handleError)
+  return {
+    close: () => {
+      watcher.off("error", handleError)
+      watcher.close()
+    }
+  }
+}
+
+function applyStoreSubscriptionSnapshot(
+  state: RuntimeCacheStoreSubscriptionState,
+  snapshot: RuntimeCacheBackendSnapshot
+): void {
+  if (snapshot.revision <= state.revision) {
+    return
+  }
+  if (!Number.isSafeInteger(snapshot.revision)) {
+    throw new RangeError("Extension runtime cache change feed revision is exhausted.")
+  }
+  state.revision = snapshot.revision
+  const frozenSnapshot = Object.freeze({
+    entries: Object.freeze(snapshot.entries.map(([key, data]) => [key, data] as const)),
+    revision: state.revision
+  })
+  state.notificationQueue.push({
+    listeners: Array.from(state.listeners),
+    snapshot: frozenSnapshot
+  })
+  if (state.notifyingListeners) {
+    return
+  }
+
+  state.notifyingListeners = true
+  try {
+    while (state.notificationQueue.length > 0) {
+      const batch = state.notificationQueue.shift()!
+      for (const registration of batch.listeners) {
+        if (!registration.active || !state.listeners.has(registration)) {
+          continue
+        }
+        try {
+          registration.listener(batch.snapshot)
+        } catch {
+          console.error("[jingle:extension-runtime] Cache snapshot listener failed.")
+        }
+      }
+    }
+  } finally {
+    state.notifyingListeners = false
+  }
+}
+
+function removeEmptyStoreSubscription(
+  subscribedFiles: Map<string, RuntimeCacheFileSubscriptionState>,
+  cacheFilePath: string,
+  storeKey: string
+): void {
+  const fileState = subscribedFiles.get(cacheFilePath)
+  const storeState = fileState?.stores.get(storeKey)
+  if (!fileState || !storeState || storeState.listeners.size > 0) {
+    return
+  }
+  fileState.stores.delete(storeKey)
+  if (fileState.stores.size === 0) {
+    subscribedFiles.delete(cacheFilePath)
   }
 }
 
@@ -1325,24 +1611,29 @@ function parseCacheFile(raw: string, applyRetention = true): RuntimeCacheFileSha
       : isRecord(rawStore)
         ? rawStore.lastMutationSequence
         : undefined
+    const normalizedEntries =
+      Array.isArray(entries) &&
+      entries.every(
+        (entry) =>
+          Array.isArray(entry) &&
+          entry.length === 2 &&
+          typeof entry[0] === "string" &&
+          typeof entry[1] === "string"
+      )
+        ? (entries as RuntimeCacheEntry[])
+        : null
     if (
-      !Array.isArray(entries) ||
+      !normalizedEntries ||
       !Number.isSafeInteger(lastMutationSequence) ||
       (lastMutationSequence as number) < 0 ||
       (lastMutationSequence as number) > (mutationSequence as number) ||
-      entries.some(
-        (entry) =>
-          !Array.isArray(entry) ||
-          entry.length !== 2 ||
-          typeof entry[0] !== "string" ||
-          typeof entry[1] !== "string"
-      )
+      new Set(normalizedEntries.map(([key]) => key)).size !== normalizedEntries.length
     ) {
       containsInvalidStore = true
       continue
     }
     stores[storeKey] = {
-      entries: entries as RuntimeCacheEntry[],
+      entries: normalizedEntries,
       lastMutationSequence: lastMutationSequence as number
     }
   }

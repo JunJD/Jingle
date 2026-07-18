@@ -26,6 +26,12 @@ export type RuntimeCacheBackendIdentity = ExtensionRuntimeAvailableCacheIdentity
 
 export type RuntimeCacheEntry = readonly [key: string, data: string]
 export type RuntimeCacheBackendFailureListener = (error: Error) => void
+export interface RuntimeCacheBackendSnapshot {
+  entries: readonly RuntimeCacheEntry[]
+  /** Monotonic for one subscribeStore registration; a later registration starts a new feed. */
+  revision: number
+}
+export type RuntimeCacheBackendSnapshotListener = (snapshot: RuntimeCacheBackendSnapshot) => void
 export type RuntimeCacheBackendMutation =
   | { kind: "clear" }
   | {
@@ -40,6 +46,10 @@ export interface RuntimeCacheBackend {
   loadStore: (scope: RuntimeCacheBackendScope) => readonly RuntimeCacheEntry[]
   mutateStore: (scope: RuntimeCacheBackendScope, mutation: RuntimeCacheBackendMutation) => void
   onFailure: (listener: RuntimeCacheBackendFailureListener) => RuntimeCacheSubscription
+  subscribeStore: (
+    scope: RuntimeCacheBackendScope,
+    listener: RuntimeCacheBackendSnapshotListener
+  ) => RuntimeCacheSubscription
 }
 
 export function encodeRuntimeCacheBackendScopeKey(scope: RuntimeCacheBackendScope): string {
@@ -65,11 +75,29 @@ let cacheBackendVersion = 0
 
 interface RuntimeCacheStore {
   backend?: RuntimeCacheBackend
+  backendRevision: number
+  backendSubscriptionGeneration: number
+  backendSubscriptionPending: boolean
+  backendSubscription?: RuntimeCacheSubscription
   backendVersion: number
   entries: Map<string, string>
-  scope?: RuntimeCacheBackendScope
-  subscribers: Set<RuntimeCacheSubscriber>
+  key: string
+  notificationQueue: RuntimeCacheNotificationBatch[]
+  notifyingSubscribers: boolean
+  reportSubscriberFailure: (error: unknown) => void
+  scope: RuntimeCacheBackendScope
+  subscribers: Set<RuntimeCacheSubscriberRegistration>
   totalBytes: number
+}
+
+interface RuntimeCacheNotificationBatch {
+  notifications: readonly (readonly [key: string | undefined, data: string | undefined])[]
+  subscribers: readonly RuntimeCacheSubscriberRegistration[]
+}
+
+interface RuntimeCacheSubscriberRegistration {
+  active: boolean
+  subscriber: RuntimeCacheSubscriber
 }
 
 interface RuntimeCacheBackendGlobal {
@@ -116,11 +144,12 @@ export class Cache {
       removeKeys: evictedKeys,
       upsertEntries: storedData === undefined ? [] : [[key, storedData]]
     })
-    notifyCacheSubscribers(store, key, store.entries.get(key))
-    notifyRemovedCacheEntries(
-      store,
-      evictedKeys.filter((evictedKey) => evictedKey !== key)
-    )
+    enqueueCacheNotifications(store, [
+      [key, store.entries.get(key)],
+      ...evictedKeys
+        .filter((evictedKey) => evictedKey !== key)
+        .map((evictedKey) => [evictedKey, undefined] as const)
+    ])
   }
 
   remove(key: string): boolean {
@@ -132,7 +161,7 @@ export class Cache {
         removeKeys: [key],
         upsertEntries: []
       })
-      notifyCacheSubscribers(store, key, undefined)
+      enqueueCacheNotifications(store, [[key, undefined]])
     }
     return removed
   }
@@ -143,15 +172,23 @@ export class Cache {
     store.totalBytes = 0
     persistCacheMutation(store, { kind: "clear" })
     if (options.notifySubscribers ?? true) {
-      notifyCacheSubscribers(store, undefined, undefined)
+      enqueueCacheNotifications(store, [[undefined, undefined]])
     }
   }
 
   subscribe(subscriber: RuntimeCacheSubscriber): RuntimeCacheSubscription {
     const store = this.#getStore()
-    store.subscribers.add(subscriber)
+    const registration: RuntimeCacheSubscriberRegistration = { active: true, subscriber }
+    store.subscribers.add(registration)
+    try {
+      ensureBackendSubscription(store)
+    } catch (error) {
+      registration.active = false
+      store.subscribers.delete(registration)
+      throw error
+    }
     return () => {
-      store.subscribers.delete(subscriber)
+      removeCacheSubscriber(store, registration)
     }
   }
 
@@ -247,6 +284,7 @@ export function installExtensionRuntimeCacheBackend(
   const previousBackend = runtimeGlobal[RUNTIME_CACHE_BACKEND_GLOBAL_KEY]
   runtimeGlobal[RUNTIME_CACHE_BACKEND_GLOBAL_KEY] = backend
   cacheBackendVersion++
+  migrateActiveCacheStores(backend)
 
   return () => {
     if (runtimeGlobal[RUNTIME_CACHE_BACKEND_GLOBAL_KEY] !== backend) {
@@ -258,16 +296,36 @@ export function installExtensionRuntimeCacheBackend(
       delete runtimeGlobal[RUNTIME_CACHE_BACKEND_GLOBAL_KEY]
     }
     cacheBackendVersion++
+    migrateActiveCacheStores(previousBackend)
+  }
+}
+
+function migrateActiveCacheStores(backend: RuntimeCacheBackend | undefined): void {
+  for (const store of cacheStores.values()) {
+    if (store.subscribers.size === 0) {
+      continue
+    }
+    cancelBackendSubscription(store)
+    store.backendVersion = cacheBackendVersion
+    if (backend) {
+      store.backend = backend
+      ensureBackendSubscription(store)
+    } else {
+      delete store.backend
+    }
   }
 }
 
 function getCacheStore(namespace: string): RuntimeCacheStore {
-  const scope = resolveCacheScope(namespace)
+  const { reportSubscriberFailure, scope } = resolveCacheStoreContext(namespace)
   const storeKey = encodeRuntimeCacheBackendScopeKey(scope)
   const existing = cacheStores.get(storeKey)
   const backend = readRuntimeCacheBackend()
   if (existing && existing.backend === backend && existing.backendVersion === cacheBackendVersion) {
     return existing
+  }
+  if (existing) {
+    cancelBackendSubscription(existing)
   }
 
   const entries = new Map<string, string>()
@@ -278,17 +336,127 @@ function getCacheStore(namespace: string): RuntimeCacheStore {
   }
 
   const store: RuntimeCacheStore = {
-    ...(backend ? { backend, scope } : {}),
+    ...(backend ? { backend } : {}),
+    backendRevision: -1,
+    backendSubscriptionGeneration: 0,
+    backendSubscriptionPending: false,
     backendVersion: cacheBackendVersion,
     entries,
+    key: storeKey,
+    notificationQueue: [],
+    notifyingSubscribers: false,
+    reportSubscriberFailure,
+    scope,
     subscribers: existing?.subscribers ?? new Set(),
     totalBytes
   }
   cacheStores.set(storeKey, store)
+  if (store.subscribers.size > 0) {
+    ensureBackendSubscription(store)
+  }
   return store
 }
 
-function resolveCacheScope(namespace: string): RuntimeCacheBackendScope {
+function removeCacheSubscriber(
+  subscribedStore: RuntimeCacheStore,
+  registration: RuntimeCacheSubscriberRegistration
+): void {
+  const currentStore = cacheStores.get(subscribedStore.key)
+  const owner =
+    currentStore?.subscribers === subscribedStore.subscribers ? currentStore : subscribedStore
+  registration.active = false
+  owner.subscribers.delete(registration)
+  if (owner.subscribers.size === 0) {
+    cancelBackendSubscription(owner)
+  }
+}
+
+function cancelBackendSubscription(store: RuntimeCacheStore): void {
+  store.backendSubscriptionGeneration++
+  const unsubscribe = store.backendSubscription
+  store.backendSubscription = undefined
+  store.backendRevision = -1
+  unsubscribe?.()
+}
+
+function ensureBackendSubscription(store: RuntimeCacheStore): void {
+  if (store.backendSubscription || store.backendSubscriptionPending || !store.backend) {
+    return
+  }
+  store.backendSubscriptionPending = true
+  const backend = store.backend
+  const generation = ++store.backendSubscriptionGeneration
+  try {
+    const unsubscribe = backend.subscribeStore(store.scope, (snapshot) => {
+      if (store.backendSubscriptionGeneration !== generation || store.backend !== backend) {
+        return
+      }
+      applyBackendSnapshot(store, snapshot)
+    })
+    if (store.backendSubscriptionGeneration === generation && store.backend === backend) {
+      store.backendSubscription = unsubscribe
+    } else {
+      unsubscribe()
+    }
+  } finally {
+    store.backendSubscriptionPending = false
+  }
+  if (!store.backendSubscription && store.subscribers.size > 0 && store.backend) {
+    ensureBackendSubscription(store)
+  }
+}
+
+function applyBackendSnapshot(
+  store: RuntimeCacheStore,
+  snapshot: RuntimeCacheBackendSnapshot
+): void {
+  if (!Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0) {
+    throw new TypeError("Extension runtime Cache backend snapshot revision is invalid.")
+  }
+  if (snapshot.revision <= store.backendRevision) {
+    return
+  }
+
+  const nextEntries = new Map<string, string>()
+  let nextTotalBytes = 0
+  for (const entry of snapshot.entries) {
+    if (
+      !Array.isArray(entry) ||
+      entry.length !== 2 ||
+      typeof entry[0] !== "string" ||
+      typeof entry[1] !== "string" ||
+      nextEntries.has(entry[0])
+    ) {
+      throw new TypeError("Extension runtime Cache backend snapshot entries are invalid.")
+    }
+    nextEntries.set(entry[0], entry[1])
+    nextTotalBytes += measureCacheEntry(entry[0], entry[1])
+  }
+
+  const previousEntries = store.entries
+  const notifications: Array<readonly [key: string, data: string | undefined]> = []
+  for (const [key, previousData] of previousEntries) {
+    const nextData = nextEntries.get(key)
+    if (nextData !== previousData) {
+      notifications.push([key, nextData])
+    }
+  }
+  for (const [key, nextData] of nextEntries) {
+    if (!previousEntries.has(key)) {
+      notifications.push([key, nextData])
+    }
+  }
+
+  store.backendRevision = snapshot.revision
+  store.entries = nextEntries
+  store.totalBytes = nextTotalBytes
+  enqueueCacheNotifications(store, notifications)
+}
+
+function resolveCacheStoreContext(namespace: string): {
+  reportSubscriberFailure: (error: unknown) => void
+  scope: RuntimeCacheBackendScope
+} {
   const context = getActiveExtensionRuntimeSdk()
   if (context.dataIdentity.kind !== "available") {
     throw new Error("Extension runtime Cache requires an available data identity.")
@@ -298,14 +466,21 @@ function resolveCacheScope(namespace: string): RuntimeCacheBackendScope {
   }
 
   return {
-    commandName: context.commandName,
-    extensionName: context.extensionName,
-    identity: {
-      ...context.dataIdentity.localStorage,
-      ...context.dataIdentity.cache
-    },
-    namespace
+    reportSubscriberFailure: context.reportFatalError ?? reportUnhandledCacheSubscriberFailure,
+    scope: {
+      commandName: context.commandName,
+      extensionName: context.extensionName,
+      identity: {
+        ...context.dataIdentity.localStorage,
+        ...context.dataIdentity.cache
+      },
+      namespace
+    }
   }
+}
+
+function reportUnhandledCacheSubscriberFailure(): void {
+  console.error("[jingle:extension-runtime] Cache subscriber failed without a runtime owner.")
 }
 
 function readRuntimeCacheBackend(): RuntimeCacheBackend | undefined {
@@ -340,27 +515,66 @@ function persistCacheMutation(
   store: RuntimeCacheStore,
   mutation: RuntimeCacheBackendMutation
 ): void {
-  if (!store.backend || !store.scope) {
+  if (!store.backend) {
     return
   }
 
   store.backend.mutateStore(store.scope, mutation)
 }
 
-function notifyCacheSubscribers(
+function enqueueCacheNotifications(
   store: RuntimeCacheStore,
-  key: string | undefined,
-  data: string | undefined
+  notifications: readonly (readonly [key: string | undefined, data: string | undefined])[]
 ): void {
-  for (const subscriber of store.subscribers) {
-    subscriber(key, data)
+  if (notifications.length === 0 || store.subscribers.size === 0) {
+    return
+  }
+  store.notificationQueue.push({
+    notifications,
+    subscribers: Array.from(store.subscribers)
+  })
+  if (store.notifyingSubscribers) {
+    return
+  }
+
+  store.notifyingSubscribers = true
+  try {
+    while (store.notificationQueue.length > 0) {
+      const batch = store.notificationQueue.shift()!
+      for (const [key, data] of batch.notifications) {
+        if (!cacheNotificationMatchesCurrentStore(store, key, data)) {
+          continue
+        }
+        for (const registration of batch.subscribers) {
+          if (!registration.active || !store.subscribers.has(registration)) {
+            continue
+          }
+          if (!cacheNotificationMatchesCurrentStore(store, key, data)) {
+            break
+          }
+          try {
+            registration.subscriber(key, data)
+          } catch (error) {
+            try {
+              store.reportSubscriberFailure(error)
+            } catch {
+              // A failing diagnostic projection must not prevent the remaining subscribers.
+            }
+          }
+        }
+      }
+    }
+  } finally {
+    store.notifyingSubscribers = false
   }
 }
 
-function notifyRemovedCacheEntries(store: RuntimeCacheStore, keys: readonly string[]): void {
-  for (const key of keys) {
-    notifyCacheSubscribers(store, key, undefined)
-  }
+function cacheNotificationMatchesCurrentStore(
+  store: RuntimeCacheStore,
+  key: string | undefined,
+  data: string | undefined
+): boolean {
+  return key === undefined ? store.entries.size === 0 : store.entries.get(key) === data
 }
 
 function measureCacheEntry(key: string, data: string): number {

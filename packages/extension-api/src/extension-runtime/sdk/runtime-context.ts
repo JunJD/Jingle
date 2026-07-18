@@ -24,6 +24,7 @@ export type ExtensionRuntimeHostRequestInput = ExtensionHostRequest extends infe
 
 export interface ExtensionRuntimeSdkContextValue extends ExtensionRuntimeLaunchContext {
   navigation: ExtensionRuntimeNavigation
+  reportFatalError?: (error: unknown) => void
   requestHost: (request: ExtensionRuntimeHostRequestInput) => Promise<ExtensionHostResponse>
   registerToastAction?: (handler: RuntimeToastActionHandler) => RuntimeToastActionRegistration
 }

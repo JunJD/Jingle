@@ -15,7 +15,7 @@ import {
   writeFileSync
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { basename, join, resolve } from "node:path"
 import test from "node:test"
 import { promisify } from "node:util"
 import {
@@ -26,13 +26,15 @@ import {
   EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES,
   EXTENSION_RUNTIME_CACHE_MAX_FILE_SET_BYTES,
   EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE,
+  type RuntimeCacheDirectoryWatch,
   writeRuntimeCacheBufferFully,
   writeRuntimeCacheBufferFullySync
 } from "../../src/extension-runtime/cache-backend"
 import { createExtensionRuntimeCacheLifecycle } from "../../src/extension-runtime/cache-lifecycle"
 import {
   encodeRuntimeCacheBackendScopeKey,
-  type RuntimeCacheBackend
+  type RuntimeCacheBackend,
+  type RuntimeCacheEntry
 } from "@jingle/extension-api/host-runtime"
 
 const cacheIdentity = {
@@ -972,6 +974,352 @@ test("file runtime cache backend recovers an orphan lock and drains writes queue
     assert.deepEqual(recoveringBackend.loadStore(notionScope), [["page", "page-2"]])
   })
 })
+
+test("live cache subscriptions reread exact durable snapshots across backend instances", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const watchHub = new FakeRuntimeCacheWatchHub()
+    const firstBackend = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      watchDirectory: watchHub.watch
+    })
+    const secondBackend = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      watchDirectory: watchHub.watch
+    })
+    const snapshots: Array<{
+      entries: readonly (readonly [string, string])[]
+      revision: number
+    }> = []
+    const unsubscribe = secondBackend.subscribeStore(notionScope, (snapshot) => {
+      snapshots.push(structuredClone(snapshot))
+    })
+    const cacheFileName = basename(getCacheFilePathForScope(cacheDir, notionScope))
+
+    assert.deepEqual(snapshots, [{ entries: [], revision: 0 }])
+    assert.equal(watchHub.activeWatcherCount, 1)
+
+    writeEntries(firstBackend, notionScope, [["page", "external-1"]])
+    await firstBackend.flush()
+    watchHub.emit("store-unrelated.json")
+    await settleCacheChangeFeed()
+    assert.equal(snapshots.length, 1)
+
+    watchHub.emit(cacheFileName)
+    await settleCacheChangeFeed()
+    assert.deepEqual(snapshots.at(-1)?.entries, [["page", "external-1"]])
+
+    writeEntries(firstBackend, notionScope, [["page", "external-2"]])
+    await firstBackend.flush()
+    writeEntries(secondBackend, notionScope, [["page", "local-after-external"]])
+    watchHub.emit(cacheFileName)
+    await secondBackend.flush()
+    await settleCacheChangeFeed()
+    assert.deepEqual(snapshots.at(-1)?.entries, [["page", "local-after-external"]])
+
+    watchHub.emit(cacheFileName)
+    await settleCacheChangeFeed()
+    assert.deepEqual(snapshots.at(-1)?.entries, [["page", "local-after-external"]])
+    assert.deepEqual(
+      snapshots.map((snapshot) => snapshot.revision),
+      snapshots.map((_, index) => index)
+    )
+
+    writeEntries(firstBackend, notionScope, [["page", "null-filename-wake"]])
+    await firstBackend.flush()
+    watchHub.emit(null)
+    await settleCacheChangeFeed()
+    assert.deepEqual(snapshots.at(-1)?.entries, [["page", "null-filename-wake"]])
+
+    firstBackend.mutateStore(notionScope, { kind: "clear" })
+    await firstBackend.flush()
+    watchHub.emit(cacheFileName)
+    await settleCacheChangeFeed()
+    assert.deepEqual(snapshots.at(-1)?.entries, [])
+
+    const snapshotCountBeforeCancel = snapshots.length
+    unsubscribe()
+    assert.equal(watchHub.activeWatcherCount, 0)
+    writeEntries(firstBackend, notionScope, [["page", "after-cancel"]])
+    await firstBackend.flush()
+    watchHub.emit(cacheFileName)
+    await settleCacheChangeFeed()
+    assert.equal(snapshots.length, snapshotCountBeforeCancel)
+
+    await firstBackend.close()
+    await secondBackend.close()
+  })
+})
+
+test("cache change feed failure is bounded, terminal, and cancels its watcher", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const watchHub = new FakeRuntimeCacheWatchHub()
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      watchDirectory: watchHub.watch
+    })
+    const failures: Error[] = []
+    backend.onFailure((error) => failures.push(error))
+    backend.subscribeStore(notionScope, () => undefined)
+
+    watchHub.fail(new Error("raw watcher path and payload"))
+
+    assert.equal(watchHub.activeWatcherCount, 0)
+    assert.equal(failures.length, 1)
+    assert.equal(failures[0]?.message, "Extension runtime cache persistence failed.")
+    assert.equal(failures[0]?.message.includes("raw watcher"), false)
+    await assert.rejects(backend.flush(), /Extension runtime cache persistence failed/)
+    assert.throws(
+      () => backend.subscribeStore(notionScope, () => undefined),
+      /Extension runtime cache persistence failed/
+    )
+  })
+})
+
+test("cache change feed bounds active aggregate files behind one watcher", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const watchHub = new FakeRuntimeCacheWatchHub()
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      watchDirectory: watchHub.watch
+    })
+    const unsubscribers: Array<() => void> = []
+    for (let index = 0; index < EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES; index++) {
+      unsubscribers.push(
+        backend.subscribeStore(
+          { ...notionScope, namespace: `bounded-live-namespace-${index}` },
+          () => undefined
+        )
+      )
+    }
+
+    assert.equal(watchHub.activeWatcherCount, 1)
+    assert.throws(
+      () =>
+        backend.subscribeStore(
+          { ...notionScope, namespace: "bounded-live-namespace-overflow" },
+          () => undefined
+        ),
+      /change feed file limit exceeded/
+    )
+
+    for (const unsubscribe of unsubscribers) {
+      unsubscribe()
+    }
+    assert.equal(watchHub.activeWatcherCount, 0)
+    await backend.close()
+  })
+})
+
+test("cache subscription does not replace an accepted local write with an older snapshot", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const watchHub = new FakeRuntimeCacheWatchHub()
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      watchDirectory: watchHub.watch
+    })
+    const snapshots: Array<{
+      entries: readonly (readonly [string, string])[]
+      revision: number
+    }> = []
+
+    writeEntries(backend, notionScope, [["page", "accepted-local-write"]])
+    const unsubscribe = backend.subscribeStore(notionScope, (snapshot) => {
+      snapshots.push(structuredClone(snapshot))
+    })
+
+    assert.deepEqual(snapshots, [])
+    await backend.flush()
+    await settleCacheChangeFeed()
+    assert.deepEqual(snapshots, [{ entries: [["page", "accepted-local-write"]], revision: 0 }])
+
+    unsubscribe()
+    assert.equal(watchHub.activeWatcherCount, 0)
+    await backend.close()
+  })
+})
+
+test("throwing snapshot listeners do not poison persistence or block other listeners", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const watchHub = new FakeRuntimeCacheWatchHub()
+    const writer = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      watchDirectory: watchHub.watch
+    })
+    const reader = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      watchDirectory: watchHub.watch
+    })
+    const persistenceFailures: Error[] = []
+    const received: Array<readonly RuntimeCacheEntry[]> = []
+    reader.onFailure((error) => persistenceFailures.push(error))
+    const diagnostics: string[] = []
+    const originalConsoleError = console.error
+    console.error = (...args) => diagnostics.push(args.map(String).join(" "))
+    let unsubscribeThrowing: () => void = () => undefined
+    let unsubscribeReceiving: () => void = () => undefined
+    try {
+      unsubscribeThrowing = reader.subscribeStore(notionScope, () => {
+        throw new Error("consumer callback failure")
+      })
+      unsubscribeReceiving = reader.subscribeStore(notionScope, (snapshot) => {
+        received.push(structuredClone(snapshot.entries))
+      })
+      writeEntries(writer, notionScope, [["page", "still-delivered"]])
+      await writer.flush()
+      watchHub.emit(basename(getCacheFilePathForScope(cacheDir, notionScope)))
+      await settleCacheChangeFeed()
+      await reader.flush()
+    } finally {
+      unsubscribeReceiving()
+      unsubscribeThrowing()
+      console.error = originalConsoleError
+    }
+
+    assert.deepEqual(received.at(-1), [["page", "still-delivered"]])
+    assert.deepEqual(persistenceFailures, [])
+    assert.ok(diagnostics.length >= 1)
+    assert.ok(
+      diagnostics.every(
+        (diagnostic) => diagnostic === "[jingle:extension-runtime] Cache snapshot listener failed."
+      )
+    )
+    await writer.close()
+    await reader.close()
+  })
+})
+
+test("reentrant cache subscriptions preserve each registration revision order", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const watchHub = new FakeRuntimeCacheWatchHub()
+    const writer = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      watchDirectory: watchHub.watch
+    })
+    const reader = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      watchDirectory: watchHub.watch
+    })
+    const firstRevisions: number[] = []
+    const secondRevisions: number[] = []
+    const reentrantRevisions: number[] = []
+    let armReentrantSubscribe = false
+    let unsubscribeReentrant: () => void = () => undefined
+    const unsubscribeFirst = reader.subscribeStore(notionScope, (snapshot) => {
+      firstRevisions.push(snapshot.revision)
+      if (armReentrantSubscribe) {
+        armReentrantSubscribe = false
+        unsubscribeReentrant = reader.subscribeStore(notionScope, (nestedSnapshot) => {
+          reentrantRevisions.push(nestedSnapshot.revision)
+        })
+      }
+    })
+    const unsubscribeSecond = reader.subscribeStore(notionScope, (snapshot) => {
+      secondRevisions.push(snapshot.revision)
+    })
+    armReentrantSubscribe = true
+
+    writeEntries(writer, notionScope, [["page", "revision-order"]])
+    await writer.flush()
+    watchHub.emit(basename(getCacheFilePathForScope(cacheDir, notionScope)))
+    await settleCacheChangeFeed()
+
+    assert.deepEqual(firstRevisions, [0, 1, 2, 3])
+    assert.deepEqual(secondRevisions, [1, 2, 3])
+    assert.deepEqual(reentrantRevisions, [3])
+    assertStrictlyIncreasing(firstRevisions)
+    assertStrictlyIncreasing(secondRevisions)
+    assertStrictlyIncreasing(reentrantRevisions)
+
+    unsubscribeReentrant()
+    unsubscribeSecond()
+    unsubscribeFirst()
+    await writer.close()
+    await reader.close()
+  })
+})
+
+test("duplicate cache keys recover through the durable corruption owner", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const initialBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    writeEntries(initialBackend, notionScope, [["page", "original"]])
+    writeEntries(initialBackend, notionSecondaryScope, [["notification", "preserved"]])
+    await initialBackend.flush()
+    const cacheFilePath = getCacheFilePath(cacheDir)
+    const cacheFile = JSON.parse(readFileSync(cacheFilePath, "utf8")) as {
+      stores: Record<
+        string,
+        {
+          entries: RuntimeCacheEntry[]
+          lastMutationSequence: number
+        }
+      >
+    }
+    cacheFile.stores[encodeRuntimeCacheBackendScopeKey(notionScope)]!.entries = [
+      ["page", "first-duplicate"],
+      ["page", "second-duplicate"]
+    ]
+    writeFileSync(cacheFilePath, `${JSON.stringify(cacheFile, null, 2)}\n`)
+
+    const watchHub = new FakeRuntimeCacheWatchHub()
+    const recoveringBackend = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      watchDirectory: watchHub.watch
+    })
+    const snapshots: Array<readonly RuntimeCacheEntry[]> = []
+    const diagnostics: string[] = []
+    const originalConsoleError = console.error
+    console.error = (...args) => diagnostics.push(args.map(String).join(" "))
+    try {
+      recoveringBackend.subscribeStore(notionScope, (snapshot) => {
+        snapshots.push(structuredClone(snapshot.entries))
+      })
+    } finally {
+      console.error = originalConsoleError
+    }
+
+    assert.deepEqual(snapshots, [[]])
+    assert.deepEqual(recoveringBackend.loadStore(notionSecondaryScope), [
+      ["notification", "preserved"]
+    ])
+    assert.deepEqual(diagnostics, [cacheCorruptionRecoveryDiagnostic])
+    assert.match(readFileSync(`${cacheFilePath}.corrupt`, "utf8"), /first-duplicate/)
+    assert.doesNotMatch(readFileSync(cacheFilePath, "utf8"), /first-duplicate/)
+    await recoveringBackend.close()
+  })
+})
+
+class FakeRuntimeCacheWatchHub {
+  private readonly listeners = new Set<{
+    onChange: (fileName: string | null) => void
+    onError: (error: Error) => void
+  }>()
+
+  readonly watch: RuntimeCacheDirectoryWatch = (_directoryPath, listeners) => {
+    this.listeners.add(listeners)
+    return {
+      close: () => {
+        this.listeners.delete(listeners)
+      }
+    }
+  }
+
+  get activeWatcherCount(): number {
+    return this.listeners.size
+  }
+
+  emit(fileName: string | null): void {
+    for (const listeners of Array.from(this.listeners)) {
+      listeners.onChange(fileName)
+    }
+  }
+
+  fail(error: Error): void {
+    for (const listeners of Array.from(this.listeners)) {
+      listeners.onError(error)
+    }
+  }
+}
+
+async function settleCacheChangeFeed(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  await new Promise<void>((resolve) => setImmediate(resolve))
+}
+
+function assertStrictlyIncreasing(revisions: readonly number[]): void {
+  for (let index = 1; index < revisions.length; index++) {
+    assert.ok(revisions[index]! > revisions[index - 1]!)
+  }
+}
 
 function createScope(commandName: string): Parameters<RuntimeCacheBackend["loadStore"]>[0] {
   return {

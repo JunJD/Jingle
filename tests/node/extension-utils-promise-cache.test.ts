@@ -601,7 +601,8 @@ function createMemoryBackend(
         applyMutation(stores.get(JSON.stringify(scope)) ?? [], mutation)
       )
     },
-    onFailure: () => () => undefined
+    onFailure: () => () => undefined,
+    subscribeStore: () => () => undefined
   }
   return {
     backend,

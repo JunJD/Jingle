@@ -33,6 +33,10 @@ class FakeRuntimeCacheBackend implements RuntimeCacheBackend {
     }
   }
 
+  subscribeStore(): () => void {
+    return () => undefined
+  }
+
   reportFailure(): void {
     for (const listener of this.failureListeners) {
       listener(new Error("raw cache path must stay inside the utility process"))

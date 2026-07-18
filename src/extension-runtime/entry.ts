@@ -149,6 +149,7 @@ async function startRuntime(
         {
           ...resolvedContext,
           navigation,
+          reportFatalError,
           requestHost: requestHostWithId
         },
         () =>

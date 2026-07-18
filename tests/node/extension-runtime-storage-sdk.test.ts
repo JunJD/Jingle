@@ -619,6 +619,178 @@ test("Cache read and subscribe do not persist over-capacity backend snapshots", 
   }
 })
 
+test("Cache applies only newer backend snapshots and cancels the change feed", async () => {
+  let activeListener: Parameters<RuntimeCacheBackend["subscribeStore"]>[1] | null = null
+  let initialEntries: RuntimeCacheEntry[] = []
+  let unsubscribeCount = 0
+  const backend: RuntimeCacheBackend = {
+    ...createBackendLifecycle(),
+    loadStore: () => [],
+    mutateStore: () => undefined,
+    subscribeStore(_scope, listener) {
+      activeListener = listener
+      listener({ entries: initialEntries, revision: 0 })
+      return () => {
+        if (activeListener === listener) {
+          activeListener = null
+        }
+        unsubscribeCount++
+      }
+    }
+  }
+  const uninstallBackend = installExtensionRuntimeCacheBackend(backend)
+
+  try {
+    await runWithCacheContext(() => {
+      const cache = new Cache({ namespace: "live-snapshot-ordering" })
+      const events: Array<{ data: string | undefined; key: string | undefined }> = []
+      const unsubscribe = cache.subscribe((key, data) => events.push({ data, key }))
+      const listener = activeListener
+      assert.ok(listener)
+
+      listener({ entries: [["page", "page-2"]], revision: 2 })
+      listener({ entries: [["page", "stale-page"]], revision: 1 })
+      listener({ entries: [], revision: 3 })
+
+      assert.deepEqual(events, [
+        { data: "page-2", key: "page" },
+        { data: undefined, key: "page" }
+      ])
+      assert.equal(cache.get("page"), undefined)
+
+      unsubscribe()
+      assert.equal(activeListener, null)
+      assert.equal(unsubscribeCount, 1)
+
+      initialEntries = [["page", "resubscribed-page"]]
+      const resumedEvents: Array<{ data: string | undefined; key: string | undefined }> = []
+      const unsubscribeResumed = cache.subscribe((key, data) => resumedEvents.push({ data, key }))
+      assert.deepEqual(resumedEvents, [{ data: "resubscribed-page", key: "page" }])
+      assert.equal(cache.get("page"), "resubscribed-page")
+      unsubscribeResumed()
+      assert.equal(unsubscribeCount, 2)
+    })
+  } finally {
+    uninstallBackend()
+  }
+})
+
+test("Cache isolates throwing subscribers and preserves reentrant notification order", async () => {
+  let activeListener: Parameters<RuntimeCacheBackend["subscribeStore"]>[1] | null = null
+  const backend: RuntimeCacheBackend = {
+    ...createBackendLifecycle(),
+    loadStore: () => [],
+    mutateStore: () => undefined,
+    subscribeStore(_scope, listener) {
+      activeListener = listener
+      listener({ entries: [], revision: 0 })
+      return () => {
+        if (activeListener === listener) {
+          activeListener = null
+        }
+      }
+    }
+  }
+  const uninstallBackend = installExtensionRuntimeCacheBackend(backend)
+  const failures: unknown[] = []
+
+  try {
+    await runWithCacheContext(
+      () => {
+        const cache = new Cache({ namespace: "subscriber-reentrant-order" })
+        const observed: string[] = []
+        const lateObserved: string[] = []
+        const reusedObserved: string[] = []
+        const selfObserved: string[] = []
+        let unsubscribeLate: () => void = () => undefined
+        const reusedSubscriber = (key: string | undefined, data?: string): void => {
+          reusedObserved.push(`${key}:${data}`)
+        }
+        let unsubscribeReused: () => void = () => undefined
+        let unsubscribeSelf: () => void = () => undefined
+
+        const unsubscribeThrowing = cache.subscribe(() => {
+          throw new Error("subscriber exploded")
+        })
+        const unsubscribeReentrant = cache.subscribe((key, data) => {
+          observed.push(`${key}:${data}`)
+          if (key === "a") {
+            const oldUnsubscribeReused = unsubscribeReused
+            oldUnsubscribeReused()
+            unsubscribeReused = cache.subscribe(reusedSubscriber)
+            oldUnsubscribeReused()
+            unsubscribeLate = cache.subscribe((lateKey, lateData) => {
+              lateObserved.push(`${lateKey}:${lateData}`)
+            })
+            cache.set("b", "local-b")
+          }
+        })
+        unsubscribeReused = cache.subscribe(reusedSubscriber)
+        unsubscribeSelf = cache.subscribe((key, data) => {
+          selfObserved.push(`${key}:${data}`)
+          unsubscribeSelf()
+        })
+        const listener = activeListener
+        assert.ok(listener)
+
+        listener({
+          entries: [
+            ["a", "external-a"],
+            ["b", "external-b"]
+          ],
+          revision: 1
+        })
+
+        assert.deepEqual(observed, ["a:external-a", "b:local-b"])
+        assert.deepEqual(lateObserved, ["b:local-b"])
+        assert.deepEqual(reusedObserved, ["b:local-b"])
+        assert.deepEqual(selfObserved, ["a:external-a"])
+        assert.equal(cache.get("b"), "local-b")
+        assert.equal(failures.length, 2)
+
+        unsubscribeLate()
+        unsubscribeReused()
+        unsubscribeReentrant()
+        unsubscribeThrowing()
+      },
+      createAvailableDataIdentity(),
+      "search-page",
+      (error) => failures.push(error)
+    )
+  } finally {
+    uninstallBackend()
+  }
+})
+
+test("Cache migrates an active change feed when the backend is replaced", async () => {
+  const first = createTrackedSnapshotBackend([["page", "first"]])
+  const second = createTrackedSnapshotBackend([["page", "second"]])
+  const uninstallFirst = installExtensionRuntimeCacheBackend(first.backend)
+
+  try {
+    await runWithCacheContext(() => {
+      const cache = new Cache({ namespace: "backend-replacement-feed" })
+      const events: string[] = []
+      const unsubscribe = cache.subscribe((_key, data) => events.push(data ?? "removed"))
+      assert.equal(first.subscribeCount, 1)
+      assert.equal(first.unsubscribeCount, 0)
+
+      const uninstallSecond = installExtensionRuntimeCacheBackend(second.backend)
+      assert.equal(first.unsubscribeCount, 1)
+      assert.equal(second.subscribeCount, 1)
+      first.publishLate([["page", "late-first"]], 99)
+      assert.equal(cache.get("page"), "second")
+      assert.deepEqual(events, ["second"])
+
+      unsubscribe()
+      assert.equal(second.unsubscribeCount, 1)
+      uninstallSecond()
+    })
+  } finally {
+    uninstallFirst()
+  }
+})
+
 function createLaunchContext(): ExtensionRuntimeLaunchContext {
   return {
     commandName: "search-page",
@@ -655,11 +827,15 @@ function createAvailableDataIdentity(
   }
 }
 
-function createBackendLifecycle(): Pick<RuntimeCacheBackend, "close" | "flush" | "onFailure"> {
+function createBackendLifecycle(): Pick<
+  RuntimeCacheBackend,
+  "close" | "flush" | "onFailure" | "subscribeStore"
+> {
   return {
     close: async () => undefined,
     flush: async () => undefined,
-    onFailure: () => () => undefined
+    onFailure: () => () => undefined,
+    subscribeStore: () => () => undefined
   }
 }
 
@@ -688,7 +864,8 @@ function applyBackendMutation(
 async function runWithCacheContext<T>(
   callback: () => Promise<T> | T,
   dataIdentity: ExtensionRuntimeDataIdentityState = createAvailableDataIdentity(),
-  commandName = "search-page"
+  commandName = "search-page",
+  reportFatalError?: (error: unknown) => void
 ): Promise<T> {
   const requestHost = async (): Promise<ExtensionHostResponse> => ({
     id: "cache-context",
@@ -701,10 +878,47 @@ async function runWithCacheContext<T>(
       commandName,
       dataIdentity,
       navigation: createExtensionRuntimeNavigation({ requestHost }),
+      ...(reportFatalError ? { reportFatalError } : {}),
       requestHost
     },
     callback
   )
+}
+
+function createTrackedSnapshotBackend(initialEntries: RuntimeCacheEntry[]): {
+  backend: RuntimeCacheBackend
+  publishLate: (entries: RuntimeCacheEntry[], revision: number) => void
+  readonly subscribeCount: number
+  readonly unsubscribeCount: number
+} {
+  let subscribeCount = 0
+  let unsubscribeCount = 0
+  let lastListener: Parameters<RuntimeCacheBackend["subscribeStore"]>[1] | null = null
+  const backend: RuntimeCacheBackend = {
+    ...createBackendLifecycle(),
+    loadStore: () => initialEntries,
+    mutateStore: () => undefined,
+    subscribeStore(_scope, listener) {
+      subscribeCount++
+      lastListener = listener
+      listener({ entries: initialEntries, revision: 0 })
+      return () => {
+        unsubscribeCount++
+      }
+    }
+  }
+  return {
+    backend,
+    publishLate(entries, revision) {
+      lastListener?.({ entries, revision })
+    },
+    get subscribeCount() {
+      return subscribeCount
+    },
+    get unsubscribeCount() {
+      return unsubscribeCount
+    }
+  }
 }
 
 function createCacheScope(extensionName: string, namespace: string): RuntimeCacheBackendScope {
