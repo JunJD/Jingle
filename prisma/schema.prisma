@@ -241,9 +241,11 @@ model Run {
   agentMemorySuggestions AgentMemorySuggestion[]
   agentMemoryInclusions  AgentMemoryInclusion[]
   assistantContentProjectionJob AssistantContentProjectionJob?
+  computerUseAttempts   ComputerUseAttempt[]
 
   @@index([threadId], map: "idx_runs_thread_id")
   @@index([status], map: "idx_runs_status")
+  @@unique([runId, threadId], map: "uidx_runs_run_id_thread_id")
   @@map("runs")
 }
 
@@ -275,10 +277,15 @@ model AssistantContentProjectionBlockedInput {
 
 model ComputerUseAttempt {
   attemptId   String @id @map("attempt_id")
+  runId       String @map("run_id")
+  threadId    String @map("thread_id")
   phase       String
   revision    Int
   payloadJson String @map("payload_json")
+  run         Run    @relation(fields: [runId, threadId], references: [runId, threadId], onDelete: Cascade)
 
+  @@index([runId], map: "idx_computer_use_attempts_run_id")
+  @@index([threadId], map: "idx_computer_use_attempts_thread_id")
   @@map("computer_use_attempts")
 }
 

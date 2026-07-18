@@ -63,7 +63,9 @@ export class PrismaComputerUseActionLedgerPort implements ComputerUseActionLedge
       where: {
         attemptId: normalized.attemptId,
         phase: input.expectedPhase,
-        revision: input.expectedRevision
+        revision: input.expectedRevision,
+        runId: normalized.authorization.runId,
+        threadId: normalized.authorization.threadId
       }
     })
     if (updated.count === 1) return { status: "applied" }
@@ -87,15 +89,22 @@ function encodeComputerUseAttempt(attempt: ComputerUseActionAttempt): ComputerUs
     attemptId: attempt.attemptId,
     payloadJson: JSON.stringify(attempt),
     phase: attempt.phase,
-    revision: attempt.revision
+    revision: attempt.revision,
+    runId: attempt.authorization.runId,
+    threadId: attempt.authorization.threadId
   }
 }
 
 function decodeComputerUseAttempt(row: ComputerUseAttemptRow): ComputerUseActionAttempt {
   try {
     const attempt = parseComputerUseActionAttempt(JSON.parse(row.payloadJson), row.attemptId)
-    if (attempt.phase !== row.phase || attempt.revision !== row.revision) {
-      throw new Error("Persisted phase or revision disagrees with its canonical payload.")
+    if (
+      attempt.phase !== row.phase ||
+      attempt.revision !== row.revision ||
+      attempt.authorization.runId !== row.runId ||
+      attempt.authorization.threadId !== row.threadId
+    ) {
+      throw new Error("Persisted owner, phase, or revision disagrees with its canonical payload.")
     }
     return attempt
   } catch (error) {

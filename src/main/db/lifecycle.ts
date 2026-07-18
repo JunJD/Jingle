@@ -88,7 +88,7 @@ const REQUIRED_TABLE_COLUMNS = {
     "source_revision",
     "reason"
   ],
-  computer_use_attempts: ["attempt_id", "phase", "revision", "payload_json"]
+  computer_use_attempts: ["attempt_id", "run_id", "thread_id", "phase", "revision", "payload_json"]
 } as const
 const DATABASE_SCHEMA_RECOVERY_HINT =
   "The app applies packaged Prisma migrations automatically during startup; if this is a packaged install, restart Jingle and check the main-process logs. In development, run `node scripts/run-prisma-jingle-db.mjs migrate deploy`."
