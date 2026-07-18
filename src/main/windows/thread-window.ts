@@ -5,6 +5,7 @@ import { attachWindowDiagnostics } from "../diagnostics/electron-events"
 import { getAppThemeSettings } from "../preferences"
 import { installExternalWindowOpenHandler } from "./external-window-open"
 import { startRendererWindowLoad } from "./load-renderer-window"
+import { showTerminalRendererWindowFailure } from "./renderer-window-failure-dialog"
 import { createThemeTitleBarOverlay } from "./title-bar-overlay"
 import { installWindowPresentation, requestWindowPresentation } from "./window-presentation"
 import { registerDurableWindowIdentity } from "./window-identity"
@@ -79,7 +80,13 @@ export function createThreadWindow(
   installExternalWindowOpenHandler(window.webContents)
   startRendererWindowLoad(window, THREAD_WINDOW_KIND, {
     onFailure: observeFailure,
-    onTerminalFailure: options.onRendererFailure,
+    onTerminalFailure: (failure) => {
+      try {
+        showTerminalRendererWindowFailure(failure)
+      } finally {
+        options.onRendererFailure()
+      }
+    },
     query: { windowId: input.windowId, ...(input.threadId ? { threadId: input.threadId } : {}) }
   })
   requestWindowPresentation(window, { activate: options.activate })

@@ -6,10 +6,17 @@ import {
   attachWindowDiagnosticsWithLogger,
   type WindowDiagnosticsLogger
 } from "../../src/main/diagnostics/window-events"
+import type {
+  DiagnosticGraphEventInput,
+  DiagnosticGraphSink
+} from "../../src/main/diagnostics/schema"
 import {
+  type AppWindowKind,
   beginRendererWindowShutdown,
+  resolveRendererWindowRecoveryDecision,
   startRendererWindowLoad
 } from "../../src/main/windows/load-renderer-window"
+import type { RendererWindowLoadFailure } from "../../src/main/windows/load-renderer-window"
 import {
   installWindowPresentation,
   requestWindowPresentation
@@ -56,11 +63,26 @@ class FakeDiagnosticsLogger implements WindowDiagnosticsLogger {
   }
 }
 
+class FakeDiagnosticGraph implements DiagnosticGraphSink {
+  readonly inputs: DiagnosticGraphEventInput[] = []
+
+  capture(input: DiagnosticGraphEventInput) {
+    this.inputs.push(input)
+    return {
+      eventId: `event-${this.inputs.length}`,
+      sequence: this.inputs.length,
+      sessionId: "test"
+    }
+  }
+}
+
 class FakeBrowserWindow extends EventEmitter {
   readonly id = nextWindowId++
   destroyCount = 0
   focusCount = 0
+  loadFileCount = 0
   loadFilePromise: Promise<void> = new Promise(() => undefined)
+  loadFileResults: Promise<void>[] = []
   minimized = false
   restoreCount = 0
   showCount = 0
@@ -93,11 +115,13 @@ class FakeBrowserWindow extends EventEmitter {
   }
 
   loadFile(): Promise<void> {
-    return this.loadFilePromise
+    this.loadFileCount += 1
+    return this.loadFileResults.shift() ?? this.loadFilePromise
   }
 
   loadURL(): Promise<void> {
-    return this.loadFilePromise
+    this.loadFileCount += 1
+    return this.loadFileResults.shift() ?? this.loadFilePromise
   }
 
   restore(): void {
@@ -124,12 +148,20 @@ function startLoad(
   window: FakeBrowserWindow,
   options: {
     logger?: FakeDiagnosticsLogger
+    graph?: DiagnosticGraphSink
     onTerminalFailure?: () => void
+    windowKind?: AppWindowKind
   } = {}
 ): FakeDiagnosticsLogger {
   const logger = options.logger ?? new FakeDiagnosticsLogger()
-  const onFailure = attachWindowDiagnosticsWithLogger(asBrowserWindow(window), "settings", logger)
-  startRendererWindowLoad(asBrowserWindow(window), "settings", {
+  const windowKind = options.windowKind ?? "settings"
+  const onFailure = attachWindowDiagnosticsWithLogger(
+    asBrowserWindow(window),
+    windowKind,
+    logger,
+    options.graph
+  )
+  startRendererWindowLoad(asBrowserWindow(window), windowKind, {
     onFailure,
     onTerminalFailure: options.onTerminalFailure
   })
@@ -202,6 +234,43 @@ describe("window presentation", () => {
 })
 
 describe("renderer window load lifecycle", () => {
+  const rendererFailure = (
+    reason: RenderProcessGoneDetails["reason"]
+  ): RendererWindowLoadFailure => ({
+    details: { exitCode: reason === "clean-exit" ? 0 : 9, reason },
+    error: new Error(`renderer ${reason}`),
+    phase: "renderer-process"
+  })
+
+  it("classifies one recoverable renderer exit and fails closed for unsafe reasons", () => {
+    for (const reason of ["abnormal-exit", "crashed", "memory-eviction"] as const) {
+      assert.deepEqual(
+        resolveRendererWindowRecoveryDecision({
+          failure: rendererFailure(reason),
+          recoveryAttemptCount: 0
+        }),
+        { attempt: 1, kind: "recover" }
+      )
+    }
+
+    for (const reason of ["integrity-failure", "killed", "launch-failed", "oom"] as const) {
+      assert.deepEqual(
+        resolveRendererWindowRecoveryDecision({
+          failure: rendererFailure(reason),
+          recoveryAttemptCount: 0
+        }),
+        { kind: "terminal", reason: "non-recoverable", reportFailure: true }
+      )
+    }
+    assert.deepEqual(
+      resolveRendererWindowRecoveryDecision({
+        failure: rendererFailure("crashed"),
+        recoveryAttemptCount: 1
+      }),
+      { kind: "terminal", reason: "recovery-exhausted", reportFailure: true }
+    )
+  })
+
   it("reports a terminal renderer failure before closing its window", () => {
     const window = new FakeBrowserWindow()
     const order: string[] = []
@@ -213,7 +282,7 @@ describe("renderer window load lifecycle", () => {
     assert.deepEqual(order, ["failure", "closed"])
   })
 
-  it("destroys a pending presentation after a main-frame load failure exactly once", async () => {
+  it("destroys a pending presentation after its managed load rejects exactly once", async () => {
     const window = new FakeBrowserWindow()
     let rejectLoad: (error: Error) => void = () => undefined
     window.loadFilePromise = new Promise((_, reject) => {
@@ -223,16 +292,15 @@ describe("renderer window load lifecycle", () => {
     requestWindowPresentation(asBrowserWindow(window))
     const logger = startLoad(window)
 
-    window.webContents.emit("did-fail-load", {}, -105, "NAME_NOT_RESOLVED", "file://app", true)
-    rejectLoad(new Error("late load rejection"))
-    await Promise.resolve()
+    rejectLoad(new Error("managed load rejection"))
+    await new Promise<void>((resolve) => setImmediate(resolve))
 
     assert.equal(window.destroyCount, 1)
     assert.deepEqual(logger.errorMessages, ["Renderer load failed"])
     assert.throws(() => requestWindowPresentation(asBrowserWindow(window)), /destroyed window/)
   })
 
-  it("ignores subframe load failures", () => {
+  it("does not let an unowned navigation failure mutate the managed load", () => {
     const window = new FakeBrowserWindow()
     const logger = startLoad(window)
 
@@ -242,11 +310,16 @@ describe("renderer window load lifecycle", () => {
     assert.deepEqual(logger.errorMessages, [])
   })
 
-  it("destroys an aborted main-frame load", () => {
+  it("destroys an aborted managed load", async () => {
     const window = new FakeBrowserWindow()
+    let rejectLoad: (error: Error) => void = () => undefined
+    window.loadFilePromise = new Promise((_, reject) => {
+      rejectLoad = reject
+    })
     const logger = startLoad(window)
 
-    window.webContents.emit("did-fail-load", {}, -3, "aborted", "file://app", true)
+    rejectLoad(new Error("managed load aborted"))
+    await new Promise<void>((resolve) => setImmediate(resolve))
 
     assert.equal(window.destroyCount, 1)
     assert.deepEqual(logger.errorMessages, ["Renderer load failed"])
@@ -262,17 +335,130 @@ describe("renderer window load lifecycle", () => {
     assert.deepEqual(logger.errorMessages, ["Preload script failed"])
   })
 
-  it("destroys the window after an abnormal renderer exit", () => {
+  it("reloads one crashed renderer without closing its window or losing its web contents owner", async () => {
     const window = new FakeBrowserWindow()
-    const logger = startLoad(window)
+    let rejectInitialLoad: (error: Error) => void = () => undefined
+    window.loadFileResults = [
+      new Promise((_, reject) => {
+        rejectInitialLoad = reject
+      }),
+      Promise.resolve()
+    ]
+    const graph = new FakeDiagnosticGraph()
+    const logger = startLoad(window, { graph })
+    const owner = window.webContents
 
     window.webContents.emit("render-process-gone", {}, {
       exitCode: 9,
       reason: "crashed"
     } satisfies RenderProcessGoneDetails)
+    assert.equal(window.loadFileCount, 1)
+    rejectInitialLoad(new Error("stale first load rejection"))
+    await new Promise<void>((resolve) => setImmediate(resolve))
 
-    assert.equal(window.destroyCount, 1)
+    assert.equal(window.destroyCount, 0)
+    assert.equal(window.loadFileCount, 2)
+    assert.equal(window.webContents, owner)
     assert.deepEqual(logger.errorMessages, ["Renderer process gone"])
+    assert.deepEqual(
+      graph.inputs.map(({ eventCode }) => eventCode),
+      ["electron.renderer_process_gone"]
+    )
+  })
+
+  it("does not let a stale Main splash load start a renderer navigation after recovery", async () => {
+    const window = new FakeBrowserWindow()
+    let resolveInitialSplash: () => void = () => undefined
+    window.loadFileResults = [
+      new Promise<void>((resolve) => {
+        resolveInitialSplash = resolve
+      }),
+      Promise.resolve(),
+      Promise.resolve()
+    ]
+    const logger = startLoad(window, { windowKind: "main" })
+
+    window.webContents.emit("render-process-gone", {}, {
+      exitCode: 9,
+      reason: "crashed"
+    } satisfies RenderProcessGoneDetails)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    assert.equal(window.loadFileCount, 3)
+
+    resolveInitialSplash()
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    assert.equal(window.loadFileCount, 3)
+    assert.equal(window.destroyCount, 0)
+    assert.deepEqual(logger.errorMessages, ["Renderer process gone"])
+  })
+
+  it("terminates a repeated renderer crash without entering a reload loop", async () => {
+    const window = new FakeBrowserWindow()
+    const order: string[] = []
+    window.once("closed", () => order.push("closed"))
+    const logger = startLoad(window, { onTerminalFailure: () => order.push("failure") })
+
+    window.webContents.emit("render-process-gone", {}, {
+      exitCode: 9,
+      reason: "crashed"
+    } satisfies RenderProcessGoneDetails)
+    assert.equal(window.loadFileCount, 1)
+    window.webContents.emit("render-process-gone", {}, {
+      exitCode: 9,
+      reason: "crashed"
+    } satisfies RenderProcessGoneDetails)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    assert.equal(window.loadFileCount, 1)
+    assert.equal(window.destroyCount, 1)
+    assert.deepEqual(order, ["failure", "closed"])
+    assert.deepEqual(logger.errorMessages, ["Renderer process gone", "Renderer process gone"])
+  })
+
+  it("terminates OOM and integrity failures without attempting recovery", () => {
+    for (const reason of ["integrity-failure", "oom"] as const) {
+      const window = new FakeBrowserWindow()
+      const logger = startLoad(window)
+
+      window.webContents.emit("render-process-gone", {}, {
+        exitCode: 9,
+        reason
+      } satisfies RenderProcessGoneDetails)
+
+      assert.equal(window.loadFileCount, 1)
+      assert.equal(window.destroyCount, 1)
+      assert.deepEqual(logger.errorMessages, ["Renderer process gone"])
+    }
+  })
+
+  it("terminates when the bounded renderer recovery load fails", async () => {
+    const window = new FakeBrowserWindow()
+    let rejectRecoveryLoad: (error: Error) => void = () => undefined
+    window.loadFileResults = [
+      new Promise(() => undefined),
+      new Promise((_, reject) => {
+        rejectRecoveryLoad = reject
+      })
+    ]
+    const graph = new FakeDiagnosticGraph()
+    const logger = startLoad(window, { graph })
+
+    window.webContents.emit("render-process-gone", {}, {
+      exitCode: 9,
+      reason: "crashed"
+    } satisfies RenderProcessGoneDetails)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    rejectRecoveryLoad(new Error("reload failed"))
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    assert.equal(window.loadFileCount, 2)
+    assert.equal(window.destroyCount, 1)
+    assert.deepEqual(logger.errorMessages, ["Renderer process gone", "Renderer load failed"])
+    assert.deepEqual(
+      graph.inputs.map(({ eventCode }) => eventCode),
+      ["electron.renderer_process_gone", "electron.renderer_load_failed"]
+    )
   })
 
   it("keeps cleanup exact-once when the diagnostics observer throws", () => {
@@ -310,24 +496,46 @@ describe("renderer window load lifecycle", () => {
     assert.deepEqual(logger.errorMessages, [])
   })
 
-  it("does not report or destroy renderer exits during application shutdown", async () => {
-    const window = new FakeBrowserWindow()
-    let rejectLoad: (error: Error) => void = () => undefined
-    window.loadFilePromise = new Promise((_, reject) => {
-      rejectLoad = reject
-    })
-    beginRendererWindowShutdown()
-    const logger = startLoad(window)
+  it("does not continue deferred or pending-splash recovery after shutdown begins", async () => {
+    const pendingSplashWindow = new FakeBrowserWindow()
+    let resolveRecoverySplash: () => void = () => undefined
+    pendingSplashWindow.loadFileResults = [
+      new Promise(() => undefined),
+      new Promise<void>((resolve) => {
+        resolveRecoverySplash = resolve
+      }),
+      Promise.resolve()
+    ]
+    const pendingSplashLogger = startLoad(pendingSplashWindow, { windowKind: "main" })
+    pendingSplashWindow.webContents.emit("render-process-gone", {}, {
+      exitCode: 9,
+      reason: "crashed"
+    } satisfies RenderProcessGoneDetails)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    assert.equal(pendingSplashWindow.loadFileCount, 2)
 
-    window.webContents.emit("preload-error", {}, "preload.js", new Error("shutdown"))
-    window.webContents.emit("render-process-gone", {}, {
+    const deferredWindow = new FakeBrowserWindow()
+    const deferredLogger = startLoad(deferredWindow)
+    deferredWindow.webContents.emit("render-process-gone", {}, {
+      exitCode: 9,
+      reason: "crashed"
+    } satisfies RenderProcessGoneDetails)
+    assert.equal(deferredWindow.loadFileCount, 1)
+
+    beginRendererWindowShutdown()
+    resolveRecoverySplash()
+    deferredWindow.webContents.emit("preload-error", {}, "preload.js", new Error("shutdown"))
+    deferredWindow.webContents.emit("render-process-gone", {}, {
       exitCode: 9,
       reason: "killed"
     } satisfies RenderProcessGoneDetails)
-    rejectLoad(new Error("shutdown load rejection"))
-    await Promise.resolve()
+    await new Promise<void>((resolve) => setImmediate(resolve))
 
-    assert.equal(window.destroyCount, 0)
-    assert.deepEqual(logger.errorMessages, [])
+    assert.equal(pendingSplashWindow.destroyCount, 0)
+    assert.equal(pendingSplashWindow.loadFileCount, 2)
+    assert.deepEqual(pendingSplashLogger.errorMessages, ["Renderer process gone"])
+    assert.equal(deferredWindow.destroyCount, 0)
+    assert.equal(deferredWindow.loadFileCount, 1)
+    assert.deepEqual(deferredLogger.errorMessages, ["Renderer process gone"])
   })
 })

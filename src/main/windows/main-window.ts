@@ -5,6 +5,7 @@ import { getAppThemeSettings } from "../preferences"
 import { installExternalWindowOpenHandler } from "./external-window-open"
 import { startRendererWindowLoad } from "./load-renderer-window"
 import { attachMainWindowStatePersistence, getMainWindowPlacement } from "./main-window-state"
+import { showTerminalRendererWindowFailure } from "./renderer-window-failure-dialog"
 import { createThemeTitleBarOverlay } from "./title-bar-overlay"
 import { installWindowPresentation, requestWindowPresentation } from "./window-presentation"
 import { registerDurableWindowIdentity } from "./window-identity"
@@ -43,6 +44,7 @@ export function createMainWindow(threadId: string | null): BrowserWindow {
   installExternalWindowOpenHandler(window.webContents)
   startRendererWindowLoad(window, "main", {
     onFailure: observeFailure,
+    onTerminalFailure: showTerminalRendererWindowFailure,
     query: threadId ? { threadId } : undefined
   })
   requestWindowPresentation(window)
