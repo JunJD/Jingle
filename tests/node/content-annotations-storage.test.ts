@@ -12,6 +12,10 @@ import {
   readAssistantContentPartsProjection
 } from "../../src/main/db/assistant-content-parts"
 import { createContentCardId, type ContentCardIdentity } from "../../src/shared/content-card"
+import {
+  resolveCodeAnnotationAnchorCandidate,
+  resolveDiffAnnotationAnchorCandidate
+} from "../../src/renderer/src/lib/content-annotation-reveal"
 
 const originalJingleHome = process.env.JINGLE_HOME
 let jingleHome = ""
@@ -366,4 +370,319 @@ test("unverified quote positions are persisted as ambiguous, never resolved", as
     }
   })
   assert.equal(annotation.anchorResolution, "ambiguous")
+})
+
+test("shifted code quote repair persists the canonical current range", async () => {
+  const service = new ContentAnnotationsService()
+  const now = BigInt(Date.now())
+  const runId = "run-annotation-code-reanchor"
+  const messageId = "message-annotation-code-reanchor"
+  const quote = "const target = 1"
+  const initialContent = `\`\`\`ts\n${quote}\nconst tail = 2\n\`\`\``
+  await createRun(runId, "thread-annotations", { status: "success" })
+  await getPrismaClient().message.create({
+    data: {
+      content: JSON.stringify(initialContent),
+      createdAt: now,
+      kind: "assistant",
+      messageId,
+      rawHash: "hash-code-before",
+      rawMessage: initialContent,
+      role: "assistant",
+      runId,
+      searchText: quote,
+      seq: 3,
+      threadId: "thread-annotations",
+      updatedAt: now
+    }
+  })
+  await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
+  const initialProjection = await readAssistantContentPartsProjection({
+    messageId,
+    threadId: "thread-annotations"
+  })
+  assert.ok(initialProjection)
+  const initialPart = initialProjection.parts.find((part) => part.kind === "code")
+  assert.ok(initialPart)
+  const identitySource = {
+    kind: initialPart.kind,
+    slot: `part:${initialPart.id}`,
+    sourceId: messageId,
+    sourceType: "message" as const
+  }
+  const card: ContentCardIdentity = {
+    ...identitySource,
+    cardId: createContentCardId(identitySource),
+    revision: initialPart.revision,
+    threadId: "thread-annotations"
+  }
+  const created = await service.create({
+    body: "Track the code line.",
+    id: "annotation-code-reanchor",
+    intent: "comment",
+    selection: {
+      anchor: {
+        blockId: card.slot,
+        endColumn: quote.length + 1,
+        endLine: 1,
+        kind: "code-range",
+        startColumn: 1,
+        startLine: 1
+      },
+      anchorResolution: "resolved",
+      card,
+      contextHash: "context-code-before",
+      quote
+    }
+  })
+  assert.equal(created.anchorResolution, "resolved")
+
+  const shiftedContent = `\`\`\`ts\nconst inserted = 0\n${quote}\nconst tail = 2\n\`\`\``
+  await getPrismaClient().message.update({
+    data: {
+      content: JSON.stringify(shiftedContent),
+      rawHash: "hash-code-after",
+      rawMessage: shiftedContent,
+      searchText: shiftedContent,
+      updatedAt: now + 1n
+    },
+    where: { threadId_messageId: { messageId, threadId: "thread-annotations" } }
+  })
+  await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
+  const shiftedProjection = await readAssistantContentPartsProjection({
+    messageId,
+    threadId: "thread-annotations"
+  })
+  assert.ok(shiftedProjection)
+  const shiftedPart = shiftedProjection.parts.find((part) => part.kind === "code")
+  assert.ok(shiftedPart)
+  const candidate = resolveCodeAnnotationAnchorCandidate({
+    anchor: created.anchor as Extract<typeof created.anchor, { kind: "code-range" }>,
+    quote,
+    source: shiftedPart.payload.code
+  })
+  assert.equal(candidate.status, "resolved")
+  if (candidate.status !== "resolved") assert.fail("code quote should reanchor uniquely")
+
+  const repaired = await service.update({
+    expectedRevision: created.revision,
+    id: created.id,
+    repair: {
+      anchor: candidate.anchor,
+      anchorResolution: "resolved",
+      cardRevision: shiftedPart.revision,
+      contextHash: `revision:${shiftedPart.revision}`,
+      expected: {
+        cardRevision: created.cardRevision,
+        contextHash: created.contextHash
+      },
+      quote
+    }
+  })
+  assert.deepEqual(repaired.anchor, candidate.anchor)
+  assert.equal(repaired.cardRevision, shiftedPart.revision)
+})
+
+test("standard diff repair persists only an exact canonical side range", async () => {
+  const service = new ContentAnnotationsService()
+  const now = BigInt(Date.now())
+  const runId = "run-annotation-diff-reanchor"
+  const messageId = "message-annotation-diff-reanchor"
+  const deletionQuote = "-const previous = 1"
+  const additionQuote = "+const target = 1"
+  const initialPatch = [
+    "--- a/example.ts",
+    "+++ b/example.ts",
+    "@@ -1,2 +1,3 @@",
+    " context",
+    deletionQuote,
+    additionQuote,
+    " tail"
+  ].join("\n")
+  const initialContent = `\`\`\`diff\n${initialPatch}\n\`\`\``
+  await createRun(runId, "thread-annotations", { status: "success" })
+  await getPrismaClient().message.create({
+    data: {
+      content: JSON.stringify(initialContent),
+      createdAt: now,
+      kind: "assistant",
+      messageId,
+      rawHash: "hash-diff-before",
+      rawMessage: initialContent,
+      role: "assistant",
+      runId,
+      searchText: initialPatch,
+      seq: 4,
+      threadId: "thread-annotations",
+      updatedAt: now
+    }
+  })
+  await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
+  const initialProjection = await readAssistantContentPartsProjection({
+    messageId,
+    threadId: "thread-annotations"
+  })
+  assert.ok(initialProjection)
+  const initialPart = initialProjection.parts.find((part) => part.kind === "diff")
+  assert.ok(initialPart)
+  const identitySource = {
+    kind: initialPart.kind,
+    slot: `part:${initialPart.id}`,
+    sourceId: messageId,
+    sourceType: "message" as const
+  }
+  const card: ContentCardIdentity = {
+    ...identitySource,
+    cardId: createContentCardId(identitySource),
+    revision: initialPart.revision,
+    threadId: "thread-annotations"
+  }
+  const deletion = await service.create({
+    body: "Track the removed line.",
+    id: "annotation-diff-deletion-reanchor",
+    intent: "comment",
+    selection: {
+      anchor: {
+        endLine: 4,
+        filePath: null,
+        kind: "diff-range",
+        patchRevision: initialPart.revision,
+        side: "before",
+        startLine: 4
+      },
+      anchorResolution: "resolved",
+      card,
+      contextHash: "context-diff-deletion-before",
+      quote: deletionQuote
+    }
+  })
+  const addition = await service.create({
+    body: "Track the added line.",
+    id: "annotation-diff-addition-reanchor",
+    intent: "comment",
+    selection: {
+      anchor: {
+        endLine: 5,
+        filePath: null,
+        kind: "diff-range",
+        patchRevision: initialPart.revision,
+        side: "after",
+        startLine: 5
+      },
+      anchorResolution: "resolved",
+      card,
+      contextHash: "context-diff-addition-before",
+      quote: additionQuote
+    }
+  })
+  assert.equal(deletion.anchorResolution, "resolved")
+  assert.equal(addition.anchorResolution, "resolved")
+
+  const shiftedPatch = [
+    "--- a/example.ts",
+    "+++ b/example.ts",
+    "@@ -1,2 +1,4 @@",
+    " leading context",
+    " context",
+    deletionQuote,
+    "+const inserted = 0",
+    additionQuote,
+    " tail"
+  ].join("\n")
+  const shiftedContent = `\`\`\`diff\n${shiftedPatch}\n\`\`\``
+  await getPrismaClient().message.update({
+    data: {
+      content: JSON.stringify(shiftedContent),
+      rawHash: "hash-diff-after",
+      rawMessage: shiftedContent,
+      searchText: shiftedPatch,
+      updatedAt: now + 1n
+    },
+    where: { threadId_messageId: { messageId, threadId: "thread-annotations" } }
+  })
+  await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
+  const shiftedProjection = await readAssistantContentPartsProjection({
+    messageId,
+    threadId: "thread-annotations"
+  })
+  assert.ok(shiftedProjection)
+  const shiftedPart = shiftedProjection.parts.find((part) => part.kind === "diff")
+  assert.ok(shiftedPart)
+  const deletionCandidate = resolveDiffAnnotationAnchorCandidate({
+    anchor: deletion.anchor as Extract<typeof deletion.anchor, { kind: "diff-range" }>,
+    cardRevision: shiftedPart.revision,
+    quote: deletionQuote,
+    source: shiftedPart.payload.patch
+  })
+  const additionCandidate = resolveDiffAnnotationAnchorCandidate({
+    anchor: addition.anchor as Extract<typeof addition.anchor, { kind: "diff-range" }>,
+    cardRevision: shiftedPart.revision,
+    quote: additionQuote,
+    source: shiftedPart.payload.patch
+  })
+  assert.equal(deletionCandidate.status, "resolved")
+  assert.equal(additionCandidate.status, "resolved")
+  if (deletionCandidate.status !== "resolved" || additionCandidate.status !== "resolved") {
+    assert.fail("standard diff quotes should reanchor uniquely")
+  }
+  assert.deepEqual(
+    [deletionCandidate.anchor.side, deletionCandidate.anchor.startLine],
+    ["before", 5]
+  )
+  assert.deepEqual(
+    [additionCandidate.anchor.side, additionCandidate.anchor.startLine],
+    ["after", 7]
+  )
+
+  for (const anchor of [
+    { ...deletionCandidate.anchor, endLine: 6 },
+    { ...deletionCandidate.anchor, endLine: 999 },
+    { ...deletionCandidate.anchor, side: "after" as const }
+  ]) {
+    await assert.rejects(
+      service.update({
+        expectedRevision: deletion.revision,
+        id: deletion.id,
+        repair: {
+          anchor,
+          anchorResolution: "resolved",
+          cardRevision: shiftedPart.revision,
+          contextHash: `revision:${shiftedPart.revision}`,
+          expected: {
+            cardRevision: deletion.cardRevision,
+            contextHash: deletion.contextHash
+          },
+          quote: deletionQuote
+        }
+      }),
+      (error: Error & { code?: string }) => error.code === "FAILED_PRECONDITION"
+    )
+  }
+
+  const repairedDeletion = await service.update({
+    expectedRevision: deletion.revision,
+    id: deletion.id,
+    repair: {
+      anchor: deletionCandidate.anchor,
+      anchorResolution: "resolved",
+      cardRevision: shiftedPart.revision,
+      contextHash: `revision:${shiftedPart.revision}`,
+      expected: { cardRevision: deletion.cardRevision, contextHash: deletion.contextHash },
+      quote: deletionQuote
+    }
+  })
+  const repairedAddition = await service.update({
+    expectedRevision: addition.revision,
+    id: addition.id,
+    repair: {
+      anchor: additionCandidate.anchor,
+      anchorResolution: "resolved",
+      cardRevision: shiftedPart.revision,
+      contextHash: `revision:${shiftedPart.revision}`,
+      expected: { cardRevision: addition.cardRevision, contextHash: addition.contextHash },
+      quote: additionQuote
+    }
+  })
+  assert.deepEqual(repairedDeletion.anchor, deletionCandidate.anchor)
+  assert.deepEqual(repairedAddition.anchor, additionCandidate.anchor)
 })

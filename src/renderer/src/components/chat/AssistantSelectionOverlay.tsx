@@ -15,6 +15,40 @@ interface AssistantSelectionDraft {
   selection: ContentSelectionDraft
 }
 
+interface AssistantDiffSelectionRowData {
+  lineNumber: number
+  side: "after" | "before"
+  text: string
+}
+
+export function parseAssistantDiffSelectionRow(dataset: {
+  readonly diffLine?: string
+  readonly diffSide?: string
+  readonly diffText?: string
+}): AssistantDiffSelectionRowData | null {
+  const lineNumber = Number(dataset.diffLine)
+  const side = dataset.diffSide
+  if (
+    !Number.isInteger(lineNumber) ||
+    lineNumber <= 0 ||
+    (side !== "after" && side !== "before") ||
+    dataset.diffText === undefined
+  ) {
+    return null
+  }
+  return { lineNumber, side, text: dataset.diffText }
+}
+
+function readAssistantDiffSelectionRow(
+  node: Node
+): (AssistantDiffSelectionRowData & { element: HTMLElement }) | null {
+  const source = node instanceof Element ? node : node.parentElement
+  const element = source?.closest<HTMLElement>("[data-diff-line][data-diff-side][data-diff-text]")
+  if (!element) return null
+  const parsed = parseAssistantDiffSelectionRow(element.dataset)
+  return parsed ? { ...parsed, element } : null
+}
+
 function closestSelectionSurface(node: Node | null): HTMLElement | null {
   const element = node instanceof Element ? node : node?.parentElement
   const direct = element?.closest<HTMLElement>("[data-assistant-selection-source='true']") ?? null
@@ -78,34 +112,18 @@ function projectAnchor(
     return columnId ? { columnId, kind: "table-cell", rowId } : null
   }
   if (card.kind === "diff") {
-    const start = (
-      range.startContainer instanceof Element
-        ? range.startContainer
-        : range.startContainer.parentElement
-    )?.closest<HTMLElement>("[data-diff-line],[data-line]")
-    const end = (
-      range.endContainer instanceof Element ? range.endContainer : range.endContainer.parentElement
-    )?.closest<HTMLElement>("[data-diff-line],[data-line]")
-    const startLine = Number(start?.dataset.diffLine ?? start?.dataset.line)
-    const endLine = Number(end?.dataset.diffLine ?? end?.dataset.line)
-    if (!start || !end || !Number.isInteger(startLine) || !Number.isInteger(endLine)) return null
-    const startSide =
-      start.dataset.diffSide === "before" || start.dataset.lineType?.includes("deletion")
-        ? "before"
-        : "after"
-    const endSide =
-      end.dataset.diffSide === "before" || end.dataset.lineType?.includes("deletion")
-        ? "before"
-        : "after"
-    if (startSide !== endSide) return null
+    const start = readAssistantDiffSelectionRow(range.startContainer)
+    const end = readAssistantDiffSelectionRow(range.endContainer)
+    if (!start || !end || start.side !== end.side) return null
     return {
-      endLine: Math.max(startLine, endLine),
+      endLine: Math.max(start.lineNumber, end.lineNumber),
       filePath:
-        start.closest<HTMLElement>("[data-file-mutation-path]")?.dataset.fileMutationPath ?? null,
+        start.element.closest<HTMLElement>("[data-file-mutation-path]")?.dataset.fileMutationPath ??
+        null,
       kind: "diff-range",
       patchRevision: card.revision,
-      side: startSide,
-      startLine: Math.min(startLine, endLine)
+      side: start.side,
+      startLine: Math.min(start.lineNumber, end.lineNumber)
     }
   }
   const leadingWhitespace = rawSelectedText.length - rawSelectedText.trimStart().length

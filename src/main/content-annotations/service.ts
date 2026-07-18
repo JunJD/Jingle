@@ -5,7 +5,10 @@ import type {
   DeleteContentAnnotationInput,
   UpdateContentAnnotationInput
 } from "@shared/content-annotation"
-import type { AssistantContentPart } from "@shared/assistant-content-part"
+import {
+  projectAssistantDiffLines,
+  type AssistantContentPart
+} from "@shared/assistant-content-part"
 import { readContentCardIdSource, type ContentCardIdentity } from "@shared/content-card"
 import { contentAnchorSchema, type ContentAnchor } from "@shared/content-selection"
 import { readAssistantContentPartsProjection } from "../db/assistant-content-parts"
@@ -30,20 +33,6 @@ const NOOP_DIAGNOSTICS: DiagnosticGraphSink = {
 
 function toIso(value: bigint | null): string | null {
   return value === null ? null : new Date(Number(value)).toISOString()
-}
-
-function diffLineCounts(patch: string): { after: number; before: number } {
-  let before = 0
-  let after = 0
-  for (const line of patch.split("\n")) {
-    if (line.startsWith("-") && !line.startsWith("---")) before += 1
-    else if (line.startsWith("+") && !line.startsWith("+++")) after += 1
-    else {
-      before += 1
-      after += 1
-    }
-  }
-  return { after, before }
 }
 
 function anchorTypeBelongsToPart(
@@ -91,24 +80,23 @@ function diffRangeText(
   patch: string,
   anchor: Extract<ContentAnchor, { kind: "diff-range" }>
 ): string | null {
-  let before = 0
-  let after = 0
-  const selected: string[] = []
-  for (const line of patch.split("\n")) {
-    const side = line.startsWith("-") && !line.startsWith("---") ? "before" : "after"
-    if (side === "before") before += 1
-    else if (line.startsWith("+") && !line.startsWith("+++")) after += 1
-    else {
-      before += 1
-      after += 1
-    }
-    const lineNumber = anchor.side === "before" ? before : after
-    const existsOnSide = side === anchor.side || (!line.startsWith("+") && !line.startsWith("-"))
-    if (existsOnSide && lineNumber >= anchor.startLine && lineNumber <= anchor.endLine) {
-      selected.push(line)
-    }
+  const selected = projectAssistantDiffLines(patch).filter(
+    (line) =>
+      line.side === anchor.side &&
+      line.lineNumber >= anchor.startLine &&
+      line.lineNumber <= anchor.endLine
+  )
+  const first = selected[0]
+  const last = selected.at(-1)
+  if (
+    !first ||
+    first.lineNumber !== anchor.startLine ||
+    last?.lineNumber !== anchor.endLine ||
+    selected.some((line, index) => line.lineNumber !== anchor.startLine + index)
+  ) {
+    return null
   }
-  return selected.length > 0 ? selected.join("\n") : null
+  return selected.map((line) => line.text).join("\n")
 }
 
 function resolveCanonicalAnchor(input: {
@@ -138,11 +126,8 @@ function resolveCanonicalAnchor(input: {
     return codeRangeText(part.payload.code, anchor) === quote ? anchor : null
   }
   if (part.kind === "diff" && anchor.kind === "diff-range") {
-    const counts = diffLineCounts(part.payload.patch)
     const owned =
-      anchor.patchRevision === part.revision &&
-      anchor.filePath === part.payload.filePath &&
-      anchor.endLine <= counts[anchor.side]
+      anchor.patchRevision === part.revision && anchor.filePath === part.payload.filePath
     return owned && diffRangeText(part.payload.patch, anchor)?.includes(quote) ? anchor : null
   }
   if (part.kind === "table" && anchor.kind === "table-cell") {

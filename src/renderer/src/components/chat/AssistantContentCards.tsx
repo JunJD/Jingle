@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 import { extractMessageText } from "@shared/message-content"
 import {
   assistantContentProjectionFingerprint,
+  projectAssistantDiffLines,
   type AssistantContentPart,
   type AssistantContentPartsResult
 } from "@shared/assistant-content-part"
@@ -83,47 +84,28 @@ function CodeSurface(props: { code: string; language: string | null }): React.JS
   )
 }
 
-function projectDiffLines(patch: string): Array<{
-  line: string
-  lineNumber: number
-  side: "after" | "before"
-}> {
-  let beforeLine = 0
-  let afterLine = 0
-  const result: Array<{ line: string; lineNumber: number; side: "after" | "before" }> = []
-  for (const line of patch.split("\n")) {
-    const side = line.startsWith("-") && !line.startsWith("---") ? "before" : "after"
-    if (side === "before") beforeLine += 1
-    else if (!line.startsWith("+")) {
-      beforeLine += 1
-      afterLine += 1
-    } else afterLine += 1
-    result.push({ line, lineNumber: side === "before" ? beforeLine : afterLine, side })
-  }
-  return result
-}
-
 function DiffSurface(props: { patch: string }): React.JSX.Element {
   return (
     <div className="max-h-[440px] overflow-auto rounded-[var(--jingle-radius-md)] bg-background-secondary font-mono text-[var(--jingle-font-code)] leading-[var(--jingle-line-code)]">
-      {projectDiffLines(props.patch).map(({ line, lineNumber, side }, index) => {
+      {projectAssistantDiffLines(props.patch).map(({ lineNumber, side, text }, index) => {
         return (
           <div
             className={
-              line.startsWith("+")
+              text.startsWith("+")
                 ? "bg-status-nominal/10"
-                : line.startsWith("-")
+                : text.startsWith("-")
                   ? "bg-destructive/10"
                   : undefined
             }
             data-diff-line={lineNumber}
             data-diff-side={side}
-            key={`${index}:${line}`}
+            data-diff-text={text}
+            key={`${index}:${text}`}
           >
             <span className="inline-block w-10 select-none pr-2 text-right text-muted-foreground">
               {lineNumber}
             </span>
-            <span>{line || " "}</span>
+            <span>{text || " "}</span>
           </div>
         )
       })}

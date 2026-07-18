@@ -72,7 +72,11 @@ export function ContentCardFrame(props: {
         if (!card) return
         const selectionSurface =
           card.querySelector<HTMLElement>("[data-assistant-selection-source='true']") ?? card
-        const result = revealContentAnnotationAnchor(selectionSurface, annotation)
+        const result = revealContentAnnotationAnchor(
+          selectionSurface,
+          annotation,
+          identity.revision
+        )
         if (result.target && result.target.tabIndex < 0) result.target.tabIndex = -1
         result.target?.focus({ preventScroll: true })
         if (
@@ -86,7 +90,7 @@ export function ContentCardFrame(props: {
             expectedRevision: annotation.revision,
             id: annotation.id,
             repair: {
-              anchor: annotation.anchor,
+              anchor: result.anchor ?? annotation.anchor,
               anchorResolution: result.status,
               cardRevision: identity.revision,
               contextHash: selection.contextHash,

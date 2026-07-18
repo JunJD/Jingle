@@ -1,8 +1,119 @@
 import type { ContentAnnotation } from "@shared/content-annotation"
+import {
+  projectAssistantDiffLines,
+  type AssistantDiffProjectedLine
+} from "@shared/assistant-content-part"
+import type { ContentAnchor } from "@shared/content-selection"
 
-export interface AnchorRevealResult {
-  status: "ambiguous" | "orphaned" | "resolved"
-  target: HTMLElement | null
+type CodeRangeAnchor = Extract<ContentAnchor, { kind: "code-range" }>
+type DiffRangeAnchor = Extract<ContentAnchor, { kind: "diff-range" }>
+type CandidateResolution<T extends ContentAnchor> =
+  | { anchor: T; status: "resolved" }
+  | { anchor: null; status: "ambiguous" | "orphaned" }
+
+export type AnchorRevealResult =
+  | { anchor: ContentAnchor; status: "resolved"; target: HTMLElement }
+  | { anchor: null; status: "ambiguous" | "orphaned"; target: null }
+
+interface QuoteMatch {
+  end: number
+  start: number
+}
+
+function locateUniqueQuote(source: string, quote: string): QuoteMatch | "ambiguous" | "orphaned" {
+  if (!quote) return "orphaned"
+  let match: QuoteMatch | null = null
+  let cursor = source.indexOf(quote)
+  while (cursor >= 0) {
+    if (match) return "ambiguous"
+    match = { end: cursor + quote.length, start: cursor }
+    cursor = source.indexOf(quote, cursor + 1)
+  }
+  return match ?? "orphaned"
+}
+
+function sourcePosition(source: string, offset: number): { column: number; line: number } {
+  const prefix = source.slice(0, offset)
+  const lastLineBreak = prefix.lastIndexOf("\n")
+  return {
+    column: offset - lastLineBreak,
+    line: prefix.split("\n").length
+  }
+}
+
+export function resolveCodeAnnotationAnchorCandidate(input: {
+  anchor: CodeRangeAnchor
+  quote: string
+  source: string
+}): CandidateResolution<CodeRangeAnchor> {
+  const match = locateUniqueQuote(input.source, input.quote)
+  if (typeof match === "string") return { anchor: null, status: match }
+  const start = sourcePosition(input.source, match.start)
+  const end = sourcePosition(input.source, match.end)
+  return {
+    anchor: {
+      ...input.anchor,
+      endColumn: end.column,
+      endLine: end.line,
+      startColumn: start.column,
+      startLine: start.line
+    },
+    status: "resolved"
+  }
+}
+
+interface DiffSideLine extends AssistantDiffProjectedLine {
+  end: number
+  start: number
+}
+
+function resolveDiffAnnotationAnchorFromLines(input: {
+  anchor: DiffRangeAnchor
+  cardRevision: string
+  lines: readonly AssistantDiffProjectedLine[]
+  quote: string
+}): CandidateResolution<DiffRangeAnchor> {
+  let offset = 0
+  const projectedLines: DiffSideLine[] = []
+  const projectedText: string[] = []
+  for (const line of input.lines) {
+    if (line.side !== input.anchor.side) continue
+    if (projectedText.length > 0) offset += 1
+    const start = offset
+    projectedText.push(line.text)
+    offset += line.text.length
+    projectedLines.push({ ...line, end: offset, start })
+  }
+  const match = locateUniqueQuote(projectedText.join("\n"), input.quote)
+  if (typeof match === "string") return { anchor: null, status: match }
+  const startLine = projectedLines.find(
+    (line) => match.start >= line.start && match.start <= line.end
+  )
+  const endLine = [...projectedLines]
+    .reverse()
+    .find((line) => match.end >= line.start && match.end <= line.end)
+  if (!startLine || !endLine) return { anchor: null, status: "orphaned" }
+  return {
+    anchor: {
+      ...input.anchor,
+      endLine: endLine.lineNumber,
+      patchRevision: input.cardRevision,
+      startLine: startLine.lineNumber
+    },
+    status: "resolved"
+  }
+}
+
+export function resolveDiffAnnotationAnchorCandidate(input: {
+  anchor: DiffRangeAnchor
+  cardRevision: string
+  quote: string
+  source: string
+}): CandidateResolution<DiffRangeAnchor> {
+  return resolveDiffAnnotationAnchorFromLines({
+    ...input,
+    lines: projectAssistantDiffLines(input.source)
+  })
 }
 
 function queryDeep(root: HTMLElement, selector: string): HTMLElement | null {
@@ -13,6 +124,16 @@ function queryDeep(root: HTMLElement, selector: string): HTMLElement | null {
     if (nested) return nested
   }
   return null
+}
+
+function queryDeepAll(root: HTMLElement, selector: string): HTMLElement[] {
+  const matches = [...root.querySelectorAll<HTMLElement>(selector)]
+  for (const element of root.querySelectorAll<HTMLElement>("*")) {
+    if (element.shadowRoot) {
+      matches.push(...element.shadowRoot.querySelectorAll<HTMLElement>(selector))
+    }
+  }
+  return matches
 }
 
 function textNodes(root: HTMLElement): Text[] {
@@ -65,7 +186,9 @@ function revealRange(range: Range): void {
 }
 
 function resolveText(root: HTMLElement, annotation: ContentAnnotation): AnchorRevealResult {
-  if (annotation.anchor.kind !== "text-range") return { status: "orphaned", target: null }
+  if (annotation.anchor.kind !== "text-range") {
+    return { anchor: null, status: "orphaned", target: null }
+  }
   let start = annotation.anchor.start
   let end = annotation.anchor.end
   const text = root.textContent ?? ""
@@ -77,25 +200,50 @@ function resolveText(root: HTMLElement, annotation: ContentAnnotation): AnchorRe
       cursor = text.indexOf(annotation.quote, cursor + 1)
     }
     if (matches.length !== 1) {
-      return { status: matches.length > 1 ? "ambiguous" : "orphaned", target: null }
+      return {
+        anchor: null,
+        status: matches.length > 1 ? "ambiguous" : "orphaned",
+        target: null
+      }
     }
     start = matches[0]!
     end = start + annotation.quote.length
   }
   const range = rangeForOffsets(root, start, end)
-  if (!range) return { status: "orphaned", target: null }
+  if (!range) return { anchor: null, status: "orphaned", target: null }
   revealRange(range)
-  return { status: "resolved", target: root }
+  return {
+    anchor: { ...annotation.anchor, end, start },
+    status: "resolved",
+    target: root
+  }
+}
+
+function renderedDiffLines(root: HTMLElement): AssistantDiffProjectedLine[] {
+  return queryDeepAll(root, "[data-diff-side][data-diff-line][data-diff-text]").flatMap(
+    (element) => {
+      const lineNumber = Number(element.dataset.diffLine)
+      const side = element.dataset.diffSide
+      const text = element.dataset.diffText
+      return Number.isInteger(lineNumber) &&
+        lineNumber > 0 &&
+        (side === "after" || side === "before") &&
+        text !== undefined
+        ? [{ lineNumber, side, text }]
+        : []
+    }
+  )
 }
 
 export function revealContentAnnotationAnchor(
   root: HTMLElement,
-  annotation: ContentAnnotation
+  annotation: ContentAnnotation,
+  cardRevision: string
 ): AnchorRevealResult {
   const anchor = annotation.anchor
   if (anchor.kind === "whole-card") {
     root.scrollIntoView({ behavior: "smooth", block: "center" })
-    return { status: "resolved", target: root }
+    return { anchor, status: "resolved", target: root }
   }
   if (anchor.kind === "text-range") return resolveText(root, annotation)
   if (anchor.kind === "table-cell") {
@@ -103,25 +251,39 @@ export function revealContentAnnotationAnchor(
       `[data-table-row-id="${CSS.escape(anchor.rowId)}"] [data-table-column-id="${CSS.escape(anchor.columnId)}"]`
     )
     target?.scrollIntoView({ behavior: "smooth", block: "center" })
-    return { status: target ? "resolved" : "orphaned", target }
+    return target
+      ? { anchor, status: "resolved", target }
+      : { anchor: null, status: "orphaned", target: null }
   }
   if (anchor.kind === "diff-range") {
-    const target =
-      queryDeep(root, `[data-diff-side="${anchor.side}"][data-diff-line="${anchor.startLine}"]`) ??
-      queryDeep(root, `[data-line="${anchor.startLine}"]`)
-    target?.scrollIntoView({ behavior: "smooth", block: "center" })
-    return { status: target ? "resolved" : "orphaned", target }
+    const resolution = resolveDiffAnnotationAnchorFromLines({
+      anchor,
+      cardRevision,
+      lines: renderedDiffLines(root),
+      quote: annotation.quote
+    })
+    if (resolution.status !== "resolved") return { ...resolution, target: null }
+    const target = queryDeep(
+      root,
+      `[data-diff-side="${resolution.anchor.side}"][data-diff-line="${resolution.anchor.startLine}"]`
+    )
+    if (!target) return { anchor: null, status: "orphaned", target: null }
+    target.scrollIntoView({ behavior: "smooth", block: "center" })
+    return { anchor: resolution.anchor, status: "resolved", target }
   }
   const code = root.querySelector<HTMLElement>("code")
-  if (!code) return { status: "orphaned", target: null }
-  const lines = (code.textContent ?? "").split("\n")
-  const start = lines
-    .slice(0, anchor.startLine - 1)
-    .reduce((length, line) => length + line.length + 1, 0)
-  const end =
-    lines.slice(0, anchor.endLine).reduce((length, line) => length + line.length + 1, 0) - 1
-  const range = rangeForOffsets(code, start, Math.max(start, end))
-  if (!range) return { status: "orphaned", target: null }
+  if (!code) return { anchor: null, status: "orphaned", target: null }
+  const source = code.textContent ?? ""
+  const resolution = resolveCodeAnnotationAnchorCandidate({
+    anchor,
+    quote: annotation.quote,
+    source
+  })
+  if (resolution.status !== "resolved") return { ...resolution, target: null }
+  const match = locateUniqueQuote(source, annotation.quote)
+  if (typeof match === "string") return { anchor: null, status: match, target: null }
+  const range = rangeForOffsets(code, match.start, match.end)
+  if (!range) return { anchor: null, status: "orphaned", target: null }
   revealRange(range)
-  return { status: "resolved", target: code }
+  return { anchor: resolution.anchor, status: "resolved", target: code }
 }

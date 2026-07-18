@@ -6,6 +6,7 @@ import {
   assistantContentProjectionFingerprint,
   assistantContentProjectionChangedEventSchema,
   assistantContentPartsResultSchema,
+  projectAssistantDiffLines,
   type AssistantContentPartsProjection
 } from "../../src/shared/assistant-content-part"
 import {
@@ -19,7 +20,12 @@ import { assistantContentProjectionEvents } from "../../src/main/content-cards/e
 import type { ContentCardsService } from "../../src/main/content-cards/service"
 import type { DiagnosticGraphSink } from "../../src/main/diagnostics/schema"
 import { mergeContentAnnotationRecords } from "../../src/renderer/src/components/chat/ContentAnnotationsContext"
+import { parseAssistantDiffSelectionRow } from "../../src/renderer/src/components/chat/AssistantSelectionOverlay"
 import { shouldRepairContentAnnotationAnchor } from "../../src/renderer/src/components/chat/ContentCardFrame"
+import {
+  resolveCodeAnnotationAnchorCandidate,
+  resolveDiffAnnotationAnchorCandidate
+} from "../../src/renderer/src/lib/content-annotation-reveal"
 import { projectionForAssistantContentSource } from "../../src/renderer/src/lib/assistant-content-projection-cache"
 import {
   createCanonicalHydrationOwner,
@@ -332,6 +338,162 @@ test("resolved annotation anchors migrate when the stable card revision changes"
       resolution: "resolved"
     }),
     true
+  )
+})
+
+test("standard unified diff projection has one typed side and canonical line per row", () => {
+  const patch = [
+    "--- a/example.ts",
+    "+++ b/example.ts",
+    "@@ -1,2 +1,4 @@",
+    " leading context",
+    " context",
+    "-const previous = 1",
+    "+const inserted = 0",
+    "+const target = 1",
+    " tail"
+  ].join("\n")
+
+  assert.deepEqual(projectAssistantDiffLines(patch), [
+    { lineNumber: 1, side: "after", text: "--- a/example.ts" },
+    { lineNumber: 2, side: "after", text: "+++ b/example.ts" },
+    { lineNumber: 3, side: "after", text: "@@ -1,2 +1,4 @@" },
+    { lineNumber: 4, side: "after", text: " leading context" },
+    { lineNumber: 5, side: "after", text: " context" },
+    { lineNumber: 5, side: "before", text: "-const previous = 1" },
+    { lineNumber: 6, side: "after", text: "+const inserted = 0" },
+    { lineNumber: 7, side: "after", text: "+const target = 1" },
+    { lineNumber: 8, side: "after", text: " tail" }
+  ])
+  assert.deepEqual(
+    resolveDiffAnnotationAnchorCandidate({
+      anchor: {
+        endLine: 1,
+        filePath: null,
+        kind: "diff-range",
+        patchRevision: SHA_A,
+        side: "before",
+        startLine: 1
+      },
+      cardRevision: SHA_B,
+      quote: "-const previous = 1",
+      source: patch
+    }),
+    {
+      anchor: {
+        endLine: 5,
+        filePath: null,
+        kind: "diff-range",
+        patchRevision: SHA_B,
+        side: "before",
+        startLine: 5
+      },
+      status: "resolved"
+    }
+  )
+  assert.deepEqual(
+    resolveDiffAnnotationAnchorCandidate({
+      anchor: {
+        endLine: 1,
+        filePath: null,
+        kind: "diff-range",
+        patchRevision: SHA_A,
+        side: "after",
+        startLine: 1
+      },
+      cardRevision: SHA_B,
+      quote: "+const target = 1",
+      source: patch
+    }),
+    {
+      anchor: {
+        endLine: 7,
+        filePath: null,
+        kind: "diff-range",
+        patchRevision: SHA_B,
+        side: "after",
+        startLine: 7
+      },
+      status: "resolved"
+    }
+  )
+  assert.deepEqual(
+    resolveDiffAnnotationAnchorCandidate({
+      anchor: {
+        endLine: 1,
+        filePath: null,
+        kind: "diff-range",
+        patchRevision: SHA_A,
+        side: "before",
+        startLine: 1
+      },
+      cardRevision: SHA_B,
+      quote: "+const target = 1",
+      source: patch
+    }),
+    { anchor: null, status: "orphaned" }
+  )
+})
+
+test("diff selection rows fail closed without the complete typed dataset", () => {
+  assert.deepEqual(
+    parseAssistantDiffSelectionRow({
+      diffLine: "5",
+      diffSide: "before",
+      diffText: "-const previous = 1"
+    }),
+    { lineNumber: 5, side: "before", text: "-const previous = 1" }
+  )
+  assert.deepEqual(
+    parseAssistantDiffSelectionRow({
+      diffLine: "7",
+      diffSide: "after",
+      diffText: "+const target = 1"
+    }),
+    { lineNumber: 7, side: "after", text: "+const target = 1" }
+  )
+
+  const legacyRow = { diffLine: undefined, line: "5", lineType: "deletion" }
+  assert.equal(parseAssistantDiffSelectionRow(legacyRow), null)
+  assert.equal(parseAssistantDiffSelectionRow({ diffLine: "7", diffText: "+target" }), null)
+  assert.equal(
+    parseAssistantDiffSelectionRow({
+      diffLine: "7",
+      diffSide: "unknown",
+      diffText: "+target"
+    }),
+    null
+  )
+  assert.equal(parseAssistantDiffSelectionRow({ diffLine: "7", diffSide: "after" }), null)
+})
+
+test("code quote repair requires one unique current match", () => {
+  const anchor = {
+    blockId: "part:code-1",
+    endColumn: 17,
+    endLine: 1,
+    kind: "code-range" as const,
+    startColumn: 1,
+    startLine: 1
+  }
+  assert.deepEqual(
+    resolveCodeAnnotationAnchorCandidate({
+      anchor,
+      quote: "const target = 1",
+      source: "const inserted = 0\nconst target = 1\nconst tail = 2"
+    }),
+    {
+      anchor: { ...anchor, endLine: 2, startLine: 2 },
+      status: "resolved"
+    }
+  )
+  assert.deepEqual(
+    resolveCodeAnnotationAnchorCandidate({
+      anchor,
+      quote: "target",
+      source: "target\ntarget"
+    }),
+    { anchor: null, status: "ambiguous" }
   )
 })
 

@@ -156,6 +156,29 @@ export type AssistantContentProjectionInspection = z.infer<
 >
 export type AssistantContentPartsResult = z.infer<typeof assistantContentPartsResultSchema>
 
+export interface AssistantDiffProjectedLine {
+  lineNumber: number
+  side: "after" | "before"
+  text: string
+}
+
+export function projectAssistantDiffLines(patch: string): AssistantDiffProjectedLine[] {
+  let beforeLine = 0
+  let afterLine = 0
+  const result: AssistantDiffProjectedLine[] = []
+  for (const line of patch.split("\n")) {
+    const side = line.startsWith("-") && !line.startsWith("---") ? "before" : "after"
+    if (side === "before") beforeLine += 1
+    else if (line.startsWith("+")) afterLine += 1
+    else {
+      beforeLine += 1
+      afterLine += 1
+    }
+    result.push({ lineNumber: side === "before" ? beforeLine : afterLine, side, text: line })
+  }
+  return result
+}
+
 export function assistantContentProjectionJobRevision(input: {
   attemptCount: number
   generation: number
