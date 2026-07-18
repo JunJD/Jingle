@@ -85,7 +85,7 @@ export interface JingleLangGraphCheckpointChannelMessage {
   id?: string | string[]
   kwargs?: {
     additional_kwargs?: Record<string, unknown>
-    content?: string | unknown[]
+    content?: unknown
     id?: string
     name?: string
     response_metadata?: unknown
@@ -93,7 +93,7 @@ export interface JingleLangGraphCheckpointChannelMessage {
     tool_calls?: ToolCall[]
   }
   _getType?: () => string
-  content?: string | unknown[]
+  content?: unknown
   name?: string
   tool_call_id?: string
   tool_calls?: unknown[]
@@ -150,7 +150,16 @@ function readSerializedMessageContent(message: unknown): string | unknown[] {
         ? message.content
         : undefined
 
-  return typeof value === "string" || Array.isArray(value) ? value : ""
+  if (value === undefined) {
+    return ""
+  }
+  if (typeof value === "string" || Array.isArray(value)) {
+    return value
+  }
+
+  throw new Error(
+    "[LangGraphCheckpointReader] Serialized message content must be a string or array when present."
+  )
 }
 
 function getCheckpointMessageContent(
