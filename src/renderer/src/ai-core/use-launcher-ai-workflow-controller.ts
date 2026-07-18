@@ -6,6 +6,7 @@ import type {
   ThreadWorkflowView
 } from "@shared/thread-workflow"
 import { historyShellStore } from "@/lib/history-shell-store"
+import { useAiCoreThreads } from "./AiCoreHost"
 
 interface WorkflowControllerState {
   error: string | null
@@ -38,6 +39,7 @@ function toErrorMessage(error: unknown): string {
 const EMPTY_VIEW: ThreadWorkflowView = { project: null, summary: null }
 
 export function useLauncherAiWorkflowController(threadId: string): LauncherAiWorkflowController {
+  const { mode } = useAiCoreThreads()
   const [state, setState] = useState<WorkflowControllerState | null>(null)
   const lifecycleEpochRef = useRef(0)
   const mutationInFlightRef = useRef(false)
@@ -120,6 +122,10 @@ export function useLauncherAiWorkflowController(threadId: string): LauncherAiWor
   }, [isCurrentLifecycle, threadId])
 
   const refreshSidebarProjection = useCallback(async (): Promise<void> => {
+    if (mode === "main") {
+      return
+    }
+
     const lifecycleEpoch = lifecycleEpochRef.current
     const requestEpoch = ++projectionRequestEpochRef.current
     try {
@@ -146,7 +152,7 @@ export function useLauncherAiWorkflowController(threadId: string): LauncherAiWor
           : current
       )
     }
-  }, [isCurrentLifecycle, threadId])
+  }, [isCurrentLifecycle, mode, threadId])
 
   useEffect(
     () =>

@@ -73,3 +73,35 @@ test("cold start requests Primary Main before restoring session windows", async 
   assert.ok(startServices)
   assert.doesNotMatch(startServices[0], /ThreadWindowService|restoreThreadWindows/)
 })
+
+test("workflow events refresh each durable window sidebar through one owner", async () => {
+  const [mainWindow, workflowController, launcherPage] = await Promise.all([
+    source("src/renderer/src/ai-core/MainWindowApp.tsx"),
+    source("src/renderer/src/ai-core/use-launcher-ai-workflow-controller.ts"),
+    source("src/renderer/src/ai-core/LauncherAiPage.tsx")
+  ])
+  const durableWindowWorkflowListener = mainWindow.match(
+    /window\.api\.threadWorkflow\.onChanged\(\(\) => \{[\s\S]*?\n {6}\}\)/
+  )
+  const workflowEventListener = workflowController.match(
+    /window\.api\.threadWorkflow\.onChanged\(\(event\) => \{[\s\S]*?\n {6}\}\)/
+  )
+  const sidebarProjection = workflowController.match(
+    /const refreshSidebarProjection = useCallback\(async \(\): Promise<void> => \{[\s\S]*?\n {2}\}, \[[^\]]+\]\)/
+  )
+
+  assert.ok(durableWindowWorkflowListener)
+  assert.equal(durableWindowWorkflowListener[0].match(/loadSidebarView\(\)/g)?.length, 1)
+  assert.ok(workflowEventListener)
+  assert.match(workflowEventListener[0], /void refresh\(\)/)
+  assert.ok(sidebarProjection)
+  assert.match(sidebarProjection[0], /if \(mode === "main"\) \{\s*return\s*\}/)
+  assert.equal(sidebarProjection[0].match(/loadSidebarView\(\)/g)?.length, 1)
+  assert.match(workflowController, /const \{ mode \} = useAiCoreThreads\(\)/)
+
+  assert.match(launcherPage, /if \(!threadId\) \{\s*return\s*\}\s*\n\s*void loadThreads\(\)/)
+  assert.match(
+    launcherPage,
+    /if \(!isSidebarOpen && !isSidebarPreviewVisible\) \{\s*return\s*\}\s*\n\s*void loadThreads\(\)/
+  )
+})
