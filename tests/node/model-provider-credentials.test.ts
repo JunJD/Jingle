@@ -428,6 +428,66 @@ test("default model thinking effort is persisted in Jingle config", async () => 
   assert.match(configText, /custom_thinking_provider:\n(?: {4}.+\n)* {4}thinking_effort: high/)
 })
 
+test("remote Anthropic model names cannot authorize an undeclared thinking effort", async () => {
+  const { setDefaultModelForUI, setProviderCredentialsForUI } =
+    await import("../../src/main/model-provider/service")
+  const { getModelProviderPaths } = await import("../../src/main/model-provider/paths")
+  const { resolveModelRuntimeConfig } = await import("../../src/main/model-provider/resolver")
+  const { getModelProviderDefaultRuntimeSelection } =
+    await import("../../src/main/model-provider/settings")
+
+  const remoteModel = "claude-sonnet-4-remote-preview-20270101"
+  const catalogModel = "claude-sonnet-4-20250514"
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        data: [
+          { display_name: "Claude Sonnet 4 Remote Preview", id: remoteModel },
+          { display_name: "Claude Sonnet 4", id: catalogModel }
+        ],
+        has_more: false
+      }),
+      { status: 200, statusText: "OK" }
+    )
+
+  await setProviderCredentialsForUI("anthropic", { apiKey: "sk-anthropic-remote-effort" })
+  const configPath = getModelProviderPaths().configPath
+  const configBeforeRejectedSelection = await readFile(configPath, "utf8")
+
+  await assert.rejects(
+    setDefaultModelForUI("llm", `anthropic:${remoteModel}`, {
+      thinkingEffort: "high"
+    }),
+    /Thinking effort "high" is not supported/
+  )
+  assert.equal(await readFile(configPath, "utf8"), configBeforeRejectedSelection)
+
+  await setDefaultModelForUI("llm", `anthropic:${remoteModel}`, {
+    thinkingEffort: null
+  })
+  assert.deepEqual(getModelProviderDefaultRuntimeSelection(), {
+    modelId: `anthropic:${remoteModel}`,
+    thinkingEffort: null,
+    version: 1
+  })
+  assert.equal(
+    resolveModelRuntimeConfig({
+      selection: getModelProviderDefaultRuntimeSelection()
+    }).thinkingEffort,
+    null
+  )
+
+  await setDefaultModelForUI("llm", `anthropic:${catalogModel}`, {
+    thinkingEffort: "high"
+  })
+  assert.equal(
+    resolveModelRuntimeConfig({
+      selection: getModelProviderDefaultRuntimeSelection()
+    }).thinkingEffort,
+    "high"
+  )
+})
+
 test("legacy unsupported effort stays persisted and blocks runtime until user changes it", async () => {
   const { upsertCustomProviderForUI } = await import("../../src/main/model-provider/service")
   const { getModelProviderPaths } = await import("../../src/main/model-provider/paths")

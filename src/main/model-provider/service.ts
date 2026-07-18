@@ -620,9 +620,14 @@ function requireModelReasoning(model: ModelConfig): boolean {
 }
 
 function resolveCapabilityForModel(model: ModelConfig) {
+  const durableModel = getModelConfig(model.id)
   return resolveModelReasoningEffortCapability({
     customProvider: getCustomProviderConfig(model.provider),
-    model
+    model: durableModel ?? {
+      model: model.model,
+      provider: model.provider,
+      reasoning: false
+    }
   })
 }
 
