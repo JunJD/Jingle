@@ -140,6 +140,10 @@ win:
 linux:
   category: Utility
   icon: resources/icon.png
+  protocols:
+    - name: Jingle OAuth Callback
+      schemes:
+        - jingle
   target:
     - AppImage
 nsis:
