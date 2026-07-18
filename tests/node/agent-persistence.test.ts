@@ -1440,14 +1440,18 @@ test("legacy HITL approval atomically upgrades the source run and records admitt
     where: { runId, type: "run.resumed" }
   })
   assert.deepEqual(JSON.parse(resumed.payload), {
-    model: "deepseek:deepseek-v4-pro",
+    modelRuntimeSelection: {
+      modelId: "deepseek:deepseek-v4-pro",
+      thinkingEffort: "high",
+      version: 1
+    },
     requestId,
-    source: "resume",
-    thinkingEffort: "high"
+    source: "resume"
   })
   await flushAgentTraceProjection()
   const trace = await getPrismaClient().agentTrace.findUniqueOrThrow({ where: { runId } })
   assert.equal(trace.model, "deepseek:deepseek-v4-pro")
+  assert.equal(trace.modelSelectionVersion, 1)
   assert.equal(trace.thinkingEffort, "high")
 })
 
@@ -3567,10 +3571,13 @@ test("resume admission atomically records decision and resume events", async () 
     ["approval.resolved", "run.resumed"]
   )
   assert.deepEqual(JSON.parse(events[1]?.payload ?? "{}"), {
-    model: "deepseek:deepseek-v4-pro",
+    modelRuntimeSelection: {
+      modelId: "deepseek:deepseek-v4-pro",
+      thinkingEffort: "high",
+      version: 1
+    },
     requestId,
-    source: "resume",
-    thinkingEffort: "high"
+    source: "resume"
   })
 })
 

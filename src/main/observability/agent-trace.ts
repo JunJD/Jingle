@@ -1,6 +1,8 @@
 import type { RunnableConfig } from "@langchain/core/runnables"
 import type { ResolvedExtensionAiCapability } from "@shared/extension-sources"
 import type { PermissionModeName } from "@shared/permission-mode"
+import type { ModelRuntimeSelection } from "@shared/app-types"
+import { parseModelRuntimeSelection } from "@shared/model-runtime-selection"
 
 export interface AgentRuntimeTraceInput {
   aiCapabilities: ResolvedExtensionAiCapability[]
@@ -9,9 +11,9 @@ export interface AgentRuntimeTraceInput {
 }
 
 export interface AgentRunTraceInput {
-  modelId?: string
   permissionMode?: PermissionModeName
   runId: string
+  selection: ModelRuntimeSelection
   source: "invoke" | "resume"
   threadId: string
 }
@@ -38,6 +40,20 @@ function listCapabilityNames(capabilities: ResolvedExtensionAiCapability[]): str
   return capabilities.map((capability) => capability.extensionName)
 }
 
+export function buildModelRuntimeSelectionTraceMetadata(
+  selection: ModelRuntimeSelection
+): Record<string, unknown> {
+  const canonicalSelection = parseModelRuntimeSelection(selection)
+  if (!canonicalSelection) {
+    throw new Error("Cannot trace an invalid model runtime selection.")
+  }
+
+  return {
+    jingle_model_id: canonicalSelection.modelId,
+    jingle_model_runtime_selection: canonicalSelection
+  }
+}
+
 export function buildAgentRuntimeTraceConfig(input: AgentRuntimeTraceInput): {
   metadata: Record<string, unknown>
   runName: string
@@ -60,7 +76,7 @@ export function buildAgentRunTraceMetadata(input: AgentRunTraceInput): Record<st
     jingle_run_id: input.runId,
     jingle_thread_id: input.threadId,
     jingle_run_source: input.source,
-    jingle_model_id: input.modelId,
+    ...buildModelRuntimeSelectionTraceMetadata(input.selection),
     jingle_permission_mode: input.permissionMode
   })
 }

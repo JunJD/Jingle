@@ -2,8 +2,8 @@ import { createHash } from "crypto"
 import { getPrismaClient } from "./client"
 import { toNumber } from "./utils"
 import { parseAgentEventPayloadFromJson } from "../agent-events/schema"
-import type { ThinkingEffort } from "@shared/app-types"
-import { isThinkingEffort } from "@shared/model-runtime-selection"
+import type { ModelRuntimeSelection, ThinkingEffort } from "@shared/app-types"
+import { isThinkingEffort, parseModelRuntimeSelection } from "@shared/model-runtime-selection"
 
 type TraceStatus =
   | "running"
@@ -85,6 +85,8 @@ export interface AgentTraceSummaryRow {
   error_type: string | null
   has_gap: boolean
   model: string | null
+  model_runtime_selection: ModelRuntimeSelection | null
+  model_selection_version: number
   projected_through_seq: number
   provider: string | null
   run_id: string
@@ -136,6 +138,84 @@ function readString(payload: Record<string, unknown>, key: string): string | nul
 function readNumber(payload: Record<string, unknown>, key: string): number | null {
   const value = payload[key]
   return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+type TraceModelRuntimeFact =
+  | { kind: "none" }
+  | {
+      hasThinkingEffort: boolean
+      kind: "legacy"
+      modelId: string | null
+      thinkingEffort: ThinkingEffort | null
+    }
+  | { kind: "canonical"; selection: ModelRuntimeSelection }
+
+function isSameModelRuntimeSelection(
+  left: ModelRuntimeSelection,
+  right: ModelRuntimeSelection
+): boolean {
+  return (
+    left.version === right.version &&
+    left.modelId === right.modelId &&
+    left.thinkingEffort === right.thinkingEffort
+  )
+}
+
+function applyRunModelRuntimeFact(
+  current: TraceModelRuntimeFact,
+  payload: Record<string, unknown>
+): TraceModelRuntimeFact {
+  const canonical = parseModelRuntimeSelection(payload.modelRuntimeSelection)
+  if (canonical) {
+    if (
+      current.kind === "canonical" &&
+      !isSameModelRuntimeSelection(current.selection, canonical)
+    ) {
+      throw new Error("[AgentTrace] Canonical model runtime selection changed within one run.")
+    }
+    if (
+      current.kind === "legacy" &&
+      ((current.modelId !== null && current.modelId !== canonical.modelId) ||
+        (current.hasThinkingEffort && current.thinkingEffort !== canonical.thinkingEffort))
+    ) {
+      throw new Error("[AgentTrace] Canonical model runtime selection conflicts with legacy facts.")
+    }
+    return { kind: "canonical", selection: canonical }
+  }
+
+  if (current.kind === "canonical") {
+    throw new Error("[AgentTrace] Legacy model runtime facts cannot follow a canonical selection.")
+  }
+
+  const modelId = readString(payload, "model")
+  const hasThinkingEffort = Object.hasOwn(payload, "thinkingEffort")
+  const thinkingEffort = hasThinkingEffort ? payload.thinkingEffort : null
+  if (thinkingEffort !== null && !isThinkingEffort(thinkingEffort)) {
+    throw new Error("[AgentTrace] Legacy thinking effort is invalid.")
+  }
+  if (modelId === null && !hasThinkingEffort) {
+    return current
+  }
+  if (
+    current.kind === "legacy" &&
+    ((current.modelId !== null && modelId !== null && current.modelId !== modelId) ||
+      (current.hasThinkingEffort && hasThinkingEffort && current.thinkingEffort !== thinkingEffort))
+  ) {
+    throw new Error("[AgentTrace] Legacy model runtime facts changed within one run.")
+  }
+
+  return {
+    hasThinkingEffort:
+      current.kind === "legacy"
+        ? current.hasThinkingEffort || hasThinkingEffort
+        : hasThinkingEffort,
+    kind: "legacy",
+    modelId: current.kind === "legacy" ? (current.modelId ?? modelId) : modelId,
+    thinkingEffort:
+      current.kind === "legacy" && current.hasThinkingEffort
+        ? current.thinkingEffort
+        : (thinkingEffort as ThinkingEffort | null)
+  }
 }
 
 function readTimestamp(payload: Record<string, unknown>, key: string): number | null {
@@ -412,6 +492,7 @@ function mapTraceRow(row: {
   errorType: string | null
   hasGap: boolean
   model: string | null
+  modelSelectionVersion: number
   projectedThroughSeq: number
   provider: string | null
   runId: string
@@ -425,6 +506,14 @@ function mapTraceRow(row: {
   totalTokens: number
   traceId: string
 }): AgentTraceSummaryRow {
+  const modelRuntimeSelection = parseModelRuntimeSelection({
+    modelId: row.model,
+    thinkingEffort: row.thinkingEffort,
+    version: row.modelSelectionVersion
+  })
+  if (row.modelSelectionVersion !== 0 && !modelRuntimeSelection) {
+    throw new Error("[AgentTrace] Persisted model runtime selection is invalid.")
+  }
   return {
     completed_at: row.completedAt === null ? null : toNumber(row.completedAt),
     completion_reason: row.completionReason,
@@ -432,6 +521,8 @@ function mapTraceRow(row: {
     error_type: row.errorType,
     has_gap: row.hasGap,
     model: row.model,
+    model_runtime_selection: modelRuntimeSelection,
+    model_selection_version: row.modelSelectionVersion,
     projected_through_seq: row.projectedThroughSeq,
     provider: row.provider,
     run_id: row.runId,
@@ -560,7 +651,9 @@ export async function projectAgentTraceForRun(runId: string): Promise<AgentTrace
   let completionReason: string | null = null
   let errorType: string | null = null
   let errorMessage: string | null = null
+  let modelRuntimeFact: TraceModelRuntimeFact = { kind: "none" }
   let model: string | null = null
+  let modelSelectionVersion = 0
   let provider: string | null = null
   let thinkingEffort: ThinkingEffort | null = null
   let projectedThroughSeq = 0
@@ -569,14 +662,20 @@ export async function projectAgentTraceForRun(runId: string): Promise<AgentTrace
     const payload = parseAgentEventPayloadFromJson(event.type, event.payload)
     projectedThroughSeq = Math.max(projectedThroughSeq, event.seq)
 
-    model = readString(payload, "model") ?? model
-    provider = readString(payload, "provider") ?? provider
-    if (Object.hasOwn(payload, "thinkingEffort")) {
-      const admittedThinkingEffort = payload.thinkingEffort
-      if (admittedThinkingEffort === null || isThinkingEffort(admittedThinkingEffort)) {
-        thinkingEffort = admittedThinkingEffort
+    if (event.type === "run.started" || event.type === "run.resumed") {
+      modelRuntimeFact = applyRunModelRuntimeFact(modelRuntimeFact, payload)
+      if (modelRuntimeFact.kind === "canonical") {
+        model = modelRuntimeFact.selection.modelId
+        modelSelectionVersion = modelRuntimeFact.selection.version
+        thinkingEffort = modelRuntimeFact.selection.thinkingEffort
+      } else if (modelRuntimeFact.kind === "legacy") {
+        model = modelRuntimeFact.modelId
+        thinkingEffort = modelRuntimeFact.hasThinkingEffort ? modelRuntimeFact.thinkingEffort : null
       }
+    } else if (modelRuntimeFact.kind === "none") {
+      model = readString(payload, "model") ?? model
     }
+    provider = readString(payload, "provider") ?? provider
 
     if (event.type === "run.started" || event.type === "run.resumed") {
       traceStatus = "running"
@@ -670,6 +769,7 @@ export async function projectAgentTraceForRun(runId: string): Promise<AgentTrace
           errorType,
           hasGap,
           model,
+          modelSelectionVersion,
           projectedThroughSeq,
           provider,
           runId,
@@ -692,6 +792,7 @@ export async function projectAgentTraceForRun(runId: string): Promise<AgentTrace
           errorType,
           hasGap,
           model,
+          modelSelectionVersion,
           projectedThroughSeq,
           projectionError: null,
           provider,

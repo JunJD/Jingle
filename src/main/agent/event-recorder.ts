@@ -21,6 +21,8 @@ import { getDevtoolsNetworkRecorder } from "@jingle/devtools-network/main"
 import type { HITLDecision } from "../types"
 import { parseAgentRunFailure } from "@shared/agent-run-failure"
 import type { ModelRuntimeSelection } from "@shared/app-types"
+import { parseModelRuntimeSelection } from "@shared/model-runtime-selection"
+import { buildModelRuntimeSelectionTraceMetadata } from "../observability/agent-trace"
 
 export interface AgentStreamBoundaryRecorderState {
   approvalRequestIds: Set<string>
@@ -153,8 +155,8 @@ function summarizeAgentStreamPayload(input: {
 function recordAgentStreamForDevtools(input: {
   data: unknown
   mode: string
-  modelId?: string
   runId: string
+  selection: ModelRuntimeSelection
   threadId: string
 }): void {
   const recorder = getDevtoolsNetworkRecorder()
@@ -167,7 +169,7 @@ function recordAgentStreamForDevtools(input: {
       channel: `agent:stream:${input.mode}`,
       metadata: {
         mode: input.mode,
-        modelId: input.modelId ?? null,
+        ...buildModelRuntimeSelectionTraceMetadata(input.selection),
         runId: input.runId,
         threadId: input.threadId
       },
@@ -191,13 +193,22 @@ export interface RunStartedEventInput {
   userMessageId: string
 }
 
+function requireCanonicalModelRuntimeSelection(
+  selection: ModelRuntimeSelection
+): ModelRuntimeSelection {
+  const canonicalSelection = parseModelRuntimeSelection(selection)
+  if (!canonicalSelection) {
+    throw new Error("Cannot record an invalid model runtime selection.")
+  }
+  return canonicalSelection
+}
+
 export function createRunStartedEventInput(input: RunStartedEventInput): AppendAgentEventInput {
   return {
     payload: {
-      model: input.selection.modelId,
+      modelRuntimeSelection: requireCanonicalModelRuntimeSelection(input.selection),
       permissionMode: input.permissionMode,
       source: "invoke",
-      thinkingEffort: input.selection.thinkingEffort,
       userMessageId: input.userMessageId
     },
     runId: input.runId,
@@ -220,10 +231,9 @@ export interface RunResumedEventInput {
 export function createRunResumedEventInput(input: RunResumedEventInput): AppendAgentEventInput {
   return {
     payload: {
-      model: input.selection.modelId,
+      modelRuntimeSelection: requireCanonicalModelRuntimeSelection(input.selection),
       requestId: input.requestId,
-      source: "resume",
-      thinkingEffort: input.selection.thinkingEffort
+      source: "resume"
     },
     runId: input.runId,
     threadId: input.threadId,
@@ -363,8 +373,8 @@ export function createRunFinishedEventInput(input: {
 export async function recordAgentStreamBoundaryEvents(input: {
   data: unknown
   mode: string
-  modelId?: string
   runId: string
+  selection: ModelRuntimeSelection
   state: AgentStreamBoundaryRecorderState
   threadId: string
 }): Promise<void> {
@@ -436,8 +446,8 @@ async function flushPendingValuesToolResults(input: {
 async function recordAgentStreamBoundaryEventsUnsafe(input: {
   data: unknown
   mode: string
-  modelId?: string
   runId: string
+  selection: ModelRuntimeSelection
   state: AgentStreamBoundaryRecorderState
   threadId: string
 }): Promise<void> {
@@ -457,7 +467,7 @@ async function recordAgentStreamBoundaryEventsUnsafe(input: {
         await appendAgentEventSafely({
           payload: {
             messageId: assistant.id,
-            model: input.modelId ?? null
+            model: input.selection.modelId
           },
           runId: input.runId,
           threadId: input.threadId,
@@ -471,7 +481,7 @@ async function recordAgentStreamBoundaryEventsUnsafe(input: {
           payload: {
             contentLength,
             messageId: assistant.id,
-            model: input.modelId ?? null
+            model: input.selection.modelId
           },
           runId: input.runId,
           threadId: input.threadId,

@@ -1,10 +1,17 @@
 import { z } from "../ipc/schema"
-import { THINKING_EFFORT_VALUES } from "@shared/app-types"
+import { THINKING_EFFORT_VALUES, type ModelRuntimeSelection } from "@shared/app-types"
+import { parseModelRuntimeSelection } from "@shared/model-runtime-selection"
 
 const nullableStringSchema = z.string().nullable()
 const optionalNullableStringSchema = nullableStringSchema.optional()
 const optionalNullableThinkingEffortSchema = z.enum(THINKING_EFFORT_VALUES).nullable().optional()
 const jsonRecordSchema = z.record(z.string(), z.unknown())
+const modelRuntimeSelectionSchema = z.preprocess(
+  (value) => parseModelRuntimeSelection(value),
+  z.custom<ModelRuntimeSelection>((value) => value !== null, {
+    message: "Invalid model runtime selection"
+  })
+)
 
 export const agentEventTypeSchema = z.enum([
   "approval.requested",
@@ -112,23 +119,42 @@ const eventPayloadSchemas = {
       status: z.string()
     })
     .strict(),
-  "run.resumed": z
-    .object({
-      model: optionalNullableStringSchema,
-      requestId: z.string(),
-      source: z.literal("resume"),
-      thinkingEffort: optionalNullableThinkingEffortSchema
-    })
-    .strict(),
-  "run.started": z
-    .object({
-      model: optionalNullableStringSchema,
-      permissionMode: z.string(),
-      source: z.literal("invoke"),
-      thinkingEffort: optionalNullableThinkingEffortSchema,
-      userMessageId: z.string()
-    })
-    .strict(),
+  "run.resumed": z.union([
+    z
+      .object({
+        modelRuntimeSelection: modelRuntimeSelectionSchema,
+        requestId: z.string(),
+        source: z.literal("resume")
+      })
+      .strict(),
+    z
+      .object({
+        model: optionalNullableStringSchema,
+        requestId: z.string(),
+        source: z.literal("resume"),
+        thinkingEffort: optionalNullableThinkingEffortSchema
+      })
+      .strict()
+  ]),
+  "run.started": z.union([
+    z
+      .object({
+        modelRuntimeSelection: modelRuntimeSelectionSchema,
+        permissionMode: z.string(),
+        source: z.literal("invoke"),
+        userMessageId: z.string()
+      })
+      .strict(),
+    z
+      .object({
+        model: optionalNullableStringSchema,
+        permissionMode: z.string(),
+        source: z.literal("invoke"),
+        thinkingEffort: optionalNullableThinkingEffortSchema,
+        userMessageId: z.string()
+      })
+      .strict()
+  ]),
   "tool.call.completed": z
     .object({
       messageId: z.string(),

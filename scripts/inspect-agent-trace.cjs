@@ -118,9 +118,18 @@ function compact(value, max = 220) {
   return text.length > max ? `${text.slice(0, max - 1)}...` : text
 }
 
+function readModelSelectionVersion(row) {
+  const version = Number(row.model_selection_version)
+  if (version !== 0 && version !== 1) {
+    throw new Error(`Unsupported model selection version ${String(row.model_selection_version)}.`)
+  }
+  return version
+}
+
 function printTraceList() {
   const rows = readJsonQuery(`
-    SELECT trace_id, thread_id, run_id, status, model, provider, started_at, completed_at,
+    SELECT trace_id, thread_id, run_id, status, model, model_selection_version,
+           thinking_effort, provider, started_at, completed_at,
            total_steps, total_tokens, error_message
     FROM agent_traces
     ORDER BY started_at DESC
@@ -133,6 +142,7 @@ function printTraceList() {
   }
 
   for (const row of rows) {
+    const modelSelectionVersion = readModelSelectionVersion(row)
     console.log(
       [
         row.trace_id,
@@ -144,6 +154,8 @@ function printTraceList() {
         `steps=${row.total_steps}`,
         `tokens=${row.total_tokens}`,
         row.model ? `model=${row.model}` : null,
+        modelSelectionVersion === 1 ? `selectionVersion=${modelSelectionVersion}` : null,
+        row.thinking_effort ? `thinkingEffort=${row.thinking_effort}` : null,
         row.error_message ? `error=${compact(row.error_message, 80)}` : null
       ]
         .filter(Boolean)
@@ -172,7 +184,8 @@ function resolveTraceId(traceId) {
 function getTrace(traceId) {
   const [trace] = readJsonQuery(
     `
-      SELECT trace_id, thread_id, run_id, status, model, provider, started_at, completed_at,
+      SELECT trace_id, thread_id, run_id, status, model, model_selection_version,
+             thinking_effort, provider, started_at, completed_at,
              completion_reason, error_type, error_message, total_steps, total_cost, total_input_tokens,
              total_output_tokens, total_tokens, projected_through_seq, has_gap, projection_error
       FROM agent_traces
@@ -188,6 +201,7 @@ function getTrace(traceId) {
 }
 
 function printTraceHeader(trace) {
+  const modelSelectionVersion = readModelSelectionVersion(trace)
   console.log(`Trace ${trace.trace_id}`)
   console.log(
     [
@@ -195,6 +209,8 @@ function printTraceHeader(trace) {
       `run=${trace.run_id}`,
       `status=${trace.status}`,
       trace.model ? `model=${trace.model}` : null,
+      modelSelectionVersion === 1 ? `selectionVersion=${modelSelectionVersion}` : null,
+      trace.thinking_effort ? `thinkingEffort=${trace.thinking_effort}` : null,
       trace.provider ? `provider=${trace.provider}` : null,
       `started=${formatTime(trace.started_at)}`,
       `duration=${formatDuration(trace.started_at, trace.completed_at)}`,

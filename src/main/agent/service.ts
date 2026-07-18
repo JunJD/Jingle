@@ -177,11 +177,13 @@ function resolveResumeModelRuntimeSelectionAdmission(input: {
   })
 }
 
-function requireResumeExecutionModelId(selection: ModelRuntimeSelection | null): string {
+function requireResumeExecutionModelRuntimeSelection(
+  selection: ModelRuntimeSelection | null
+): ModelRuntimeSelection {
   if (!selection) {
     throw new Error("Terminal resume cannot emit model execution events.")
   }
-  return selection.modelId
+  return selection
 }
 
 const DEFAULT_AGENT_EXTENSION_REGISTRY_READER: AgentExtensionRegistryReader = {
@@ -983,7 +985,6 @@ export class AgentService {
         metadata: parsePersistedMetadata(channel, thread.metadata),
         owner: "thread"
       })
-      const modelId = selection.modelId
       activeRun.attachmentCapabilities = getProviderAdapter(
         resolveModelRuntimeConfig({ selection }).providerId
       ).attachmentCapabilities
@@ -1211,8 +1212,8 @@ export class AgentService {
           await recordAgentStreamBoundaryEvents({
             data: serializedData,
             mode,
-            modelId,
             runId,
+            selection,
             state: boundaryRecorderState,
             threadId
           })
@@ -1585,8 +1586,8 @@ export class AgentService {
           await recordAgentStreamBoundaryEvents({
             data: serializedData,
             mode,
-            modelId: requireResumeExecutionModelId(selection),
             runId: resumedRunId,
+            selection: requireResumeExecutionModelRuntimeSelection(selection),
             state: boundaryRecorderState,
             threadId
           })

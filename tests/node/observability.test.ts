@@ -103,9 +103,9 @@ test("observability does not use legacy LangChain env aliases as provider signal
 test("agent trace metadata carries Jingle ids without workspace paths", () => {
   assert.deepEqual(
     buildAgentRunTraceMetadata({
-      modelId: "gpt-5",
       permissionMode: "auto",
       runId: "run-1",
+      selection: { modelId: "gpt-5", thinkingEffort: "max", version: 1 },
       source: "invoke",
       threadId: "thread-1"
     }),
@@ -116,6 +116,11 @@ test("agent trace metadata carries Jingle ids without workspace paths", () => {
       jingle_thread_id: "thread-1",
       jingle_run_source: "invoke",
       jingle_model_id: "gpt-5",
+      jingle_model_runtime_selection: {
+        modelId: "gpt-5",
+        thinkingEffort: "max",
+        version: 1
+      },
       jingle_permission_mode: "auto"
     }
   )
@@ -124,9 +129,9 @@ test("agent trace metadata carries Jingle ids without workspace paths", () => {
 test("agent run trace config uses LangChain RunnableConfig tracing fields", () => {
   assert.deepEqual(
     buildAgentRunTraceConfig({
-      modelId: "gpt-5",
       permissionMode: "auto",
       runId: "run-1",
+      selection: { modelId: "gpt-5", thinkingEffort: "low", version: 1 },
       source: "resume",
       threadId: "thread-1"
     }),
@@ -140,6 +145,11 @@ test("agent run trace config uses LangChain RunnableConfig tracing fields", () =
         jingle_thread_id: "thread-1",
         jingle_run_source: "resume",
         jingle_model_id: "gpt-5",
+        jingle_model_runtime_selection: {
+          modelId: "gpt-5",
+          thinkingEffort: "low",
+          version: 1
+        },
         jingle_permission_mode: "auto"
       }
     }

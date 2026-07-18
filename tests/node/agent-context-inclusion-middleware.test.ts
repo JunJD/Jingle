@@ -280,6 +280,8 @@ test("get_trace_evidence tool content includes bounded trace blobs", () => {
     error_type: null,
     has_gap: false,
     model: "gpt-test",
+    model_runtime_selection: { modelId: "gpt-test", thinkingEffort: "high", version: 1 },
+    model_selection_version: 1,
     projected_through_seq: 3,
     provider: "openai",
     run_id: "run-1",

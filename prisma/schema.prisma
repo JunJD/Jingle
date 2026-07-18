@@ -637,6 +637,7 @@ model AgentTrace {
   agentId             String?          @map("agent_id")
   status              String
   model               String?
+  modelSelectionVersion Int              @default(0) @map("model_selection_version")
   provider            String?
   thinkingEffort      String?          @map("thinking_effort")
   startedAt           BigInt           @map("started_at")

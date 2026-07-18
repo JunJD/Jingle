@@ -12,6 +12,11 @@ import { createJingleLangChainTraceCallback } from "@jingle/langchain-agent-harn
 const repoRoot = process.cwd()
 const originalJingleHome = process.env.JINGLE_HOME
 let jingleHome = ""
+const TEST_MODEL_RUNTIME_SELECTION = Object.freeze({
+  modelId: "gpt-test",
+  thinkingEffort: "high" as const,
+  version: 1 as const
+})
 
 async function loadDbModules() {
   const db = await import("../../src/main/db")
@@ -220,7 +225,7 @@ test("trace projection does not auto-run for dirty non-terminal events", async (
 })
 
 test("run finished schedules trace projection", async () => {
-  const { createRun, createThread, getAgentTrace } = await loadDbModules()
+  const { createRun, createThread, getAgentTrace, getAgentTraceEvents } = await loadDbModules()
   const { recordRunFinished, recordRunStarted } =
     await import("../../src/main/agent/event-recorder")
   const threadId = "thread-projection-finished"
@@ -243,9 +248,22 @@ test("run finished schedules trace projection", async () => {
   })
   await delay(650)
 
-  assert.equal((await getAgentTrace(runId))?.thinking_effort, "high")
+  const [startedEvent] = await getAgentTraceEvents(runId)
+  assert.deepEqual(JSON.parse(startedEvent?.payload ?? "{}"), {
+    modelRuntimeSelection: { modelId: "gpt-test", thinkingEffort: "high", version: 1 },
+    permissionMode: "default",
+    source: "invoke",
+    userMessageId: "user-message-1"
+  })
 
   const trace = await getAgentTrace(runId)
+  assert.deepEqual(trace?.model_runtime_selection, {
+    modelId: "gpt-test",
+    thinkingEffort: "high",
+    version: 1
+  })
+  assert.equal(trace?.model_selection_version, 1)
+  assert.equal(trace?.thinking_effort, "high")
   assert.equal(trace?.status, "completed")
   assert.equal(trace?.projected_through_seq, 2)
 })
@@ -301,6 +319,179 @@ test("trace projector updates run summary from lifecycle events without runtime 
   assert.equal(trace?.completed_at !== null, true)
   assert.equal(trace?.total_steps, 0)
   assert.deepEqual(steps, [])
+})
+
+test("legacy run selection stays authoritative over provider transport model events", async () => {
+  const { appendAgentEvent, createRun, createThread, flushAgentTraceProjection, getAgentTrace } =
+    await loadDbModules()
+  const threadId = "thread-legacy-trace-selection"
+  const runId = "run-legacy-trace-selection"
+
+  await createThread(threadId)
+  await createRun(runId, threadId)
+  await appendAgentEvent({
+    payload: runStartedPayload({ thinkingEffort: "low" }),
+    runId,
+    threadId,
+    type: "run.started"
+  })
+  await appendAgentEvent({
+    payload: {
+      inputTokens: 1,
+      llmRunId: "llm-run-legacy-selection",
+      model: "provider-transport-model",
+      output: "done",
+      outputTokens: 1,
+      totalTokens: 2
+    },
+    runId,
+    threadId,
+    type: "llm.output.captured"
+  })
+  await flushAgentTraceProjection()
+
+  const trace = await getAgentTrace(runId)
+  assert.equal(trace?.model, "gpt-test")
+  assert.equal(trace?.thinking_effort, "low")
+  assert.equal(trace?.model_selection_version, 0)
+  assert.equal(trace?.model_runtime_selection, null)
+})
+
+test("trace projector upgrades legacy model facts to one canonical selection", async () => {
+  const { appendAgentEvent, createRun, createThread, projectAgentTraceForRun } =
+    await loadDbModules()
+  const threadId = "thread-trace-selection-upgrade"
+  const runId = "run-trace-selection-upgrade"
+
+  await createThread(threadId)
+  await createRun(runId, threadId)
+  await appendAgentEvent({
+    payload: runStartedPayload(),
+    runId,
+    threadId,
+    type: "run.started"
+  })
+  await appendAgentEvent({
+    payload: {
+      modelRuntimeSelection: TEST_MODEL_RUNTIME_SELECTION,
+      requestId: "request-trace-selection-upgrade",
+      source: "resume"
+    },
+    runId,
+    threadId,
+    type: "run.resumed"
+  })
+
+  const trace = await projectAgentTraceForRun(runId)
+  assert.deepEqual(trace?.model_runtime_selection, TEST_MODEL_RUNTIME_SELECTION)
+  assert.equal(trace?.model_selection_version, 1)
+})
+
+test("trace projector rejects canonical downgrade and canonical selection drift", async () => {
+  const { appendAgentEvent, createRun, createThread, projectAgentTraceForRun } =
+    await loadDbModules()
+
+  const downgradeThreadId = "thread-trace-selection-downgrade"
+  const downgradeRunId = "run-trace-selection-downgrade"
+  await createThread(downgradeThreadId)
+  await createRun(downgradeRunId, downgradeThreadId)
+  await appendAgentEvent({
+    payload: {
+      modelRuntimeSelection: TEST_MODEL_RUNTIME_SELECTION,
+      permissionMode: "default",
+      source: "invoke",
+      userMessageId: "message-trace-selection-downgrade"
+    },
+    runId: downgradeRunId,
+    threadId: downgradeThreadId,
+    type: "run.started"
+  })
+  await appendAgentEvent({
+    payload: {
+      model: "other-model",
+      requestId: "request-trace-selection-downgrade",
+      source: "resume",
+      thinkingEffort: "low"
+    },
+    runId: downgradeRunId,
+    threadId: downgradeThreadId,
+    type: "run.resumed"
+  })
+  await assert.rejects(
+    () => projectAgentTraceForRun(downgradeRunId),
+    /Legacy model runtime facts cannot follow a canonical selection/
+  )
+
+  const driftThreadId = "thread-trace-selection-drift"
+  const driftRunId = "run-trace-selection-drift"
+  await createThread(driftThreadId)
+  await createRun(driftRunId, driftThreadId)
+  await appendAgentEvent({
+    payload: {
+      modelRuntimeSelection: TEST_MODEL_RUNTIME_SELECTION,
+      permissionMode: "default",
+      source: "invoke",
+      userMessageId: "message-trace-selection-drift"
+    },
+    runId: driftRunId,
+    threadId: driftThreadId,
+    type: "run.started"
+  })
+  await appendAgentEvent({
+    payload: {
+      modelRuntimeSelection: { modelId: "other-model", thinkingEffort: "low", version: 1 },
+      requestId: "request-trace-selection-drift",
+      source: "resume"
+    },
+    runId: driftRunId,
+    threadId: driftThreadId,
+    type: "run.resumed"
+  })
+  await assert.rejects(
+    () => projectAgentTraceForRun(driftRunId),
+    /Canonical model runtime selection changed within one run/
+  )
+})
+
+test("trace reader rejects unsupported persisted model selection versions", async () => {
+  const { appendAgentEvent, createRun, createThread, getAgentTrace, getPrismaClient } =
+    await loadDbModules()
+  const threadId = "thread-trace-selection-version"
+  const runId = "run-trace-selection-version"
+
+  await createThread(threadId)
+  await createRun(runId, threadId)
+  await appendAgentEvent({
+    payload: {
+      modelRuntimeSelection: TEST_MODEL_RUNTIME_SELECTION,
+      permissionMode: "default",
+      source: "invoke",
+      userMessageId: "message-trace-selection-version"
+    },
+    runId,
+    threadId,
+    type: "run.started"
+  })
+  await getPrismaClient().agentTrace.create({
+    data: {
+      createdAt: 1n,
+      model: TEST_MODEL_RUNTIME_SELECTION.modelId,
+      modelSelectionVersion: -1,
+      runId,
+      startedAt: 1n,
+      status: "running",
+      thinkingEffort: TEST_MODEL_RUNTIME_SELECTION.thinkingEffort,
+      threadId,
+      traceId: runId,
+      updatedAt: 1n
+    }
+  })
+  await assert.rejects(() => getAgentTrace(runId), /Persisted model runtime selection is invalid/)
+  await getPrismaClient().agentTrace.update({
+    data: { modelSelectionVersion: 2 },
+    where: { traceId: runId }
+  })
+  await assert.rejects(() => getAgentTrace(runId), /Persisted model runtime selection is invalid/)
 })
 
 test("trace projector keeps checkpoint commits in raw events only", async () => {
@@ -670,7 +861,12 @@ test("trace dev script default timeline hides raw runtime and checkpoint events"
   await createThread(threadId)
   await createRun(runId, threadId)
   await appendAgentEvent({
-    payload: runStartedPayload(),
+    payload: {
+      modelRuntimeSelection: TEST_MODEL_RUNTIME_SELECTION,
+      permissionMode: "default",
+      source: "invoke",
+      userMessageId: "user-message-1"
+    },
     runId,
     threadId,
     type: "run.started"
@@ -691,7 +887,7 @@ test("trace dev script default timeline hides raw runtime and checkpoint events"
     payload: {
       inputTokens: 2,
       llmRunId: "llm-run-cli",
-      model: "gpt-test",
+      model: "provider-transport-model",
       output: "cli answer",
       outputTokens: 3,
       totalTokens: 5
@@ -720,6 +916,10 @@ test("trace dev script default timeline hides raw runtime and checkpoint events"
     }
   })
   await flushAgentTraceProjection()
+  const projectedTrace = await getPrismaClient().agentTrace.findUniqueOrThrow({ where: { runId } })
+  assert.equal(projectedTrace.model, "gpt-test")
+  assert.equal(projectedTrace.modelSelectionVersion, 1)
+  assert.equal(projectedTrace.thinkingEffort, "high")
 
   const scriptPath = join(repoRoot, "scripts/inspect-agent-trace.cjs")
   const cliEnv = {
@@ -735,6 +935,8 @@ test("trace dev script default timeline hides raw runtime and checkpoint events"
   assert.match(timeline, /Agent Operation/)
   assert.match(timeline, /Step 0\s+\[call_llm\]/)
   assert.match(timeline, /LLM\s+in:2 out:3 tokens/)
+  assert.match(timeline, /selectionVersion=1/)
+  assert.match(timeline, /thinkingEffort=high/)
   assert.match(timeline, /done\s+tokens=5/)
   assert.doesNotMatch(timeline, /\bcheckpoint\b/)
   assert.doesNotMatch(timeline, /\bruntime\b/)
@@ -886,7 +1088,7 @@ test("stream boundary recorder keeps assistant completion separate from LLM outp
       }
     ],
     mode: "messages",
-    modelId: "gpt-test",
+    selection: TEST_MODEL_RUNTIME_SELECTION,
     runId,
     state: createAgentStreamBoundaryRecorderState(),
     threadId
@@ -929,7 +1131,7 @@ test("stream boundary recorder does not promote tool call chunks to durable tool
       }
     ],
     mode: "messages",
-    modelId: "gpt-test",
+    selection: TEST_MODEL_RUNTIME_SELECTION,
     runId,
     state,
     threadId
@@ -953,7 +1155,7 @@ test("stream boundary recorder does not promote tool call chunks to durable tool
       }
     ],
     mode: "messages",
-    modelId: "gpt-test",
+    selection: TEST_MODEL_RUNTIME_SELECTION,
     runId,
     state,
     threadId
@@ -1020,7 +1222,7 @@ test("stream boundary recorder does not replay values messages as durable tool e
       ]
     },
     mode: "values",
-    modelId: "gpt-test",
+    selection: TEST_MODEL_RUNTIME_SELECTION,
     runId,
     state,
     threadId
@@ -1059,7 +1261,7 @@ test("stream boundary recorder does not replay values messages as durable tool e
       ]
     },
     mode: "values",
-    modelId: "gpt-test",
+    selection: TEST_MODEL_RUNTIME_SELECTION,
     runId,
     state,
     threadId
@@ -1119,6 +1321,7 @@ test("stream boundary recorder retries one current-turn values result after tool
   await recordAgentStreamBoundaryEvents({
     data: valuesPayload,
     mode: "values",
+    selection: TEST_MODEL_RUNTIME_SELECTION,
     runId,
     state,
     threadId
@@ -1126,6 +1329,7 @@ test("stream boundary recorder retries one current-turn values result after tool
   await recordAgentStreamBoundaryEvents({
     data: valuesPayload,
     mode: "values",
+    selection: TEST_MODEL_RUNTIME_SELECTION,
     runId,
     state,
     threadId
@@ -1150,6 +1354,7 @@ test("stream boundary recorder retries one current-turn values result after tool
       {}
     ],
     mode: "messages",
+    selection: TEST_MODEL_RUNTIME_SELECTION,
     runId,
     state,
     threadId
@@ -1157,6 +1362,7 @@ test("stream boundary recorder retries one current-turn values result after tool
   await recordAgentStreamBoundaryEvents({
     data: valuesPayload,
     mode: "values",
+    selection: TEST_MODEL_RUNTIME_SELECTION,
     runId,
     state,
     threadId
@@ -1201,6 +1407,7 @@ test("stream boundary recorder accepts only the seeded resume target from values
       {}
     ],
     mode: "messages",
+    selection: TEST_MODEL_RUNTIME_SELECTION,
     runId,
     state: initialState,
     threadId
@@ -1236,6 +1443,7 @@ test("stream boundary recorder accepts only the seeded resume target from values
   await recordAgentStreamBoundaryEvents({
     data: valuesPayload,
     mode: "values",
+    selection: TEST_MODEL_RUNTIME_SELECTION,
     runId,
     state: resumeState,
     threadId
@@ -1243,6 +1451,7 @@ test("stream boundary recorder accepts only the seeded resume target from values
   await recordAgentStreamBoundaryEvents({
     data: valuesPayload,
     mode: "values",
+    selection: TEST_MODEL_RUNTIME_SELECTION,
     runId,
     state: resumeState,
     threadId
@@ -1318,7 +1527,7 @@ test("stream boundary recorder records values approval interrupts", async () => 
       ]
     },
     mode: "values",
-    modelId: "gpt-test",
+    selection: TEST_MODEL_RUNTIME_SELECTION,
     runId,
     state,
     threadId
@@ -1379,7 +1588,7 @@ test("stream boundary recorder records IPC serialized LangChain tool calls", asy
   await recordAgentStreamBoundaryEvents({
     data: JSON.parse(JSON.stringify([assistant, {}])),
     mode: "messages",
-    modelId: "gpt-test",
+    selection: TEST_MODEL_RUNTIME_SELECTION,
     runId,
     state,
     threadId
@@ -1387,7 +1596,7 @@ test("stream boundary recorder records IPC serialized LangChain tool calls", asy
   await recordAgentStreamBoundaryEvents({
     data: JSON.parse(JSON.stringify([toolResult, {}])),
     mode: "messages",
-    modelId: "gpt-test",
+    selection: TEST_MODEL_RUNTIME_SELECTION,
     runId,
     state,
     threadId
@@ -1456,7 +1665,7 @@ test("stream boundary recorder skips partial OpenAI-style tool call arguments", 
       {}
     ],
     mode: "messages",
-    modelId: "gpt-test",
+    selection: TEST_MODEL_RUNTIME_SELECTION,
     runId,
     state,
     threadId
@@ -1505,7 +1714,7 @@ test("stream boundary recorder skips nameless OpenAI-style tool calls", async ()
       {}
     ],
     mode: "messages",
-    modelId: "gpt-test",
+    selection: TEST_MODEL_RUNTIME_SELECTION,
     runId,
     state,
     threadId

@@ -47,7 +47,10 @@ import { createExecuteCommandGuardrailProvider } from "./execute-command-guardra
 import { JustBashExecuteCommandClassifier } from "./execute-command-classifier"
 import { JustBashMutationPredictor } from "./mutation-predictor"
 import { appendAgentEventSafely } from "../db/agent-events"
-import { buildAgentRunTraceConfig } from "../observability/agent-trace"
+import {
+  buildAgentRunTraceConfig,
+  buildModelRuntimeSelectionTraceMetadata
+} from "../observability/agent-trace"
 import { getDevtoolsNetworkRecorder } from "@jingle/devtools-network/main"
 import {
   createRuntimeRunLifecycleController,
@@ -281,29 +284,34 @@ function createAgentExecutionCapabilities(
       trace: {
         createRunConfig: ({ runId, source, threadId }) =>
           buildAgentRunTraceConfig({
-            modelId,
             permissionMode,
             runId,
+            selection,
             source,
             threadId
           }),
         recordEvent: async ({ event, runId, threadId }) => {
-          getDevtoolsNetworkRecorder().append({
-            channel: event.type,
-            metadata: {
-              runId,
-              threadId
-            },
-            payload: event.payload,
-            source: "agent-trace",
-            status: "sent"
-          })
           await appendAgentEventSafely({
             payload: event.payload,
             runId,
             threadId,
             type: event.type
           })
+          try {
+            getDevtoolsNetworkRecorder().append({
+              channel: event.type,
+              metadata: {
+                ...buildModelRuntimeSelectionTraceMetadata(selection),
+                runId,
+                threadId
+              },
+              payload: event.payload,
+              source: "agent-trace",
+              status: "sent"
+            })
+          } catch {
+            console.warn("[Runtime] Devtools trace projection failed.")
+          }
         }
       }
     },
