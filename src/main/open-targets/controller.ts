@@ -1,18 +1,47 @@
-import type { IpcMain } from "electron"
-import type { ListOpenTargetsRequest, OpenTargetRequest } from "@shared/open-targets"
-import { registerIpcHandle } from "../ipc/handle"
+import type { IpcMain, IpcMainInvokeEvent } from "electron"
+import {
+  listOpenTargetsArgsSchema,
+  listOpenTargetsResponseSchema,
+  openTargetArgsSchema
+} from "@shared/open-targets"
+import { registerValidatedIpcHandle } from "../ipc/handle"
+import { getWindowIdentity, isDurableWindowIdentity } from "../windows/window-identity"
 import { OpenTargetsService } from "./service"
 
 export class OpenTargetsController {
   constructor(private readonly openTargetsService: OpenTargetsService) {}
 
   register(ipcMain: IpcMain): void {
-    registerIpcHandle(ipcMain, "openTargets:list", (_event, request: ListOpenTargetsRequest) => {
-      return this.openTargetsService.listTargets(request)
-    })
+    registerValidatedIpcHandle(
+      ipcMain,
+      "openTargets:list",
+      listOpenTargetsArgsSchema,
+      async (event, request) => {
+        this.assertOpenTargetsSender(event)
+        return listOpenTargetsResponseSchema.parse(
+          await this.openTargetsService.listTargets(request)
+        )
+      }
+    )
 
-    registerIpcHandle(ipcMain, "openTargets:open", async (_event, request: OpenTargetRequest) => {
-      await this.openTargetsService.openTarget(request)
-    })
+    registerValidatedIpcHandle(
+      ipcMain,
+      "openTargets:open",
+      openTargetArgsSchema,
+      async (event, request) => {
+        this.assertOpenTargetsSender(event)
+        await this.openTargetsService.openTarget(request)
+      }
+    )
+  }
+
+  private assertOpenTargetsSender(event: IpcMainInvokeEvent): void {
+    const identity = getWindowIdentity(event.sender)
+    if (
+      event.senderFrame !== event.sender.mainFrame ||
+      (identity?.kind !== "launcher" && !isDurableWindowIdentity(identity))
+    ) {
+      throw new Error("Open targets can only be accessed by the Launcher or a durable window.")
+    }
   }
 }
