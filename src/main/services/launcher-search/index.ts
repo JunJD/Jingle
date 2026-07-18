@@ -18,10 +18,70 @@ const providers: LauncherSearchProvider[] = [
 ]
 const providerOrder = new Map(providers.map((provider, index) => [provider.source, index]))
 const LAUNCHER_SEARCH_CACHE_TTL_MS = 1500
-const searchResponseCache = new Map<
-  string,
-  { expiresAt: number; response: LauncherSearchResponse }
->()
+export const LAUNCHER_SEARCH_CACHE_MAX_ENTRIES = 128
+
+interface LauncherSearchResponseCacheOptions {
+  maxEntries?: number
+  now?: () => number
+  ttlMs?: number
+}
+
+export class LauncherSearchResponseCache {
+  private readonly entries = new Map<
+    string,
+    { expiresAt: number; response: LauncherSearchResponse }
+  >()
+  private readonly maxEntries: number
+  private readonly now: () => number
+  private readonly ttlMs: number
+
+  constructor(options: LauncherSearchResponseCacheOptions = {}) {
+    this.maxEntries = options.maxEntries ?? LAUNCHER_SEARCH_CACHE_MAX_ENTRIES
+    this.now = options.now ?? Date.now
+    this.ttlMs = options.ttlMs ?? LAUNCHER_SEARCH_CACHE_TTL_MS
+  }
+
+  get size(): number {
+    return this.entries.size
+  }
+
+  clear(): void {
+    this.entries.clear()
+  }
+
+  get(cacheKey: string): LauncherSearchResponse | null {
+    this.sweepExpired(this.now())
+    return this.entries.get(cacheKey)?.response ?? null
+  }
+
+  set(cacheKey: string, response: LauncherSearchResponse): void {
+    const now = this.now()
+    this.sweepExpired(now)
+    this.entries.delete(cacheKey)
+    this.entries.set(cacheKey, {
+      expiresAt: now + this.ttlMs,
+      response
+    })
+
+    while (this.entries.size > this.maxEntries) {
+      const oldestCacheKey = this.entries.keys().next().value
+      if (oldestCacheKey === undefined) {
+        break
+      }
+      this.entries.delete(oldestCacheKey)
+    }
+  }
+
+  private sweepExpired(now: number): void {
+    for (const [cacheKey, cached] of this.entries) {
+      if (cached.expiresAt <= now) {
+        this.entries.delete(cacheKey)
+      }
+    }
+  }
+}
+
+const searchResponseCache = new LauncherSearchResponseCache()
 const inflightSearches = new Map<string, Promise<LauncherSearchResponse>>()
 let searchCacheGeneration = 0
 
@@ -61,17 +121,7 @@ function getSearchRequestCacheKey(request: LauncherSearchRequest): string {
 }
 
 function getCachedSearchResponse(cacheKey: string): LauncherSearchResponse | null {
-  const cached = searchResponseCache.get(cacheKey)
-  if (!cached) {
-    return null
-  }
-
-  if (cached.expiresAt <= Date.now()) {
-    searchResponseCache.delete(cacheKey)
-    return null
-  }
-
-  return cached.response
+  return searchResponseCache.get(cacheKey)
 }
 
 export async function warmLauncherSearchProviders(): Promise<void> {
@@ -187,10 +237,7 @@ export async function searchLauncher(
   try {
     const response = await searchPromise
     if (searchCacheGeneration === cacheGeneration) {
-      searchResponseCache.set(cacheKey, {
-        expiresAt: Date.now() + LAUNCHER_SEARCH_CACHE_TTL_MS,
-        response
-      })
+      searchResponseCache.set(cacheKey, response)
     }
     return response
   } finally {
