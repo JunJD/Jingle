@@ -3,6 +3,7 @@ import { instanceCachingFactory, type DependencyContainer } from "tsyringe"
 import {
   getMainWindowSessionState,
   getThreadWindowRestoreState,
+  repairMainWindowSessionThreadBinding,
   setMainWindowSessionState,
   setThreadWindowRestoreState
 } from "../preferences"
@@ -13,6 +14,11 @@ import { DurableWindowController } from "./controller"
 import { PrimaryMainWindowService, type PrimaryMainWindowRuntime } from "./service"
 import { ThreadWindowService, type ThreadWindowRuntime } from "../thread-window/service"
 import { DurableWindowLifecycleService } from "../durable-window/lifecycle"
+import {
+  DurableWindowRestoreGate,
+  DurableWindowRestorePolicy
+} from "../durable-window/restore-policy"
+import { getThread } from "../db/threads"
 
 const TOKEN = Symbol("DurableWindowRuntime")
 export function registerMainWindowModule(
@@ -21,6 +27,13 @@ export function registerMainWindowModule(
     Pick<ThreadWindowRuntime, "createThreadWindow"> & { quitApplication: () => void }
 ): void {
   container.registerInstance(TOKEN, runtime)
+  const restorePolicy = new DurableWindowRestorePolicy({
+    getThread: async (threadId) => {
+      const thread = await getThread(threadId)
+      return thread ? { archivedAt: thread.archived_at } : null
+    }
+  })
+  const restoreGate = new DurableWindowRestoreGate()
   container.register(DurableWindowLifecycleService, {
     useFactory: instanceCachingFactory(
       (c) => new DurableWindowLifecycleService(c.resolve<typeof runtime>(TOKEN).quitApplication)
@@ -30,37 +43,55 @@ export function registerMainWindowModule(
     useFactory: instanceCachingFactory((c) => {
       const owner = c.resolve<typeof runtime>(TOKEN)
       const lifecycle = c.resolve(DurableWindowLifecycleService)
-      return new PrimaryMainWindowService({
-        ...owner,
-        getSessionState: getMainWindowSessionState,
-        onWindowClosed: () => lifecycle.windowClosed(),
-        onWindowOpened: () => lifecycle.windowOpened(),
-        setSessionState: setMainWindowSessionState,
-        setWindowThread: (window, threadId) =>
-          setDurableWindowIdentityThread(window.webContents, threadId)
-      })
+      return new PrimaryMainWindowService(
+        {
+          ...owner,
+          getSessionState: getMainWindowSessionState,
+          onWindowClosed: () => lifecycle.windowClosed(),
+          onWindowOpened: () => lifecycle.windowOpened(),
+          recordRestoreFailure: (error) =>
+            diagnosticsLogger.error("Main window restore failed", {
+              error: serializeProcessError(error)
+            }),
+          recordRestoreRepair: (details) =>
+            diagnosticsLogger.warn("Stale durable window restore bindings repaired", details),
+          repairSessionThreadBinding: repairMainWindowSessionThreadBinding,
+          setSessionState: setMainWindowSessionState,
+          setWindowThread: (window, threadId) =>
+            setDurableWindowIdentityThread(window.webContents, threadId)
+        },
+        restorePolicy,
+        restoreGate
+      )
     })
   })
   container.register(ThreadWindowService, {
     useFactory: instanceCachingFactory((c) => {
       const owner = c.resolve<typeof runtime>(TOKEN)
       const lifecycle = c.resolve(DurableWindowLifecycleService)
-      return new ThreadWindowService({
-        createThreadWindow: owner.createThreadWindow,
-        getRestoreState: getThreadWindowRestoreState,
-        onWindowClosed: () => lifecycle.windowClosed(),
-        onWindowOpened: () => lifecycle.windowOpened(),
-        recordResourceRefusal: (details) =>
-          diagnosticsLogger.warn("Thread window resource limit reached", details),
-        recordRestoreFailure: ({ error, windowId }) =>
-          diagnosticsLogger.error("Thread window restore failed", {
-            error: serializeProcessError(error),
-            windowId
-          }),
-        setRestoreState: setThreadWindowRestoreState,
-        setWindowThread: (window, threadId) =>
-          setDurableWindowIdentityThread(window.webContents, threadId)
-      })
+      return new ThreadWindowService(
+        {
+          createThreadWindow: owner.createThreadWindow,
+          getRestoreState: getThreadWindowRestoreState,
+          onWindowClosed: () => lifecycle.windowClosed(),
+          onWindowOpened: () => lifecycle.windowOpened(),
+          recordResourceRefusal: (details) =>
+            diagnosticsLogger.warn("Thread window resource limit reached", details),
+          recordRestoreFailure: ({ error, windowId }) =>
+            diagnosticsLogger.error("Thread window restore failed", {
+              error: serializeProcessError(error),
+              windowId
+            }),
+          recordRestoreRepair: (details) =>
+            diagnosticsLogger.warn("Stale durable window restore bindings repaired", details),
+          setRestoreState: setThreadWindowRestoreState,
+          setWindowThread: (window, threadId) =>
+            setDurableWindowIdentityThread(window.webContents, threadId)
+        },
+        restorePolicy,
+        undefined,
+        restoreGate
+      )
     })
   })
   container.register(DurableWindowController, {

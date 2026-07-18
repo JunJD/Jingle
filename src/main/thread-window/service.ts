@@ -3,6 +3,14 @@ import { randomUUID } from "node:crypto"
 import { totalmem } from "node:os"
 import type { PinThreadWindowParams, PinThreadWindowResult } from "@shared/durable-window"
 import type { ThreadWindowRestoreEntry, ThreadWindowRestoreState } from "../preferences"
+import {
+  DurableWindowRestoreGate,
+  summarizeDurableWindowRestoreRepairs,
+  type DurableWindowRestorePolicy,
+  type DurableWindowRestoreRepairDiagnostic,
+  type DiscardedPersistedThreadBinding,
+  type PersistedThreadBindingResolution
+} from "../durable-window/restore-policy"
 
 const BYTES_PER_THREAD_WINDOW_BUDGET = 512 * 1024 * 1024
 const MIN_THREAD_WINDOW_LIMIT = 8
@@ -19,6 +27,7 @@ export interface ThreadWindowRuntime {
   onWindowOpened: () => void
   recordResourceRefusal: (details: { current: number; limit: number }) => void
   recordRestoreFailure: (details: { error: unknown; windowId: string | null }) => void
+  recordRestoreRepair: (details: DurableWindowRestoreRepairDiagnostic) => void
   setRestoreState: (state: ThreadWindowRestoreState) => ThreadWindowRestoreState
   setWindowThread: (window: BrowserWindow, threadId: string) => void
 }
@@ -34,13 +43,14 @@ export class ThreadWindowService {
   private readonly deferredRestoreEntries = new Map<string, ThreadWindowRestoreEntry>()
   private readonly threadIds = new Map<string, string | null>()
   private readonly windows = new Map<string, BrowserWindow>()
-  private isApplicationQuitting = false
   private persistTimer: NodeJS.Timeout | null = null
   private restoreStarted = false
 
   constructor(
     private readonly runtime: ThreadWindowRuntime,
-    private readonly resourceLimit = resolveThreadWindowResourceLimit()
+    private readonly restorePolicy: DurableWindowRestorePolicy,
+    private readonly resourceLimit = resolveThreadWindowResourceLimit(),
+    private readonly restoreGate = new DurableWindowRestoreGate()
   ) {}
 
   openNew(params: PinThreadWindowParams = {}): PinThreadWindowResult {
@@ -65,7 +75,7 @@ export class ThreadWindowService {
   }
 
   markApplicationQuitting(): void {
-    this.isApplicationQuitting = true
+    this.restoreGate.markApplicationQuitting()
     this.flushPersist()
   }
 
@@ -82,7 +92,7 @@ export class ThreadWindowService {
     }
 
     const seenWindowIds = new Set<string>()
-    const restoreEntries = state.windows.map((entry) => {
+    const normalizedEntries = state.windows.map((entry) => {
       if (seenWindowIds.has(entry.windowId)) {
         const replacement = { ...entry, windowId: randomUUID() }
         this.runtime.recordRestoreFailure({
@@ -98,17 +108,66 @@ export class ThreadWindowService {
       return entry
     })
 
-    for (const entry of restoreEntries) {
+    for (const entry of normalizedEntries) {
       this.deferredRestoreEntries.set(entry.windowId, entry)
     }
-    if (restoreEntries.some((entry, index) => entry.windowId !== state.windows[index]?.windowId)) {
-      this.persistAll()
+    if (
+      normalizedEntries.some((entry, index) => entry.windowId !== state.windows[index]?.windowId) &&
+      !this.persistAll()
+    ) {
+      return
+    }
+
+    const restoreEntries: ThreadWindowRestoreEntry[] = []
+    const discardedBindings: DiscardedPersistedThreadBinding[] = []
+    const resolutions = new Map<
+      string,
+      { error: unknown } | { resolution: PersistedThreadBindingResolution }
+    >()
+    for (const entry of normalizedEntries) {
+      if (entry.threadId === null || resolutions.has(entry.threadId)) continue
+      try {
+        resolutions.set(entry.threadId, {
+          resolution: await this.restorePolicy.resolve(entry.threadId)
+        })
+      } catch (error) {
+        resolutions.set(entry.threadId, { error })
+        this.runtime.recordRestoreFailure({ error, windowId: entry.windowId })
+      }
+    }
+
+    for (const entry of normalizedEntries) {
+      if (entry.threadId === null) {
+        restoreEntries.push(entry)
+        continue
+      }
+      const result = resolutions.get(entry.threadId)
+      if (!result || "error" in result) continue
+      const { resolution } = result
+      if (resolution.action === "restore") {
+        restoreEntries.push(entry)
+        continue
+      }
+
+      this.deferredRestoreEntries.delete(entry.windowId)
+      discardedBindings.push({
+        reason: resolution.reason,
+        threadId: resolution.threadId,
+        windowId: entry.windowId
+      })
+    }
+
+    if (discardedBindings.length > 0) {
+      if (!this.persistAll()) return
+      this.runtime.recordRestoreRepair(
+        summarizeDurableWindowRestoreRepairs("thread-window", discardedBindings)
+      )
     }
 
     let resourceRefusalRecorded = false
     if (restoreEntries.length > Math.max(0, this.resourceLimit - this.windows.size)) {
       this.runtime.recordResourceRefusal({
-        current: state.windows.length,
+        current: this.windows.size + restoreEntries.length,
         limit: this.resourceLimit
       })
       resourceRefusalRecorded = true
@@ -116,7 +175,7 @@ export class ThreadWindowService {
 
     for (const entry of restoreEntries) {
       await new Promise<void>((resolve) => setImmediate(resolve))
-      if (this.isApplicationQuitting) break
+      if (this.restoreGate.isApplicationQuitting()) break
       if (this.windows.size >= this.resourceLimit) {
         if (!resourceRefusalRecorded) {
           this.runtime.recordResourceRefusal({
@@ -168,7 +227,7 @@ export class ThreadWindowService {
         this.deferredRestoreEntries.set(entry.windowId, entry)
       }
       this.runtime.onWindowClosed()
-      if (!this.isApplicationQuitting) this.schedulePersist()
+      if (!this.restoreGate.isApplicationQuitting()) this.schedulePersist()
     })
   }
 
@@ -182,7 +241,7 @@ export class ThreadWindowService {
     }
   }
 
-  private persistAll(): void {
+  private persistAll(): boolean {
     const liveWindows = [...this.windows.entries()].flatMap(([windowId, window]) => {
       if (window.isDestroyed()) return []
       return [
@@ -198,7 +257,7 @@ export class ThreadWindowService {
     const deferredWindows = [...this.deferredRestoreEntries.values()].filter(
       ({ windowId }) => !liveWindowIds.has(windowId)
     )
-    this.persistRestoreEntries([...liveWindows, ...deferredWindows])
+    return this.persistRestoreEntries([...liveWindows, ...deferredWindows])
   }
 
   private schedulePersist(): void {
@@ -210,11 +269,13 @@ export class ThreadWindowService {
     this.persistTimer.unref()
   }
 
-  private persistRestoreEntries(windows: ThreadWindowRestoreEntry[]): void {
+  private persistRestoreEntries(windows: ThreadWindowRestoreEntry[]): boolean {
     try {
       this.runtime.setRestoreState({ version: 1, windows })
+      return true
     } catch (error) {
       this.runtime.recordRestoreFailure({ error, windowId: null })
+      return false
     }
   }
 

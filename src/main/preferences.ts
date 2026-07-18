@@ -57,6 +57,11 @@ export interface MainWindowSessionState {
   version: 1
 }
 
+export interface MainWindowSessionRepairResult {
+  repaired: boolean
+  state: MainWindowSessionState
+}
+
 export interface ThreadWindowRestoreEntry {
   bounds?: { height: number; width: number; x: number; y: number }
   isMaximized: boolean
@@ -1272,6 +1277,21 @@ export function setMainWindowSessionState(state: MainWindowSessionState): MainWi
   if (!next) throw new Error("Invalid Main window session state.")
   settingsStore.set("mainWindowSessionState", next)
   return next
+}
+
+export function repairMainWindowSessionThreadBinding(
+  staleThreadId: string
+): MainWindowSessionRepairResult {
+  const current = getMainWindowSessionState()
+  if (current.lastActiveThreadId !== staleThreadId) {
+    return { repaired: false, state: current }
+  }
+
+  const state = setMainWindowSessionState({
+    ...current,
+    lastActiveThreadId: null
+  })
+  return { repaired: true, state }
 }
 
 export function getThreadWindowRestoreState(): ThreadWindowRestoreState {

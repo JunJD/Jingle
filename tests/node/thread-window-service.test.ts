@@ -6,6 +6,7 @@ import {
   resolveThreadWindowResourceLimit
 } from "../../src/main/thread-window/service"
 import type { ThreadWindowRestoreState } from "../../src/main/preferences"
+import { DurableWindowRestorePolicy } from "../../src/main/durable-window/restore-policy"
 
 class FakeWindow extends EventEmitter {
   sent: unknown[] = []
@@ -24,10 +25,17 @@ class FakeWindow extends EventEmitter {
   }
 }
 
-function createService(limit = 8) {
+function createService(
+  limit = 8,
+  getThread: (threadId: string) => Promise<{ archivedAt: number | null } | null> = async () => ({
+    archivedAt: null
+  })
+) {
+  const events: string[] = []
   const windows: FakeWindow[] = []
   const refusals: unknown[] = []
   const restoreFailures: Array<{ error: unknown; windowId: string | null }> = []
+  const restoreRepairs: unknown[] = []
   const activations: boolean[] = []
   const rendererFailureCallbacks: Array<() => void> = []
   let restoreState = {
@@ -42,6 +50,7 @@ function createService(limit = 8) {
   const service = new ThreadWindowService(
     {
       createThreadWindow: (_entry, options) => {
+        events.push(`create:${_entry.windowId}`)
         const window = new FakeWindow()
         activations.push(options.activate)
         rendererFailureCallbacks.push(options.onRendererFailure)
@@ -53,17 +62,24 @@ function createService(limit = 8) {
       onWindowOpened: () => {},
       recordResourceRefusal: (details) => refusals.push(details),
       recordRestoreFailure: (details) => restoreFailures.push(details),
-      setRestoreState: (state) => (restoreState = state),
+      recordRestoreRepair: (details) => restoreRepairs.push(details),
+      setRestoreState: (state) => {
+        events.push(`persist:${state.windows.map(({ windowId }) => windowId).join(",")}`)
+        return (restoreState = state)
+      },
       setWindowThread: () => {}
     },
+    new DurableWindowRestorePolicy({ getThread }),
     limit
   )
   return {
     activations,
+    events,
     refusals,
     rendererFailureCallbacks,
     restore: () => restoreState,
     restoreFailures,
+    restoreRepairs,
     service,
     setRestore: (state: typeof restoreState) => {
       restoreState = state
@@ -135,21 +151,25 @@ describe("ThreadWindowService", () => {
         windowId
       }))
     }
-    const service = new ThreadWindowService({
-      createThreadWindow: (entry) => {
-        if (entry.windowId === "window-b") throw new Error("restore failed")
-        const window = new FakeWindow()
-        windows.push(window)
-        return window as never
+    const service = new ThreadWindowService(
+      {
+        createThreadWindow: (entry) => {
+          if (entry.windowId === "window-b") throw new Error("restore failed")
+          const window = new FakeWindow()
+          windows.push(window)
+          return window as never
+        },
+        getRestoreState: () => restoreState,
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        recordResourceRefusal: () => {},
+        recordRestoreFailure: (details) => failures.push(details),
+        recordRestoreRepair: () => {},
+        setRestoreState: (state) => (restoreState = state),
+        setWindowThread: () => {}
       },
-      getRestoreState: () => restoreState,
-      onWindowClosed: () => {},
-      onWindowOpened: () => {},
-      recordResourceRefusal: () => {},
-      recordRestoreFailure: (details) => failures.push(details),
-      setRestoreState: (state) => (restoreState = state),
-      setWindowThread: () => {}
-    })
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) })
+    )
 
     await service.restore()
 
@@ -182,6 +202,58 @@ describe("ThreadWindowService", () => {
       ["window-a", "window-b"]
     )
     assert.deepEqual(refusals, [{ current: 2, limit: 1 }])
+  })
+
+  it("repairs stale bindings before resource accounting and window creation", async () => {
+    const { events, refusals, restore, restoreRepairs, service, setRestore, windows } =
+      createService(2, async (threadId) => {
+        if (threadId === "thread-active") return { archivedAt: null }
+        if (threadId === "thread-archived") return { archivedAt: 1 }
+        return null
+      })
+    setRestore({
+      version: 1,
+      windows: [
+        { isMaximized: false, threadId: "thread-active", windowId: "window-active" },
+        { isMaximized: false, threadId: "thread-archived", windowId: "window-archived" },
+        { isMaximized: false, threadId: "thread-missing", windowId: "window-missing" },
+        { isMaximized: false, threadId: null, windowId: "window-unbound" }
+      ]
+    })
+
+    await service.restore()
+
+    assert.equal(windows.length, 2)
+    assert.deepEqual(refusals, [])
+    assert.deepEqual(
+      restore()
+        .windows.map(({ windowId }) => windowId)
+        .sort(),
+      ["window-active", "window-unbound"]
+    )
+    assert.deepEqual(restoreRepairs, [
+      {
+        archivedBindingCount: 1,
+        missingBindingCount: 1,
+        sampleBindings: [
+          {
+            reason: "archived",
+            threadId: "thread-archived",
+            windowId: "window-archived"
+          },
+          {
+            reason: "missing",
+            threadId: "thread-missing",
+            windowId: "window-missing"
+          }
+        ],
+        surface: "thread-window"
+      }
+    ])
+    const staleRepairIndex = events.indexOf("persist:window-active,window-unbound")
+    const firstCreateIndex = events.findIndex((event) => event.startsWith("create:"))
+    assert.ok(staleRepairIndex >= 0)
+    assert.ok(firstCreateIndex > staleRepairIndex)
   })
 
   it("retains a failed restored window but forgets a user-closed ready window", async () => {

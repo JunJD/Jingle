@@ -5,6 +5,10 @@ import type { IpcMain, IpcMainInvokeEvent, WebContents } from "electron"
 import { DurableWindowController } from "../../src/main/main-window/controller"
 import { PrimaryMainWindowService } from "../../src/main/main-window/service"
 import { registerWindowIdentity } from "../../src/main/windows/window-identity"
+import {
+  DurableWindowRestoreGate,
+  DurableWindowRestorePolicy
+} from "../../src/main/durable-window/restore-policy"
 
 class FakeIpcMain {
   handlers = new Map<string, (event: IpcMainInvokeEvent, params?: unknown) => unknown>()
@@ -48,18 +52,25 @@ describe("PrimaryMainWindowService", () => {
     const windows: FakeWindow[] = []
     const bindings: string[] = []
     let state = { version: 1 as const, lastActiveThreadId: null as string | null }
-    const service = new PrimaryMainWindowService({
-      createMainWindow: () => {
-        const window = new FakeWindow()
-        windows.push(window)
-        return window as never
+    const service = new PrimaryMainWindowService(
+      {
+        createMainWindow: () => {
+          const window = new FakeWindow()
+          windows.push(window)
+          return window as never
+        },
+        getSessionState: () => state,
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        repairSessionThreadBinding: () => ({ repaired: false, state }),
+        setSessionState: (next) => (state = next),
+        setWindowThread: (_window, threadId) => bindings.push(threadId)
       },
-      getSessionState: () => state,
-      onWindowClosed: () => {},
-      onWindowOpened: () => {},
-      setSessionState: (next) => (state = next),
-      setWindowThread: (_window, threadId) => bindings.push(threadId)
-    })
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) }),
+      new DurableWindowRestoreGate()
+    )
 
     service.open({ threadId: "thread-a" })
     service.bindSenderThread(windows[0]!.webContents as never, "thread-a")
@@ -74,25 +85,142 @@ describe("PrimaryMainWindowService", () => {
   it("only accepts thread binding from the singleton sender", () => {
     let state = { version: 1 as const, lastActiveThreadId: null as string | null }
     const window = new FakeWindow()
-    const service = new PrimaryMainWindowService({
-      createMainWindow: () => window as never,
-      getSessionState: () => state,
-      onWindowClosed: () => {},
-      onWindowOpened: () => {},
-      setSessionState: (next) => (state = next),
-      setWindowThread: () => {}
-    })
+    const service = new PrimaryMainWindowService(
+      {
+        createMainWindow: () => window as never,
+        getSessionState: () => state,
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        repairSessionThreadBinding: () => ({ repaired: false, state }),
+        setSessionState: (next) => (state = next),
+        setWindowThread: () => {}
+      },
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) }),
+      new DurableWindowRestoreGate()
+    )
     service.open()
     assert.throws(() => service.bindSenderThread({} as never, "thread-a"), /registered Main window/)
     service.bindSenderThread(window.webContents as never, "thread-a")
     assert.equal(state.lastActiveThreadId, "thread-a")
+  })
+
+  it("restores an active persisted Main binding after thread lookup", async () => {
+    const createdThreadIds: Array<string | null> = []
+    const state = { version: 1 as const, lastActiveThreadId: "thread-active" }
+    const service = new PrimaryMainWindowService(
+      {
+        createMainWindow: (threadId) => {
+          createdThreadIds.push(threadId)
+          return new FakeWindow() as never
+        },
+        getSessionState: () => state,
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        repairSessionThreadBinding: () => ({ repaired: false, state }),
+        setSessionState: () => state,
+        setWindowThread: () => {}
+      },
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) }),
+      new DurableWindowRestoreGate()
+    )
+
+    service.open()
+    assert.deepEqual(createdThreadIds, [])
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    assert.deepEqual(createdThreadIds, ["thread-active"])
+  })
+
+  it("repairs an archived Main binding before creating an unbound window", async () => {
+    const events: string[] = []
+    let state = { version: 1 as const, lastActiveThreadId: "thread-archived" as string | null }
+    const service = new PrimaryMainWindowService(
+      {
+        createMainWindow: (threadId) => {
+          events.push(`create:${String(threadId)}`)
+          return new FakeWindow() as never
+        },
+        getSessionState: () => state,
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: (details) => {
+          events.push(`diagnostic:${details.archivedBindingCount}`)
+        },
+        repairSessionThreadBinding: (staleThreadId) => {
+          if (state.lastActiveThreadId !== staleThreadId) {
+            return { repaired: false, state }
+          }
+          state = { ...state, lastActiveThreadId: null }
+          events.push("repair")
+          return { repaired: true, state }
+        },
+        setSessionState: (next) => (state = next),
+        setWindowThread: () => {}
+      },
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: Date.now() }) }),
+      new DurableWindowRestoreGate()
+    )
+
+    service.open()
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    assert.equal(state.lastActiveThreadId, null)
+    assert.deepEqual(events, ["repair", "diagnostic:1", "create:null"])
+  })
+
+  it("does not create a Main window after application quit begins during lookup", async () => {
+    const createdThreadIds: Array<string | null> = []
+    const state = { version: 1 as const, lastActiveThreadId: "thread-active" }
+    let resolveThread: (value: { archivedAt: number | null }) => void = () => {
+      throw new Error("Thread lookup resolver was not installed.")
+    }
+    const restoreGate = new DurableWindowRestoreGate()
+    const service = new PrimaryMainWindowService(
+      {
+        createMainWindow: (threadId) => {
+          createdThreadIds.push(threadId)
+          return new FakeWindow() as never
+        },
+        getSessionState: () => state,
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        repairSessionThreadBinding: () => ({ repaired: false, state }),
+        setSessionState: () => state,
+        setWindowThread: () => {}
+      },
+      new DurableWindowRestorePolicy({
+        getThread: () =>
+          new Promise((resolve) => {
+            resolveThread = resolve
+          })
+      }),
+      restoreGate
+    )
+
+    service.open()
+    restoreGate.markApplicationQuitting()
+    resolveThread({ archivedAt: null })
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    assert.deepEqual(createdThreadIds, [])
   })
 })
 
 it("durable-window open IPC admits only registered Launcher and durable main frames", async () => {
   let openCount = 0
   const controller = new DurableWindowController(
-    { open: () => { openCount += 1 } } as never,
+    {
+      open: () => {
+        openCount += 1
+      }
+    } as never,
     {} as never
   )
   const ipcMain = new FakeIpcMain()
