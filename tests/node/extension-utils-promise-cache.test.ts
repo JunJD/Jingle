@@ -118,10 +118,12 @@ test("promise cache binding consumes the complete SDK scope without render-path 
     await runWithExtensionRuntimeSdk(context, () => {
       const identity = createPromiseCacheIdentity(loadScopedValue, ["page-1"])
       const binding = createPromiseCacheBinding(identity)
-      const unsubscribe = binding.subscribe(() => undefined)
 
       assert.deepEqual(binding.getSnapshot(), { kind: "miss" })
       assert.equal(memoryBackend.mutationCount, 0)
+      assert.deepEqual(memoryBackend.loadedScopes, [])
+
+      const unsubscribe = binding.subscribe(() => undefined)
       assert.deepEqual(memoryBackend.loadedScopes, [
         {
           commandName: "scope-owner",
@@ -141,6 +143,57 @@ test("promise cache binding consumes the complete SDK scope without render-path 
       ])
       unsubscribe()
     })
+  } finally {
+    uninstallBackend()
+  }
+})
+
+test("useCachedPromise reads the durable snapshot only after render commits", async () => {
+  const loadValue = async () => "network"
+  const identity = createPromiseCacheIdentity(loadValue, [])
+  let rendering = false
+  let loadCount = 0
+  const memoryBackend = createMemoryBackend({
+    onLoad() {
+      assert.equal(rendering, false)
+      loadCount += 1
+    }
+  })
+  const context = createHostContext("render-safe-read")
+  let uninstallBackend = installExtensionRuntimeCacheBackend(memoryBackend.backend)
+
+  try {
+    await runWithExtensionRuntimeSdk(toSdkContext(context), () => {
+      assert.equal(createPromiseCacheBinding<string>(identity).write(cacheValue("stale")), true)
+    })
+    uninstallBackend()
+    uninstallBackend = installExtensionRuntimeCacheBackend(memoryBackend.backend)
+    loadCount = 0
+    const mutationCountBeforeRender = memoryBackend.mutationCount
+
+    const renderer = createExtensionRuntimeRenderer({
+      commandName: "render-safe-read",
+      extensionName: "notion"
+    })
+    function Surface() {
+      rendering = true
+      try {
+        const state = useCachedPromise(loadValue, [], { execute: false })
+        return createElement(Detail, {
+          markdown: `${state.data ?? "missing"}:${state.isLoading ? "loading" : "ready"}`,
+          navigationTitle: "Render-safe cache read"
+        })
+      } finally {
+        rendering = false
+      }
+    }
+
+    renderer.render(withRuntimeProvider(context, createElement(Surface)))
+    await renderer.flushSnapshots()
+
+    assert.equal(loadCount, 1)
+    assert.equal(memoryBackend.mutationCount, mutationCountBeforeRender)
+    assert.equal(getDetailMarkdown(renderer), "stale:ready")
   } finally {
     uninstallBackend()
   }
@@ -218,7 +271,7 @@ test("promise cache reports typed encoding and corrupt-entry recovery failures",
       const binding = createPromiseCacheBinding(corruptIdentity, {
         onFailure: (failure) => failures.push(failure)
       })
-      assert.equal(binding.getSnapshot().kind, "invalid")
+      assert.deepEqual(binding.getSnapshot(), { kind: "miss" })
       assert.equal(corruptBackend.mutationCount, 0)
 
       const unsubscribe = binding.subscribe(() => undefined)
@@ -254,10 +307,11 @@ test("promise cache reports typed encoding and corrupt-entry recovery failures",
     }
   }
   await runWithExtensionRuntimeSdk(unavailableContext, () => {
-    assert.throws(
-      () => createPromiseCacheBinding(createPromiseCacheIdentity(loadScopedValue, ["unavailable"])),
-      /artifact-revision-unavailable/
+    const binding = createPromiseCacheBinding(
+      createPromiseCacheIdentity(loadScopedValue, ["unavailable"])
     )
+    assert.deepEqual(binding.getSnapshot(), { kind: "miss" })
+    assert.throws(() => binding.subscribe(() => undefined), /artifact-revision-unavailable/)
   })
 })
 
@@ -295,6 +349,12 @@ test("useCachedPromise renders stale data immediately and commits background rev
     await flushPromises()
     await renderer.flushSnapshots()
     assert.equal(getDetailMarkdown(renderer), "fresh:ready")
+
+    await runWithExtensionRuntimeSdk(toSdkContext(context), () => {
+      assert.equal(createPromiseCacheBinding<string>(identity).write(cacheValue("external")), true)
+    })
+    await renderer.flushSnapshots()
+    assert.equal(getDetailMarkdown(renderer), "external:ready")
   } finally {
     uninstallBackend()
   }
@@ -511,7 +571,9 @@ function withRuntimeProvider(
   return createElement(ExtensionRuntimeNavigationProvider, { value: context }, element)
 }
 
-function createMemoryBackend(options: { loadEntries?: RuntimeCacheEntry[] } = {}): {
+function createMemoryBackend(
+  options: { loadEntries?: RuntimeCacheEntry[]; onLoad?: () => void } = {}
+): {
   backend: RuntimeCacheBackend
   loadedScopes: RuntimeCacheBackendScope[]
   readonly mutationCount: number
@@ -525,6 +587,7 @@ function createMemoryBackend(options: { loadEntries?: RuntimeCacheEntry[] } = {}
     close: async () => undefined,
     flush: async () => undefined,
     loadStore(scope) {
+      options.onLoad?.()
       loadedScopes.push(scope)
       return options.loadEntries ?? stores.get(JSON.stringify(scope)) ?? []
     },

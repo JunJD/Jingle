@@ -102,8 +102,8 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
   readonly #key: string
   readonly #listeners = new Set<() => void>()
   readonly #onFailure: PromiseCacheBindingOptions["onFailure"]
-  #rawValue: string | undefined
-  #snapshot: PromiseCacheSnapshot<TResult>
+  #rawValue: string | undefined = undefined
+  #snapshot: PromiseCacheSnapshot<TResult> = { kind: "miss" }
   #unsubscribeCache: (() => void) | null = null
 
   constructor(identity: PromiseCacheIdentity, options: PromiseCacheBindingOptions) {
@@ -111,10 +111,6 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
     this.#cache = new Cache({ namespace: identity.namespace })
     this.#key = identity.key
     this.#onFailure = options.onFailure
-
-    const initialValue = this.#readCurrentValue()
-    this.#rawValue = initialValue
-    this.#snapshot = decodePromiseCacheValue<TResult>(initialValue)
   }
 
   getSnapshot = (): PromiseCacheSnapshot<TResult> => this.#snapshot

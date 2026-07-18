@@ -346,7 +346,7 @@ export function useCachedPromise<TFn extends (...args: any[]) => unknown>(
     cacheIdentity,
     cacheSnapshot.kind === "value" ? cacheSnapshot.value : undefined,
     cacheDriver,
-    { persisted: cacheSnapshot.kind === "value", token: cacheSnapshot }
+    cacheSnapshot.kind === "value" ? { persisted: true, token: cacheSnapshot } : undefined
   )
   const hasAccumulatedPages =
     state.identity === cacheIdentity && state.page > 0 && state.cacheCommitToken === cacheSnapshot
@@ -481,8 +481,7 @@ export function useCachedPromise<TFn extends (...args: any[]) => unknown>(
   return {
     data: returnedData,
     error: cacheTimelineChanged ? undefined : state.error,
-    isLoading:
-      resolvedOptions.execute === false || cacheTimelineChanged ? false : state.isLoading,
+    isLoading: resolvedOptions.execute === false ? false : state.isLoading,
     mutate,
     pagination: returnedPagination,
     revalidate: state.revalidate
