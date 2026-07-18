@@ -368,7 +368,8 @@ export async function updateAgentMemory(
     input.scope !== undefined || input.workspaceKey !== undefined
       ? normalizeScopeWorkspace({
           scope: (input.scope ?? existing.scope) as JingleMemoryRecord["scope"],
-          workspaceKey: input.workspaceKey !== undefined ? input.workspaceKey : existing.workspaceKey
+          workspaceKey:
+            input.workspaceKey !== undefined ? input.workspaceKey : existing.workspaceKey
         })
       : null
   const row = await prisma.agentMemory.update({
