@@ -62,9 +62,6 @@ export const memoryApi = {
   restoreMemory: (memoryId: string): Promise<JingleMemoryRecord> => {
     return invokeIpc("memory:restoreMemory", memoryId)
   },
-  deleteMemory: (memoryId: string): Promise<void> => {
-    return invokeIpc("memory:deleteMemory", memoryId)
-  },
   listIncludedMemoriesForRun: (runId: string): Promise<JingleMemoryInclusionRecord[]> => {
     return invokeIpc("memory:listIncludedMemoriesForRun", runId)
   },

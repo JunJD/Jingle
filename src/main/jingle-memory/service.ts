@@ -20,7 +20,6 @@ import {
   archiveAgentMemory,
   createAgentMemory,
   createAgentMemorySuggestion,
-  deleteAgentMemory,
   getAgentMemory,
   getAgentMemorySuggestion,
   hasPendingWorkspaceMemorySuggestions,
@@ -291,11 +290,6 @@ export class JingleMemoryService {
   async restoreMemory(memoryId: string): Promise<JingleMemoryRecord> {
     await this.assertMemoryMutableFromCurrentWorkspace(memoryId)
     return restoreAgentMemory(memoryId)
-  }
-
-  async deleteMemory(memoryId: string): Promise<void> {
-    await this.assertMemoryMutableFromCurrentWorkspace(memoryId)
-    return deleteAgentMemory(memoryId)
   }
 
   hasPendingWorkspaceSuggestions(threadId: string): Promise<boolean> {

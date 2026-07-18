@@ -412,13 +412,6 @@ export async function restoreAgentMemory(memoryId: string): Promise<JingleMemory
   return mapMemory(row)
 }
 
-export async function deleteAgentMemory(memoryId: string): Promise<void> {
-  const prisma = getPrismaClient()
-  await prisma.agentMemory.delete({
-    where: { memoryId }
-  })
-}
-
 export async function recordAgentMemoryInclusions(input: {
   memoryIds: string[]
   runId: string

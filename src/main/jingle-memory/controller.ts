@@ -128,15 +128,6 @@ export class JingleMemoryController {
 
     registerValidatedIpcHandle(
       ipcMain,
-      "memory:deleteMemory",
-      memoryIdArgsSchema,
-      async (_event, memoryId) => {
-        await this.service.deleteMemory(memoryId)
-      }
-    )
-
-    registerValidatedIpcHandle(
-      ipcMain,
       "memory:listIncludedMemoriesForRun",
       runIdArgsSchema,
       (_event, runId) => {
