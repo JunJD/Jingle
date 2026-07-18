@@ -727,7 +727,8 @@ test("file runtime cache backend quarantines a malformed envelope without termin
     backend.onFailure((error) => failures.push(error))
     const persistenceFailures: string[] = []
     const lifecycle = createExtensionRuntimeCacheLifecycle(backend, {
-      onPersistenceFailure: (sessionId) => persistenceFailures.push(sessionId)
+      onPersistenceFailure: (sessionId) => persistenceFailures.push(sessionId),
+      writerSessionId: "corrupt-cache-session"
     })
     lifecycle.bindSession("corrupt-cache-session")
 

@@ -11,6 +11,7 @@ import type {
   ExtensionRuntimeErrorDetails,
   ExtensionRuntimeEvent,
   ExtensionRuntimeEventAck,
+  ExtensionRuntimeCacheWriterLease,
   ExtensionRuntimeHostCapability,
   ExtensionRuntimeLaunchContext,
   ExtensionRuntimeLaunchIntent,
@@ -37,6 +38,8 @@ import type {
   ExtensionRuntimeExecutionLeaseOwner
 } from "./execution-lease"
 import { ExtensionRuntimeExecutionLeaseError } from "./execution-lease"
+import type { ExtensionRuntimeCacheLeaseCoordinator } from "./cache-lease-coordinator"
+import { ExtensionRuntimeCacheLeaseCoordinatorError } from "./cache-lease-coordinator"
 import type { ExtensionRuntimeProcess, ExtensionRuntimeProcessLauncher } from "./runtime-process"
 
 export type {
@@ -136,6 +139,7 @@ export type ExtensionRuntimeSessionStoppedListener = (
 ) => void
 
 export interface ExtensionRuntimeManagerOptions {
+  cacheLeaseCoordinator: ExtensionRuntimeCacheLeaseCoordinator
   createSessionId?: () => string
   executionLeaseOwner: ExtensionRuntimeExecutionLeaseOwner
   host: ExtensionRuntimeHostCapabilities
@@ -160,6 +164,7 @@ interface ActiveRuntimeStorageIssue extends RuntimeStorageIssueAddress {
 }
 
 interface RuntimeSessionStopState {
+  awaitingExit: boolean
   cancelTimeout: () => void
   error?: ExtensionRuntimeError
   reason: ExtensionRuntimeSessionStopReason
@@ -167,6 +172,8 @@ interface RuntimeSessionStopState {
 
 interface RuntimeSession {
   activeStorageIssues: Map<string, ActiveRuntimeStorageIssue>
+  cacheWriterLease: ExtensionRuntimeCacheWriterLease
+  cacheWriterLeaseRevoked: boolean
   disposeListeners: Array<() => void>
   kind: ExtensionRuntimeSessionKind
   lease: ExtensionRuntimeExecutionLease
@@ -201,6 +208,10 @@ const RUNTIME_STOP_ACK_MISSING_ERROR: ExtensionRuntimeError = Object.freeze({
 const RUNTIME_STOP_TIMEOUT_ERROR: ExtensionRuntimeError = Object.freeze({
   code: "runtime_stop_timeout",
   message: "Extension runtime did not confirm graceful shutdown in time."
+})
+const CACHE_WRITER_LEASE_CLEANUP_ERROR: ExtensionRuntimeError = Object.freeze({
+  code: "runtime_cache_writer_lease_failed",
+  message: "Extension runtime cache writer lease coordination failed."
 })
 const DEFAULT_RUNTIME_STOP_TIMEOUT_MS = 60_000
 const MAX_RECOVERABLE_ISSUE_MESSAGE_LENGTH = 512
@@ -244,7 +255,9 @@ export class ExtensionRuntimeManager {
     }
     const sessions = Array.from(this.sessions.values())
     const stopPromises = sessions.map((session) => this.waitForSessionStop(session))
-    this.disposePromise = Promise.all(stopPromises).then(() => undefined)
+    this.disposePromise = Promise.all(stopPromises).then(() => {
+      this.options.cacheLeaseCoordinator.dispose()
+    })
     for (const session of sessions) {
       this.stopSession(session, error)
     }
@@ -377,11 +390,22 @@ export class ExtensionRuntimeManager {
       sessionId?: string
     }
   ): Promise<ExtensionRuntimeSessionInfo> {
+    const sessionId = options?.sessionId ?? this.createSessionId()
+    if (this.sessions.has(sessionId)) {
+      throw new ExtensionRuntimeLifecycleError(
+        "runtime_session_conflict",
+        `Extension runtime session "${sessionId}" already exists.`
+      )
+    }
+    const replacedSession = this.foregroundSession
+    if (replacedSession && this.sessions.get(replacedSession.sessionId) === replacedSession) {
+      this.revokeForegroundWriterBeforeReplacement(replacedSession)
+    }
     const session = this.startSession("foreground", intent, {
       beforeStart: options?.onSessionStart
         ? (startedSession) => options.onSessionStart?.(toSessionInfo(startedSession))
         : undefined,
-      sessionId: options?.sessionId
+      sessionId
     })
     if (this.sessions.get(session.sessionId) !== session || !this.isLeaseCurrent(session.lease)) {
       if (this.sessions.get(session.sessionId) === session) {
@@ -392,13 +416,6 @@ export class ExtensionRuntimeManager {
         CONFIGURATION_REVOKED_ERROR.message
       )
     }
-    if (this.foregroundSession) {
-      this.stopSessionWithError(this.foregroundSession, {
-        code: "runtime_foreground_replaced",
-        message: "Extension runtime foreground session was replaced."
-      })
-    }
-
     this.foregroundSession = session
     return toSessionInfo(session)
   }
@@ -533,7 +550,7 @@ export class ExtensionRuntimeManager {
         session.stopState!.error = RUNTIME_STOP_ACK_MISSING_ERROR
         this.recordError(session, RUNTIME_STOP_ACK_MISSING_ERROR)
       }
-      this.finalizeStopSession(session, false)
+      this.finalizeStopSession(session, { processExited: true })
       return
     }
 
@@ -542,8 +559,14 @@ export class ExtensionRuntimeManager {
       message: `Extension runtime exited with code ${code}.`
     }
     session.stopping = true
+    session.stopState = {
+      awaitingExit: true,
+      cancelTimeout: () => undefined,
+      error,
+      reason: "other"
+    }
     this.recordError(session, error)
-    this.emitSessionStopped(this.detachSession(session), "other")
+    this.finalizeStopSession(session, { processExited: true })
   }
 
   private handleMessage(session: RuntimeSession, message: ExtensionRuntimeToHostMessage): void {
@@ -618,7 +641,11 @@ export class ExtensionRuntimeManager {
         code: "runtime_stop_response_invalid",
         message: "Extension runtime confirmed a stop that was not requested."
       })
-      this.finalizeStopSession(session)
+      this.escalateStopToProcessExit(session, session.stopState!)
+      return
+    }
+
+    if (session.stopState.awaitingExit) {
       return
     }
 
@@ -636,6 +663,8 @@ export class ExtensionRuntimeManager {
         }
         this.recordError(session, session.stopState.error)
       }
+      this.escalateStopToProcessExit(session, session.stopState)
+      return
     } else if (session.pendingRunOnceSuccess && !session.stopState.error) {
       this.settleRunOnce(session, {
         sessionId: session.sessionId,
@@ -1028,9 +1057,18 @@ export class ExtensionRuntimeManager {
       )
     }
 
-    const process = this.options.processLauncher.launch()
+    const cacheWriterLease = this.options.cacheLeaseCoordinator.activate(sessionId)
+    let process: ExtensionRuntimeProcess
+    try {
+      process = this.options.processLauncher.launch({ cacheWriterLease })
+    } catch (error) {
+      this.options.cacheLeaseCoordinator.revoke(cacheWriterLease)
+      throw error
+    }
     const session: RuntimeSession = {
       activeStorageIssues: new Map(),
+      cacheWriterLease,
+      cacheWriterLeaseRevoked: false,
       disposeListeners: [],
       kind,
       lease,
@@ -1155,6 +1193,35 @@ export class ExtensionRuntimeManager {
     this.stopSessionWithError(session, CONFIGURATION_REVOKED_ERROR, "configuration-revoked")
   }
 
+  private revokeForegroundWriterBeforeReplacement(session: RuntimeSession): void {
+    if (!this.revokeCacheWriterLease(session)) {
+      if (!session.stopping) {
+        session.stopping = true
+        session.stopState = {
+          awaitingExit: false,
+          cancelTimeout: () => undefined,
+          error: CACHE_WRITER_LEASE_CLEANUP_ERROR,
+          reason: "other"
+        }
+        this.recordError(session, CACHE_WRITER_LEASE_CLEANUP_ERROR)
+      }
+      if (session.stopState) {
+        this.escalateStopToProcessExit(session, session.stopState)
+      }
+      throw new ExtensionRuntimeLifecycleError(
+        CACHE_WRITER_LEASE_CLEANUP_ERROR.code,
+        CACHE_WRITER_LEASE_CLEANUP_ERROR.message
+      )
+    }
+
+    if (!session.stopping) {
+      this.stopSessionWithError(session, {
+        code: "runtime_foreground_replaced",
+        message: "Extension runtime foreground session was replaced."
+      })
+    }
+  }
+
   private stopSessionWithError(
     session: RuntimeSession,
     error: ExtensionRuntimeError,
@@ -1165,6 +1232,7 @@ export class ExtensionRuntimeManager {
     }
     session.stopping = true
     session.stopState = {
+      awaitingExit: false,
       cancelTimeout: () => undefined,
       error,
       reason
@@ -1195,6 +1263,7 @@ export class ExtensionRuntimeManager {
 
     session.stopping = true
     session.stopState = {
+      awaitingExit: false,
       cancelTimeout: () => undefined,
       ...(runOnceError ? { error: runOnceError } : {}),
       reason
@@ -1224,7 +1293,7 @@ export class ExtensionRuntimeManager {
         stopState.error = RUNTIME_STOP_TIMEOUT_ERROR
         this.recordError(session, RUNTIME_STOP_TIMEOUT_ERROR)
       }
-      this.finalizeStopSession(session)
+      this.escalateStopToProcessExit(session, stopState)
     })
     if (this.sessions.get(session.sessionId) !== session || session.stopState !== stopState) {
       return
@@ -1239,7 +1308,7 @@ export class ExtensionRuntimeManager {
         stopState.error = toRuntimeError("runtime_transport_failed", error)
         this.recordError(session, stopState.error)
       }
-      this.finalizeStopSession(session)
+      this.escalateStopToProcessExit(session, stopState)
     }
   }
 
@@ -1253,16 +1322,45 @@ export class ExtensionRuntimeManager {
     }
   }
 
-  private finalizeStopSession(session: RuntimeSession, kill = true): void {
+  private escalateStopToProcessExit(
+    session: RuntimeSession,
+    stopState: RuntimeSessionStopState
+  ): void {
+    if (
+      this.sessions.get(session.sessionId) !== session ||
+      session.stopState !== stopState ||
+      stopState.awaitingExit
+    ) {
+      return
+    }
+    stopState.awaitingExit = true
+    this.cancelStopTimeout(stopState)
+    this.revokeCacheWriterLease(session)
+    try {
+      session.process.kill()
+    } catch (error) {
+      console.error("[jingle:extension-runtime] Failed to kill runtime process", error)
+    }
+  }
+
+  private finalizeStopSession(
+    session: RuntimeSession,
+    options: { processExited?: boolean } = {}
+  ): void {
     const stopState = session.stopState
     if (!stopState || this.sessions.get(session.sessionId) !== session) {
       return
     }
 
+    const leaseRevoked = this.revokeCacheWriterLease(session)
+    if (!leaseRevoked && !options.processExited) {
+      this.escalateStopToProcessExit(session, stopState)
+      return
+    }
     session.stopState = null
-    stopState.cancelTimeout()
+    this.cancelStopTimeout(stopState)
     const sessionInfo = this.detachSession(session)
-    if (kill) {
+    if (!options.processExited) {
       try {
         session.process.kill()
       } catch (error) {
@@ -1270,6 +1368,29 @@ export class ExtensionRuntimeManager {
       }
     }
     this.emitSessionStopped(sessionInfo, stopState.reason)
+  }
+
+  private revokeCacheWriterLease(session: RuntimeSession): boolean {
+    if (session.cacheWriterLeaseRevoked) {
+      return true
+    }
+    try {
+      this.options.cacheLeaseCoordinator.revoke(session.cacheWriterLease)
+      session.cacheWriterLeaseRevoked = true
+      return true
+    } catch {
+      if (session.stopState && !session.stopState.error) {
+        session.stopState.error = CACHE_WRITER_LEASE_CLEANUP_ERROR
+        this.recordError(session, CACHE_WRITER_LEASE_CLEANUP_ERROR)
+      }
+      return false
+    }
+  }
+
+  private cancelStopTimeout(stopState: RuntimeSessionStopState): void {
+    const cancel = stopState.cancelTimeout
+    stopState.cancelTimeout = () => undefined
+    cancel()
   }
 
   private detachSession(session: RuntimeSession): ExtensionRuntimeSessionInfo | null {
@@ -1359,7 +1480,8 @@ function assertRuntimeCapability(
 function getRuntimeErrorCode(error: unknown, fallback: string): string {
   return error instanceof ExtensionRuntimeLifecycleError ||
     error instanceof ExtensionRuntimeHostError ||
-    error instanceof ExtensionRuntimeExecutionLeaseError
+    error instanceof ExtensionRuntimeExecutionLeaseError ||
+    error instanceof ExtensionRuntimeCacheLeaseCoordinatorError
     ? error.code
     : fallback
 }

@@ -11,8 +11,14 @@ export interface ExtensionRuntimeCacheLifecycle {
 
 export function createExtensionRuntimeCacheLifecycle(
   backend: RuntimeCacheBackend | null,
-  options: { onPersistenceFailure: (sessionId: string) => void }
+  options: {
+    onPersistenceFailure: (sessionId: string) => void
+    writerSessionId: string | null
+  }
 ): ExtensionRuntimeCacheLifecycle {
+  if ((backend === null) !== (options.writerSessionId === null)) {
+    throw new Error("Extension runtime cache lifecycle writer binding is invalid.")
+  }
   let activeSessionId: string | null = null
   let failed = false
   let reportedFailureSessionId: string | null = null
@@ -70,6 +76,9 @@ export function createExtensionRuntimeCacheLifecycle(
 
   return {
     bindSession(sessionId) {
+      if (options.writerSessionId !== null && options.writerSessionId !== sessionId) {
+        throw new Error("Extension runtime cache writer lease does not belong to this session.")
+      }
       if (activeSessionId && activeSessionId !== sessionId) {
         throw new Error("Extension runtime cache lifecycle is already bound to another session.")
       }

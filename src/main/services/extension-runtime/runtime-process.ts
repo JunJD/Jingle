@@ -1,4 +1,5 @@
 import type {
+  ExtensionRuntimeCacheWriterLease,
   ExtensionHostToRuntimeMessage,
   ExtensionRuntimeToHostMessage
 } from "@shared/extension-runtime-protocol"
@@ -12,5 +13,7 @@ export interface ExtensionRuntimeProcess {
 }
 
 export interface ExtensionRuntimeProcessLauncher {
-  launch: () => ExtensionRuntimeProcess
+  launch: (params: {
+    cacheWriterLease: ExtensionRuntimeCacheWriterLease
+  }) => ExtensionRuntimeProcess
 }

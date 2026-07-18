@@ -8,6 +8,7 @@ import {
   ExtensionRuntimeManager,
   type ExtensionRuntimeHostCapabilities
 } from "../../src/main/services/extension-runtime/runtime-manager"
+import type { ExtensionRuntimeCacheLeaseCoordinator } from "../../src/main/services/extension-runtime/cache-lease-coordinator"
 import { ExtensionRuntimeMenuBarService } from "../../src/main/services/extension-runtime/menu-bar-service"
 import type { NativeMenuBarService } from "../../src/main/native-menu-bar/service"
 import type { NativeMenuBarState } from "../../src/shared/native-menu-bar"
@@ -36,6 +37,7 @@ import {
 import type {
   ExtensionHostRequest,
   ExtensionHostToRuntimeMessage,
+  ExtensionRuntimeCacheWriterLease,
   ExtensionRuntimeHostCapability,
   ExtensionRuntimeLaunchIntent,
   ExtensionRuntimeRecoverableIssue,
@@ -73,6 +75,7 @@ class FakeRuntimeProcess implements ExtensionRuntimeProcess {
   killed = false
   messages: ExtensionHostToRuntimeMessage[] = []
   pid = 100
+  throwOnStop = false
   private exitListeners = new Set<(code: number) => void>()
   private messageListeners = new Set<(message: ExtensionRuntimeToHostMessage) => void>()
 
@@ -108,6 +111,9 @@ class FakeRuntimeProcess implements ExtensionRuntimeProcess {
   }
 
   postMessage(message: ExtensionHostToRuntimeMessage): void {
+    if (message.type === "stop" && this.throwOnStop) {
+      throw new Error("runtime transport unavailable")
+    }
     this.messages.push(message)
     if (message.type === "stop" && this.autoAcknowledgeStop) {
       this.emitMessage({
@@ -120,16 +126,62 @@ class FakeRuntimeProcess implements ExtensionRuntimeProcess {
 }
 
 class FakeRuntimeProcessLauncher implements ExtensionRuntimeProcessLauncher {
+  cacheWriterLeases: ExtensionRuntimeCacheWriterLease[] = []
   processes: FakeRuntimeProcess[] = []
+  throwOnLaunch = false
 
   constructor(private readonly autoAcknowledgeStops = true) {}
 
-  launch(): ExtensionRuntimeProcess {
+  launch(params: { cacheWriterLease: ExtensionRuntimeCacheWriterLease }): ExtensionRuntimeProcess {
+    if (this.throwOnLaunch) {
+      throw new Error("runtime launch unavailable")
+    }
     const process = new FakeRuntimeProcess()
     process.autoAcknowledgeStop = this.autoAcknowledgeStops
     process.pid = 100 + this.processes.length
+    this.cacheWriterLeases.push(params.cacheWriterLease)
     this.processes.push(process)
     return process
+  }
+}
+
+class FakeCacheLeaseCoordinator implements ExtensionRuntimeCacheLeaseCoordinator {
+  activateCalls: ExtensionRuntimeCacheWriterLease[] = []
+  disposed = false
+  events: string[] = []
+  failRevoke = false
+  revokeCalls: ExtensionRuntimeCacheWriterLease[] = []
+  private readonly activeTokens = new Set<string>()
+  private tokenIndex = 0
+
+  activate(sessionId: string): ExtensionRuntimeCacheWriterLease {
+    const lease = {
+      sessionId,
+      token: (++this.tokenIndex).toString(16).padStart(64, "0")
+    }
+    this.activateCalls.push(lease)
+    this.activeTokens.add(lease.token)
+    this.events.push(`activate:${sessionId}`)
+    return lease
+  }
+
+  dispose(): void {
+    this.disposed = true
+  }
+
+  revoke(lease: ExtensionRuntimeCacheWriterLease): void {
+    this.events.push(`revoke:${lease.sessionId}`)
+    if (this.failRevoke) {
+      throw new Error("cache lease state unavailable")
+    }
+    this.revokeCalls.push(lease)
+    this.activeTokens.delete(lease.token)
+  }
+
+  assertMutationAllowed(lease: ExtensionRuntimeCacheWriterLease): void {
+    if (!this.activeTokens.has(lease.token)) {
+      throw new Error("Extension runtime cache writer lease is inactive.")
+    }
   }
 }
 
@@ -270,6 +322,7 @@ function createHost(
 function createManager(
   params: {
     autoAcknowledgeStops?: boolean
+    cacheLeaseCoordinator?: FakeCacheLeaseCoordinator
     host?: ExtensionRuntimeHostCapabilities
     launcher?: FakeRuntimeProcessLauncher
     onEventAck?: ConstructorParameters<typeof ExtensionRuntimeManager>[0]["onEventAck"]
@@ -288,6 +341,7 @@ function createManager(
   } = {}
 ) {
   const launcher = params.launcher ?? new FakeRuntimeProcessLauncher(params.autoAcknowledgeStops)
+  const cacheLeaseCoordinator = params.cacheLeaseCoordinator ?? new FakeCacheLeaseCoordinator()
   const sessionIds = [...(params.sessionIds ?? ["session-1", "session-2", "session-3"])]
   const executionLeaseOwner =
     params.executionLeaseOwner ??
@@ -297,6 +351,7 @@ function createManager(
         createTestLease(intent, kind, params.runtimeCapabilities ?? DEFAULT_RUNTIME_CAPABILITIES)
     } satisfies ExtensionRuntimeExecutionLeaseOwner)
   const manager = new ExtensionRuntimeManager({
+    cacheLeaseCoordinator,
     createSessionId: () => {
       const sessionId = sessionIds.shift()
       assert.ok(sessionId)
@@ -314,6 +369,7 @@ function createManager(
   })
 
   return {
+    cacheLeaseCoordinator,
     launcher,
     manager
   }
@@ -1248,7 +1304,7 @@ async function flushPromises(): Promise<void> {
 }
 
 test("runtime manager starts and stops a foreground utility session", async () => {
-  const { launcher, manager } = createManager()
+  const { cacheLeaseCoordinator, launcher, manager } = createManager()
 
   const session = await manager.startForeground(createLaunchIntent())
 
@@ -1263,6 +1319,13 @@ test("runtime manager starts and stops a foreground utility session", async () =
     sessionId: "session-1",
     type: "start"
   })
+  assert.deepEqual(cacheLeaseCoordinator.activateCalls, [
+    {
+      sessionId: "session-1",
+      token: "1".padStart(64, "0")
+    }
+  ])
+  assert.equal(launcher.cacheWriterLeases[0], cacheLeaseCoordinator.activateCalls[0])
   assert.deepEqual(manager.getForegroundSession(), session)
 
   assert.equal(manager.stopForeground("session-1"), true)
@@ -1409,8 +1472,9 @@ test("runtime manager rejects a malformed graceful stop acknowledgement", async 
 
 test("runtime manager fails closed when graceful stop acknowledgement times out", async () => {
   let cancelCount = 0
+  const stoppedSessions: string[] = []
   const timeout = { fire: null as (() => void) | null }
-  const { launcher, manager } = createManager({
+  const { cacheLeaseCoordinator, launcher, manager } = createManager({
     autoAcknowledgeStops: false,
     scheduleStopTimeout: (listener) => {
       timeout.fire = listener
@@ -1419,6 +1483,7 @@ test("runtime manager fails closed when graceful stop acknowledgement times out"
       }
     }
   })
+  manager.onSessionStopped((session) => stoppedSessions.push(session.sessionId))
   await manager.startForeground(createLaunchIntent())
   const process = launcher.processes[0]
   assert.ok(process)
@@ -1430,6 +1495,35 @@ test("runtime manager fails closed when graceful stop acknowledgement times out"
   assert.equal(process.killed, true)
   assert.equal(cancelCount, 1)
   assert.equal(manager.getLastError()?.error.code, "runtime_stop_timeout")
+  assert.equal(cacheLeaseCoordinator.revokeCalls.length, 1)
+  assert.deepEqual(stoppedSessions, [])
+
+  process.emitExit(1)
+
+  assert.deepEqual(stoppedSessions, ["session-1"])
+})
+
+test("runtime manager waits for real exit after graceful stop transport failure", async () => {
+  const stoppedSessions: string[] = []
+  const { cacheLeaseCoordinator, launcher, manager } = createManager({
+    autoAcknowledgeStops: false
+  })
+  manager.onSessionStopped((session) => stoppedSessions.push(session.sessionId))
+  await manager.startForeground(createLaunchIntent())
+  const process = launcher.processes[0]
+  assert.ok(process)
+  process.throwOnStop = true
+
+  assert.equal(manager.stopForeground("session-1"), true)
+
+  assert.equal(process.killed, true)
+  assert.equal(cacheLeaseCoordinator.revokeCalls.length, 1)
+  assert.equal(manager.getLastError()?.error.code, "runtime_transport_failed")
+  assert.deepEqual(stoppedSessions, [])
+
+  process.emitExit(1)
+
+  assert.deepEqual(stoppedSessions, ["session-1"])
 })
 
 test("runtime manager preserves a primary cache failure when its stop acknowledgement times out", async () => {
@@ -1471,7 +1565,9 @@ test("runtime manager reports utility exit before graceful stop acknowledgement"
 
 test("runtime manager dispose waits for cache flush acknowledgement before releasing sessions", async () => {
   const stoppedSessions: string[] = []
-  const { launcher, manager } = createManager({ autoAcknowledgeStops: false })
+  const { cacheLeaseCoordinator, launcher, manager } = createManager({
+    autoAcknowledgeStops: false
+  })
   manager.onSessionStopped((session) => stoppedSessions.push(session.sessionId))
   await manager.startForeground(createLaunchIntent())
   const process = launcher.processes[0]
@@ -1497,6 +1593,7 @@ test("runtime manager dispose waits for cache flush acknowledgement before relea
   assert.equal(disposed, true)
   assert.equal(process.killed, true)
   assert.deepEqual(stoppedSessions, ["session-1"])
+  assert.equal(cacheLeaseCoordinator.disposed, true)
 })
 
 test("runtime manager owns a normal terminal transition before issue projection reentrancy", async () => {
@@ -1569,6 +1666,83 @@ test("runtime manager owns a fatal terminal transition before issue projection r
       sessionId: "session-1"
     }
   ])
+})
+
+test("foreground replacement revokes the old writer before admitting the new writer", async () => {
+  const { cacheLeaseCoordinator, launcher, manager } = createManager({
+    autoAcknowledgeStops: false
+  })
+  await manager.startForeground(createLaunchIntent())
+  const oldWriterLease = launcher.cacheWriterLeases[0]
+  assert.ok(oldWriterLease)
+  cacheLeaseCoordinator.assertMutationAllowed(oldWriterLease)
+
+  await manager.startForeground(createLaunchIntent())
+
+  const replacementWriterLease = launcher.cacheWriterLeases[1]
+  assert.ok(replacementWriterLease)
+  assert.deepEqual(cacheLeaseCoordinator.events, [
+    "activate:session-1",
+    "revoke:session-1",
+    "activate:session-2"
+  ])
+  assert.throws(
+    () => cacheLeaseCoordinator.assertMutationAllowed(oldWriterLease),
+    /lease is inactive/
+  )
+  cacheLeaseCoordinator.assertMutationAllowed(replacementWriterLease)
+
+  launcher.processes[0]?.emitMessage({
+    result: { kind: "flushed" },
+    sessionId: "session-1",
+    type: "stopped"
+  })
+  assert.equal(manager.stopForeground("session-2"), true)
+  launcher.processes[1]?.emitMessage({
+    result: { kind: "flushed" },
+    sessionId: "session-2",
+    type: "stopped"
+  })
+})
+
+test("foreground replacement fails closed when the old writer cannot be revoked", async () => {
+  const stoppedSessions: string[] = []
+  const { cacheLeaseCoordinator, launcher, manager } = createManager({
+    autoAcknowledgeStops: false
+  })
+  manager.onSessionStopped((session) => stoppedSessions.push(session.sessionId))
+  await manager.startForeground(createLaunchIntent())
+  const oldProcess = launcher.processes[0]
+  assert.ok(oldProcess)
+  cacheLeaseCoordinator.failRevoke = true
+
+  await assert.rejects(manager.startForeground(createLaunchIntent()), (error) => {
+    assert.ok(error instanceof ExtensionRuntimeLifecycleError)
+    assert.equal(error.code, "runtime_cache_writer_lease_failed")
+    return true
+  })
+
+  assert.equal(launcher.processes.length, 1)
+  assert.equal(cacheLeaseCoordinator.activateCalls.length, 1)
+  assert.equal(oldProcess.killed, true)
+  assert.deepEqual(stoppedSessions, [])
+
+  oldProcess.emitExit(1)
+
+  assert.deepEqual(stoppedSessions, ["session-1"])
+})
+
+test("runtime manager revokes a new cache writer lease when process launch fails", async () => {
+  const launcher = new FakeRuntimeProcessLauncher()
+  launcher.throwOnLaunch = true
+  const { cacheLeaseCoordinator, manager } = createManager({ launcher })
+
+  await assert.rejects(manager.startForeground(createLaunchIntent()), /launch unavailable/)
+
+  assert.equal(launcher.processes.length, 0)
+  assert.equal(cacheLeaseCoordinator.activateCalls.length, 1)
+  assert.equal(cacheLeaseCoordinator.revokeCalls[0], cacheLeaseCoordinator.activateCalls[0])
+  assert.deepEqual(cacheLeaseCoordinator.events, ["activate:session-1", "revoke:session-1"])
 })
 
 test("runtime manager drops messages from a stopped foreground session", async () => {

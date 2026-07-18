@@ -48,7 +48,8 @@ test("runtime cache lifecycle flushes before ready and graceful stop", async () 
   }
   const failures: string[] = []
   const lifecycle = createExtensionRuntimeCacheLifecycle(backend, {
-    onPersistenceFailure: (sessionId) => failures.push(sessionId)
+    onPersistenceFailure: (sessionId) => failures.push(sessionId),
+    writerSessionId: "session-1"
   })
 
   lifecycle.bindSession("session-1")
@@ -63,7 +64,8 @@ test("runtime cache lifecycle reports one typed failure across ready and stop", 
   const backend = new FakeRuntimeCacheBackend()
   const failures: string[] = []
   const lifecycle = createExtensionRuntimeCacheLifecycle(backend, {
-    onPersistenceFailure: (sessionId) => failures.push(sessionId)
+    onPersistenceFailure: (sessionId) => failures.push(sessionId),
+    writerSessionId: "session-1"
   })
 
   backend.reportFailure()
@@ -83,7 +85,8 @@ test("runtime cache lifecycle converts an unreported flush rejection into a type
   }
   const failures: string[] = []
   const lifecycle = createExtensionRuntimeCacheLifecycle(backend, {
-    onPersistenceFailure: (sessionId) => failures.push(sessionId)
+    onPersistenceFailure: (sessionId) => failures.push(sessionId),
+    writerSessionId: "session-1"
   })
   lifecycle.bindSession("session-1")
 
@@ -99,7 +102,8 @@ test("runtime cache lifecycle preserves the typed stop result when immediate fai
   const lifecycle = createExtensionRuntimeCacheLifecycle(backend, {
     onPersistenceFailure: () => {
       throw new Error("parent port unavailable")
-    }
+    },
+    writerSessionId: "session-1"
   })
   lifecycle.bindSession("session-1")
 
@@ -110,9 +114,19 @@ test("runtime cache lifecycle preserves the typed stop result when immediate fai
 
 test("runtime cache lifecycle rejects cross-session reuse", () => {
   const lifecycle = createExtensionRuntimeCacheLifecycle(null, {
-    onPersistenceFailure: () => undefined
+    onPersistenceFailure: () => undefined,
+    writerSessionId: null
   })
   lifecycle.bindSession("session-1")
 
   assert.throws(() => lifecycle.bindSession("session-2"), /already bound/)
+})
+
+test("runtime cache lifecycle rejects a start message for another writer session", () => {
+  const lifecycle = createExtensionRuntimeCacheLifecycle(new FakeRuntimeCacheBackend(), {
+    onPersistenceFailure: () => undefined,
+    writerSessionId: "session-1"
+  })
+
+  assert.throws(() => lifecycle.bindSession("session-2"), /does not belong/)
 })

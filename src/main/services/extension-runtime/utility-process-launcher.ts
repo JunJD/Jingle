@@ -1,11 +1,15 @@
 import { join } from "path"
 import { utilityProcess, type UtilityProcess } from "electron"
 import type {
+  ExtensionRuntimeCacheWriterLease,
   ExtensionHostToRuntimeMessage,
   ExtensionRuntimeToHostMessage
 } from "@shared/extension-runtime-protocol"
 import { EXTENSION_RUNTIME_VM_MODULE_EXEC_ARGV } from "@shared/extension-runtime-protocol"
-import { EXTENSION_RUNTIME_CACHE_DIR_ENV } from "../../../extension-runtime/cache-backend"
+import {
+  EXTENSION_RUNTIME_CACHE_DIR_ENV,
+  EXTENSION_RUNTIME_CACHE_WRITER_LEASE_ENV
+} from "../../../extension-runtime/cache-backend"
 import { getJingleHomeDir } from "../../storage"
 import type { ExtensionRuntimeProcess, ExtensionRuntimeProcessLauncher } from "./runtime-process"
 
@@ -14,13 +18,20 @@ export function resolveExtensionRuntimeEntryPath(): string {
 }
 
 export class UtilityProcessExtensionRuntimeProcessLauncher implements ExtensionRuntimeProcessLauncher {
-  constructor(private readonly modulePath = resolveExtensionRuntimeEntryPath()) {}
+  private readonly cacheDir: string
+  private readonly modulePath: string
 
-  launch(): ExtensionRuntimeProcess {
+  constructor(options: { cacheDir?: string; modulePath?: string } = {}) {
+    this.cacheDir = options.cacheDir ?? join(getJingleHomeDir(), "extension-runtime-cache")
+    this.modulePath = options.modulePath ?? resolveExtensionRuntimeEntryPath()
+  }
+
+  launch(params: { cacheWriterLease: ExtensionRuntimeCacheWriterLease }): ExtensionRuntimeProcess {
     const child = utilityProcess.fork(this.modulePath, [], {
       env: {
         ...process.env,
-        [EXTENSION_RUNTIME_CACHE_DIR_ENV]: join(getJingleHomeDir(), "extension-runtime-cache")
+        [EXTENSION_RUNTIME_CACHE_DIR_ENV]: this.cacheDir,
+        [EXTENSION_RUNTIME_CACHE_WRITER_LEASE_ENV]: JSON.stringify(params.cacheWriterLease)
       },
       execArgv: [...EXTENSION_RUNTIME_VM_MODULE_EXEC_ARGV],
       serviceName: "Jingle Extension Runtime"

@@ -1,4 +1,5 @@
 import type { IpcMain } from "electron"
+import { join } from "node:path"
 import { instanceCachingFactory, type DependencyContainer } from "tsyringe"
 import { ExternalLinksService } from "../../external-links/service"
 import { ExtensionQuicklinkService } from "../../extension-quicklinks/service"
@@ -7,7 +8,9 @@ import { NativeExtensionsService } from "../../native-extensions/service"
 import { SettingsService } from "../../settings/service"
 import { SettingsWindowRoutingService } from "../../settings-window-routing/service"
 import { isLauncherWindowWebContents } from "../../windows/launcher-window"
+import { getJingleHomeDir } from "../../storage"
 import { wrapExtensionRuntimeHostForBdd } from "./bdd-host-capabilities"
+import { FileExtensionRuntimeCacheLeaseCoordinator } from "./cache-lease-coordinator"
 import { ExtensionRuntimeController } from "./controller"
 import { DefaultExtensionRuntimeHostCapabilities } from "./host-capabilities"
 import { createExtensionRuntimeExecutionLeaseOwner } from "./execution-lease"
@@ -40,14 +43,16 @@ export function registerExtensionRuntimeModule(container: DependencyContainer): 
     useFactory: instanceCachingFactory((dependencyContainer) => {
       const nativeExtensionsService = dependencyContainer.resolve(NativeExtensionsService)
       const settingsService = dependencyContainer.resolve(SettingsService)
+      const cacheDir = join(getJingleHomeDir(), "extension-runtime-cache")
       return new ExtensionRuntimeManager({
+        cacheLeaseCoordinator: new FileExtensionRuntimeCacheLeaseCoordinator(cacheDir),
         executionLeaseOwner: createExtensionRuntimeExecutionLeaseOwner({
           getLocale: () => settingsService.getAgentConfig().locale
         }),
         host: dependencyContainer.resolve<ExtensionRuntimeHostCapabilities>(
           EXTENSION_RUNTIME_HOST_TOKEN
         ),
-        processLauncher: new UtilityProcessExtensionRuntimeProcessLauncher(),
+        processLauncher: new UtilityProcessExtensionRuntimeProcessLauncher({ cacheDir }),
         subscribeConfigurationCommits: (listener) =>
           nativeExtensionsService.onConfigurationCommitted(listener)
       })

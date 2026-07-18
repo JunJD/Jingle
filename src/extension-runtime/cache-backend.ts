@@ -20,6 +20,10 @@ import { createHash, randomUUID } from "node:crypto"
 import { dirname, join } from "node:path"
 import * as properLockfile from "proper-lockfile"
 import {
+  normalizeExtensionRuntimeCacheWriterLease,
+  type ExtensionRuntimeCacheWriterLease
+} from "@shared/extension-runtime-protocol"
+import {
   encodeRuntimeCacheBackendScopeKey,
   type RuntimeCacheBackend,
   type RuntimeCacheBackendFailureListener,
@@ -39,16 +43,19 @@ interface RuntimeCacheFileShape {
   version: typeof RUNTIME_CACHE_FILE_VERSION
 }
 
-interface RuntimeCacheFileBackendOptions {
+export interface RuntimeCacheFileBackendOptions {
   lock?: {
     retryCount: number
     retryTimeoutMs: number
     staleMs: number
     updateMs: number
   }
+  writerLease?: ExtensionRuntimeCacheWriterLease
 }
 
 export const EXTENSION_RUNTIME_CACHE_DIR_ENV = "JINGLE_EXTENSION_RUNTIME_CACHE_DIR"
+export const EXTENSION_RUNTIME_CACHE_WRITER_LEASE_ENV =
+  "JINGLE_EXTENSION_RUNTIME_CACHE_WRITER_LEASE"
 
 const CACHE_LOCK_STALE_MS = 30_000
 const RUNTIME_CACHE_FILE_VERSION = 1
@@ -76,6 +83,11 @@ const ACTIVE_CACHE_FILE_PATTERN = /^store-([a-f0-9]{64})\.json$/
 const CORRUPT_CACHE_FILE_PATTERN = /^store-([a-f0-9]{64})\.json\.corrupt$/
 const CACHE_TEMPORARY_FILE_PATTERN =
   /^store-([a-f0-9]{64})\.json(?:\.corrupt)?\.[0-9]+\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/
+const CACHE_WRITER_LEASE_FILE_PATTERN = /^writer-lease-[a-f0-9]{64}\.json$/
+const CACHE_WRITER_LEASE_TEMPORARY_FILE_PATTERN =
+  /^writer-lease-[a-f0-9]{64}\.json\.[0-9]+\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/
+const CACHE_WRITER_LEASE_FILE_VERSION = 1
+const CACHE_WRITER_LEASE_MAX_FILE_BYTES = 512
 
 const lockSync = (
   properLockfile as typeof properLockfile & {
@@ -91,6 +103,54 @@ const lockSync = (
     ) => () => void
   }
 ).lockSync
+
+export function resetExtensionRuntimeCacheWriterLeases(cacheDir: string): void {
+  mkdirSync(cacheDir, { recursive: true })
+  withCacheDirectoryLockSync(cacheDir, () => {
+    let changed = false
+    for (const name of readdirSync(cacheDir)) {
+      if (
+        !CACHE_WRITER_LEASE_FILE_PATTERN.test(name) &&
+        !CACHE_WRITER_LEASE_TEMPORARY_FILE_PATTERN.test(name)
+      ) {
+        continue
+      }
+      changed = removeRecognizedRegularFileSync(join(cacheDir, name)) || changed
+    }
+    if (changed) {
+      syncDirectorySync(cacheDir)
+    }
+  })
+}
+
+export function activateExtensionRuntimeCacheWriterLease(
+  cacheDir: string,
+  receivedLease: ExtensionRuntimeCacheWriterLease
+): void {
+  const lease = normalizeExtensionRuntimeCacheWriterLease(receivedLease)
+  mkdirSync(cacheDir, { recursive: true })
+  withCacheDirectoryLockSync(cacheDir, () => {
+    writeCacheWriterLeaseAtomicallySync(getCacheWriterLeasePath(cacheDir, lease), lease)
+  })
+}
+
+export function revokeExtensionRuntimeCacheWriterLease(
+  cacheDir: string,
+  receivedLease: ExtensionRuntimeCacheWriterLease
+): void {
+  const lease = normalizeExtensionRuntimeCacheWriterLease(receivedLease)
+  if (!existsSync(cacheDir)) {
+    return
+  }
+  withCacheDirectoryLockSync(cacheDir, () => {
+    const leasePath = getCacheWriterLeasePath(cacheDir, lease)
+    if (!isActiveCacheWriterLease(leasePath, lease)) {
+      return
+    }
+    unlinkSync(leasePath)
+    syncDirectorySync(cacheDir)
+  })
+}
 
 export function createFileExtensionRuntimeCacheBackend(
   cacheDir: string,
@@ -155,7 +215,8 @@ export function createFileExtensionRuntimeCacheBackend(
         const result = readCacheFileWithRecoverySync(
           cacheDir,
           cacheFilePath,
-          options.lock ?? DEFAULT_LOCK_OPTIONS
+          options.lock ?? DEFAULT_LOCK_OPTIONS,
+          options.writerLease
         )
         if (result.corruption) {
           reportCacheCorruptionRecovery()
@@ -187,6 +248,7 @@ export function createFileExtensionRuntimeCacheBackend(
             storeKey,
             mutationSnapshot,
             options.lock ?? DEFAULT_LOCK_OPTIONS,
+            options.writerLease,
             reportCacheCorruptionRecovery
           )
         })
@@ -214,9 +276,12 @@ async function updateCacheFile(
   storeKey: string,
   mutation: RuntimeCacheBackendMutation,
   lockOptions: NonNullable<RuntimeCacheFileBackendOptions["lock"]>,
+  writerLease: ExtensionRuntimeCacheWriterLease | undefined,
   reportRecovery: () => void
 ): Promise<void> {
-  await mkdir(cacheDir, { recursive: true })
+  if (!writerLease) {
+    await mkdir(cacheDir, { recursive: true })
+  }
   let directoryCompromisedError: Error | null = null
   let compromisedError: Error | null = null
   let recoveredCorruption: ExtensionRuntimeCacheCorruptionError | null = null
@@ -228,6 +293,7 @@ async function updateCacheFile(
   try {
     // Every writer and recovery path takes the directory lock before its aggregate-file lock.
     assertLockIsOwned(directoryCompromisedError)
+    assertActiveCacheWriterLease(cacheDir, writerLease)
     releaseFile = await acquireCacheLock(cacheFilePath, lockOptions, (error) => {
       compromisedError = error
     })
@@ -400,7 +466,8 @@ async function readCacheFileForUpdate(cacheFilePath: string): Promise<{
 function readCacheFileWithRecoverySync(
   cacheDir: string,
   cacheFilePath: string,
-  lockOptions: NonNullable<RuntimeCacheFileBackendOptions["lock"]>
+  lockOptions: NonNullable<RuntimeCacheFileBackendOptions["lock"]>,
+  writerLease: ExtensionRuntimeCacheWriterLease | undefined
 ): {
   cacheFile: RuntimeCacheFileShape
   corruption: ExtensionRuntimeCacheCorruptionError | null
@@ -413,7 +480,9 @@ function readCacheFileWithRecoverySync(
     }
   }
 
-  mkdirSync(cacheDir, { recursive: true })
+  if (!writerLease) {
+    mkdirSync(cacheDir, { recursive: true })
+  }
   let directoryCompromisedError: Error | null = null
   let compromisedError: Error | null = null
   const releaseDirectory = acquireCacheLockSync(cacheDir, lockOptions, (error) => {
@@ -427,6 +496,7 @@ function readCacheFileWithRecoverySync(
 
   try {
     assertLockIsOwned(directoryCompromisedError)
+    assertActiveCacheWriterLease(cacheDir, writerLease)
     releaseFile = acquireCacheLockSync(cacheFilePath, lockOptions, (error) => {
       compromisedError = error
     })
@@ -491,6 +561,107 @@ function acquireCacheLockSync(
     stale: lockOptions.staleMs,
     update: lockOptions.updateMs
   })
+}
+
+function withCacheDirectoryLockSync(cacheDir: string, operation: () => void): void {
+  let compromisedError: Error | null = null
+  const release = acquireCacheLockSync(cacheDir, DEFAULT_LOCK_OPTIONS, (error) => {
+    compromisedError = error
+  })
+  try {
+    assertLockIsOwned(compromisedError)
+    operation()
+    assertLockIsOwned(compromisedError)
+  } finally {
+    release()
+  }
+}
+
+function assertActiveCacheWriterLease(
+  cacheDir: string,
+  lease: ExtensionRuntimeCacheWriterLease | undefined
+): void {
+  if (!lease) {
+    return
+  }
+  if (!isActiveCacheWriterLease(getCacheWriterLeasePath(cacheDir, lease), lease)) {
+    throw new ExtensionRuntimeCacheWriterLeaseError()
+  }
+}
+
+function isActiveCacheWriterLease(
+  leasePath: string,
+  expectedLease: ExtensionRuntimeCacheWriterLease
+): boolean {
+  try {
+    const status = assertRegularCacheArtifactSync(leasePath)
+    if (status.size > CACHE_WRITER_LEASE_MAX_FILE_BYTES) {
+      return false
+    }
+    const parsed = JSON.parse(readFileSync(leasePath, "utf8")) as unknown
+    if (
+      !isRecord(parsed) ||
+      Object.keys(parsed).length !== 3 ||
+      parsed.version !== CACHE_WRITER_LEASE_FILE_VERSION
+    ) {
+      return false
+    }
+    const lease = normalizeExtensionRuntimeCacheWriterLease({
+      sessionId: parsed.sessionId,
+      token: parsed.token
+    })
+    return lease.sessionId === expectedLease.sessionId && lease.token === expectedLease.token
+  } catch {
+    return false
+  }
+}
+
+function getCacheWriterLeasePath(
+  cacheDir: string,
+  lease: ExtensionRuntimeCacheWriterLease
+): string {
+  const digest = createHash("sha256").update(lease.sessionId).digest("hex")
+  return join(cacheDir, `writer-lease-${digest}.json`)
+}
+
+function writeCacheWriterLeaseAtomicallySync(
+  leasePath: string,
+  lease: ExtensionRuntimeCacheWriterLease
+): void {
+  const cacheDir = dirname(leasePath)
+  const temporaryPath = `${leasePath}.${process.pid}.${randomUUID()}.tmp`
+  const serialized = `${JSON.stringify({
+    sessionId: lease.sessionId,
+    token: lease.token,
+    version: CACHE_WRITER_LEASE_FILE_VERSION
+  })}\n`
+  if (Buffer.byteLength(serialized) > CACHE_WRITER_LEASE_MAX_FILE_BYTES) {
+    throw new ExtensionRuntimeCacheWriterLeaseError()
+  }
+  let temporaryFile: number | null = null
+  try {
+    assertRegularCacheArtifactOrMissingSync(leasePath)
+    temporaryFile = openSync(temporaryPath, "wx", 0o600)
+    writeFileSync(temporaryFile, serialized, "utf8")
+    fsyncSync(temporaryFile)
+    closeSync(temporaryFile)
+    temporaryFile = null
+    renameSync(temporaryPath, leasePath)
+    syncDirectorySync(cacheDir)
+  } finally {
+    if (temporaryFile !== null) {
+      try {
+        closeSync(temporaryFile)
+      } catch {
+        // The original coordination failure remains authoritative.
+      }
+    }
+    try {
+      rmSync(temporaryPath, { force: true })
+    } catch {
+      // Best-effort cleanup cannot replace the original coordination result.
+    }
+  }
 }
 
 interface RuntimeCacheDirectoryReservation {
@@ -1082,6 +1253,15 @@ class ExtensionRuntimeCachePersistenceError extends Error {
   constructor(cause: unknown) {
     super(CACHE_PERSISTENCE_ERROR_MESSAGE, { cause })
     this.name = "ExtensionRuntimeCachePersistenceError"
+  }
+}
+
+export class ExtensionRuntimeCacheWriterLeaseError extends Error {
+  readonly code = "runtime_cache_writer_lease_inactive"
+
+  constructor() {
+    super("Extension runtime cache writer lease is inactive.")
+    this.name = "ExtensionRuntimeCacheWriterLeaseError"
   }
 }
 

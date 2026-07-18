@@ -175,6 +175,37 @@ export interface ExtensionRuntimeUtilityExecutionLease {
   runtime: ExtensionRuntimeLaunchPackageRef
 }
 
+export interface ExtensionRuntimeCacheWriterLease {
+  sessionId: string
+  token: string
+}
+
+const EXTENSION_RUNTIME_CACHE_WRITER_SESSION_ID_MAX_LENGTH = 128
+const EXTENSION_RUNTIME_CACHE_WRITER_TOKEN_PATTERN = /^[a-f0-9]{64}$/
+
+export function normalizeExtensionRuntimeCacheWriterLease(
+  value: unknown
+): ExtensionRuntimeCacheWriterLease {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Extension runtime cache writer lease is invalid.")
+  }
+  const lease = value as Record<string, unknown>
+  if (
+    Object.keys(lease).length !== 2 ||
+    typeof lease.sessionId !== "string" ||
+    lease.sessionId.length === 0 ||
+    lease.sessionId.length > EXTENSION_RUNTIME_CACHE_WRITER_SESSION_ID_MAX_LENGTH ||
+    typeof lease.token !== "string" ||
+    !EXTENSION_RUNTIME_CACHE_WRITER_TOKEN_PATTERN.test(lease.token)
+  ) {
+    throw new Error("Extension runtime cache writer lease is invalid.")
+  }
+  return Object.freeze({
+    sessionId: lease.sessionId,
+    token: lease.token
+  })
+}
+
 export type ExtensionHostToRuntimeMessage =
   | {
       lease: ExtensionRuntimeUtilityExecutionLease

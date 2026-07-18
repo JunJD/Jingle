@@ -8,16 +8,19 @@ import type {
   ExtensionHostToRuntimeMessage,
   ExtensionRuntimeError,
   ExtensionRuntimeEvent,
+  ExtensionRuntimeCacheWriterLease,
   ExtensionRuntimeUtilityExecutionLease,
   ExtensionRuntimeToHostMessage
 } from "@shared/extension-runtime-protocol"
+import { normalizeExtensionRuntimeCacheWriterLease } from "@shared/extension-runtime-protocol"
 import {
   ExtensionRuntimeArtifactLoadError,
   loadNativeExtensionRuntimeCommand
 } from "./runtime-package-loader"
 import {
   createFileExtensionRuntimeCacheBackend,
-  EXTENSION_RUNTIME_CACHE_DIR_ENV
+  EXTENSION_RUNTIME_CACHE_DIR_ENV,
+  EXTENSION_RUNTIME_CACHE_WRITER_LEASE_ENV
 } from "./cache-backend"
 import { createExtensionRuntimeCacheLifecycle } from "./cache-lifecycle"
 import { createExtensionRuntimeRenderer, type ExtensionRuntimeRenderer } from "./reconciler/render"
@@ -40,11 +43,16 @@ let hostRequestIndex = 0
 
 const parentPort = getParentPort()
 installRuntimeReactBridge()
-const runtimeCacheLifecycle = createExtensionRuntimeCacheLifecycle(installRuntimeCacheBackend(), {
-  onPersistenceFailure: (sessionId) => {
-    postToHost({ sessionId, type: "cache-persistence-failed" })
+const runtimeCacheInstallation = installRuntimeCacheBackend()
+const runtimeCacheLifecycle = createExtensionRuntimeCacheLifecycle(
+  runtimeCacheInstallation.backend,
+  {
+    onPersistenceFailure: (sessionId) => {
+      postToHost({ sessionId, type: "cache-persistence-failed" })
+    },
+    writerSessionId: runtimeCacheInstallation.writerSessionId
   }
-})
+)
 
 parentPort.on("message", (event) => {
   const message = event.data as ExtensionHostToRuntimeMessage
@@ -290,15 +298,27 @@ function getParentPort(): NonNullable<typeof process.parentPort> {
   return port
 }
 
-function installRuntimeCacheBackend(): RuntimeCacheBackend | null {
+function installRuntimeCacheBackend():
+  | { backend: null; writerSessionId: null }
+  | { backend: RuntimeCacheBackend; writerSessionId: string } {
   const cacheDir = process.env[EXTENSION_RUNTIME_CACHE_DIR_ENV]
-  if (!cacheDir) {
-    return null
+  const rawWriterLease = process.env[EXTENSION_RUNTIME_CACHE_WRITER_LEASE_ENV]
+  if (!cacheDir && !rawWriterLease) {
+    return { backend: null, writerSessionId: null }
+  }
+  if (!cacheDir || !rawWriterLease) {
+    throw new Error("Extension runtime cache writer configuration is incomplete.")
   }
 
-  const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+  let writerLease: ExtensionRuntimeCacheWriterLease
+  try {
+    writerLease = normalizeExtensionRuntimeCacheWriterLease(JSON.parse(rawWriterLease))
+  } catch {
+    throw new Error("Extension runtime cache writer configuration is invalid.")
+  }
+  const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease })
   installExtensionRuntimeCacheBackend(backend)
-  return backend
+  return { backend, writerSessionId: writerLease.sessionId }
 }
 
 function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
