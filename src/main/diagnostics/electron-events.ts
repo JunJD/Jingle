@@ -3,7 +3,8 @@ import type {
   AppWindowKind,
   RendererWindowLoadFailureObserver
 } from "../windows/load-renderer-window"
-import { diagnosticsLogger } from "./instance"
+import { captureElectronFailure, createFatalDiagnosticSingleFlight } from "./electron-failure"
+import { diagnosticsGraph, diagnosticsLogger } from "./instance"
 import {
   errorFromUnhandledRejection,
   formatFatalMainProcessError,
@@ -36,7 +37,11 @@ function recordFatalMainProcessError(
   error: unknown,
   origin: string
 ): Promise<void> {
-  return diagnosticsLogger.errorAndFlush(message, {
+  captureElectronFailure(diagnosticsGraph, {
+    kind: "main-process-fatal",
+    origin
+  })
+  const legacyWrite = diagnosticsLogger.errorAndFlush(message, {
     error: serializeProcessError(error),
     eventCode: "process.fatal_error",
     fingerprint: `process.fatal_error:${origin}`,
@@ -44,12 +49,14 @@ function recordFatalMainProcessError(
     recoverable: false,
     stateImpact: "process_terminating"
   })
+  return Promise.allSettled([legacyWrite, diagnosticsGraph.flush()]).then(() => undefined)
 }
 
-async function quitAfterFatalMainProcessError(error: unknown, origin: string): Promise<void> {
-  await waitForFatalDiagnostic(
-    recordFatalMainProcessError("Main process fatal error", error, origin)
-  )
+async function quitAfterFatalMainProcessError(
+  error: unknown,
+  diagnosticWrite: Promise<void>
+): Promise<void> {
+  await waitForFatalDiagnostic(diagnosticWrite)
   dialog.showErrorBox(
     "Jingle encountered an unrecoverable error",
     formatFatalMainProcessError(error, diagnosticsLogger.getLogFilePath())
@@ -58,32 +65,43 @@ async function quitAfterFatalMainProcessError(error: unknown, origin: string): P
 }
 
 export function installProcessDiagnostics(options: ProcessDiagnosticsOptions = {}): void {
+  const recordFatalOnce = createFatalDiagnosticSingleFlight(recordFatalMainProcessError)
+
   process.on("uncaughtExceptionMonitor", (error, origin) => {
-    void recordFatalMainProcessError("Main process uncaught exception", error, origin).catch(
-      () => undefined
-    )
+    void recordFatalOnce("Main process uncaught exception", error, origin).catch(() => undefined)
   })
 
   if (options.handleFatalErrors) {
     process.on("uncaughtException", (error, origin) => {
-      void quitAfterFatalMainProcessError(error, origin)
+      void quitAfterFatalMainProcessError(
+        error,
+        recordFatalOnce("Main process fatal error", error, origin)
+      )
     })
 
     process.on("unhandledRejection", (reason) => {
-      void quitAfterFatalMainProcessError(errorFromUnhandledRejection(reason), "unhandledRejection")
+      const error = errorFromUnhandledRejection(reason)
+      void quitAfterFatalMainProcessError(
+        error,
+        recordFatalOnce("Main process fatal error", error, "unhandledRejection")
+      )
     })
   } else {
     process.on("unhandledRejection", (reason) => {
-      void recordFatalMainProcessError(
-        "Main process unhandled rejection",
-        reason,
-        "unhandledRejection"
-      ).catch(() => undefined)
+      void recordFatalOnce("Main process unhandled rejection", reason, "unhandledRejection").catch(
+        () => undefined
+      )
       throw errorFromUnhandledRejection(reason)
     })
   }
 
   app.on("child-process-gone", (_event, details) => {
+    captureElectronFailure(diagnosticsGraph, {
+      exitCode: details.exitCode,
+      kind: "child-process-gone",
+      processType: details.type,
+      reason: details.reason
+    })
     diagnosticsLogger.error("Electron child process gone", details)
   })
 }
@@ -92,5 +110,10 @@ export function attachWindowDiagnostics(
   browserWindow: BrowserWindow,
   windowKind: AppWindowKind
 ): RendererWindowLoadFailureObserver {
-  return attachWindowDiagnosticsWithLogger(browserWindow, windowKind, diagnosticsLogger)
+  return attachWindowDiagnosticsWithLogger(
+    browserWindow,
+    windowKind,
+    diagnosticsLogger,
+    diagnosticsGraph
+  )
 }

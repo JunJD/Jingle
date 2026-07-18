@@ -5,7 +5,9 @@ import type {
   RendererWindowLoadFailureObserver
 } from "../windows/load-renderer-window"
 import type { DiagnosticsLogFields } from "./logger"
+import { captureElectronFailure } from "./electron-failure"
 import { serializeProcessError } from "./process-errors"
+import type { DiagnosticGraphSink } from "./schema"
 
 export interface WindowDiagnosticsLogger {
   error: (message: string, fields?: DiagnosticsLogFields) => void
@@ -68,7 +70,8 @@ function getFailureMessage(failure: RendererWindowLoadFailure): string {
 export function attachWindowDiagnosticsWithLogger(
   browserWindow: BrowserWindow,
   windowKind: AppWindowKind,
-  logger: WindowDiagnosticsLogger
+  logger: WindowDiagnosticsLogger,
+  graph?: DiagnosticGraphSink
 ): RendererWindowLoadFailureObserver {
   const { webContents } = browserWindow
   const identity: WindowDiagnosticIdentity = {
@@ -118,6 +121,27 @@ export function attachWindowDiagnosticsWithLogger(
   })
 
   return (failure) => {
-    logger.error(getFailureMessage(failure), getFailureFields(identity, windowKind, failure))
+    try {
+      logger.error(getFailureMessage(failure), getFailureFields(identity, windowKind, failure))
+    } finally {
+      if (graph) {
+        captureElectronFailure(graph, {
+          ...(failure.phase === "load" && failure.errorCode !== undefined
+            ? { errorCode: failure.errorCode }
+            : {}),
+          ...(failure.phase === "renderer-process"
+            ? {
+                exitCode: failure.details.exitCode,
+                reason: failure.details.reason
+              }
+            : {}),
+          kind: "renderer-window-failure",
+          phase: failure.phase,
+          webContentsId: identity.webContentsId,
+          windowId: identity.windowId,
+          windowKind
+        })
+      }
+    }
   }
 }

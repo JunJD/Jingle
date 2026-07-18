@@ -15,7 +15,15 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import test from "node:test"
 import { DiagnosticsGraphRecorder } from "../../src/main/diagnostics/graph"
+import {
+  captureElectronFailure,
+  createFatalDiagnosticSingleFlight
+} from "../../src/main/diagnostics/electron-failure"
 import { APPEND_DIAGNOSTIC_GRAPH_EVENT, DiagnosticsLogger } from "../../src/main/diagnostics/logger"
+import type {
+  DiagnosticGraphEventInput,
+  DiagnosticGraphSink
+} from "../../src/main/diagnostics/schema"
 import {
   errorFromUnhandledRejection,
   serializeProcessError
@@ -75,6 +83,155 @@ function assertSecretsAbsent(value: string): void {
   assert.equal(value.includes("private-share"), false)
   assert.equal(value.includes(SENSITIVE_KEY_SECRET), false)
 }
+
+class CapturingDiagnosticSink implements DiagnosticGraphSink {
+  readonly inputs: DiagnosticGraphEventInput[] = []
+
+  capture(input: DiagnosticGraphEventInput) {
+    this.inputs.push(input)
+    return Object.freeze({ eventId: "diag:test:1", sequence: 1, sessionId: "test" })
+  }
+}
+
+test("Electron failure producers emit bounded causal facts without payload evidence", () => {
+  const sink = new CapturingDiagnosticSink()
+  const hostile = `${SECRET_VALUES.join(" ")} user-authored renderer content`
+
+  captureElectronFailure(sink, {
+    kind: "main-process-fatal",
+    origin: hostile
+  })
+  captureElectronFailure(sink, {
+    exitCode: 9,
+    kind: "child-process-gone",
+    processType: hostile,
+    reason: hostile
+  })
+  captureElectronFailure(sink, {
+    exitCode: 137,
+    kind: "renderer-window-failure",
+    phase: "renderer-process",
+    reason: hostile,
+    webContentsId: 42,
+    windowId: 7,
+    windowKind: hostile
+  })
+
+  assert.deepEqual(
+    sink.inputs.map(({ eventCode }) => eventCode),
+    ["process.fatal_error", "electron.child_process_gone", "electron.renderer_process_gone"]
+  )
+  assert.deepEqual(sink.inputs[0].refs, [{ id: "main", kind: "process" }])
+  assert.deepEqual(sink.inputs[1].refs, [{ id: "child:unknown", kind: "process" }])
+  assert.deepEqual(sink.inputs[2].refs, [
+    { id: "7", kind: "window" },
+    { id: "42", kind: "web-contents" }
+  ])
+  assert.deepEqual(sink.inputs[2].dimensionEntries, [
+    { key: "phase", value: "renderer-process" },
+    { key: "windowKind", value: "unknown" },
+    { key: "reason", value: "unknown" },
+    { key: "exitCode", value: 137 }
+  ])
+  for (const input of sink.inputs) {
+    assert.equal(input.evidence, undefined)
+    assertSecretsAbsent(JSON.stringify(input))
+    assert.equal(JSON.stringify(input).includes("user-authored renderer content"), false)
+  }
+})
+
+test("Electron failure capture is fail-open when the diagnostic sink rejects input", () => {
+  const sink: DiagnosticGraphSink = {
+    capture() {
+      throw new Error("diagnostics unavailable")
+    }
+  }
+
+  assert.doesNotThrow(() => {
+    assert.equal(
+      captureElectronFailure(sink, {
+        kind: "main-process-fatal",
+        origin: "uncaughtException"
+      }),
+      undefined
+    )
+  })
+})
+
+test("fatal Electron process hooks share one diagnostic write", async () => {
+  const calls: Array<{ error: unknown; message: string; origin: string }> = []
+  let finishWrite: () => void = () => undefined
+  const pendingWrite = new Promise<void>((resolve) => {
+    finishWrite = resolve
+  })
+  const recordOnce = createFatalDiagnosticSingleFlight((message, error, origin) => {
+    calls.push({ error, message, origin })
+    return pendingWrite
+  })
+  const error = new Error("fatal")
+
+  const monitorWrite = recordOnce("monitor", error, "uncaughtException")
+  const handlerWrite = recordOnce("handler", error, "uncaughtException")
+
+  assert.equal(monitorWrite, handlerWrite)
+  assert.deepEqual(calls, [{ error, message: "monitor", origin: "uncaughtException" }])
+  finishWrite()
+  await Promise.all([monitorWrite, handlerWrite])
+  assert.equal(recordOnce("late", new Error("late"), "unhandledRejection"), monitorWrite)
+  assert.equal(calls.length, 1)
+})
+
+test("Electron failures open causal diagnostic coverage with stable searchable refs", async () => {
+  const home = createTempDir("electron-failure-coverage")
+  try {
+    const logDir = join(home, "logs")
+    const logger = new DiagnosticsLogger({ logDir, rootDir: home })
+    const graph = new DiagnosticsGraphRecorder({ logger, sessionId: "electron-failure" })
+
+    captureElectronFailure(graph, {
+      exitCode: 9,
+      kind: "renderer-window-failure",
+      phase: "renderer-process",
+      reason: "crashed",
+      webContentsId: 42,
+      windowId: 7,
+      windowKind: "main"
+    })
+    await graph.flush()
+
+    const healthResult = spawnSync(process.execPath, [INSPECTOR, "--home", home, "health"], {
+      encoding: "utf8"
+    })
+    assert.equal(healthResult.status, 0, healthResult.stderr)
+    assert.equal(JSON.parse(healthResult.stdout).coverage, "causal-events-observed")
+
+    const searchResult = spawnSync(
+      process.execPath,
+      [
+        INSPECTOR,
+        "--home",
+        home,
+        "search",
+        "--code",
+        "electron.renderer_process_gone",
+        "--ref",
+        "window:7"
+      ],
+      { encoding: "utf8" }
+    )
+    assert.equal(searchResult.status, 0, searchResult.stderr)
+    const search = JSON.parse(searchResult.stdout)
+    assert.equal(search.events.length, 1)
+    assert.equal(search.events[0].eventCode, "electron.renderer_process_gone")
+    assert.deepEqual(search.events[0].refs, [
+      { id: "7", kind: "window" },
+      { id: "42", kind: "web-contents" }
+    ])
+    assert.equal(search.events[0].evidenceRefs.length, 0)
+  } finally {
+    rmSync(home, { force: true, recursive: true })
+  }
+})
 
 test(
   "diagnostics writer rejects symlink roots and forces private journal and blob permissions",
