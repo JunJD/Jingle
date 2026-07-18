@@ -314,7 +314,10 @@ async function buildExtension(input) {
 
       const runtimeArtifactRevision = createRuntimeArtifactRevision(runtimeModulePath)
       const runtimeArtifactFileName = `runtime-${runtimeArtifactRevision.slice("sha256:".length)}.mjs`
-      await rename(runtimeModulePath, join(stagingRoot, "dist", runtimeArtifactFileName))
+      await renamePathWithRetry(
+        runtimeModulePath,
+        join(stagingRoot, "dist", runtimeArtifactFileName)
+      )
 
       writeJson(join(stagingRoot, "jingle.extension.json"), {
         assets: "./assets",
@@ -402,16 +405,16 @@ async function publishPackageDirectory(stagingRoot, packageRoot, publishLock) {
   try {
     assertPublishLockHeld(publishLock)
     if (existsSync(packageRoot)) {
-      await renameDirectoryWithRetry(packageRoot, backupRoot)
+      await renamePathWithRetry(packageRoot, backupRoot)
       previousArtifactMoved = true
     }
     assertPublishLockHeld(publishLock)
-    await renameDirectoryWithRetry(stagingRoot, packageRoot)
+    await renamePathWithRetry(stagingRoot, packageRoot)
   } catch (publishError) {
     if (previousArtifactMoved && !existsSync(packageRoot)) {
       try {
         assertPublishLockHeld(publishLock)
-        await renameDirectoryWithRetry(backupRoot, packageRoot)
+        await renamePathWithRetry(backupRoot, packageRoot)
       } catch (rollbackError) {
         const error = new AggregateError(
           [publishError, rollbackError],
@@ -502,7 +505,7 @@ function isPackageDirectoryPresent(packageRoot) {
   }
 }
 
-async function renameDirectoryWithRetry(source, destination) {
+async function renamePathWithRetry(source, destination) {
   for (let attempt = 0; ; attempt += 1) {
     try {
       await rename(source, destination)
