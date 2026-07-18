@@ -10,6 +10,13 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { promisify } from "node:util"
 import { _electron as electron, type ElectronApplication, type Page } from "playwright"
+import {
+  BddElectronLaunchGuard,
+  closeBddElectronApplication,
+  createJingleBddElectronLeasePort,
+  systemBddProcessTreePort,
+  terminateBddElectronApplication
+} from "./electron-launch-guard"
 
 const execFileAsync = promisify(execFile)
 const DEFAULT_TIMEOUT_MS = 90_000
@@ -115,30 +122,44 @@ async function launchElectronApp(options: Parameters<typeof electron.launch>[0])
 }
 
 async function closeElectronApp(electronApp: ElectronApplication): Promise<void> {
-  const process = electronApp.process()
-  let timeout: ReturnType<typeof setTimeout> | null = null
+  await closeBddElectronApplication(
+    createElectronClosePort(electronApp),
+    systemBddProcessTreePort,
+    ELECTRON_CLOSE_TIMEOUT_MS
+  )
+}
 
-  try {
-    await Promise.race([
-      electronApp.close(),
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(
-          () => reject(new Error("Timed out closing Electron app.")),
-          ELECTRON_CLOSE_TIMEOUT_MS
-        )
-      })
-    ])
-  } catch {
-    process.kill()
-    await electronApp.waitForEvent("close", { timeout: ELECTRON_CLOSE_TIMEOUT_MS }).catch(() => {})
-  } finally {
-    if (timeout) {
-      clearTimeout(timeout)
+async function terminateElectronApp(electronApp: ElectronApplication): Promise<void> {
+  await terminateBddElectronApplication(
+    createElectronClosePort(electronApp),
+    systemBddProcessTreePort,
+    ELECTRON_CLOSE_TIMEOUT_MS
+  )
+}
+
+function createElectronClosePort(electronApp: ElectronApplication) {
+  return {
+    close: () => electronApp.close(),
+    processId: () => electronApp.process().pid ?? 0,
+    waitForClose: (timeoutMs: number) => {
+      const process = electronApp.process()
+      if (process.exitCode !== null || process.signalCode !== null) {
+        return Promise.resolve()
+      }
+      return electronApp.waitForEvent("close", { timeout: timeoutMs }).then(() => undefined)
     }
   }
 }
 
+interface LaunchedBddElectronApplication {
+  electronApp: ElectronApplication
+  page: Page
+}
+
 export class JingleWorld extends World {
+  private readonly electronLaunchGuard = new BddElectronLaunchGuard<LaunchedBddElectronApplication>(
+    createJingleBddElectronLeasePort()
+  )
   private electronApp: ElectronApplication | null = null
   private page: Page | null = null
   private jingleHome: string | null = null
@@ -178,28 +199,12 @@ export class JingleWorld extends World {
   }
 
   async launchApp(): Promise<void> {
-    if (this.electronApp) {
-      return
-    }
-
-    const jingleHome = this.prepareJingleHome()
-    await prepareDatabase(jingleHome)
-
-    this.electronApp = await launchElectronApp({
-      args: ["."],
-      cwd: REPO_ROOT,
-      env: {
-        ...process.env,
-        CI: "1",
-        JINGLE_BDD: "1",
-        JINGLE_BDD_AGENT_RUNTIME: this.agentRuntimeMode === "scripted" ? "scripted" : "",
-        JINGLE_BDD_EXTENSION_RUNTIME_FIXTURES: JSON.stringify(this.extensionRuntimeFixtures),
-        JINGLE_HOME: jingleHome,
-        JINGLE_REMOTE_DEBUGGING_PORT: ""
-      }
-    })
-
-    this.page = await resolveWindowByKind(this.electronApp, "main")
+    const launched = await this.electronLaunchGuard.launch(
+      () => this.spawnElectronApplication(),
+      (application) => this.terminateCompromisedApplication(application)
+    )
+    this.electronApp = launched.electronApp
+    this.page = launched.page
   }
 
   getJingleHome(): string {
@@ -318,10 +323,8 @@ export class JingleWorld extends World {
   }
 
   async closeApp(): Promise<void> {
-    if (this.electronApp) {
-      await closeElectronApp(this.electronApp)
-      this.electronApp = null
-    }
+    await this.electronLaunchGuard.close(({ electronApp }) => closeElectronApp(electronApp))
+    this.electronApp = null
 
     try {
       const { closeDatabase } = await import("../../../src/main/db")
@@ -348,20 +351,61 @@ export class JingleWorld extends World {
       throw new Error("BDD JINGLE_HOME is not available before restart.")
     }
 
-    if (this.electronApp) {
-      await closeElectronApp(this.electronApp)
-      this.electronApp = null
-    }
+    this.page = null
+    const launched = await this.electronLaunchGuard.restart(
+      async ({ electronApp }) => {
+        await closeElectronApp(electronApp)
+        try {
+          const { closeDatabase } = await import("../../../src/main/db")
+          await closeDatabase()
+        } catch {
+          // Test process may not have opened its own Prisma client.
+        }
+      },
+      () => this.spawnElectronApplication(),
+      (application) => this.terminateCompromisedApplication(application)
+    )
+    this.electronApp = launched.electronApp
+    this.page = launched.page
+  }
+
+  private async spawnElectronApplication(): Promise<LaunchedBddElectronApplication> {
+    const jingleHome = this.prepareJingleHome()
+    await prepareDatabase(jingleHome)
+
+    const electronApp = await launchElectronApp({
+      args: ["."],
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        CI: "1",
+        JINGLE_BDD: "1",
+        JINGLE_BDD_AGENT_RUNTIME: this.agentRuntimeMode === "scripted" ? "scripted" : "",
+        JINGLE_BDD_EXTENSION_RUNTIME_FIXTURES: JSON.stringify(this.extensionRuntimeFixtures),
+        JINGLE_HOME: jingleHome,
+        JINGLE_REMOTE_DEBUGGING_PORT: ""
+      }
+    })
 
     try {
-      const { closeDatabase } = await import("../../../src/main/db")
-      await closeDatabase()
-    } catch {
-      // Test process may not have opened its own Prisma client.
+      return {
+        electronApp,
+        page: await resolveWindowByKind(electronApp, "main")
+      }
+    } catch (error) {
+      await closeElectronApp(electronApp)
+      throw error
     }
+  }
 
-    this.page = null
-    await this.launchApp()
+  private async terminateCompromisedApplication(
+    application: LaunchedBddElectronApplication
+  ): Promise<void> {
+    await terminateElectronApp(application.electronApp)
+    if (this.electronApp === application.electronApp) {
+      this.electronApp = null
+      this.page = null
+    }
   }
 
   getScenarioValue(key: string): string {
