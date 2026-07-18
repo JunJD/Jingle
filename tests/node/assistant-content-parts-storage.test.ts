@@ -616,21 +616,27 @@ test("projection recovery failure does not reject database readiness and remains
   await closeDatabase()
   await initializeDatabase()
   const prisma = getPrismaClient()
-  await prisma.$executeRawUnsafe("PRAGMA query_only = ON")
+  await prisma.$executeRawUnsafe(
+    'ALTER TABLE "assistant_content_projection_jobs" RENAME TO "assistant_content_projection_jobs_recovery_test"'
+  )
   try {
     await startAssistantContentProjectionLifecycle()
   } finally {
-    await prisma.$executeRawUnsafe("PRAGMA query_only = OFF")
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "assistant_content_projection_jobs_recovery_test" RENAME TO "assistant_content_projection_jobs"'
+    )
   }
-  assert.ok(
-    (await readDiagnosticEventCodes()).includes("assistant_content_projection.recovery_failed")
-  )
-
-  await waitFor(
-    () => readAssistantContentPartsProjection({ messageId, threadId }),
-    (projection) => projection !== null
-  )
-  await flushAssistantContentProjection()
+  try {
+    assert.ok(
+      (await readDiagnosticEventCodes()).includes("assistant_content_projection.recovery_failed")
+    )
+    await waitFor(
+      () => readAssistantContentPartsProjection({ messageId, threadId }),
+      (projection) => projection !== null
+    )
+  } finally {
+    await flushAssistantContentProjection()
+  }
   assert.equal((await prisma.run.findUniqueOrThrow({ where: { runId } })).status, "success")
 })
 
