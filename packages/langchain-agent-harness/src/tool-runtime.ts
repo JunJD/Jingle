@@ -56,6 +56,15 @@ export function getRunIdFromToolRuntime(runtime: ToolRuntime): string | null {
   )
 }
 
+export function getThreadIdFromToolRuntime(runtime: ToolRuntime): string | null {
+  return (
+    readStringField(runtime.metadata, "thread_id") ??
+    readStringField(runtime.config?.metadata, "thread_id") ??
+    readStringField(runtime.configurable, "thread_id") ??
+    readStringField(runtime.config?.configurable, "thread_id")
+  )
+}
+
 export function getToolCallIdFromToolRuntime(runtime: ToolRuntime): string | null {
   const directToolCallId = (runtime as ToolRuntime & { toolCallId?: unknown }).toolCallId
   if (typeof directToolCallId === "string" && directToolCallId.length > 0) {

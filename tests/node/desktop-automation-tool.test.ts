@@ -19,25 +19,33 @@ import {
 
 test("jingle desktop automation middleware owns tool shell and delegates handlers", async () => {
   const seen: string[] = []
+  const signal = new AbortController().signal
   const middleware = createJingleDesktopAutomationToolsMiddleware({
-    clickScreenPoint: async (input) => {
-      seen.push(`click:${JSON.stringify(input)}`)
+    clickScreenPoint: async (input, context) => {
+      assert.equal(context.signal, signal)
+      seen.push(`click:${context.toolCallId}:${JSON.stringify(input)}`)
       return { ok: "click" }
     },
-    findAxElements: async (input) => {
-      seen.push(`find:${JSON.stringify(input)}`)
+    findAxElements: async (input, context) => {
+      assert.equal(context.signal, signal)
+      seen.push(`find:${context.toolCallId}:${JSON.stringify(input)}`)
       return { ok: "find" }
     },
-    openApplication: async (input) => {
-      seen.push(`open-app:${JSON.stringify(input)}`)
+    openApplication: async (input, context) => {
+      assert.equal(context.runId, "run-1")
+      assert.equal(context.signal, signal)
+      assert.equal(context.threadId, "thread-1")
+      seen.push(`open-app:${context.toolCallId}:${JSON.stringify(input)}`)
       return { ok: "open-app" }
     },
-    openDesktopRoute: async (input) => {
-      seen.push(`route:${JSON.stringify(input)}`)
+    openDesktopRoute: async (input, context) => {
+      assert.equal(context.signal, signal)
+      seen.push(`route:${context.toolCallId}:${JSON.stringify(input)}`)
       return { ok: "route" }
     },
-    pressAxElement: async (input) => {
-      seen.push(`press:${JSON.stringify(input)}`)
+    pressAxElement: async (input, context) => {
+      assert.equal(context.signal, signal)
+      seen.push(`press:${context.toolCallId}:${JSON.stringify(input)}`)
       return { ok: "press" }
     }
   })
@@ -53,25 +61,70 @@ test("jingle desktop automation middleware owns tool shell and delegates handler
     ]
   )
 
-  await middleware.tools?.find((tool) => tool.name === "open_application")?.invoke({ name: "Music" })
-  await middleware.tools
-    ?.find((tool) => tool.name === "open_desktop_route")
-    ?.invoke({ url: "orpheus://song" })
-  await middleware.tools?.find((tool) => tool.name === "find_ax_elements")?.invoke({ limit: 2 })
-  await middleware.tools
-    ?.find((tool) => tool.name === "press_ax_element")
-    ?.invoke({ titleContains: "Play" })
-  await middleware.tools
-    ?.find((tool) => tool.name === "click_screen_point")
-    ?.invoke({ x: 1, y: 2 })
+  const invokeHandler = async (name: string, input: unknown, toolCallId: string) => {
+    const candidate = middleware.tools?.find((tool) => tool.name === name)
+    assert.ok(candidate)
+    await candidate.invoke(
+      { args: input, id: toolCallId, name, type: "tool_call" },
+      {
+        configurable: { run_id: "run-1", thread_id: "thread-1" },
+        metadata: { run_id: "run-1", thread_id: "thread-1" },
+        signal
+      }
+    )
+  }
+
+  await invokeHandler("open_application", { name: "Music" }, "tool-open")
+  await invokeHandler("open_desktop_route", { url: "orpheus://song" }, "tool-route")
+  await invokeHandler("find_ax_elements", { limit: 2 }, "tool-find")
+  await invokeHandler("press_ax_element", { titleContains: "Play" }, "tool-press")
+  await invokeHandler("click_screen_point", { x: 1, y: 2 }, "tool-click")
 
   assert.deepEqual(seen, [
-    'open-app:{"name":"Music"}',
-    'route:{"url":"orpheus://song"}',
-    'find:{"limit":2}',
-    'press:{"titleContains":"Play"}',
-    'click:{"x":1,"y":2}'
+    'open-app:tool-open:{"name":"Music"}',
+    'route:tool-route:{"url":"orpheus://song"}',
+    'find:tool-find:{"limit":2}',
+    'press:tool-press:{"titleContains":"Play"}',
+    'click:tool-click:{"x":1,"y":2}'
   ])
+})
+
+test("desktop automation middleware requires a live caller lease", async () => {
+  let callCount = 0
+  const handler = async () => {
+    callCount += 1
+    return null
+  }
+  const middleware = createJingleDesktopAutomationToolsMiddleware({
+    clickScreenPoint: handler,
+    findAxElements: handler,
+    openApplication: handler,
+    openDesktopRoute: handler,
+    pressAxElement: handler
+  })
+  const candidate = middleware.tools?.find((tool) => tool.name === "open_application")
+  assert.ok(candidate)
+
+  await assert.rejects(candidate.invoke({ name: "Music" }), /active run caller lease/)
+  const controller = new AbortController()
+  controller.abort(new DOMException("Stopped", "AbortError"))
+  await assert.rejects(
+    candidate.invoke(
+      {
+        args: { name: "Music" },
+        id: "tool-open",
+        name: "open_application",
+        type: "tool_call"
+      },
+      {
+        configurable: { run_id: "run-1", thread_id: "thread-1" },
+        metadata: { run_id: "run-1", thread_id: "thread-1" },
+        signal: controller.signal
+      }
+    ),
+    /Stopped/
+  )
+  assert.equal(callCount, 0)
 })
 
 test("parseOpenApplicationRequest requires bundleId or name", () => {

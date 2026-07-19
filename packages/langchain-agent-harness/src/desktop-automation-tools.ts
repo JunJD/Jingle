@@ -1,17 +1,54 @@
-import { createMiddleware, tool } from "langchain"
+import { createMiddleware, tool, type ToolRuntime } from "langchain"
+import {
+  getRunIdFromToolRuntime,
+  getThreadIdFromToolRuntime,
+  getToolCallIdFromToolRuntime
+} from "./tool-runtime"
+
+export interface JingleDesktopAutomationToolContext {
+  runId: string
+  signal: AbortSignal
+  threadId: string
+  toolCallId: string
+}
+
+type JingleDesktopAutomationToolHandler = (
+  input: unknown,
+  context: JingleDesktopAutomationToolContext
+) => Promise<unknown>
 
 export interface JingleDesktopAutomationToolHandlers {
-  clickScreenPoint: (input: unknown) => Promise<unknown>
-  findAxElements: (input: unknown) => Promise<unknown>
-  openApplication: (input: unknown) => Promise<unknown>
-  openDesktopRoute: (input: unknown) => Promise<unknown>
-  pressAxElement: (input: unknown) => Promise<unknown>
+  clickScreenPoint: JingleDesktopAutomationToolHandler
+  findAxElements: JingleDesktopAutomationToolHandler
+  openApplication: JingleDesktopAutomationToolHandler
+  openDesktopRoute: JingleDesktopAutomationToolHandler
+  pressAxElement: JingleDesktopAutomationToolHandler
+}
+
+function requireDesktopAutomationToolContext(
+  runtime: ToolRuntime
+): JingleDesktopAutomationToolContext {
+  const runId = getRunIdFromToolRuntime(runtime)
+  const threadId = getThreadIdFromToolRuntime(runtime)
+  const toolCallId = getToolCallIdFromToolRuntime(runtime)
+  const { signal } = runtime
+  if (!runId || !threadId || !toolCallId || !signal) {
+    throw new Error("Desktop automation requires an active run caller lease.")
+  }
+  signal.throwIfAborted()
+  return Object.freeze({ runId, signal, threadId, toolCallId })
+}
+
+function withCaller(handler: JingleDesktopAutomationToolHandler) {
+  return (input: unknown, runtime: ToolRuntime) => {
+    return handler(input, requireDesktopAutomationToolContext(runtime))
+  }
 }
 
 export function createJingleDesktopAutomationToolsMiddleware(
   handlers: JingleDesktopAutomationToolHandlers
 ) {
-  const openApplicationTool = tool(handlers.openApplication, {
+  const openApplicationTool = tool(withCaller(handlers.openApplication), {
     description:
       "Open or activate a macOS application by bundle id or visible app name. Use this before AX actions when the target app must be running.",
     name: "open_application",
@@ -31,7 +68,7 @@ export function createJingleDesktopAutomationToolsMiddleware(
     }
   })
 
-  const openDesktopRouteTool = tool(handlers.openDesktopRoute, {
+  const openDesktopRouteTool = tool(withCaller(handlers.openDesktopRoute), {
     description:
       "Open a desktop route through macOS Launch Services, including app URL schemes like orpheus:// and normal URLs. Include bundleId or name when the route targets an allowlisted desktop app.",
     name: "open_desktop_route",
@@ -58,7 +95,7 @@ export function createJingleDesktopAutomationToolsMiddleware(
     }
   })
 
-  const findAxElementsTool = tool(handlers.findAxElements, {
+  const findAxElementsTool = tool(withCaller(handlers.findAxElements), {
     description:
       "Inspect a running macOS app through Accessibility and return matching UI elements by title substring and optional AX role.",
     name: "find_ax_elements",
@@ -91,7 +128,7 @@ export function createJingleDesktopAutomationToolsMiddleware(
     }
   })
 
-  const pressAxElementTool = tool(handlers.pressAxElement, {
+  const pressAxElementTool = tool(withCaller(handlers.pressAxElement), {
     description:
       "Perform AXPress on a matching element in a running macOS app. This is the preferred primitive for low-disruption desktop UI control when route opening is not enough.",
     name: "press_ax_element",
@@ -128,7 +165,7 @@ export function createJingleDesktopAutomationToolsMiddleware(
     }
   })
 
-  const clickScreenPointTool = tool(handlers.clickScreenPoint, {
+  const clickScreenPointTool = tool(withCaller(handlers.clickScreenPoint), {
     description:
       "Post a macOS left click to absolute screen coordinates. Include bundleId or name for allowlist checks when the click targets a specific desktop app.",
     name: "click_screen_point",
