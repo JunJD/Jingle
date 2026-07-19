@@ -27,6 +27,12 @@ For desktop or agent-runtime bugs, include:
 - whether the issue involves shell execution, filesystem access, approvals,
   checkpoints, memory, or an extension
 
+For an unexpected desktop exit, follow the dedicated
+[Electron crash response guide](docs/electron-crash-response.md). It explains
+how to record the exact incident time, select a matching macOS `.ips` report,
+and provide Jingle diagnostics without posting an entire log directory or
+`JINGLE_HOME` publicly.
+
 ## Maintenance Expectations
 
 Maintainers may close issues that cannot be reproduced, are missing required
