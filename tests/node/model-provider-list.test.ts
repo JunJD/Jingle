@@ -239,6 +239,84 @@ test("google chat models pass configured catalog output limits", () => {
 
   assert.ok(model instanceof ChatGoogleGenerativeAI)
   assert.equal(model.maxOutputTokens, 65536)
+  assert.equal(model.thinkingConfig, undefined)
+})
+
+test("google flash maps every admitted Jingle effort to an exact SDK thinking level", () => {
+  const rows = [
+    ["low", "LOW"],
+    ["medium", "MEDIUM"],
+    ["high", "HIGH"]
+  ] as const
+
+  for (const [thinkingEffort, thinkingLevel] of rows) {
+    const model = createProviderChatModelFromAdapter(
+      createRuntimeConfig("google", "gemini-3-flash-preview", {
+        reasoningEffortTransport: "google-thinking-level",
+        thinkingEffort
+      })
+    )
+    assert.ok(model instanceof ChatGoogleGenerativeAI)
+    assert.deepEqual(model.thinkingConfig, { thinkingLevel })
+  }
+})
+
+test("google flash sends admitted thinking level in the SDK request body", async () => {
+  let requestBody: Record<string, unknown> | null = null
+  globalThis.fetch = async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+    return new Response(
+      JSON.stringify({
+        candidates: [
+          {
+            content: { parts: [{ text: "ok" }], role: "model" },
+            finishReason: "STOP",
+            index: 0
+          }
+        ],
+        usageMetadata: {
+          candidatesTokenCount: 1,
+          promptTokenCount: 1,
+          totalTokenCount: 2
+        }
+      }),
+      { headers: { "content-type": "application/json" }, status: 200 }
+    )
+  }
+
+  const model = createProviderChatModelFromAdapter(
+    createRuntimeConfig("google", "gemini-3-flash-preview", {
+      reasoningEffortTransport: "google-thinking-level",
+      thinkingEffort: "high"
+    })
+  )
+  await model.invoke("transport smoke")
+
+  const generationConfig = (requestBody as { generationConfig?: Record<string, unknown> } | null)
+    ?.generationConfig
+  assert.deepEqual(generationConfig?.thinkingConfig, { thinkingLevel: "HIGH" })
+})
+
+test("google adapter rejects non-null effort without its exact transport", () => {
+  assert.throws(
+    () =>
+      createProviderChatModelFromAdapter(
+        createRuntimeConfig("google", "gemini-3-flash-preview", {
+          thinkingEffort: "high"
+        })
+      ),
+    /has no admitted transport/
+  )
+  assert.throws(
+    () =>
+      createProviderChatModelFromAdapter(
+        createRuntimeConfig("google", "gemini-3-flash-preview", {
+          reasoningEffortTransport: "google-thinking-level",
+          thinkingEffort: "max"
+        })
+      ),
+    /does not support thinking effort "max"/
+  )
 })
 
 test("codex provider creates a Codex CLI-backed chat model", () => {

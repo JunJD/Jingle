@@ -26,7 +26,7 @@ function model(provider: string, modelName: string): ModelConfig {
   }
 }
 
-test("versioned registry resolves exact OpenAI, xAI, and DeepSeek model ids", () => {
+test("versioned registry resolves exact OpenAI, xAI, DeepSeek, and Google model ids", () => {
   const openai = resolveModelReasoningEffortCapability({ model: model("openai", "gpt-5.6") })
   assert.equal(openai.capability?.version, REASONING_CAPABILITY_REGISTRY_VERSION)
   assert.deepEqual(openai.capability?.allowedValues, [
@@ -57,6 +57,12 @@ test("versioned registry resolves exact OpenAI, xAI, and DeepSeek model ids", ()
     model: model("deepseek", "deepseek-v4-pro")
   })
   assert.deepEqual(deepseek.capability?.allowedValues, ["off", "high", "max"])
+
+  const google = resolveModelReasoningEffortCapability({
+    model: model("google", "gemini-3-flash-preview")
+  })
+  assert.deepEqual(google.capability?.allowedValues, ["low", "medium", "high"])
+  assert.equal(google.transport, "google-thinking-level")
 })
 
 test("versioned registry covers every reviewed exact model alias and snapshot", () => {
@@ -85,6 +91,7 @@ test("versioned registry covers every reviewed exact model alias and snapshot", 
     ["openai", "o4-mini-2025-04-16", ["low", "medium", "high"]],
     ["deepseek", "deepseek-v4-pro", ["off", "high", "max"]],
     ["deepseek", "deepseek-v4-flash", ["off", "high", "max"]],
+    ["google", "gemini-3-flash-preview", ["low", "medium", "high"]],
     ["vercel_ai_gateway", "xai/grok-4.5", ["low", "medium", "high"]],
     ["vercel_ai_gateway", "xai/grok-4.20-multi-agent", ["low", "medium", "high", "xhigh"]]
   ]
@@ -248,34 +255,49 @@ test("custom provider settings project explicit model capabilities and can clear
   )
 })
 
-test("Google effort fails closed until its transport consumes the durable value", () => {
-  const google = resolveModelReasoningEffortCapability({ model: model("google", "gemini-3-pro") })
-  assert.equal(google.capability, null)
-  assert.equal(google.transport, null)
+test("Google effort is exact-model only and unsupported transports stay closed", () => {
+  const flash = resolveModelReasoningEffortCapability({
+    model: model("google", "gemini-3-flash-preview")
+  })
+  const stoppedPro = resolveModelReasoningEffortCapability({
+    model: model("google", "gemini-3-pro-preview")
+  })
+  const budgetOnly = resolveModelReasoningEffortCapability({
+    model: model("google", "gemini-2.5-flash")
+  })
+  const unknownAlias = resolveModelReasoningEffortCapability({
+    model: model("google", "gemini-3-flash-preview-latest")
+  })
+
+  assert.deepEqual(flash.capability?.allowedValues, ["low", "medium", "high"])
+  assert.equal(flash.transport, "google-thinking-level")
+  assert.equal(stoppedPro.capability, null)
+  assert.equal(budgetOnly.capability, null)
+  assert.equal(unknownAlias.capability, null)
   assert.doesNotThrow(() =>
     assertReasoningEffortSupported({
-      capability: google,
-      effort: null,
-      modelId: "google:gemini-3-pro"
+      capability: flash,
+      effort: "high",
+      modelId: "google:gemini-3-flash-preview"
     })
   )
   assert.throws(
     () =>
       assertReasoningEffortSupported({
-        capability: google,
-        effort: "high",
-        modelId: "google:gemini-3-pro"
+        capability: flash,
+        effort: "off",
+        modelId: "google:gemini-3-flash-preview"
       }),
-    /Thinking effort "high" is not supported/
+    /Thinking effort "off" is not supported/
   )
   assert.throws(
     () =>
       assertReasoningEffortSupported({
-        capability: google,
-        effort: "minimal",
-        modelId: "google:gemini-3-pro"
+        capability: budgetOnly,
+        effort: "high",
+        modelId: "google:gemini-2.5-flash"
       }),
-    /Thinking effort "minimal" is not supported/
+    /Thinking effort "high" is not supported/
   )
 })
 

@@ -6,12 +6,13 @@ import type {
   ThinkingEffort
 } from "./types"
 
-export const REASONING_CAPABILITY_REGISTRY_VERSION = "2026-07-17"
+export const REASONING_CAPABILITY_REGISTRY_VERSION = "2026-07-18"
 export const CUSTOM_REASONING_EFFORT_DECLARATION_VERSION = "v1"
 
 export type ReasoningEffortTransport =
   | "anthropic-legacy-budget"
   | "deepseek-v4"
+  | "google-thinking-level"
   | "openai-compatible"
   | "openai-native"
 
@@ -124,6 +125,13 @@ const BUILTIN_REGISTRY = new Map<string, RegistryEntry>([
     "https://api-docs.deepseek.com/guides/thinking_mode/"
   ),
   ...entries(
+    "google",
+    ["gemini-3-flash-preview"],
+    ["low", "medium", "high"],
+    "google-thinking-level",
+    "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+  ),
+  ...entries(
     "vercel_ai_gateway",
     ["xai/grok-4.5"],
     ["low", "medium", "high"],
@@ -223,8 +231,8 @@ export function resolveModelReasoningEffortCapability(input: {
     }
   }
 
-  // C1: preserve existing Anthropic/Google behavior without declaring their
-  // transport to be covered by the new registry.
+  // Preserve the existing Anthropic mapping until its transport is migrated
+  // to exact model capabilities. Google models not listed above stay closed.
   if (input.model.reasoning === true && input.model.provider === "anthropic") {
     return {
       capability: {
