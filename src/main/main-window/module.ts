@@ -19,11 +19,13 @@ const TOKEN = Symbol("DurableWindowRuntime")
 export function registerMainWindowModule(
   container: DependencyContainer,
   runtime: Pick<PrimaryMainWindowRuntime, "createMainWindow"> &
-    Pick<ThreadWindowRuntime, "createThreadWindow">
+    Pick<ThreadWindowRuntime, "createThreadWindow"> & { quitApplication: () => void }
 ): void {
   container.registerInstance(TOKEN, runtime)
   container.register(DurableWindowLifecycleService, {
-    useFactory: instanceCachingFactory(() => new DurableWindowLifecycleService())
+    useFactory: instanceCachingFactory(
+      (c) => new DurableWindowLifecycleService(c.resolve<typeof runtime>(TOKEN).quitApplication)
+    )
   })
   container.register(PrimaryMainWindowService, {
     useFactory: instanceCachingFactory((c) => {
