@@ -554,17 +554,28 @@ test("deepseek legacy null effort does not enable thinking", () => {
 })
 
 test("anthropic chat models pass thinking effort as thinking budget", () => {
-  const model = createProviderChatModelFromAdapter(
-    createRuntimeConfig("anthropic", "claude-sonnet-4-5-20250929", {
+  const opusModel = createProviderChatModelFromAdapter(
+    createRuntimeConfig("anthropic", "claude-opus-4-1-20250805", {
       thinkingEffort: "high"
     }),
     { temperature: 0 }
   ) as ChatAnthropic
 
-  const params = model.invocationParams({})
-  assert.deepEqual(params.thinking, { budget_tokens: 16000, type: "enabled" })
-  assert.equal(params.max_tokens, 64000)
-  assert.equal(params.temperature, undefined)
+  const opusParams = opusModel.invocationParams({})
+  assert.deepEqual(opusParams.thinking, { budget_tokens: 16000, type: "enabled" })
+  assert.equal(opusParams.max_tokens, 32000)
+  assert.equal(opusParams.temperature, undefined)
+
+  const haikuModel = createProviderChatModelFromAdapter(
+    createRuntimeConfig("anthropic", "claude-haiku-4-5-20251001", {
+      thinkingEffort: "max"
+    }),
+    { temperature: 0 }
+  ) as ChatAnthropic
+  const haikuParams = haikuModel.invocationParams({})
+  assert.deepEqual(haikuParams.thinking, { budget_tokens: 32000, type: "enabled" })
+  assert.equal(haikuParams.max_tokens, 64000)
+  assert.equal(haikuParams.temperature, undefined)
 })
 
 test("OpenAI-compatible chat models expose runtime profile limits to middleware", () => {

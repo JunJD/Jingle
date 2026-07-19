@@ -6,7 +6,7 @@ import type {
   ThinkingEffort
 } from "./types"
 
-export const REASONING_CAPABILITY_REGISTRY_VERSION = "2026-07-18"
+export const REASONING_CAPABILITY_REGISTRY_VERSION = "2026-07-19"
 export const CUSTOM_REASONING_EFFORT_DECLARATION_VERSION = "v1"
 
 export type ReasoningEffortTransport =
@@ -25,6 +25,8 @@ interface RegistryEntry {
 const OPENAI_GPT_5_1 = ["off", "low", "medium", "high"] satisfies ThinkingEffort[]
 const OPENAI_GPT_5_2 = [...OPENAI_GPT_5_1, "xhigh"] satisfies ThinkingEffort[]
 const OPENAI_GPT_5_6 = [...OPENAI_GPT_5_2, "max"] satisfies ThinkingEffort[]
+const ANTHROPIC_MANUAL_BUDGET = ["off", "low", "medium", "high", "max"] satisfies ThinkingEffort[]
+const ANTHROPIC_OPUS_4_1_MANUAL_BUDGET = ["off", "low", "medium", "high"] satisfies ThinkingEffort[]
 const REASONING_EFFORT_ORDER = [
   "off",
   "minimal",
@@ -38,6 +40,25 @@ const REASONING_EFFORT_ORDER = [
 // Exact model ids only. Provider list responses are intentionally not trusted as
 // capability metadata; new aliases and snapshots require a registry update.
 const BUILTIN_REGISTRY = new Map<string, RegistryEntry>([
+  ...entries(
+    "anthropic",
+    [
+      "claude-opus-4-5-20251101",
+      "claude-sonnet-4-5-20250929",
+      "claude-haiku-4-5-20251001",
+      "claude-sonnet-4-20250514"
+    ],
+    ANTHROPIC_MANUAL_BUDGET,
+    "anthropic-legacy-budget",
+    "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+  ),
+  ...entries(
+    "anthropic",
+    ["claude-opus-4-1-20250805"],
+    ANTHROPIC_OPUS_4_1_MANUAL_BUDGET,
+    "anthropic-legacy-budget",
+    "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+  ),
   ...entries(
     "openai",
     ["gpt-5", "gpt-5-2025-08-07"],
@@ -231,19 +252,8 @@ export function resolveModelReasoningEffortCapability(input: {
     }
   }
 
-  // Preserve the existing Anthropic mapping until its transport is migrated
-  // to exact model capabilities. Google models not listed above stay closed.
-  if (input.model.reasoning === true && input.model.provider === "anthropic") {
-    return {
-      capability: {
-        allowedValues: ["off", "low", "medium", "high", "max"],
-        source: "legacy-provider",
-        version: "anthropic-legacy-budget-v1"
-      },
-      reference: "existing Jingle Anthropic budget mapping",
-      transport: "anthropic-legacy-budget"
-    }
-  }
+  // Provider list metadata is not an admission fact. Models not listed above
+  // stay closed until an exact transport capability is registered.
   if (input.model.reasoning === true && input.model.provider === "google") {
     return {
       capability: null,

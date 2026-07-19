@@ -26,7 +26,26 @@ function model(provider: string, modelName: string): ModelConfig {
   }
 }
 
-test("versioned registry resolves exact OpenAI, xAI, DeepSeek, and Google model ids", () => {
+test("versioned registry resolves exact Anthropic, OpenAI, xAI, DeepSeek, and Google model ids", () => {
+  const anthropic = resolveModelReasoningEffortCapability({
+    model: model("anthropic", "claude-opus-4-5-20251101")
+  })
+  assert.deepEqual(anthropic.capability?.allowedValues, ["off", "low", "medium", "high", "max"])
+  assert.equal(anthropic.transport, "anthropic-legacy-budget")
+  const opus41 = resolveModelReasoningEffortCapability({
+    model: model("anthropic", "claude-opus-4-1-20250805")
+  })
+  assert.deepEqual(opus41.capability?.allowedValues, ["off", "low", "medium", "high"])
+  assert.throws(
+    () =>
+      assertReasoningEffortSupported({
+        capability: opus41,
+        effort: "max",
+        modelId: "anthropic:claude-opus-4-1-20250805"
+      }),
+    /Thinking effort "max" is not supported/
+  )
+
   const openai = resolveModelReasoningEffortCapability({ model: model("openai", "gpt-5.6") })
   assert.equal(openai.capability?.version, REASONING_CAPABILITY_REGISTRY_VERSION)
   assert.deepEqual(openai.capability?.allowedValues, [
@@ -67,6 +86,11 @@ test("versioned registry resolves exact OpenAI, xAI, DeepSeek, and Google model 
 
 test("versioned registry covers every reviewed exact model alias and snapshot", () => {
   const rows: Array<[string, string, string[]]> = [
+    ["anthropic", "claude-opus-4-5-20251101", ["off", "low", "medium", "high", "max"]],
+    ["anthropic", "claude-sonnet-4-5-20250929", ["off", "low", "medium", "high", "max"]],
+    ["anthropic", "claude-haiku-4-5-20251001", ["off", "low", "medium", "high", "max"]],
+    ["anthropic", "claude-opus-4-1-20250805", ["off", "low", "medium", "high"]],
+    ["anthropic", "claude-sonnet-4-20250514", ["off", "low", "medium", "high", "max"]],
     ["openai", "gpt-5", ["minimal", "low", "medium", "high"]],
     ["openai", "gpt-5-2025-08-07", ["minimal", "low", "medium", "high"]],
     ["openai", "gpt-5.1", ["off", "low", "medium", "high"]],
@@ -106,6 +130,9 @@ test("versioned registry covers every reviewed exact model alias and snapshot", 
 })
 
 test("registry does not infer capabilities from similar or remote model names", () => {
+  const unknownAnthropic = resolveModelReasoningEffortCapability({
+    model: model("anthropic", "claude-opus-4-1-unknown-snapshot")
+  })
   const unknownOpenAI = resolveModelReasoningEffortCapability({
     model: model("openai", "gpt-5.6-unknown-snapshot")
   })
@@ -113,6 +140,7 @@ test("registry does not infer capabilities from similar or remote model names", 
     model: model("custom_proxy", "gpt-5.6")
   })
 
+  assert.equal(unknownAnthropic.capability, null)
   assert.equal(unknownOpenAI.capability, null)
   assert.equal(unknownCompatible.capability, null)
   assert.throws(

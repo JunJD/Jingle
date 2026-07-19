@@ -488,6 +488,72 @@ test("remote Anthropic model names cannot authorize an undeclared thinking effor
   )
 })
 
+test("Anthropic manual thinking budget is admitted before config and runtime writes", async () => {
+  const { setDefaultModelForUI, setProviderCredentialsForUI } =
+    await import("../../src/main/model-provider/service")
+  const { getModelProviderPaths } = await import("../../src/main/model-provider/paths")
+  const { resolveModelRuntimeConfig } = await import("../../src/main/model-provider/resolver")
+  const { getModelProviderDefaultRuntimeSelection } =
+    await import("../../src/main/model-provider/settings")
+
+  const modelName = "claude-opus-4-1-20250805"
+  const modelId = `anthropic:${modelName}`
+  const haikuModelName = "claude-haiku-4-5-20251001"
+  const haikuModelId = `anthropic:${haikuModelName}`
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        data: [
+          { display_name: "Claude Opus 4.1", id: modelName },
+          { display_name: "Claude Haiku 4.5", id: haikuModelName }
+        ],
+        has_more: false
+      }),
+      { status: 200, statusText: "OK" }
+    )
+
+  await setProviderCredentialsForUI("anthropic", { apiKey: "sk-anthropic-budget-admission" })
+  const configPath = getModelProviderPaths().configPath
+  const configBeforeRejectedSelection = await readFile(configPath, "utf8")
+
+  await assert.rejects(
+    setDefaultModelForUI("llm", modelId, { thinkingEffort: "max" }),
+    /Thinking effort "max" is not supported/
+  )
+  assert.equal(await readFile(configPath, "utf8"), configBeforeRejectedSelection)
+  assert.throws(
+    () =>
+      resolveModelRuntimeConfig({
+        selection: { modelId, thinkingEffort: "max", version: 1 }
+      }),
+    /Thinking effort "max" is not supported/
+  )
+
+  await setDefaultModelForUI("llm", modelId, { thinkingEffort: "high" })
+  assert.deepEqual(getModelProviderDefaultRuntimeSelection(), {
+    modelId,
+    thinkingEffort: "high",
+    version: 1
+  })
+  assert.equal(
+    resolveModelRuntimeConfig({ selection: getModelProviderDefaultRuntimeSelection() })
+      .maxOutputTokens,
+    32_000
+  )
+
+  await setDefaultModelForUI("llm", haikuModelId, { thinkingEffort: "max" })
+  assert.deepEqual(getModelProviderDefaultRuntimeSelection(), {
+    modelId: haikuModelId,
+    thinkingEffort: "max",
+    version: 1
+  })
+  assert.equal(
+    resolveModelRuntimeConfig({ selection: getModelProviderDefaultRuntimeSelection() })
+      .maxOutputTokens,
+    64_000
+  )
+})
+
 test("legacy unsupported effort stays persisted and blocks runtime until user changes it", async () => {
   const { upsertCustomProviderForUI } = await import("../../src/main/model-provider/service")
   const { getModelProviderPaths } = await import("../../src/main/model-provider/paths")
