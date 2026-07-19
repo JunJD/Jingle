@@ -42,6 +42,7 @@ export interface ComputerUseDiffProjection {
 export interface ComputerUseDiffProjector {
   project(input: {
     base: ComputerUseObservation
+    stableRefs: readonly string[]
     successor: ComputerUseObservation
   }): ComputerUseDiffProjection
 }
@@ -89,7 +90,7 @@ const defaultRefMatcher: ComputerUseRefMatcher = {
   }
 }
 const defaultDiffProjector: ComputerUseDiffProjector = {
-  project: ({ base, successor }) => deriveDiff(base, successor)
+  project: ({ base, stableRefs, successor }) => deriveDiff(base, successor, stableRefs)
 }
 
 export class ComputerUseStateUnavailableError extends Error {
@@ -210,11 +211,15 @@ export class ComputerUseObservationStore {
       if (match.confidence < this.minimumStableRefCoverage) {
         return this.full(successor, "low_identity_confidence")
       }
+      if (hasUnconfirmedOverlappingRefs(base, successor, match.stableRefs)) {
+        return this.full(successor, "low_identity_confidence")
+      }
     }
     const changes = validateDiffProjection(
-      this.diffProjector.project({ base, successor }),
+      this.diffProjector.project({ base, stableRefs: match.stableRefs, successor }),
       base,
-      successor
+      successor,
+      match.stableRefs
     )
     const diff = createDiff(base, successor, changes, match)
     if (
@@ -333,24 +338,37 @@ function createDiff(
 
 function deriveDiff(
   base: ComputerUseObservation,
-  successor: ComputerUseObservation
+  successor: ComputerUseObservation,
+  stableRefs: readonly string[]
 ): ComputerUseDiffProjection {
   const baseByRef = new Map(base.elements.map((element) => [element.ref, element]))
-  const successorRefs = new Set(successor.elements.map((element) => element.ref))
+  const stableRefSet = new Set(stableRefs)
   const added: ComputerUseElement[] = []
   const updated: ComputerUseElement[] = []
   for (const element of successor.elements) {
-    const previous = baseByRef.get(element.ref)
+    const previous = stableRefSet.has(element.ref) ? baseByRef.get(element.ref) : undefined
     if (!previous) added.push(element)
     else if (!sameElement(previous, element)) updated.push(element)
   }
   return {
     added,
     removed: base.elements
-      .filter((element) => !successorRefs.has(element.ref))
+      .filter((element) => !stableRefSet.has(element.ref))
       .map((element) => element.ref),
     updated
   }
+}
+
+function hasUnconfirmedOverlappingRefs(
+  base: ComputerUseObservation,
+  successor: ComputerUseObservation,
+  stableRefs: readonly string[]
+): boolean {
+  const baseRefs = new Set(base.elements.map((element) => element.ref))
+  const stableRefSet = new Set(stableRefs)
+  return successor.elements.some(
+    (element) => baseRefs.has(element.ref) && !stableRefSet.has(element.ref)
+  )
 }
 
 function validateRefMatch(
@@ -388,9 +406,10 @@ function validateRefMatch(
 function validateDiffProjection(
   input: ComputerUseDiffProjection,
   base: ComputerUseObservation,
-  successor: ComputerUseObservation
+  successor: ComputerUseObservation,
+  stableRefs: readonly string[]
 ): ComputerUseDiffProjection {
-  const expected = deriveDiff(base, successor)
+  const expected = deriveDiff(base, successor, stableRefs)
   if (
     !sameElements(input.added, expected.added) ||
     !sameStrings(input.removed, expected.removed) ||

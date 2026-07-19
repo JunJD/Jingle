@@ -9,6 +9,8 @@ only layer allowed to translate this contract into agent tools.
 - Observations are immutable, bounded, and identified by `stateId`.
 - Semantic refs may remain stable across confidently matched observations, but every
   action and query is owned by one explicit `stateId`.
+- A repeated ref is the same element only when the ref matcher explicitly confirms it.
+  Any unconfirmed overlap forces a folded full re-anchor and can never appear as an update.
 - Every live desktop resource has a monotonically increasing epoch.
 - Mutations advance the epoch before native dispatch, so uncertain execution invalidates
   the base state.
