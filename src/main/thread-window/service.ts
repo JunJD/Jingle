@@ -41,6 +41,7 @@ export function resolveThreadWindowResourceLimit(memoryBytes = totalmem()): numb
 
 export class ThreadWindowService {
   private readonly deferredRestoreEntries = new Map<string, ThreadWindowRestoreEntry>()
+  private readonly persistedEntries = new Map<string, ThreadWindowRestoreEntry>()
   private readonly threadIds = new Map<string, string | null>()
   private readonly windows = new Map<string, BrowserWindow>()
   private persistTimer: NodeJS.Timeout | null = null
@@ -86,6 +87,7 @@ export class ThreadWindowService {
     let state: ThreadWindowRestoreState
     try {
       state = this.runtime.getRestoreState()
+      this.replacePersistedEntries(state.windows)
     } catch (error) {
       this.runtime.recordRestoreFailure({ error, windowId: null })
       return
@@ -221,10 +223,11 @@ export class ThreadWindowService {
       })
     }
     window.once("closed", () => {
+      const persistedEntry = this.persistedEntries.get(entry.windowId) ?? entry
       this.windows.delete(entry.windowId)
       this.threadIds.delete(entry.windowId)
       if (!restoreConfirmed || rendererFailed) {
-        this.deferredRestoreEntries.set(entry.windowId, entry)
+        this.deferredRestoreEntries.set(entry.windowId, persistedEntry)
       }
       this.runtime.onWindowClosed()
       if (!this.restoreGate.isApplicationQuitting()) this.schedulePersist()
@@ -271,12 +274,18 @@ export class ThreadWindowService {
 
   private persistRestoreEntries(windows: ThreadWindowRestoreEntry[]): boolean {
     try {
-      this.runtime.setRestoreState({ version: 1, windows })
+      const persisted = this.runtime.setRestoreState({ version: 1, windows })
+      this.replacePersistedEntries(persisted.windows)
       return true
     } catch (error) {
       this.runtime.recordRestoreFailure({ error, windowId: null })
       return false
     }
+  }
+
+  private replacePersistedEntries(entries: readonly ThreadWindowRestoreEntry[]): void {
+    this.persistedEntries.clear()
+    for (const entry of entries) this.persistedEntries.set(entry.windowId, entry)
   }
 
   private flushPersist(): void {

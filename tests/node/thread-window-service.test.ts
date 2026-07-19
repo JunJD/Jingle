@@ -256,7 +256,7 @@ describe("ThreadWindowService", () => {
     assert.ok(firstCreateIndex > staleRepairIndex)
   })
 
-  it("retains a failed restored window but forgets a user-closed ready window", async () => {
+  it("retains the latest persisted state for a failed restored window", async () => {
     const { rendererFailureCallbacks, restore, service, setRestore, windows } = createService()
     setRestore({
       version: 1,
@@ -268,16 +268,21 @@ describe("ThreadWindowService", () => {
     await service.restore()
 
     windows[0].emit("ready-to-show")
+    service.bindSenderThread(windows[0].webContents as never, "thread-rebound")
     rendererFailureCallbacks[0]()
     windows[0].emit("closed")
     windows[1].emit("ready-to-show")
     windows[1].emit("closed")
     service.markApplicationQuitting()
 
-    assert.deepEqual(
-      restore().windows.map(({ windowId }) => windowId),
-      ["window-a"]
-    )
+    assert.deepEqual(restore().windows, [
+      {
+        bounds: { x: 10, y: 10, width: 1000, height: 700 },
+        isMaximized: false,
+        threadId: "thread-rebound",
+        windowId: "window-a"
+      }
+    ])
   })
 
   it("rechecks the resource limit after a concurrent window pin", async () => {
