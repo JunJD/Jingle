@@ -5,7 +5,11 @@ import os from "node:os"
 import path from "node:path"
 import { createLauncherHistoryKey } from "@shared/launcher-history"
 import type { LauncherSearchRequest, LauncherSearchResult } from "@shared/launcher-search"
-import type { LauncherSearchProvider, LauncherSearchProviderResponse } from "../types"
+import type {
+  LauncherSearchProvider,
+  LauncherSearchProviderContext,
+  LauncherSearchProviderResponse
+} from "../types"
 
 interface MacFileSearchCandidate {
   kind: "file" | "directory"
@@ -242,7 +246,17 @@ function getFileSearchMatch(params: {
   return bestMatch
 }
 
-async function collectMacSpotlightPaths(query: string, limit: number): Promise<string[]> {
+interface MacSpotlightPathCollection {
+  kind: "complete" | "partial"
+  paths: string[]
+}
+
+async function collectMacSpotlightPaths(
+  query: string,
+  limit: number,
+  signal: AbortSignal
+): Promise<MacSpotlightPathCollection> {
+  signal.throwIfAborted()
   const candidateLimit = Math.min(Math.max(limit * 10, limit), MAC_FILE_SEARCH_MAX_CANDIDATES)
 
   return new Promise((resolve, reject) => {
@@ -268,13 +282,25 @@ async function collectMacSpotlightPaths(query: string, limit: number): Promise<s
 
       settled = true
       clearTimeout(timeout)
+      signal.removeEventListener("abort", handleAbort)
       next()
     }
+
+    const handleAbort = (): void => {
+      child.kill("SIGTERM")
+      settle(() =>
+        reject(
+          signal.reason instanceof Error ? signal.reason : new Error("File search was cancelled.")
+        )
+      )
+    }
+
+    signal.addEventListener("abort", handleAbort, { once: true })
 
     const timeout = setTimeout(() => {
       killedForTimeout = true
       child.kill("SIGTERM")
-      settle(() => resolve(paths))
+      settle(() => resolve({ kind: "partial", paths: [...paths] }))
     }, MAC_FILE_SEARCH_TIMEOUT_MS)
 
     child.stdout.on("data", (chunk: Buffer) => {
@@ -312,12 +338,12 @@ async function collectMacSpotlightPaths(query: string, limit: number): Promise<s
     })
     child.once("close", (code, signal) => {
       if ((killedForLimit || killedForTimeout) && signal === "SIGTERM") {
-        settle(() => resolve(paths))
+        settle(() => resolve({ kind: killedForTimeout ? "partial" : "complete", paths }))
         return
       }
 
       if (code === 0) {
-        settle(() => resolve(paths))
+        settle(() => resolve({ kind: "complete", paths }))
         return
       }
 
@@ -330,8 +356,10 @@ async function collectMacSpotlightPaths(query: string, limit: number): Promise<s
 
 async function resolveMacFileSearchCandidate(
   filePath: string,
-  query: string
+  query: string,
+  signal: AbortSignal
 ): Promise<MacFileSearchCandidate | null> {
+  signal.throwIfAborted()
   let stats: Awaited<ReturnType<typeof fs.stat>>
 
   try {
@@ -339,6 +367,7 @@ async function resolveMacFileSearchCandidate(
   } catch {
     return null
   }
+  signal.throwIfAborted()
 
   const kind = stats.isDirectory() ? "directory" : stats.isFile() ? "file" : null
   if (!kind || isExcludedMacFileSearchPath(filePath, kind)) {
@@ -365,11 +394,14 @@ async function resolveMacFileSearchCandidate(
 }
 
 async function searchMacFiles(
-  request: LauncherSearchRequest
+  request: LauncherSearchRequest,
+  context: LauncherSearchProviderContext
 ): Promise<LauncherSearchProviderResponse> {
+  context.signal.throwIfAborted()
   const query = normalizeSearchValue(request.query)
   if (!query) {
     return {
+      kind: "complete",
       results: []
     }
   }
@@ -377,30 +409,38 @@ async function searchMacFiles(
   const spotlightQuery = resolveMacSpotlightNameQuery(request.query)
   if (!spotlightQuery) {
     return {
+      kind: "complete",
       results: []
     }
   }
 
-  let candidatePaths: string[]
+  let collection: MacSpotlightPathCollection
 
   try {
-    candidatePaths = await collectMacSpotlightPaths(spotlightQuery, request.limit)
+    collection = await collectMacSpotlightPaths(spotlightQuery, request.limit, context.signal)
   } catch (error) {
+    if (context.signal.aborted) {
+      throw error
+    }
     console.warn("[LauncherSearch][files] Spotlight search failed:", {
       error: error instanceof Error ? error.message : String(error),
       query: request.query
     })
 
     return {
+      kind: "partial",
       results: []
     }
   }
 
   const candidates = (
     await Promise.all(
-      candidatePaths.map((candidatePath) => resolveMacFileSearchCandidate(candidatePath, query))
+      collection.paths.map((candidatePath) =>
+        resolveMacFileSearchCandidate(candidatePath, query, context.signal)
+      )
     )
   ).filter((candidate): candidate is MacFileSearchCandidate => candidate !== null)
+  context.signal.throwIfAborted()
 
   candidates.sort((left, right) => {
     if (right.score !== left.score) {
@@ -444,6 +484,7 @@ async function searchMacFiles(
     }))
 
   return {
+    kind: collection.kind,
     results
   }
 }
@@ -451,14 +492,19 @@ async function searchMacFiles(
 class FilesLauncherSearchProvider implements LauncherSearchProvider {
   readonly source = "files" as const
 
-  async search(request: LauncherSearchRequest): Promise<LauncherSearchProviderResponse> {
+  async search(
+    request: LauncherSearchRequest,
+    context: LauncherSearchProviderContext = { signal: new AbortController().signal }
+  ): Promise<LauncherSearchProviderResponse> {
+    context.signal.throwIfAborted()
     if (process.platform !== "darwin") {
       return {
+        kind: "complete",
         results: []
       }
     }
 
-    return searchMacFiles(request)
+    return searchMacFiles(request, context)
   }
 }
 

@@ -5,11 +5,12 @@ import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
 import { createLauncherHistoryKey } from "@shared/launcher-history"
+import type { LauncherSearchRequest, LauncherSearchResult } from "@shared/launcher-search"
 import type {
-  LauncherSearchRequest,
-  LauncherSearchResult
-} from "@shared/launcher-search"
-import type { LauncherSearchProvider, LauncherSearchProviderResponse } from "../types"
+  LauncherSearchProvider,
+  LauncherSearchProviderContext,
+  LauncherSearchProviderResponse
+} from "../types"
 
 type ChromiumBrowser = "chrome" | "edge"
 
@@ -273,10 +274,16 @@ function getBrowserHistoryMatch(
   return bestMatch
 }
 
-async function copyChromiumHistoryDatabase(historyPath: string): Promise<string> {
-  const tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "jingle-browser-history-"))
+async function copyChromiumHistoryDatabase(params: {
+  historyPath: string
+  signal: AbortSignal
+  tempDirectory: string
+}): Promise<void> {
+  const { historyPath, signal, tempDirectory } = params
+  signal.throwIfAborted()
   const snapshotPath = path.join(tempDirectory, "History")
   await fs.copyFile(historyPath, snapshotPath)
+  signal.throwIfAborted()
 
   await Promise.all(
     ["-wal", "-shm"].map(async (suffix) => {
@@ -292,18 +299,19 @@ async function copyChromiumHistoryDatabase(historyPath: string): Promise<string>
       }
     })
   )
-
-  return tempDirectory
+  signal.throwIfAborted()
 }
 
 async function queryChromiumHistoryRows(params: {
   historyPath: string
   limit: number
   query: string
+  signal: AbortSignal
 }): Promise<BrowserHistoryRow[]> {
-  const { historyPath, limit, query } = params
+  const { historyPath, limit, query, signal } = params
+  signal.throwIfAborted()
   const sqlQuery = escapeSqlLiteral(escapeSqlLike(query))
-  const tempDirectory = await copyChromiumHistoryDatabase(historyPath)
+  const tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "jingle-browser-history-"))
   const snapshotPath = path.join(tempDirectory, "History")
   const sql = `
     SELECT
@@ -324,9 +332,12 @@ async function queryChromiumHistoryRows(params: {
   `
 
   try {
+    await copyChromiumHistoryDatabase({ historyPath, signal, tempDirectory })
     const { stdout } = await execFileAsync("/usr/bin/sqlite3", ["-json", snapshotPath, sql], {
-      maxBuffer: 8 * 1024 * 1024
+      maxBuffer: 8 * 1024 * 1024,
+      signal
     })
+    signal.throwIfAborted()
     const rows = stdout.toString().trim()
     return rows ? (JSON.parse(rows) as BrowserHistoryRow[]) : []
   } finally {
@@ -386,31 +397,42 @@ class BrowserHistoryLauncherSearchProvider implements LauncherSearchProvider {
   readonly source = "browser-history" as const
   private profilesPromise: Promise<BrowserHistoryProfile[]> | null = null
 
-  async warmup(): Promise<void> {
-    await this.getProfiles()
+  async warmup(context: LauncherSearchProviderContext): Promise<void> {
+    await this.getProfiles(context.signal)
   }
 
-  async search(request: LauncherSearchRequest): Promise<LauncherSearchProviderResponse> {
+  async search(
+    request: LauncherSearchRequest,
+    context: LauncherSearchProviderContext = { signal: new AbortController().signal }
+  ): Promise<LauncherSearchProviderResponse> {
+    context.signal.throwIfAborted()
     if (process.platform !== "darwin") {
-      return { results: [] }
+      return { kind: "complete", results: [] }
     }
 
     const trimmedQuery = request.query.trim()
     const normalizedQuery = normalizeSearchValue(trimmedQuery)
     if (!normalizedQuery) {
-      return { results: [] }
+      return { kind: "complete", results: [] }
     }
 
-    const profiles = await this.getProfiles()
+    const profiles = await this.getProfiles(context.signal)
+    context.signal.throwIfAborted()
     if (profiles.length === 0) {
-      return { results: [] }
+      return { kind: "complete", results: [] }
     }
 
     const perProfileLimit = Math.max(Math.ceil(request.limit / profiles.length) * 4, 12)
     const candidates = (
       await Promise.all(
         profiles.map((profile) =>
-          this.searchProfile(profile, trimmedQuery, normalizedQuery, perProfileLimit)
+          this.searchProfile(
+            profile,
+            trimmedQuery,
+            normalizedQuery,
+            perProfileLimit,
+            context.signal
+          )
         )
       )
     ).flat()
@@ -437,30 +459,37 @@ class BrowserHistoryLauncherSearchProvider implements LauncherSearchProvider {
         title: candidate.title
       }))
 
-    return { results }
+    context.signal.throwIfAborted()
+    return { kind: "complete", results }
   }
 
-  private async getProfiles(): Promise<BrowserHistoryProfile[]> {
+  private async getProfiles(signal: AbortSignal): Promise<BrowserHistoryProfile[]> {
+    signal.throwIfAborted()
     if (!this.profilesPromise) {
       this.profilesPromise = Promise.all(
         CHROMIUM_BROWSER_ROOTS.map((root) => scanChromiumBrowserProfiles(root))
       ).then((groups) => groups.flat())
     }
 
-    return this.profilesPromise
+    const profiles = await this.profilesPromise
+    signal.throwIfAborted()
+    return profiles
   }
 
   private async searchProfile(
     profile: BrowserHistoryProfile,
     rawQuery: string,
     normalizedQuery: string,
-    limit: number
+    limit: number,
+    signal: AbortSignal
   ): Promise<BrowserHistoryCandidate[]> {
     const rows = await queryChromiumHistoryRows({
       historyPath: profile.historyPath,
       limit,
-      query: rawQuery
+      query: rawQuery,
+      signal
     })
+    signal.throwIfAborted()
 
     return rows
       .map((row) => this.toCandidate(profile, row, normalizedQuery))

@@ -165,3 +165,24 @@ test("extension quicklink controller exposes list update and remove IPC handlers
 
   assert.deepEqual(calls, ["list", "update:quicklink-1:Search docs", "remove:quicklink-1"])
 })
+
+test("pre-aborted quicklink search does not read the quicklink owner", async () => {
+  let reads = 0
+  configureQuicklinksLauncherSearchProvider({
+    listQuicklinks: () => {
+      reads += 1
+      return []
+    }
+  })
+  const controller = new AbortController()
+  controller.abort(new Error("cancelled"))
+
+  await assert.rejects(
+    quicklinksLauncherSearchProvider.search(
+      { limit: 5, query: "jingle", sources: ["quicklinks"] },
+      { signal: controller.signal }
+    ),
+    /cancelled/
+  )
+  assert.equal(reads, 0)
+})

@@ -104,7 +104,11 @@ import {
   type JingleAgentFollowUpQueueItem
 } from "@jingle/agent-client"
 import type { Message, Todo } from "@/types"
-import type { LauncherSearchResult } from "@shared/launcher-search"
+import type {
+  LauncherSearchResponse,
+  LauncherSearchResult,
+  LauncherSearchTerminal
+} from "@shared/launcher-search"
 import type { ModelRuntimeSelection } from "@shared/app-types"
 
 const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
@@ -125,6 +129,7 @@ interface ThreadSearchState {
   isOpen: boolean
   query: string
   results: LauncherSearchResult[]
+  terminal: LauncherSearchTerminal | null
 }
 
 type ThreadSearchAction =
@@ -133,7 +138,7 @@ type ThreadSearchAction =
   | { type: "query"; query: string }
   | { type: "active-index"; activeIndex: number }
   | { type: "search-start" }
-  | { type: "search-success"; results: LauncherSearchResult[] }
+  | { type: "search-success"; response: LauncherSearchResponse }
   | { type: "search-failure" }
 
 const INITIAL_THREAD_SEARCH_STATE: ThreadSearchState = {
@@ -141,7 +146,8 @@ const INITIAL_THREAD_SEARCH_STATE: ThreadSearchState = {
   isLoading: false,
   isOpen: false,
   query: "",
-  results: []
+  results: [],
+  terminal: null
 }
 
 function threadSearchReducer(
@@ -172,7 +178,8 @@ function threadSearchReducer(
         activeIndex: 0,
         isLoading: nextTrimmedQuery.length > 0,
         query: action.query,
-        results: []
+        results: [],
+        terminal: null
       }
     }
     case "active-index":
@@ -190,14 +197,20 @@ function threadSearchReducer(
         ...state,
         activeIndex: 0,
         isLoading: false,
-        results: action.results
+        results: action.response.results,
+        terminal: action.response.terminal
       }
     case "search-failure":
       return {
         ...state,
         activeIndex: 0,
         isLoading: false,
-        results: []
+        results: [],
+        terminal: {
+          kind: "partial",
+          partialSources: [],
+          unavailableSources: ["threads"]
+        }
       }
   }
 }
@@ -1249,23 +1262,23 @@ export function LauncherAiPage(): React.JSX.Element {
       return
     }
 
-    let cancelled = false
+    const controller = new AbortController()
     const searchTimer = window.setTimeout(() => {
       dispatchThreadSearch({ type: "search-start" })
       void launcherAiCommands
-        .searchThreads(trimmedThreadSearchQuery)
-        .then((results) => {
-          if (cancelled) {
+        .searchThreads(trimmedThreadSearchQuery, controller.signal)
+        .then((response) => {
+          if (controller.signal.aborted) {
             return
           }
 
           dispatchThreadSearch({
             type: "search-success",
-            results
+            response
           })
         })
         .catch((error: unknown) => {
-          if (cancelled) {
+          if (controller.signal.aborted) {
             return
           }
 
@@ -1275,7 +1288,7 @@ export function LauncherAiPage(): React.JSX.Element {
     }, 100)
 
     return () => {
-      cancelled = true
+      controller.abort()
       window.clearTimeout(searchTimer)
     }
   }, [threadSearch.isOpen, trimmedThreadSearchQuery])
@@ -2157,7 +2170,8 @@ export function LauncherAiPage(): React.JSX.Element {
             labels={{
               search: copy.launcher.sidebarSearch,
               searchLoading: copy.launcher.sidebarSearchLoading,
-              searchNoResults: copy.launcher.sidebarSearchNoResults
+              searchNoResults: copy.launcher.sidebarSearchNoResults,
+              searchPartial: copy.launcher.searchPartial
             }}
             onActiveIndexChange={(activeIndex) => {
               dispatchThreadSearch({ type: "active-index", activeIndex })
@@ -2169,6 +2183,7 @@ export function LauncherAiPage(): React.JSX.Element {
             }}
             query={threadSearch.query}
             results={threadSearch.results}
+            terminal={threadSearch.terminal}
           />
         ) : null}
       </div>

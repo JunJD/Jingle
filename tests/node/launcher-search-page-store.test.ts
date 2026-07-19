@@ -131,6 +131,9 @@ test("search responses ignore stale request ids", () => {
     query: "doc",
     resultsBySource: {
       files: [createSearchResult({ id: "active", source: "files", title: "active" })]
+    },
+    terminalsBySource: {
+      files: { kind: "complete" }
     }
   })
 })
@@ -157,7 +160,8 @@ test("batched search commits all source buckets once a launcher search transacti
       files: [fileResult],
       threads: [],
       "browser-history": []
-    }
+    },
+    terminalsBySource: {}
   })
 })
 
@@ -177,7 +181,8 @@ test("batched search commits empty source buckets so loading can finish with no 
       files: [],
       threads: [],
       "browser-history": []
-    }
+    },
+    terminalsBySource: {}
   })
 })
 
@@ -211,6 +216,46 @@ test("batched search responses ignore stale request ids", () => {
       files: [activeResult],
       threads: [],
       "browser-history": []
+    },
+    terminalsBySource: {}
+  })
+})
+
+test("batched search preserves partial and unavailable source terminals", () => {
+  const store = createLauncherSearchPageStore()
+  const requestId = store.getState().beginSearchRequest()
+
+  store.getState().applySearchResultsBySource(
+    requestId,
+    "project",
+    {
+      applications: [],
+      files: []
+    },
+    {
+      applications: {
+        kind: "partial",
+        partialSources: [],
+        unavailableSources: ["applications"]
+      },
+      files: {
+        kind: "partial",
+        partialSources: ["files"],
+        unavailableSources: []
+      }
+    }
+  )
+
+  assert.deepEqual(store.getState().searchState?.terminalsBySource, {
+    applications: {
+      kind: "partial",
+      partialSources: [],
+      unavailableSources: ["applications"]
+    },
+    files: {
+      kind: "partial",
+      partialSources: ["files"],
+      unavailableSources: []
     }
   })
 })
@@ -223,7 +268,8 @@ test("resolveVisibleLauncherSearchResultsBySource filters cached trailing refine
         createSearchResult({ id: "docs", source: "files", title: "Project Docs" }),
         createSearchResult({ id: "notes", source: "files", title: "Meeting Notes" })
       ]
-    }
+    },
+    terminalsBySource: {}
   }
 
   const visible = resolveVisibleLauncherSearchResultsBySource(searchState, "project docs")
@@ -238,7 +284,8 @@ test("resolveVisibleLauncherSearchResultsBySource keeps cached matches while bro
     query: "project docs",
     resultsBySource: {
       files: [createSearchResult({ id: "docs", source: "files", title: "Project Docs" })]
-    }
+    },
+    terminalsBySource: {}
   }
 
   const visible = resolveVisibleLauncherSearchResultsBySource(searchState, "project")
@@ -261,7 +308,8 @@ test("broadened cached search results stay visible as non-executable preview row
           title: "Project Docs"
         })
       ]
-    }
+    },
+    terminalsBySource: {}
   }
   assert.equal(shouldPreviewLauncherSearchResults(searchState, "project"), true)
   assert.equal(shouldPreviewLauncherSearchResults(searchState, "project docs"), false)
@@ -291,23 +339,20 @@ test("launcher result trailing labels use localized presentation categories", ()
   assert.ok(searchItem)
 
   const markup = renderToStaticMarkup(
-    createElement(
-      I18nProvider,
-      {
-        children: createElement(LauncherResultList, {
-          height: 80,
-          onExecute: () => undefined,
-          sections: [
-            {
-              items: [searchItem],
-              kind: "search-results"
-            }
-          ],
-          selectedIndex: 0
-        }),
-        initialLocale: "zh-CN"
-      }
-    )
+    createElement(I18nProvider, {
+      children: createElement(LauncherResultList, {
+        height: 80,
+        onExecute: () => undefined,
+        sections: [
+          {
+            items: [searchItem],
+            kind: "search-results"
+          }
+        ],
+        selectedIndex: 0
+      }),
+      initialLocale: "zh-CN"
+    })
   )
 
   assert.match(markup, /应用/)

@@ -21,7 +21,7 @@ import type {
 import type { LauncherHistoryService } from "../launcher-history/service"
 import type { LocalStartService } from "../local-start/service"
 import { readClipboardContext } from "../services/clipboard"
-import { searchLauncher } from "../services/launcher-search"
+import { cancelLauncherSearch, searchLauncher } from "../services/launcher-search"
 import {
   getApplicationDisplayName,
   getApplicationIconDataUrl
@@ -257,8 +257,12 @@ export class LauncherService {
     this.selectionContext = null
   }
 
-  search(request: LauncherSearchRequest): Promise<LauncherSearchResponse> {
-    return searchLauncher(request)
+  search(request: LauncherSearchRequest, callerId: string): Promise<LauncherSearchResponse> {
+    return searchLauncher(request, callerId)
+  }
+
+  cancelSearch(callerId: string): boolean {
+    return cancelLauncherSearch(callerId)
   }
 
   async executeAction(action: LauncherSearchAction): Promise<void> {

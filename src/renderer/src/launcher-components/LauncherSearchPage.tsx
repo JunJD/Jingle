@@ -40,10 +40,12 @@ function LauncherSearchFooter(props: {
   actionsLabel: string
   executeHomeCommand: (commandId: LauncherHomeCommandId) => void
   isSearchLoading: boolean
+  hasSearchIssues: boolean
   isSearchMode: boolean
   openSettingsLabel: string
   searchingLabel: string
   searchResultsLabel: string
+  searchPartialLabel: string
   showUseWithManager: boolean
   useWithManagerTitle: string
 }): React.JSX.Element {
@@ -52,10 +54,12 @@ function LauncherSearchFooter(props: {
     actionsLabel,
     executeHomeCommand,
     isSearchLoading,
+    hasSearchIssues,
     isSearchMode,
     openSettingsLabel,
     searchingLabel,
     searchResultsLabel,
+    searchPartialLabel,
     showUseWithManager,
     useWithManagerTitle
   } = props
@@ -74,7 +78,13 @@ function LauncherSearchFooter(props: {
         ) : isSearchMode ? (
           <div className="flex items-center gap-[var(--jingle-gap-sm)] [font-size:var(--jingle-font-control)] font-medium text-muted-foreground">
             {isSearchLoading ? <Spinner size="sm" /> : null}
-            <span>{isSearchLoading ? searchingLabel : searchResultsLabel}</span>
+            <span>
+              {isSearchLoading
+                ? searchingLabel
+                : hasSearchIssues
+                  ? searchPartialLabel
+                  : searchResultsLabel}
+            </span>
           </div>
         ) : (
           <Button
@@ -316,6 +326,7 @@ export function LauncherSearchPage(props: {
   executeItem: (index: number) => void
   inputRef: RefObject<LauncherInputElement | null>
   inputValue: string
+  hasSearchIssues: boolean
   isSearchLoading: boolean
   onAcceptClipboardContext: () => void
   onClearClipboardContext: () => void
@@ -340,6 +351,7 @@ export function LauncherSearchPage(props: {
     executeItem,
     inputRef,
     inputValue,
+    hasSearchIssues,
     isSearchLoading,
     onAcceptClipboardContext,
     onClearClipboardContext,
@@ -480,10 +492,12 @@ export function LauncherSearchPage(props: {
         actionsLabel={copy.launcher.actionsLabel}
         executeHomeCommand={executeHomeCommand}
         isSearchLoading={isSearchLoading}
+        hasSearchIssues={hasSearchIssues}
         isSearchMode={isSearchMode}
         openSettingsLabel={openSettingsLabel}
         searchingLabel={copy.launcher.searching}
         searchResultsLabel={copy.launcher.searchResults}
+        searchPartialLabel={copy.launcher.searchPartial}
         showUseWithManager={showUseWithManager}
         useWithManagerTitle={copy.launcher.useWithManagerTitle}
       />
@@ -491,12 +505,14 @@ export function LauncherSearchPage(props: {
   }, [
     actionController,
     copy.launcher.actionsLabel,
+    copy.launcher.searchPartial,
     copy.launcher.searchResults,
     copy.launcher.searching,
     copy.launcher.useWithManagerTitle,
     executeHomeCommand,
     footerVisible,
     isSearchLoading,
+    hasSearchIssues,
     isSearchMode,
     openSettingsLabel,
     showUseWithManager

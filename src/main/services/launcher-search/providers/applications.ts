@@ -7,7 +7,11 @@ import path from "node:path"
 import { promisify } from "node:util"
 import { createLauncherHistoryKey } from "@shared/launcher-history"
 import type { LauncherSearchRequest, LauncherSearchResult } from "@shared/launcher-search"
-import type { LauncherSearchProvider, LauncherSearchProviderResponse } from "../types"
+import type {
+  LauncherSearchProvider,
+  LauncherSearchProviderContext,
+  LauncherSearchProviderResponse
+} from "../types"
 import {
   isWindowsShortcutPath,
   resolveWindowsApplicationIconPathCandidates
@@ -46,8 +50,14 @@ interface WindowsApplicationRecord extends LauncherApplicationRecord {
 }
 
 interface ApplicationsLauncherSearchProviderOptions {
-  loadApplicationCatalog?: () => Promise<LauncherApplicationRecord[]>
+  loadApplicationCatalog?: (signal: AbortSignal) => Promise<LauncherApplicationRecord[]>
   resolveApplicationIconDataUrl?: (applicationPath: string) => Promise<string | undefined>
+}
+
+interface ApplicationCatalogExecution {
+  consumers: Set<symbol>
+  controller: AbortController
+  promise: Promise<LauncherApplicationRecord[]>
 }
 
 const MAX_SCAN_DEPTH = 3
@@ -374,14 +384,19 @@ function getSystemProfilerDisplayName(
   return bundleName
 }
 
-async function loadMacApplicationsFromSystemProfiler(): Promise<LauncherApplicationRecord[]> {
+async function loadMacApplicationsFromSystemProfiler(
+  signal: AbortSignal
+): Promise<LauncherApplicationRecord[]> {
+  signal.throwIfAborted()
   const { stdout } = await execFileAsync(
     "/usr/sbin/system_profiler",
     ["-json", "SPApplicationsDataType"],
     {
-      maxBuffer: 64 * 1024 * 1024
+      maxBuffer: 64 * 1024 * 1024,
+      signal
     }
   )
+  signal.throwIfAborted()
   const payload = JSON.parse(stdout.toString()) as SystemProfilerApplicationsPayload
   const applicationsByPath = new Map<string, LauncherApplicationRecord>()
   const applicationRecordInputs: Array<{ applicationPath: string; displayName: string }> = []
@@ -416,14 +431,15 @@ async function loadMacApplicationsFromSystemProfiler(): Promise<LauncherApplicat
   return [...applicationsByPath.values()].toSorted(compareLauncherApplicationRecords)
 }
 
-async function loadMacApplications(): Promise<LauncherApplicationRecord[]> {
+async function loadMacApplications(signal: AbortSignal): Promise<LauncherApplicationRecord[]> {
   const applicationsByPath = new Map<string, LauncherApplicationRecord>()
 
   try {
-    for (const application of await loadMacApplicationsFromSystemProfiler()) {
+    for (const application of await loadMacApplicationsFromSystemProfiler(signal)) {
       applicationsByPath.set(application.path, application)
     }
   } catch {
+    signal.throwIfAborted()
     // Directory scanning below still gives the launcher a usable catalog.
   }
 
@@ -433,6 +449,7 @@ async function loadMacApplications(): Promise<LauncherApplicationRecord[]> {
       collectMacApplicationPaths(directoryPath, MAX_SCAN_DEPTH, applicationPaths)
     )
   )
+  signal.throwIfAborted()
 
   const scannedApplicationRecordInputs: Array<{ applicationPath: string; bundleName: string }> = []
   for (const applicationPath of applicationPaths) {
@@ -642,12 +659,16 @@ async function loadWindowsApplications(): Promise<LauncherApplicationRecord[]> {
     })
 }
 
-async function loadApplicationCatalog(): Promise<LauncherApplicationRecord[]> {
+async function loadApplicationCatalog(signal: AbortSignal): Promise<LauncherApplicationRecord[]> {
+  signal.throwIfAborted()
   switch (process.platform) {
     case "darwin":
-      return loadMacApplications()
+      return loadMacApplications(signal)
     case "win32":
-      return loadWindowsApplications()
+      return loadWindowsApplications().then((applications) => {
+        signal.throwIfAborted()
+        return applications
+      })
     default:
       return []
   }
@@ -1033,32 +1054,42 @@ function getApplicationMatch(
 
 export class ApplicationsLauncherSearchProvider implements LauncherSearchProvider {
   readonly source = "applications" as const
-  private applicationCatalogPromise: Promise<LauncherApplicationRecord[]> | null = null
+  private applicationCatalog: LauncherApplicationRecord[] | null = null
+  private applicationCatalogExecution: ApplicationCatalogExecution | null = null
   private applicationDisplayNamePromiseCache = new Map<string, Promise<string | undefined>>()
   private applicationIconPromiseCache = new Map<string, Promise<string | undefined>>()
 
   constructor(private readonly options: ApplicationsLauncherSearchProviderOptions = {}) {}
 
-  async warmup(): Promise<void> {
-    await this.getApplicationCatalog()
+  async warmup(context: LauncherSearchProviderContext): Promise<void> {
+    await this.getApplicationCatalog(context.signal)
   }
 
   invalidate(): void {
-    this.applicationCatalogPromise = null
+    const execution = this.applicationCatalogExecution
+    this.applicationCatalog = null
+    this.applicationCatalogExecution = null
+    execution?.controller.abort(new Error("Launcher application catalog was invalidated."))
     this.applicationDisplayNamePromiseCache.clear()
     this.applicationIconPromiseCache.clear()
   }
 
-  async search(request: LauncherSearchRequest): Promise<LauncherSearchProviderResponse> {
+  async search(
+    request: LauncherSearchRequest,
+    context: LauncherSearchProviderContext = { signal: new AbortController().signal }
+  ): Promise<LauncherSearchProviderResponse> {
+    context.signal.throwIfAborted()
     const query = normalizeSearchValue(request.query)
 
     if (!query) {
       return {
+        kind: "complete",
         results: []
       }
     }
 
-    const catalog = await this.getApplicationCatalog()
+    const catalog = await this.getApplicationCatalog(context.signal)
+    context.signal.throwIfAborted()
     const matches: Array<{
       application: LauncherApplicationRecord
       match?: [number, number]
@@ -1100,8 +1131,10 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
           this.mapApplicationResult(entry.application, entry.title, entry.score, entry.match)
         )
     )
+    context.signal.throwIfAborted()
 
     return {
+      kind: "complete",
       results
     }
   }
@@ -1133,7 +1166,7 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
           }
         }
 
-        const catalog = await this.getApplicationCatalog()
+        const catalog = await this.getApplicationCatalog(new AbortController().signal)
         const application = catalog.find(
           (entry) => getApplicationPathLookupKey(entry.path) === lookupKey
         )
@@ -1147,15 +1180,84 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
     return displayNamePromise
   }
 
-  private async getApplicationCatalog(): Promise<LauncherApplicationRecord[]> {
-    if (!this.applicationCatalogPromise) {
-      const loadCatalog = this.options.loadApplicationCatalog
-        ? this.options.loadApplicationCatalog
-        : loadApplicationCatalog
-      this.applicationCatalogPromise = loadCatalog()
+  private async getApplicationCatalog(signal: AbortSignal): Promise<LauncherApplicationRecord[]> {
+    signal.throwIfAborted()
+    if (this.applicationCatalog) {
+      return this.applicationCatalog
     }
 
-    return this.applicationCatalogPromise
+    const execution = this.applicationCatalogExecution ?? this.createApplicationCatalogExecution()
+    const consumer = Symbol("application-catalog-consumer")
+    execution.consumers.add(consumer)
+
+    return new Promise<LauncherApplicationRecord[]>((resolve, reject) => {
+      let settled = false
+      const settle = (next: () => void): void => {
+        if (settled) {
+          return
+        }
+
+        settled = true
+        signal.removeEventListener("abort", handleAbort)
+        this.releaseApplicationCatalogConsumer(execution, consumer)
+        next()
+      }
+      const handleAbort = (): void => {
+        const reason =
+          signal.reason instanceof Error
+            ? signal.reason
+            : new Error("Launcher application catalog request was cancelled.")
+        settle(() => reject(reason))
+      }
+
+      signal.addEventListener("abort", handleAbort, { once: true })
+      void execution.promise.then(
+        (catalog) => settle(() => resolve(catalog)),
+        (error: unknown) => settle(() => reject(error))
+      )
+    })
+  }
+
+  private createApplicationCatalogExecution(): ApplicationCatalogExecution {
+    const controller = new AbortController()
+    const loadCatalog = this.options.loadApplicationCatalog
+      ? this.options.loadApplicationCatalog
+      : loadApplicationCatalog
+    const execution: ApplicationCatalogExecution = {
+      consumers: new Set(),
+      controller,
+      promise: loadCatalog(controller.signal)
+    }
+    this.applicationCatalogExecution = execution
+    void execution.promise.then(
+      (catalog) => {
+        if (this.applicationCatalogExecution === execution) {
+          this.applicationCatalog = catalog
+          this.applicationCatalogExecution = null
+        }
+      },
+      () => {
+        if (this.applicationCatalogExecution === execution) {
+          this.applicationCatalogExecution = null
+        }
+      }
+    )
+    return execution
+  }
+
+  private releaseApplicationCatalogConsumer(
+    execution: ApplicationCatalogExecution,
+    consumer: symbol
+  ): void {
+    execution.consumers.delete(consumer)
+    if (
+      execution.consumers.size === 0 &&
+      this.applicationCatalogExecution === execution &&
+      !execution.controller.signal.aborted
+    ) {
+      this.applicationCatalogExecution = null
+      execution.controller.abort(new Error("Launcher application catalog has no active consumers."))
+    }
   }
 
   private async mapApplicationResult(

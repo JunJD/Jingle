@@ -272,6 +272,7 @@ export interface AppCopy {
     searchPlaceholder: string
     searchPlaceholderSecondary: string
     searching: string
+    searchPartial: string
     searchResults: string
     suggestions: string
     unpinHistoryItem: string
@@ -680,6 +681,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       searchPlaceholder: "你想处理什么工作？",
       searchPlaceholderSecondary: "搜应用、文件、命令，或直接问 AI",
       searching: "搜索中",
+      searchPartial: "部分搜索源暂不可用",
       searchResults: "搜索结果",
       suggestions: "建议",
       unpinHistoryItem: "取消固定",
@@ -1124,6 +1126,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       searchPlaceholder: "What do you want to get done?",
       searchPlaceholderSecondary: "Search apps, files, commands, or ask AI",
       searching: "Searching",
+      searchPartial: "Some search sources are unavailable",
       searchResults: "Search Results",
       suggestions: "Suggestions",
       unpinHistoryItem: "Unpin",

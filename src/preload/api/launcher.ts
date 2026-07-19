@@ -8,6 +8,7 @@ import type {
   LauncherSearchResponse
 } from "@shared/launcher-search"
 import { invokeIpc, ipcRenderer } from "../ipc"
+import { createLauncherSearchInvoker } from "./launcher-search-lifecycle"
 
 export interface LauncherShownCallbackEvent extends LauncherShownEvent {
   deadlineAt: number
@@ -22,6 +23,7 @@ const launcherPresentationReadyWaiters = new Set<() => void>()
 let activeLauncherPresentationController: AbortController | null = null
 let latestLauncherPresentationId = 0
 let rendererPresentationReady = false
+const invokeLauncherSearch = createLauncherSearchInvoker(invokeIpc)
 
 function isCurrentLauncherPresentation(event: LauncherShownEvent, signal: AbortSignal): boolean {
   return !signal.aborted && event.presentationId === latestLauncherPresentationId
@@ -326,8 +328,11 @@ export const launcherApi = {
   clearSelectionContext: (id?: string): Promise<void> => {
     return invokeIpc("launcher:clearSelectionContext", id)
   },
-  search: (request: LauncherSearchRequest): Promise<LauncherSearchResponse> => {
-    return invokeIpc("launcher:search", request)
+  search: (
+    request: LauncherSearchRequest,
+    options: { signal?: AbortSignal } = {}
+  ): Promise<LauncherSearchResponse> => {
+    return invokeLauncherSearch(request, options)
   },
   executeAction: (action: LauncherSearchAction): Promise<LauncherActionExecutionResult> => {
     return invokeIpc("launcher:executeAction", action)

@@ -1,6 +1,6 @@
 import { MAX_LAUNCHER_SEARCH_RESULTS } from "@shared/launcher"
 import { AI_THREAD_SOURCE } from "@shared/launcher-ai"
-import type { LauncherSearchResult } from "@shared/launcher-search"
+import type { LauncherSearchResponse } from "@shared/launcher-search"
 import { resolveShortcutPlatform, type ShortcutPlatform } from "@shared/shortcuts/model"
 
 export const launcherAiCommands = {
@@ -25,15 +25,21 @@ export const launcherAiCommands = {
     return window.api.openTargets.open({ folderPath: workspacePath, targetId: "finder" })
   },
 
-  async searchThreads(query: string): Promise<LauncherSearchResult[]> {
-    const response = await window.api.launcher.search({
-      limit: MAX_LAUNCHER_SEARCH_RESULTS,
-      query,
-      sources: ["threads"],
-      threadMetadataSource: AI_THREAD_SOURCE
-    })
+  async searchThreads(query: string, signal?: AbortSignal): Promise<LauncherSearchResponse> {
+    const response = await window.api.launcher.search(
+      {
+        limit: MAX_LAUNCHER_SEARCH_RESULTS,
+        query,
+        sources: ["threads"],
+        threadMetadataSource: AI_THREAD_SOURCE
+      },
+      { signal }
+    )
 
-    return response.results.filter((result) => result.action.type === "open-history-thread")
+    return {
+      ...response,
+      results: response.results.filter((result) => result.action.type === "open-history-thread")
+    }
   },
 
   writeClipboardText(text: string): Promise<void> {

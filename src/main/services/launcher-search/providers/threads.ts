@@ -5,7 +5,11 @@ import {
   type ThreadSearchMessageMatchRow
 } from "../../../db/threads"
 import { buildTrigramFtsQuery, buildUnicodeFtsQuery } from "../../../search-text"
-import type { LauncherSearchProvider, LauncherSearchProviderResponse } from "../types"
+import type {
+  LauncherSearchProvider,
+  LauncherSearchProviderContext,
+  LauncherSearchProviderResponse
+} from "../types"
 
 interface RankedThreadSearchRow {
   excerpt: string | null
@@ -116,10 +120,14 @@ function rankThreadMatches(params: {
 class ThreadsLauncherSearchProvider implements LauncherSearchProvider {
   readonly source = "threads" as const
 
-  async search(request: LauncherSearchRequest): Promise<LauncherSearchProviderResponse> {
+  async search(
+    request: LauncherSearchRequest,
+    context: LauncherSearchProviderContext = { signal: new AbortController().signal }
+  ): Promise<LauncherSearchProviderResponse> {
+    context.signal.throwIfAborted()
     const query = request.query.trim()
     if (!query) {
-      return { results: [] }
+      return { kind: "complete", results: [] }
     }
 
     const limit = Math.min(Math.max(request.limit, 1), 50)
@@ -135,6 +143,7 @@ class ThreadsLauncherSearchProvider implements LauncherSearchProvider {
         : undefined,
       trigramQuery: buildTrigramFtsQuery(query)
     })
+    context.signal.throwIfAborted()
     const rows = rankThreadMatches({
       directRows: matches.direct,
       limit,
@@ -143,6 +152,7 @@ class ThreadsLauncherSearchProvider implements LauncherSearchProvider {
     })
 
     return {
+      kind: "complete",
       results: rows.map((row) => ({
         action: {
           executor: "internal",

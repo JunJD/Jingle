@@ -1,6 +1,11 @@
 import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent } from "electron"
 import { AI_THREAD_SOURCE } from "@shared/launcher-ai"
-import type { LauncherSearchAction, LauncherSearchRequest } from "@shared/launcher-search"
+import type {
+  LauncherSearchAction,
+  LauncherSearchCancellation,
+  LauncherSearchInvocation,
+  LauncherSearchRequest
+} from "@shared/launcher-search"
 import { launcherPresentArgsSchema } from "@shared/launcher-presentation"
 import {
   isLauncherWindowWebContents,
@@ -10,16 +15,48 @@ import {
 } from "../windows/launcher-window"
 import { getWindowIdentity } from "../windows/window-identity"
 import { registerIpcHandle, registerValidatedIpcHandle } from "../ipc/handle"
+import {
+  bindLauncherSearchSenderLifetime,
+  getScopedLauncherSearchCallerId
+} from "./search-sender-lifetime"
 import { LauncherService } from "./service"
 
 export class LauncherController {
   constructor(private readonly launcherService: LauncherService) {}
 
   register(ipcMain: IpcMain): void {
-    registerIpcHandle(ipcMain, "launcher:search", async (event, request: LauncherSearchRequest) => {
-      this.assertSearchSender(event, request)
-      return this.launcherService.search(request)
-    })
+    registerIpcHandle(
+      ipcMain,
+      "launcher:search",
+      async (event, invocation: LauncherSearchInvocation) => {
+        this.assertSearchSender(event, invocation.request)
+        const lifetime = bindLauncherSearchSenderLifetime({
+          callerId: invocation.callerId,
+          cancel: (scopedCallerId) => {
+            this.launcherService.cancelSearch(scopedCallerId)
+          },
+          sender: event.sender
+        })
+        try {
+          const searchPromise = this.launcherService.search(invocation.request, lifetime.callerId)
+          lifetime.activate()
+          return await searchPromise
+        } finally {
+          lifetime.dispose()
+        }
+      }
+    )
+
+    registerIpcHandle(
+      ipcMain,
+      "launcher:cancelSearch",
+      (event, cancellation: LauncherSearchCancellation) => {
+        this.assertSearchCancellationSender(event)
+        return this.launcherService.cancelSearch(
+          getScopedLauncherSearchCallerId(event.sender.id, cancellation.callerId)
+        )
+      }
+    )
 
     registerIpcHandle(ipcMain, "launcher:getClipboardContext", (event) => {
       this.assertLauncherSender(event)
@@ -119,6 +156,20 @@ export class LauncherController {
     throw new Error(
       "Launcher search can only be invoked by the Launcher or Main window for thread-only search."
     )
+  }
+
+  private assertSearchCancellationSender(event: IpcMainInvokeEvent): void {
+    this.assertMainFrame(event)
+    const windowKind = getWindowIdentity(event.sender)?.kind
+    if (
+      isLauncherWindowWebContents(event.sender) ||
+      windowKind === "main" ||
+      windowKind === "thread-window"
+    ) {
+      return
+    }
+
+    throw new Error("Launcher search cancellation requires an authorized window sender.")
   }
 
   private assertLauncherSender(event: IpcMainInvokeEvent): void {

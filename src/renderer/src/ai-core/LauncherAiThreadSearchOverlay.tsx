@@ -1,6 +1,6 @@
 import { MessageSquare, Search } from "lucide-react"
 import { useEffect, useMemo, useRef } from "react"
-import type { LauncherSearchResult } from "@shared/launcher-search"
+import type { LauncherSearchResult, LauncherSearchTerminal } from "@shared/launcher-search"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
@@ -13,6 +13,7 @@ interface LauncherAiThreadSearchOverlayProps {
     search: string
     searchLoading: string
     searchNoResults: string
+    searchPartial: string
   }
   onActiveIndexChange: (index: number) => void
   onClose: () => void
@@ -20,6 +21,7 @@ interface LauncherAiThreadSearchOverlayProps {
   onSelectThread: (threadId: string) => void
   query: string
   results: readonly LauncherSearchResult[]
+  terminal: LauncherSearchTerminal | null
 }
 
 function getResultThreadId(result: LauncherSearchResult): string | null {
@@ -39,7 +41,8 @@ export function LauncherAiThreadSearchOverlay(
     onQueryChange,
     onSelectThread,
     query,
-    results
+    results,
+    terminal
   } = props
   const inputRef = useRef<HTMLInputElement>(null)
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -55,8 +58,12 @@ export function LauncherAiThreadSearchOverlay(
       return "loading"
     }
 
-    return results.length > 0 ? "results" : "empty"
-  }, [isLoading, results.length, trimmedQuery])
+    if (results.length > 0) {
+      return "results"
+    }
+
+    return terminal?.kind === "partial" ? "partial" : "empty"
+  }, [isLoading, results.length, terminal?.kind, trimmedQuery])
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -130,6 +137,10 @@ export function LauncherAiThreadSearchOverlay(
           ) : null}
           {visibleState === "empty" ? (
             <div className="launcher-ai-thread-search__status">{labels.searchNoResults}</div>
+          ) : null}
+          {visibleState === "partial" ||
+          (visibleState === "results" && terminal?.kind === "partial") ? (
+            <div className="launcher-ai-thread-search__status">{labels.searchPartial}</div>
           ) : null}
           {visibleState === "results" ? (
             <div className="launcher-ai-thread-search__results">

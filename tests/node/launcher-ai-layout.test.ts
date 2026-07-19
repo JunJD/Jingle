@@ -124,9 +124,10 @@ test("renderer i18n context is imported through one module identity", async () =
 })
 
 test("launcher AI sidebar search opens thread search overlay backed by launcher search", async () => {
-  const [pageSource, commandsSource] = await Promise.all([
+  const [pageSource, commandsSource, overlaySource] = await Promise.all([
     readWorkspaceFile("src/renderer/src/ai-core/LauncherAiPage.tsx"),
-    readWorkspaceFile("src/renderer/src/ai-core/launcher-ai-commands.ts")
+    readWorkspaceFile("src/renderer/src/ai-core/launcher-ai-commands.ts"),
+    readWorkspaceFile("src/renderer/src/ai-core/LauncherAiThreadSearchOverlay.tsx")
   ])
 
   assert.doesNotMatch(pageSource, /handleOpenSidebarSearch/)
@@ -135,6 +136,10 @@ test("launcher AI sidebar search opens thread search overlay backed by launcher 
   assert.match(commandsSource, /window\.api\.launcher\s*\.\s*search/)
   assert.match(commandsSource, /sources:\s*\[\s*"threads"\s*\]/)
   assert.match(commandsSource, /threadMetadataSource:\s*AI_THREAD_SOURCE/)
+  assert.match(commandsSource, /\.\.\.response,[\s\S]*?results:/)
+  assert.match(pageSource, /terminal:\s*action\.response\.terminal/)
+  assert.match(overlaySource, /terminal\?\.kind === "partial"/)
+  assert.match(overlaySource, /labels\.searchPartial/)
   assert.doesNotMatch(pageSource, /launcherThreadIdSet/)
   assert.match(pageSource, /LauncherAiThreadSearchOverlay/)
   assert.doesNotMatch(pageSource, /openThreadSearch[\s\S]*?setIsThreadSearchLoading\(true\)/)

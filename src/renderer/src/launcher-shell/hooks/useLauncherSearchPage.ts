@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo } from "react"
+import { useCallback, useEffect, useMemo, useRef } from "react"
 import {
   FALLBACK_SHELL_CONFIG,
-  LAUNCHER_SEARCH_TRANSACTION_TIMEOUT_MS,
   MAX_LAUNCHER_SEARCH_RESULTS,
   getLauncherIdleHeight,
   getLauncherViewportHeightForBody,
@@ -12,6 +11,11 @@ import { useI18n } from "@/lib/i18n"
 import { useNativeExtensionProjectionRevision } from "@extension-host/index"
 import { useNativeSourceMentionsProjection } from "@extension-host/use-native-source-mentions-projection"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
+import type {
+  LauncherSearchResponse,
+  LauncherSearchSource,
+  LauncherSearchTerminal
+} from "@shared/launcher-search"
 import { DEFAULT_HOME_COMMAND, listLauncherCommands, resolveLauncherCommand } from "../pages"
 import {
   buildLauncherHomeSurfaceModel,
@@ -24,7 +28,6 @@ import type { LauncherCommandAddress, LauncherCommandOpenOptions } from "../page
 import type { LauncherIndexedCommand } from "../pages"
 import {
   LAUNCHER_SEARCH_SOURCES,
-  groupLauncherSearchResultsBySource,
   mergeLauncherSearchResults,
   resolveVisibleLauncherSearchResultsBySource,
   shouldPreviewLauncherSearchResults
@@ -47,61 +50,6 @@ type LauncherHomeCommandId =
 
 let latestLauncherIdleStateRequestId = 0
 
-function settleLauncherSearchResponses<T>(
-  promises: Promise<T>[],
-  timeoutMs: number
-): Promise<PromiseSettledResult<T>[]> {
-  return new Promise((resolve) => {
-    const results: PromiseSettledResult<T>[] = []
-    let isSettled = false
-    let settledCount = 0
-    const finish = (): void => {
-      if (isSettled) {
-        return
-      }
-
-      isSettled = true
-      window.clearTimeout(timeout)
-      resolve(results)
-    }
-    const timeout = window.setTimeout(finish, timeoutMs)
-
-    promises.forEach((promise) => {
-      void promise
-        .then((value) => {
-          if (isSettled) {
-            return
-          }
-
-          results.push({
-            status: "fulfilled",
-            value
-          })
-        })
-        .catch((reason: unknown) => {
-          if (isSettled) {
-            return
-          }
-
-          results.push({
-            reason,
-            status: "rejected"
-          })
-        })
-        .finally(() => {
-          if (isSettled) {
-            return
-          }
-
-          settledCount += 1
-          if (settledCount === promises.length) {
-            finish()
-          }
-        })
-    })
-  })
-}
-
 export function useLauncherSearchPage(props: {
   openMainHistory: () => void
   openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => void
@@ -113,6 +61,7 @@ export function useLauncherSearchPage(props: {
   handleInputCommandKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void
   homeInputSelectionRequestVersion: number
   isSearchLoading: boolean
+  hasSearchIssues: boolean
   removeHistoryItem: (itemId: string) => void
   setHistoryItemPinned: (itemId: string, pin: boolean) => void
   previewClipboardContext: import("../../../../shared/clipboard").ClipboardContext
@@ -177,6 +126,7 @@ export function useLauncherSearchPage(props: {
     [useWithCommands, useWithDisabledCommandKeys]
   )
   const sourceMentions = useNativeSourceMentionsProjection(locale)
+  const activeSearchControllerRef = useRef<AbortController | null>(null)
 
   const visibleSearchResultsBySource = useMemo(() => {
     return resolveVisibleLauncherSearchResultsBySource(searchState, trimmedQuery)
@@ -202,6 +152,15 @@ export function useLauncherSearchPage(props: {
 
     return LAUNCHER_SEARCH_SOURCES.some(
       (source) => searchState.resultsBySource[source] === undefined
+    )
+  }, [searchState, trimmedQuery])
+  const hasSearchIssues = useMemo(() => {
+    if (!searchState || searchState.query !== trimmedQuery) {
+      return false
+    }
+
+    return Object.values(searchState.terminalsBySource).some(
+      (terminal) => terminal?.kind === "partial"
     )
   }, [searchState, trimmedQuery])
   const surface = useMemo(
@@ -300,28 +259,59 @@ export function useLauncherSearchPage(props: {
 
   const refreshSearchResults = useCallback(
     (searchQuery: string): void => {
+      activeSearchControllerRef.current?.abort()
+      const controller = new AbortController()
+      activeSearchControllerRef.current = controller
       const requestId = beginSearchRequest()
 
-      void settleLauncherSearchResponses(
-        LAUNCHER_SEARCH_SOURCES.map((source) =>
-          window.api.launcher
-            .search({
+      void Promise.allSettled(
+        LAUNCHER_SEARCH_SOURCES.map(async (source) => ({
+          response: await window.api.launcher.search(
+            {
               limit: MAX_LAUNCHER_SEARCH_RESULTS,
               query: searchQuery,
               sources: [source]
-            })
-            .then((response) => response.results)
-        ),
-        LAUNCHER_SEARCH_TRANSACTION_TIMEOUT_MS
-      ).then((responses) => {
-        applySearchResultsBySource(
-          requestId,
-          searchQuery,
-          groupLauncherSearchResultsBySource(
-            responses.flatMap((response) => (response.status === "fulfilled" ? response.value : []))
-          )
-        )
-      })
+            },
+            { signal: controller.signal }
+          ),
+          source
+        }))
+      )
+        .then((responses) => {
+          if (controller.signal.aborted) {
+            return
+          }
+          const resultsBySource: Partial<
+            Record<LauncherSearchSource, LauncherSearchResponse["results"]>
+          > = {}
+          const terminalsBySource: Partial<Record<LauncherSearchSource, LauncherSearchTerminal>> =
+            {}
+          responses.forEach((response, index) => {
+            const source = LAUNCHER_SEARCH_SOURCES[index]
+            if (!source) {
+              return
+            }
+
+            if (response.status === "fulfilled") {
+              resultsBySource[source] = response.value.response.results
+              terminalsBySource[source] = response.value.response.terminal
+              return
+            }
+
+            resultsBySource[source] = []
+            terminalsBySource[source] = {
+              kind: "partial",
+              partialSources: [],
+              unavailableSources: [source]
+            }
+          })
+          applySearchResultsBySource(requestId, searchQuery, resultsBySource, terminalsBySource)
+        })
+        .finally(() => {
+          if (activeSearchControllerRef.current === controller) {
+            activeSearchControllerRef.current = null
+          }
+        })
     },
     [applySearchResultsBySource, beginSearchRequest]
   )
@@ -338,6 +328,8 @@ export function useLauncherSearchPage(props: {
 
     return () => {
       window.clearTimeout(debounceTimer)
+      activeSearchControllerRef.current?.abort()
+      activeSearchControllerRef.current = null
     }
   }, [invalidateSearchRequests, refreshSearchResults, trimmedQuery])
 
@@ -501,6 +493,7 @@ export function useLauncherSearchPage(props: {
     handleInputCommandKeyDown,
     homeInputSelectionRequestVersion,
     isSearchLoading,
+    hasSearchIssues,
     previewClipboardContext: homeClipboard.candidateContext,
     removeHistoryItem,
     setHistoryItemPinned,

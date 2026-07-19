@@ -200,13 +200,10 @@ export default function LauncherApp(): React.JSX.Element {
     }
 
     lastAutoOpenedSelectionIdRef.current = selectionContext.id
-    openCommand(
-      DEFAULT_HOME_COMMAND,
-      {
-        initialAction: "focus",
-        seedQuery: ""
-      }
-    )
+    openCommand(DEFAULT_HOME_COMMAND, {
+      initialAction: "focus",
+      seedQuery: ""
+    })
   }, [openCommand, selectionContext])
 
   return (
@@ -250,6 +247,7 @@ export default function LauncherApp(): React.JSX.Element {
                 executeItem={searchPage.executeItem}
                 inputRef={searchInputRef}
                 inputValue={searchPage.query}
+                hasSearchIssues={searchPage.hasSearchIssues}
                 isSearchLoading={searchPage.isSearchLoading}
                 onAcceptClipboardContext={searchPage.acceptClipboardCandidate}
                 onClearClipboardContext={searchPage.clearClipboardContext}

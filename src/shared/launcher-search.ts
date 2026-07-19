@@ -16,6 +16,15 @@ export interface LauncherSearchRequest {
   threadMetadataSource?: string
 }
 
+export interface LauncherSearchInvocation {
+  callerId: string
+  request: LauncherSearchRequest
+}
+
+export interface LauncherSearchCancellation {
+  callerId: string
+}
+
 export type LauncherActionExecutor = "internal" | "shell"
 
 export interface LauncherOpenPathTarget {
@@ -80,7 +89,18 @@ export interface LauncherSearchResult {
   action: LauncherSearchAction
 }
 
+export type LauncherSearchTerminal =
+  | {
+      kind: "complete"
+    }
+  | {
+      kind: "partial"
+      partialSources: LauncherSearchSource[]
+      unavailableSources: LauncherSearchSource[]
+    }
+
 export interface LauncherSearchResponse {
   query: string
   results: LauncherSearchResult[]
+  terminal: LauncherSearchTerminal
 }

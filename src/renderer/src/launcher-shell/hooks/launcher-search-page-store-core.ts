@@ -1,5 +1,9 @@
 import { sortLauncherHistoryItems, type LauncherHistoryItem } from "@shared/launcher-history"
-import type { LauncherSearchResult, LauncherSearchSource } from "@shared/launcher-search"
+import type {
+  LauncherSearchResult,
+  LauncherSearchSource,
+  LauncherSearchTerminal
+} from "@shared/launcher-search"
 import type { LauncherWindowMode } from "@shared/launcher-settings"
 import type { LocalStartItem } from "@shared/local-start"
 
@@ -20,6 +24,7 @@ const MAX_VISIBLE_THREAD_SEARCH_RESULTS = 3
 export interface LauncherSearchState {
   query: string
   resultsBySource: Partial<Record<LauncherSearchSource, LauncherSearchResult[]>>
+  terminalsBySource: Partial<Record<LauncherSearchSource, LauncherSearchTerminal>>
 }
 
 export interface LauncherSearchPageStoreState {
@@ -38,7 +43,8 @@ export interface LauncherSearchPageStoreState {
   applySearchResultsBySource: (
     requestId: number,
     query: string,
-    resultsBySource: Partial<Record<LauncherSearchSource, LauncherSearchResult[]>>
+    resultsBySource: Partial<Record<LauncherSearchSource, LauncherSearchResult[]>>,
+    terminalsBySource?: Partial<Record<LauncherSearchSource, LauncherSearchTerminal>>
   ) => void
   beginSearchRequest: () => number
   historyItems: LauncherHistoryItem[]
@@ -208,7 +214,9 @@ export function createEmptyLauncherSearchResultsBySource(
     }
   }
 
-  return Object.fromEntries(entries) as Partial<Record<LauncherSearchSource, LauncherSearchResult[]>>
+  return Object.fromEntries(entries) as Partial<
+    Record<LauncherSearchSource, LauncherSearchResult[]>
+  >
 }
 
 export function groupLauncherSearchResultsBySource(
@@ -316,6 +324,10 @@ export function createLauncherSearchPageStore(): LauncherSearchPageStore {
           resultsBySource: {
             ...(current.searchState?.query === query ? current.searchState.resultsBySource : {}),
             [source]: results
+          },
+          terminalsBySource: {
+            ...(current.searchState?.query === query ? current.searchState.terminalsBySource : {}),
+            [source]: { kind: "complete" }
           }
         }
       }))
@@ -323,7 +335,8 @@ export function createLauncherSearchPageStore(): LauncherSearchPageStore {
     applySearchResultsBySource: (
       requestId: number,
       query: string,
-      resultsBySource: Partial<Record<LauncherSearchSource, LauncherSearchResult[]>>
+      resultsBySource: Partial<Record<LauncherSearchSource, LauncherSearchResult[]>>,
+      terminalsBySource: Partial<Record<LauncherSearchSource, LauncherSearchTerminal>> = {}
     ): void => {
       if (latestSearchRequestId !== requestId) {
         return
@@ -332,7 +345,8 @@ export function createLauncherSearchPageStore(): LauncherSearchPageStore {
       setData({
         searchState: {
           query,
-          resultsBySource
+          resultsBySource,
+          terminalsBySource
         }
       })
     },

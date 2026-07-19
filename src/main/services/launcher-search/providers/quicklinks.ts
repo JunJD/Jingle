@@ -3,7 +3,11 @@ import {
   type ExtensionQuicklinkRecord
 } from "@shared/extension-quicklinks"
 import type { LauncherSearchRequest } from "@shared/launcher-search"
-import type { LauncherSearchProvider, LauncherSearchProviderResponse } from "../types"
+import type {
+  LauncherSearchProvider,
+  LauncherSearchProviderContext,
+  LauncherSearchProviderResponse
+} from "../types"
 
 let listQuicklinks: (() => ExtensionQuicklinkRecord[]) | null = null
 
@@ -48,14 +52,22 @@ function scoreQuicklink(quicklink: ExtensionQuicklinkRecord, query: string): num
 class QuicklinksLauncherSearchProvider implements LauncherSearchProvider {
   readonly source = "quicklinks" as const
 
-  async search(request: LauncherSearchRequest): Promise<LauncherSearchProviderResponse> {
+  async search(
+    request: LauncherSearchRequest,
+    context: LauncherSearchProviderContext = { signal: new AbortController().signal }
+  ): Promise<LauncherSearchProviderResponse> {
+    context.signal.throwIfAborted()
     const query = normalizeQuicklinkSearchText(request.query)
     if (!query || !listQuicklinks) {
-      return { results: [] }
+      return { kind: "complete", results: [] }
     }
 
+    const quicklinks = listQuicklinks()
+    context.signal.throwIfAborted()
+
     return {
-      results: listQuicklinks()
+      kind: "complete",
+      results: quicklinks
         .map((quicklink) => {
           return {
             quicklink,
