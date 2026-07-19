@@ -105,7 +105,7 @@ test("application search matches localized Chinese names and pinyin", async () =
   assert.equal(englishResults[0]?.title, "WeChat")
 })
 
-test("application catalog cancellation releases only the matching search lease", async () => {
+test("application catalog caller cancellation does not cancel another waiter", async () => {
   const catalog = createDeferred<LauncherApplicationRecord[]>()
   const catalogSignals: AbortSignal[] = []
   const jingle = createApplicationRecord({
@@ -170,17 +170,10 @@ test("application catalog warmup cancellation does not poison an active search",
   assert.equal((await search).results[0]?.title, "Jingle")
 })
 
-test("application catalog replaces an abandoned loader and ignores its late result", async () => {
-  const catalogs = [
-    createDeferred<LauncherApplicationRecord[]>(),
-    createDeferred<LauncherApplicationRecord[]>()
-  ]
+test("application catalog continues across caller timeouts and becomes reusable", async () => {
+  const catalog = createDeferred<LauncherApplicationRecord[]>()
   const catalogSignals: AbortSignal[] = []
   let loadCount = 0
-  const oldApplication = createApplicationRecord({
-    displayName: "Old App",
-    path: "/Applications/Old.app"
-  })
   const jingle = createApplicationRecord({
     displayName: "Jingle",
     path: "/Applications/Jingle.app"
@@ -188,34 +181,72 @@ test("application catalog replaces an abandoned loader and ignores its late resu
   const provider = new ApplicationsLauncherSearchProvider({
     loadApplicationCatalog: (signal) => {
       catalogSignals.push(signal)
-      return catalogs[Math.min(loadCount++, catalogs.length - 1)]!.promise
+      loadCount += 1
+      return catalog.promise
     },
     resolveApplicationIconDataUrl: async () => undefined
   })
-  const abandonedController = new AbortController()
-  const abandonedSearch = provider.search(
-    { limit: 10, query: "old", sources: ["applications"] },
-    { signal: abandonedController.signal }
+  const firstController = new AbortController()
+  const firstSearch = provider.search(
+    { limit: 10, query: "jin", sources: ["applications"] },
+    { signal: firstController.signal }
   )
 
-  abandonedController.abort(new Error("abandoned search"))
-  await assert.rejects(abandonedSearch, /abandoned search/)
-  assert.equal(catalogSignals[0]?.aborted, true)
+  firstController.abort(new Error("first query timed out"))
+  await assert.rejects(firstSearch, /first query timed out/)
+  assert.equal(catalogSignals[0]?.aborted, false)
 
-  const replacementSearch = provider.search(
+  const secondController = new AbortController()
+  const secondSearch = provider.search(
     { limit: 10, query: "jingle", sources: ["applications"] },
-    { signal: new AbortController().signal }
+    { signal: secondController.signal }
   )
-  assert.equal(loadCount, 2)
-  catalogs[1]!.resolve([jingle])
-  assert.equal((await replacementSearch).results[0]?.title, "Jingle")
+  secondController.abort(new Error("second query timed out"))
+  await assert.rejects(secondSearch, /second query timed out/)
+  assert.equal(catalogSignals[0]?.aborted, false)
+  assert.equal(loadCount, 1)
 
-  catalogs[0]!.resolve([oldApplication])
+  catalog.resolve([jingle])
   await Promise.resolve()
   const cachedSearch = await provider.search(
     { limit: 10, query: "jingle", sources: ["applications"] },
     { signal: new AbortController().signal }
   )
   assert.equal(cachedSearch.results[0]?.title, "Jingle")
+  assert.equal(loadCount, 1)
+})
+
+test("application catalog build deadline aborts a stuck loader and permits replacement", async () => {
+  const stuckCatalog = createDeferred<LauncherApplicationRecord[]>()
+  const catalogSignals: AbortSignal[] = []
+  let loadCount = 0
+  const jingle = createApplicationRecord({
+    displayName: "Jingle",
+    path: "/Applications/Jingle.app"
+  })
+  const provider = new ApplicationsLauncherSearchProvider({
+    catalogBuildDeadlineMs: 10,
+    loadApplicationCatalog: (signal) => {
+      catalogSignals.push(signal)
+      loadCount += 1
+      return loadCount === 1 ? stuckCatalog.promise : Promise.resolve([jingle])
+    },
+    resolveApplicationIconDataUrl: async () => undefined
+  })
+
+  await assert.rejects(
+    provider.search(
+      { limit: 10, query: "jingle", sources: ["applications"] },
+      { signal: new AbortController().signal }
+    ),
+    /build deadline/
+  )
+  assert.equal(catalogSignals[0]?.aborted, true)
+
+  const replacementSearch = await provider.search(
+    { limit: 10, query: "jingle", sources: ["applications"] },
+    { signal: new AbortController().signal }
+  )
+  assert.equal(replacementSearch.results[0]?.title, "Jingle")
   assert.equal(loadCount, 2)
 })

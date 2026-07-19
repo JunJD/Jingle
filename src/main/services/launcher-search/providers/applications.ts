@@ -50,12 +50,12 @@ interface WindowsApplicationRecord extends LauncherApplicationRecord {
 }
 
 interface ApplicationsLauncherSearchProviderOptions {
+  catalogBuildDeadlineMs?: number
   loadApplicationCatalog?: (signal: AbortSignal) => Promise<LauncherApplicationRecord[]>
   resolveApplicationIconDataUrl?: (applicationPath: string) => Promise<string | undefined>
 }
 
 interface ApplicationCatalogExecution {
-  consumers: Set<symbol>
   controller: AbortController
   promise: Promise<LauncherApplicationRecord[]>
 }
@@ -80,6 +80,7 @@ const MAC_CHINESE_LOCALIZATION_DIRECTORIES = [
 ]
 const WINDOWS_START_MENU_FALLBACK_SUBTITLE = "开始菜单"
 const APPLICATION_INDEX_REFRESH_DEBOUNCE_MS = 750
+export const APPLICATION_CATALOG_BUILD_DEADLINE_MS = 15_000
 
 function normalizeSearchValue(value: string): string {
   return value
@@ -1055,11 +1056,16 @@ function getApplicationMatch(
 export class ApplicationsLauncherSearchProvider implements LauncherSearchProvider {
   readonly source = "applications" as const
   private applicationCatalog: LauncherApplicationRecord[] | null = null
+  private readonly applicationCatalogBuildDeadlineMs: number
   private applicationCatalogExecution: ApplicationCatalogExecution | null = null
   private applicationDisplayNamePromiseCache = new Map<string, Promise<string | undefined>>()
   private applicationIconPromiseCache = new Map<string, Promise<string | undefined>>()
 
-  constructor(private readonly options: ApplicationsLauncherSearchProviderOptions = {}) {}
+  constructor(private readonly options: ApplicationsLauncherSearchProviderOptions = {}) {
+    this.applicationCatalogBuildDeadlineMs = Number.isFinite(options.catalogBuildDeadlineMs)
+      ? Math.max(1, options.catalogBuildDeadlineMs!)
+      : APPLICATION_CATALOG_BUILD_DEADLINE_MS
+  }
 
   async warmup(context: LauncherSearchProviderContext): Promise<void> {
     await this.getApplicationCatalog(context.signal)
@@ -1187,8 +1193,6 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
     }
 
     const execution = this.applicationCatalogExecution ?? this.createApplicationCatalogExecution()
-    const consumer = Symbol("application-catalog-consumer")
-    execution.consumers.add(consumer)
 
     return new Promise<LauncherApplicationRecord[]>((resolve, reject) => {
       let settled = false
@@ -1199,7 +1203,6 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
 
         settled = true
         signal.removeEventListener("abort", handleAbort)
-        this.releaseApplicationCatalogConsumer(execution, consumer)
         next()
       }
       const handleAbort = (): void => {
@@ -1224,9 +1227,8 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
       ? this.options.loadApplicationCatalog
       : loadApplicationCatalog
     const execution: ApplicationCatalogExecution = {
-      consumers: new Set(),
       controller,
-      promise: loadCatalog(controller.signal)
+      promise: this.executeApplicationCatalogLoad(controller, loadCatalog)
     }
     this.applicationCatalogExecution = execution
     void execution.promise.then(
@@ -1245,19 +1247,51 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
     return execution
   }
 
-  private releaseApplicationCatalogConsumer(
-    execution: ApplicationCatalogExecution,
-    consumer: symbol
-  ): void {
-    execution.consumers.delete(consumer)
-    if (
-      execution.consumers.size === 0 &&
-      this.applicationCatalogExecution === execution &&
-      !execution.controller.signal.aborted
-    ) {
-      this.applicationCatalogExecution = null
-      execution.controller.abort(new Error("Launcher application catalog has no active consumers."))
-    }
+  private executeApplicationCatalogLoad(
+    controller: AbortController,
+    loadCatalog: (signal: AbortSignal) => Promise<LauncherApplicationRecord[]>
+  ): Promise<LauncherApplicationRecord[]> {
+    return new Promise<LauncherApplicationRecord[]>((resolve, reject) => {
+      let settled = false
+      const settle = (next: () => void): void => {
+        if (settled) {
+          return
+        }
+
+        settled = true
+        clearTimeout(deadline)
+        controller.signal.removeEventListener("abort", handleAbort)
+        next()
+      }
+      const handleAbort = (): void => {
+        const reason =
+          controller.signal.reason instanceof Error
+            ? controller.signal.reason
+            : new Error("Launcher application catalog build was cancelled.")
+        settle(() => reject(reason))
+      }
+      const deadline = setTimeout(() => {
+        controller.abort(
+          new Error(
+            `Launcher application catalog exceeded its ${this.applicationCatalogBuildDeadlineMs}ms build deadline.`
+          )
+        )
+      }, this.applicationCatalogBuildDeadlineMs)
+
+      controller.signal.addEventListener("abort", handleAbort, { once: true })
+      let catalogPromise: Promise<LauncherApplicationRecord[]>
+      try {
+        catalogPromise = loadCatalog(controller.signal)
+      } catch (error) {
+        settle(() => reject(error))
+        return
+      }
+
+      void catalogPromise.then(
+        (catalog) => settle(() => resolve(catalog)),
+        (error: unknown) => settle(() => reject(error))
+      )
+    })
   }
 
   private async mapApplicationResult(
