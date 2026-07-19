@@ -6,7 +6,11 @@ import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
 import { createLauncherHistoryKey } from "@shared/launcher-history"
-import type { LauncherSearchRequest, LauncherSearchResult } from "@shared/launcher-search"
+import type {
+  LauncherSearchAction,
+  LauncherSearchRequest,
+  LauncherSearchResult
+} from "@shared/launcher-search"
 import type { LauncherSearchProvider, LauncherSearchProviderResponse } from "../types"
 import {
   isWindowsShortcutPath,
@@ -45,8 +49,37 @@ interface WindowsApplicationRecord extends LauncherApplicationRecord {
   targetPath?: string
 }
 
+interface WindowsPackagedApplicationRecord {
+  appUserModelId: string
+  bundleName: string
+  displayName: string
+  iconPath?: string
+  id: string
+  keywords: string[]
+  localizedNames: string[]
+  subtitle: string
+}
+
+type LauncherApplicationCatalogEntry =
+  | {
+      kind: "path"
+      record: LauncherApplicationRecord
+    }
+  | {
+      kind: "windows-packaged"
+      record: WindowsPackagedApplicationRecord
+    }
+
+interface LauncherApplicationCatalogLoadResult {
+  entries: LauncherApplicationCatalogEntry[]
+  windowsPackagedApplicationsLoaded: boolean
+}
+
 interface ApplicationsLauncherSearchProviderOptions {
   loadApplicationCatalog?: () => Promise<LauncherApplicationRecord[]>
+  loadWindowsPackagedApplications?: () => Promise<WindowsPackagedApplicationRecord[]>
+  now?: () => number
+  platform?: NodeJS.Platform
   resolveApplicationIconDataUrl?: (applicationPath: string) => Promise<string | undefined>
 }
 
@@ -70,6 +103,34 @@ const MAC_CHINESE_LOCALIZATION_DIRECTORIES = [
 ]
 const WINDOWS_START_MENU_FALLBACK_SUBTITLE = "开始菜单"
 const APPLICATION_INDEX_REFRESH_DEBOUNCE_MS = 750
+const WINDOWS_APPLICATION_CATALOG_TTL_MS = 30_000
+const WINDOWS_PACKAGED_APPLICATION_SUBTITLE = "Microsoft Store"
+const WINDOWS_START_APPS_SCRIPT = [
+  "$ErrorActionPreference = 'Stop'",
+  "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+  "$OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+  "$packagesByFamily = @{}",
+  "Get-AppxPackage | ForEach-Object { if ($_.PackageFamilyName -and $_.InstallLocation) { $packagesByFamily[[string]$_.PackageFamilyName] = $_ } }",
+  "$applications = @(Get-StartApps | Where-Object { $_.AppID -like '*!*' } | ForEach-Object {",
+  "  $appUserModelId = [string]$_.AppID",
+  "  $appIdParts = $appUserModelId.Split('!', 2)",
+  "  $iconPath = $null",
+  "  $package = $packagesByFamily[$appIdParts[0]]",
+  "  if ($package) {",
+  "    try {",
+  "      $manifest = Get-AppxPackageManifest -Package $package",
+  "      $application = @($manifest.Package.Applications.Application) | Where-Object { [string]$_.Id -eq $appIdParts[1] } | Select-Object -First 1",
+  "      $logo = [string]$application.VisualElements.Square44x44Logo",
+  "      if (-not $logo) { $logo = [string]$application.VisualElements.Square30x30Logo }",
+  "      if (-not $logo) { $logo = [string]$application.VisualElements.Square150x150Logo }",
+  "      if (-not $logo) { $logo = [string]$application.VisualElements.Logo }",
+  "      if ($logo -and -not $logo.StartsWith('ms-resource:')) { $iconPath = Join-Path ([string]$package.InstallLocation) $logo }",
+  "    } catch {}",
+  "  }",
+  "  [PSCustomObject]@{ appUserModelId = $appUserModelId; displayName = [string]$_.Name; iconPath = [string]$iconPath }",
+  "})",
+  "ConvertTo-Json -Compress -InputObject $applications"
+].join("\n")
 
 function normalizeSearchValue(value: string): string {
   return value
@@ -188,6 +249,89 @@ function getWindowsStartMenuRoots(): WindowsStartMenuRoot[] {
 
 function normalizeWindowsPath(filePath: string): string {
   return path.win32.normalize(filePath).toLowerCase()
+}
+
+function getWindowsPowerShellPath(): string {
+  const systemRoot = process.env.SystemRoot?.trim()
+  if (!systemRoot) {
+    throw new Error("Missing Windows SystemRoot environment variable")
+  }
+
+  return path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+}
+
+function isWindowsPackagedApplicationId(value: string): boolean {
+  return /^[a-z0-9._-]+![a-z0-9._-]+$/i.test(value)
+}
+
+function parseWindowsPackagedApplications(value: unknown): WindowsPackagedApplicationRecord[] {
+  if (!Array.isArray(value)) {
+    throw new Error("Windows Start Apps returned an invalid catalog payload")
+  }
+
+  const applicationsById = new Map<string, WindowsPackagedApplicationRecord>()
+
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      continue
+    }
+
+    const record = entry as Record<string, unknown>
+    const appUserModelId =
+      typeof record["appUserModelId"] === "string" ? record["appUserModelId"].trim() : ""
+    const displayName =
+      typeof record["displayName"] === "string" ? record["displayName"].trim() : ""
+    const iconPath = typeof record["iconPath"] === "string" ? record["iconPath"].trim() : ""
+
+    if (
+      !appUserModelId ||
+      !displayName ||
+      !isWindowsPackagedApplicationId(appUserModelId) ||
+      isWindowsUninstallEntry(displayName)
+    ) {
+      continue
+    }
+
+    const normalizedId = appUserModelId.toLowerCase()
+    applicationsById.set(normalizedId, {
+      appUserModelId,
+      bundleName: displayName,
+      displayName,
+      ...(iconPath ? { iconPath } : {}),
+      id: `windows-packaged:${appUserModelId}`,
+      keywords: buildSearchKeywords(displayName, appUserModelId),
+      localizedNames: [],
+      subtitle: WINDOWS_PACKAGED_APPLICATION_SUBTITLE
+    })
+  }
+
+  return [...applicationsById.values()].toSorted((left, right) => {
+    const displayOrder = collator.compare(left.displayName, right.displayName)
+    if (displayOrder !== 0) {
+      return displayOrder
+    }
+
+    return collator.compare(left.appUserModelId, right.appUserModelId)
+  })
+}
+
+async function loadWindowsPackagedApplications(): Promise<WindowsPackagedApplicationRecord[]> {
+  const { stdout } = await execFileAsync(
+    getWindowsPowerShellPath(),
+    ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", WINDOWS_START_APPS_SCRIPT],
+    {
+      encoding: "utf8",
+      maxBuffer: 4 * 1024 * 1024,
+      timeout: 10_000,
+      windowsHide: true
+    }
+  )
+  const serialized = stdout.toString().trim()
+  if (!serialized) {
+    return []
+  }
+
+  return parseWindowsPackagedApplications(JSON.parse(serialized) as unknown)
 }
 
 function getApplicationPathLookupKey(applicationPath: string): string {
@@ -642,14 +786,86 @@ async function loadWindowsApplications(): Promise<LauncherApplicationRecord[]> {
     })
 }
 
-async function loadApplicationCatalog(): Promise<LauncherApplicationRecord[]> {
-  switch (process.platform) {
-    case "darwin":
-      return loadMacApplications()
+function createPathApplicationCatalogEntries(
+  records: LauncherApplicationRecord[]
+): LauncherApplicationCatalogEntry[] {
+  return records.map((record) => ({ kind: "path", record }))
+}
+
+function getApplicationCatalogEntryIdentity(entry: LauncherApplicationCatalogEntry): string {
+  return entry.kind === "path" ? entry.record.path : entry.record.appUserModelId
+}
+
+function getApplicationCatalogFingerprint(entries: LauncherApplicationCatalogEntry[]): string {
+  return JSON.stringify(
+    entries
+      .map((entry) => [
+        entry.kind,
+        getApplicationCatalogEntryIdentity(entry),
+        entry.record.displayName,
+        entry.record.subtitle,
+        entry.kind === "windows-packaged" ? (entry.record.iconPath ?? "") : ""
+      ])
+      .toSorted((left, right) => collator.compare(left.join("\0"), right.join("\0")))
+  )
+}
+
+async function loadWindowsApplicationCatalog(
+  loadPathApplications: () => Promise<LauncherApplicationRecord[]> = loadWindowsApplications,
+  loadPackagedApplications: () => Promise<
+    WindowsPackagedApplicationRecord[]
+  > = loadWindowsPackagedApplications
+): Promise<LauncherApplicationCatalogLoadResult> {
+  const [pathApplications, packagedApplicationsResult] = await Promise.all([
+    loadPathApplications(),
+    loadPackagedApplications().then(
+      (applications) => ({ applications, status: "fulfilled" as const }),
+      (error: unknown) => ({ error, status: "rejected" as const })
+    )
+  ])
+  const entries = createPathApplicationCatalogEntries(pathApplications)
+
+  if (packagedApplicationsResult.status === "rejected") {
+    console.warn("[LauncherSearch] Windows packaged application discovery failed:", {
+      error:
+        packagedApplicationsResult.error instanceof Error
+          ? packagedApplicationsResult.error.message
+          : String(packagedApplicationsResult.error)
+    })
+    return {
+      entries,
+      windowsPackagedApplicationsLoaded: false
+    }
+  }
+
+  return {
+    entries: [
+      ...entries,
+      ...packagedApplicationsResult.applications.map(
+        (record): LauncherApplicationCatalogEntry => ({ kind: "windows-packaged", record })
+      )
+    ],
+    windowsPackagedApplicationsLoaded: true
+  }
+}
+
+async function loadApplicationCatalog(
+  platform: NodeJS.Platform = process.platform
+): Promise<LauncherApplicationCatalogLoadResult> {
+  switch (platform) {
+    case "darwin": {
+      return {
+        entries: createPathApplicationCatalogEntries(await loadMacApplications()),
+        windowsPackagedApplicationsLoaded: false
+      }
+    }
     case "win32":
-      return loadWindowsApplications()
+      return loadWindowsApplicationCatalog()
     default:
-      return []
+      return {
+        entries: [],
+        windowsPackagedApplicationsLoaded: false
+      }
   }
 }
 
@@ -880,6 +1096,72 @@ async function createWindowsApplicationIconDataUrl(
   return iconDataUrls.find((iconDataUrl): iconDataUrl is string => Boolean(iconDataUrl))
 }
 
+function scoreWindowsPackagedApplicationIconVariant(fileName: string): number {
+  const normalizedName = fileName.toLowerCase()
+  if (normalizedName.includes("_contrast-")) {
+    return -1
+  }
+
+  const targetSize = /\.targetsize-(\d+)/.exec(normalizedName)
+  const scale = /\.scale-(\d+)/.exec(normalizedName)
+  const resolutionScore = targetSize
+    ? 20_000 + Number.parseInt(targetSize[1]!, 10)
+    : scale
+      ? 10_000 + Number.parseInt(scale[1]!, 10)
+      : 0
+  const presentationScore = normalizedName.includes("_altform-unplated")
+    ? 2_000
+    : normalizedName.includes("_altform-lightunplated")
+      ? 1_000
+      : 0
+
+  return resolutionScore + presentationScore
+}
+
+async function resolveWindowsPackagedApplicationIconPath(
+  declaredIconPath: string | undefined
+): Promise<string | undefined> {
+  if (!declaredIconPath) {
+    return undefined
+  }
+
+  try {
+    await fs.access(declaredIconPath)
+    return declaredIconPath
+  } catch {
+    // Appx manifests often omit the scale or target-size qualifier present on disk.
+  }
+
+  const parsedPath = path.win32.parse(declaredIconPath)
+  let entries: Dirent[]
+  try {
+    entries = await fs.readdir(parsedPath.dir, { withFileTypes: true })
+  } catch {
+    return undefined
+  }
+
+  const variantPrefix = `${parsedPath.name}.`.toLowerCase()
+  const extension = parsedPath.ext.toLowerCase()
+  const variant = entries
+    .filter(
+      (entry) =>
+        entry.isFile() &&
+        entry.name.toLowerCase().startsWith(variantPrefix) &&
+        path.win32.extname(entry.name).toLowerCase() === extension
+    )
+    .map((entry) => ({
+      entry,
+      score: scoreWindowsPackagedApplicationIconVariant(entry.name)
+    }))
+    .filter(({ score }) => score >= 0)
+    .toSorted(
+      (left, right) =>
+        right.score - left.score || collator.compare(left.entry.name, right.entry.name)
+    )[0]
+
+  return variant ? path.win32.join(parsedPath.dir, variant.entry.name) : undefined
+}
+
 async function resolveApplicationIconDataUrl(applicationPath: string): Promise<string | undefined> {
   if (process.platform === "darwin") {
     const iconPath = await resolveMacApplicationIconPath(applicationPath)
@@ -952,7 +1234,7 @@ function scorePinyinMatch(
 }
 
 function getApplicationMatch(
-  application: LauncherApplicationRecord,
+  application: LauncherApplicationRecord | WindowsPackagedApplicationRecord,
   query: string
 ): {
   match?: [number, number]
@@ -1033,9 +1315,12 @@ function getApplicationMatch(
 
 export class ApplicationsLauncherSearchProvider implements LauncherSearchProvider {
   readonly source = "applications" as const
-  private applicationCatalogPromise: Promise<LauncherApplicationRecord[]> | null = null
+  private applicationCatalogGeneration = 0
+  private applicationCatalogPromise: Promise<LauncherApplicationCatalogEntry[]> | null = null
+  private applicationCatalogRefreshPromise: Promise<boolean> | null = null
   private applicationDisplayNamePromiseCache = new Map<string, Promise<string | undefined>>()
   private applicationIconPromiseCache = new Map<string, Promise<string | undefined>>()
+  private windowsPackagedApplicationCatalogLoadedAt = 0
 
   constructor(private readonly options: ApplicationsLauncherSearchProviderOptions = {}) {}
 
@@ -1044,9 +1329,61 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
   }
 
   invalidate(): void {
+    this.applicationCatalogGeneration += 1
     this.applicationCatalogPromise = null
     this.applicationDisplayNamePromiseCache.clear()
     this.applicationIconPromiseCache.clear()
+    this.windowsPackagedApplicationCatalogLoadedAt = 0
+  }
+
+  async refreshIfStale(): Promise<boolean> {
+    if (this.getPlatform() !== "win32") {
+      return false
+    }
+
+    const currentCatalog = await this.getApplicationCatalog()
+    if (
+      this.getCurrentTime() - this.windowsPackagedApplicationCatalogLoadedAt <
+      WINDOWS_APPLICATION_CATALOG_TTL_MS
+    ) {
+      return false
+    }
+
+    if (!this.applicationCatalogRefreshPromise) {
+      const refreshGeneration = this.applicationCatalogGeneration
+      const refreshPromise = (async () => {
+        const packagedApplications = await this.loadWindowsPackagedApplications()
+        if (refreshGeneration !== this.applicationCatalogGeneration) {
+          return false
+        }
+
+        const nextCatalog: LauncherApplicationCatalogEntry[] = [
+          ...currentCatalog.filter((entry) => entry.kind === "path"),
+          ...packagedApplications.map((record) => ({ kind: "windows-packaged" as const, record }))
+        ]
+        const changed =
+          getApplicationCatalogFingerprint(currentCatalog) !==
+          getApplicationCatalogFingerprint(nextCatalog)
+
+        this.windowsPackagedApplicationCatalogLoadedAt = this.getCurrentTime()
+        if (changed) {
+          this.applicationCatalogPromise = Promise.resolve(nextCatalog)
+          this.applicationDisplayNamePromiseCache.clear()
+          this.applicationIconPromiseCache.clear()
+        }
+
+        return changed
+      })()
+      this.applicationCatalogRefreshPromise = refreshPromise
+      const clearRefreshPromise = (): void => {
+        if (this.applicationCatalogRefreshPromise === refreshPromise) {
+          this.applicationCatalogRefreshPromise = null
+        }
+      }
+      void refreshPromise.then(clearRefreshPromise, clearRefreshPromise)
+    }
+
+    return this.applicationCatalogRefreshPromise
   }
 
   async search(request: LauncherSearchRequest): Promise<LauncherSearchProviderResponse> {
@@ -1060,14 +1397,14 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
 
     const catalog = await this.getApplicationCatalog()
     const matches: Array<{
-      application: LauncherApplicationRecord
+      application: LauncherApplicationCatalogEntry
       match?: [number, number]
       score: number
       title: string
     }> = []
 
     for (const application of catalog) {
-      const match = getApplicationMatch(application, query)
+      const match = getApplicationMatch(application.record, query)
       if (!match) {
         continue
       }
@@ -1090,7 +1427,10 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
         return titleOrder
       }
 
-      return collator.compare(left.application.path, right.application.path)
+      return collator.compare(
+        getApplicationCatalogEntryIdentity(left.application),
+        getApplicationCatalogEntryIdentity(right.application)
+      )
     })
 
     const results = await Promise.all(
@@ -1106,15 +1446,14 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
     }
   }
 
-  async getApplicationIconDataUrl(applicationPath: string): Promise<string | undefined> {
-    let iconPromise = this.applicationIconPromiseCache.get(applicationPath)
+  async getApplicationIconDataUrl(applicationIdentity: string): Promise<string | undefined> {
+    const lookupKey = getApplicationPathLookupKey(applicationIdentity)
+    let iconPromise = this.applicationIconPromiseCache.get(lookupKey)
 
     if (!iconPromise) {
-      iconPromise = this.options.resolveApplicationIconDataUrl
-        ? this.options.resolveApplicationIconDataUrl(applicationPath)
-        : resolveApplicationIconDataUrl(applicationPath)
+      iconPromise = this.resolveApplicationIdentityIconDataUrl(applicationIdentity, lookupKey)
 
-      this.applicationIconPromiseCache.set(applicationPath, iconPromise)
+      this.applicationIconPromiseCache.set(lookupKey, iconPromise)
     }
 
     return iconPromise
@@ -1126,7 +1465,7 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
 
     if (!displayNamePromise) {
       displayNamePromise = (async () => {
-        if (process.platform === "darwin") {
+        if (this.getPlatform() === "darwin") {
           const displayName = await resolveMacApplicationDisplayName(applicationPath)
           if (displayName) {
             return displayName
@@ -1135,10 +1474,11 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
 
         const catalog = await this.getApplicationCatalog()
         const application = catalog.find(
-          (entry) => getApplicationPathLookupKey(entry.path) === lookupKey
+          (entry) =>
+            getApplicationPathLookupKey(getApplicationCatalogEntryIdentity(entry)) === lookupKey
         )
 
-        return getCatalogApplicationDisplayName(application)
+        return getCatalogApplicationDisplayName(application?.record)
       })()
 
       this.applicationDisplayNamePromiseCache.set(lookupKey, displayNamePromise)
@@ -1147,50 +1487,156 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
     return displayNamePromise
   }
 
-  private async getApplicationCatalog(): Promise<LauncherApplicationRecord[]> {
+  async getApplicationSubtitle(applicationIdentity: string): Promise<string | undefined> {
+    const lookupKey = getApplicationPathLookupKey(applicationIdentity)
+    const catalog = await this.getApplicationCatalog()
+    return catalog.find(
+      (entry) =>
+        getApplicationPathLookupKey(getApplicationCatalogEntryIdentity(entry)) === lookupKey
+    )?.record.subtitle
+  }
+
+  private async loadApplicationCatalog(): Promise<LauncherApplicationCatalogLoadResult> {
+    if (this.options.loadApplicationCatalog) {
+      if (this.getPlatform() === "win32" && this.options.loadWindowsPackagedApplications) {
+        return loadWindowsApplicationCatalog(
+          this.options.loadApplicationCatalog,
+          this.options.loadWindowsPackagedApplications
+        )
+      }
+
+      return {
+        entries: createPathApplicationCatalogEntries(await this.options.loadApplicationCatalog()),
+        windowsPackagedApplicationsLoaded: false
+      }
+    }
+
+    return loadApplicationCatalog(this.getPlatform())
+  }
+
+  private loadWindowsPackagedApplications(): Promise<WindowsPackagedApplicationRecord[]> {
+    return this.options.loadWindowsPackagedApplications
+      ? this.options.loadWindowsPackagedApplications()
+      : loadWindowsPackagedApplications()
+  }
+
+  private async getApplicationCatalog(): Promise<LauncherApplicationCatalogEntry[]> {
     if (!this.applicationCatalogPromise) {
-      const loadCatalog = this.options.loadApplicationCatalog
-        ? this.options.loadApplicationCatalog
-        : loadApplicationCatalog
-      this.applicationCatalogPromise = loadCatalog()
+      const loadGeneration = this.applicationCatalogGeneration
+      const loadPromise = this.loadApplicationCatalog()
+      const catalogPromise: Promise<LauncherApplicationCatalogEntry[]> = (async () => {
+        const result = await loadPromise
+        if (loadGeneration !== this.applicationCatalogGeneration) {
+          return this.getApplicationCatalog()
+        }
+        if (result.windowsPackagedApplicationsLoaded) {
+          this.windowsPackagedApplicationCatalogLoadedAt = this.getCurrentTime()
+        }
+        return result.entries
+      })()
+      this.applicationCatalogPromise = catalogPromise
+      try {
+        return await catalogPromise
+      } catch (error) {
+        if (this.applicationCatalogPromise === catalogPromise) {
+          this.applicationCatalogPromise = null
+        }
+        throw error
+      }
     }
 
     return this.applicationCatalogPromise
   }
 
+  private async resolveApplicationIdentityIconDataUrl(
+    applicationIdentity: string,
+    lookupKey: string
+  ): Promise<string | undefined> {
+    const catalog = await this.getApplicationCatalog()
+    const application = catalog.find(
+      (entry) =>
+        getApplicationPathLookupKey(getApplicationCatalogEntryIdentity(entry)) === lookupKey
+    )
+    if (application?.kind === "windows-packaged") {
+      const iconPath = await resolveWindowsPackagedApplicationIconPath(application.record.iconPath)
+      if (!iconPath) {
+        return undefined
+      }
+      return this.resolveApplicationIconDataUrl(iconPath)
+    }
+    if (this.getPlatform() === "win32" && isWindowsPackagedApplicationId(applicationIdentity)) {
+      return undefined
+    }
+
+    return this.resolveApplicationIconDataUrl(applicationIdentity)
+  }
+
+  private resolveApplicationIconDataUrl(applicationPath: string): Promise<string | undefined> {
+    return this.options.resolveApplicationIconDataUrl
+      ? this.options.resolveApplicationIconDataUrl(applicationPath)
+      : resolveApplicationIconDataUrl(applicationPath)
+  }
+
+  private getCurrentTime(): number {
+    return this.options.now ? this.options.now() : Date.now()
+  }
+
+  private getPlatform(): NodeJS.Platform {
+    return this.options.platform ?? process.platform
+  }
+
   private async mapApplicationResult(
-    application: LauncherApplicationRecord,
+    application: LauncherApplicationCatalogEntry,
     title: string,
     score: number,
     match?: [number, number]
   ): Promise<LauncherSearchResult> {
+    const applicationIdentity = getApplicationCatalogEntryIdentity(application)
+    const action: LauncherSearchAction =
+      application.kind === "path"
+        ? {
+            executor: "shell",
+            target: {
+              kind: "application",
+              path: application.record.path
+            },
+            type: "open-path"
+          }
+        : {
+            executor: "shell",
+            target: {
+              appUserModelId: application.record.appUserModelId
+            },
+            type: "launch-windows-packaged-application"
+          }
+    const historyKey =
+      application.kind === "path"
+        ? createLauncherHistoryKey({
+            path: application.record.path,
+            type: "application"
+          })
+        : createLauncherHistoryKey({
+            appUserModelId: application.record.appUserModelId,
+            type: "windows-packaged-application"
+          })
+
     return {
-      action: {
-        executor: "shell",
-        target: {
-          kind: "application",
-          path: application.path
-        },
-        type: "open-path"
-      },
-      historyKey: createLauncherHistoryKey({
-        path: application.path,
-        type: "application"
-      }),
-      id: application.id,
-      iconDataUrl: await this.getApplicationIconDataUrl(application.path),
+      action,
+      historyKey,
+      id: application.record.id,
+      iconDataUrl: await this.getApplicationIconDataUrl(applicationIdentity),
       kind: "application",
       match,
       score,
       source: "applications",
-      subtitle: application.subtitle,
+      subtitle: application.record.subtitle,
       title
     }
   }
 }
 
 function getCatalogApplicationDisplayName(
-  application: LauncherApplicationRecord | undefined
+  application: LauncherApplicationRecord | WindowsPackagedApplicationRecord | undefined
 ): string | undefined {
   if (!application) {
     return undefined
@@ -1216,6 +1662,16 @@ export async function getApplicationDisplayName(
   applicationPath: string
 ): Promise<string | undefined> {
   return applicationsLauncherSearchProvider.getApplicationDisplayName(applicationPath)
+}
+
+export async function getApplicationSubtitle(
+  applicationIdentity: string
+): Promise<string | undefined> {
+  return applicationsLauncherSearchProvider.getApplicationSubtitle(applicationIdentity)
+}
+
+export function refreshApplicationCatalogIfStale(): Promise<boolean> {
+  return applicationsLauncherSearchProvider.refreshIfStale()
 }
 
 function getApplicationIndexWatchDirectories(): string[] {

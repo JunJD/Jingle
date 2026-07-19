@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
+import path from "node:path"
 import { shell } from "electron"
 import type { ClipboardContext } from "@shared/clipboard"
 import {
@@ -24,11 +25,13 @@ import { readClipboardContext } from "../services/clipboard"
 import { searchLauncher } from "../services/launcher-search"
 import {
   getApplicationDisplayName,
-  getApplicationIconDataUrl
+  getApplicationIconDataUrl,
+  getApplicationSubtitle
 } from "../services/launcher-search/providers/applications"
 import { getLauncherOpenPathHistoryTitle } from "./history-title"
 
 const EMPTY_CLIPBOARD_CONTEXT: ClipboardContext = { kind: "none" }
+const WINDOWS_PACKAGED_APPLICATION_ID_PATTERN = /^[a-z0-9._-]+![a-z0-9._-]+$/i
 
 export interface LauncherRuntime {
   openMainWindow: (threadId: string) => void
@@ -66,6 +69,41 @@ async function openLauncherUrl(url: string): Promise<void> {
   await shell.openExternal(url)
 }
 
+async function launchWindowsPackagedApplication(appUserModelId: string): Promise<void> {
+  if (process.env.JINGLE_BDD === "1") {
+    return
+  }
+
+  if (process.platform !== "win32") {
+    throw new Error("Windows packaged applications can only be launched on Windows")
+  }
+
+  if (!WINDOWS_PACKAGED_APPLICATION_ID_PATTERN.test(appUserModelId)) {
+    throw new Error("Invalid Windows packaged application identifier")
+  }
+
+  const systemRoot = process.env.SystemRoot?.trim()
+  if (!systemRoot) {
+    throw new Error("Missing Windows SystemRoot environment variable")
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(
+      path.join(systemRoot, "explorer.exe"),
+      [`shell:AppsFolder\\${appUserModelId}`],
+      {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true
+      }
+    )
+
+    child.once("error", reject)
+    child.once("spawn", () => resolve())
+    child.unref()
+  })
+}
+
 function getLauncherPathHistoryKey(target: LauncherOpenPathTarget): string {
   if (target.kind === "application") {
     return createLauncherHistoryKey({
@@ -92,6 +130,26 @@ async function buildLauncherHistoryRecord(
   localStartService: LocalStartService
 ): Promise<RecordLauncherHistoryItemInput | null> {
   switch (action.type) {
+    case "launch-windows-packaged-application": {
+      const applicationIdentity = action.target.appUserModelId
+      const [iconDataUrl, title, subtitle] = await Promise.all([
+        getApplicationIconDataUrl(applicationIdentity),
+        getApplicationDisplayName(applicationIdentity),
+        getApplicationSubtitle(applicationIdentity)
+      ])
+
+      return {
+        action,
+        historyKey: createLauncherHistoryKey({
+          appUserModelId: applicationIdentity,
+          type: "windows-packaged-application"
+        }),
+        iconDataUrl,
+        kind: "application",
+        subtitle: subtitle ?? applicationIdentity,
+        title: title ?? applicationIdentity
+      }
+    }
     case "open-path":
       if (!action.localStartItemId) {
         return {
@@ -176,6 +234,9 @@ const launcherActionExecutors: Record<
 > = {
   shell: async (action) => {
     switch (action.type) {
+      case "launch-windows-packaged-application":
+        await launchWindowsPackagedApplication(action.target.appUserModelId)
+        return
       case "open-path":
         await openLauncherPath(action.target.path, action.target.kind)
         return
@@ -194,6 +255,13 @@ async function applyLauncherActionSideEffects(
   localStartService: LocalStartService
 ): Promise<void> {
   switch (action.type) {
+    case "launch-windows-packaged-application": {
+      const historyRecord = await buildLauncherHistoryRecord(action, localStartService)
+      if (historyRecord) {
+        launcherHistoryService.recordItem(historyRecord)
+      }
+      return
+    }
     case "open-path": {
       if (action.localStartItemId) {
         localStartService.recordItemUse(action.localStartItemId)

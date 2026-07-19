@@ -7,6 +7,10 @@ export type LauncherHistoryKeyInput =
       type: "application"
     }
   | {
+      appUserModelId: string
+      type: "windows-packaged-application"
+    }
+  | {
       path: string
       type: "file"
     }
@@ -28,6 +32,8 @@ export function createLauncherHistoryKey(input: LauncherHistoryKeyInput): string
   switch (input.type) {
     case "application":
       return `application:${input.path}`
+    case "windows-packaged-application":
+      return `application:windows-packaged:${input.appUserModelId}`
     case "file":
       return `file:${input.path}`
     case "directory":

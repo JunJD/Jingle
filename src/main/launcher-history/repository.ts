@@ -129,26 +129,35 @@ export class LauncherHistoryRepository {
       return item
     }
 
-    const applicationPath =
+    const applicationIdentity =
       item.action.type === "open-path" && item.action.target.kind === "application"
         ? item.action.target.path
-        : null
+        : item.action.type === "launch-windows-packaged-application"
+          ? item.action.target.appUserModelId
+          : null
 
-    if (!applicationPath) {
+    if (!applicationIdentity) {
       return item
     }
 
-    const shouldRefreshTitle =
-      item.historyKey ===
-      createLauncherHistoryKey({
-        path: applicationPath,
-        type: "application"
-      })
+    const canonicalHistoryKey =
+      item.action.type === "launch-windows-packaged-application"
+        ? createLauncherHistoryKey({
+            appUserModelId: applicationIdentity,
+            type: "windows-packaged-application"
+          })
+        : createLauncherHistoryKey({
+            path: applicationIdentity,
+            type: "application"
+          })
+    const shouldRefreshTitle = item.historyKey === canonicalHistoryKey
     const [iconDataUrl, displayName] = await Promise.all([
       item.iconDataUrl
         ? Promise.resolve(item.iconDataUrl)
-        : getApplicationIconDataUrl(applicationPath),
-      shouldRefreshTitle ? getApplicationDisplayName(applicationPath) : Promise.resolve(undefined)
+        : getApplicationIconDataUrl(applicationIdentity),
+      shouldRefreshTitle
+        ? getApplicationDisplayName(applicationIdentity)
+        : Promise.resolve(undefined)
     ])
 
     if (iconDataUrl === item.iconDataUrl && (!displayName || displayName === item.title)) {

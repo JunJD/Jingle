@@ -27,6 +27,10 @@ export interface LauncherOpenUrlTarget {
   url: string
 }
 
+export interface LauncherWindowsPackagedApplicationTarget {
+  appUserModelId: string
+}
+
 export type LauncherSearchAction =
   | {
       executor: "shell"
@@ -38,6 +42,11 @@ export type LauncherSearchAction =
       executor: "shell"
       target: LauncherOpenUrlTarget
       type: "open-url"
+    }
+  | {
+      executor: "shell"
+      target: LauncherWindowsPackagedApplicationTarget
+      type: "launch-windows-packaged-application"
     }
   | {
       executor: "internal"
