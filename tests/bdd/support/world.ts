@@ -115,7 +115,12 @@ async function launchElectronApp(options: Parameters<typeof electron.launch>[0])
 }
 
 async function closeElectronApp(electronApp: ElectronApplication): Promise<void> {
-  const process = electronApp.process()
+  let process: ReturnType<ElectronApplication["process"]>
+  try {
+    process = electronApp.process()
+  } catch {
+    return
+  }
   let timeout: ReturnType<typeof setTimeout> | null = null
 
   try {
@@ -129,7 +134,11 @@ async function closeElectronApp(electronApp: ElectronApplication): Promise<void>
       })
     ])
   } catch {
-    process.kill()
+    try {
+      process.kill()
+    } catch {
+      // The Electron process may already have terminated and detached from Playwright.
+    }
     await electronApp.waitForEvent("close", { timeout: ELECTRON_CLOSE_TIMEOUT_MS }).catch(() => {})
   } finally {
     if (timeout) {
@@ -186,7 +195,11 @@ export class JingleWorld extends World {
     await prepareDatabase(jingleHome)
 
     this.electronApp = await launchElectronApp({
-      args: ["."],
+      // Keep Windows BDD rendering independent from the host GPU sandbox.
+      args:
+        process.platform === "win32"
+          ? ["--disable-gpu", "--disable-gpu-sandbox", "--disable-software-rasterizer", "."]
+          : ["."],
       cwd: REPO_ROOT,
       env: {
         ...process.env,
