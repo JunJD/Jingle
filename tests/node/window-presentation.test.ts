@@ -11,6 +11,7 @@ import {
   startRendererWindowLoad
 } from "../../src/main/windows/load-renderer-window"
 import {
+  claimWindowActivation,
   installWindowPresentation,
   requestWindowPresentation
 } from "../../src/main/windows/window-presentation"
@@ -62,6 +63,8 @@ class FakeBrowserWindow extends EventEmitter {
   focusCount = 0
   loadFilePromise: Promise<void> = new Promise(() => undefined)
   minimized = false
+  maximized = false
+  maximizeCount = 0
   restoreCount = 0
   showCount = 0
   showInactiveCount = 0
@@ -88,6 +91,10 @@ class FakeBrowserWindow extends EventEmitter {
     return this.minimized
   }
 
+  isMaximized(): boolean {
+    return this.maximized
+  }
+
   isVisible(): boolean {
     return this.visible
   }
@@ -98,6 +105,11 @@ class FakeBrowserWindow extends EventEmitter {
 
   loadURL(): Promise<void> {
     return this.loadFilePromise
+  }
+
+  maximize(): void {
+    this.maximized = true
+    this.maximizeCount += 1
   }
 
   restore(): void {
@@ -169,6 +181,23 @@ describe("window presentation", () => {
     window.emit("ready-to-show")
 
     assert.deepEqual([window.showInactiveCount, window.showCount, window.focusCount], [1, 0, 0])
+  })
+
+  it("downgrades stale activation and defers maximization until the window is focused", () => {
+    const window = new FakeBrowserWindow()
+    installWindowPresentation(asBrowserWindow(window), { maximizeOnActivation: true })
+    requestWindowPresentation(asBrowserWindow(window))
+    claimWindowActivation()
+
+    window.emit("ready-to-show")
+
+    assert.deepEqual(
+      [window.showInactiveCount, window.showCount, window.focusCount, window.maximizeCount],
+      [1, 0, 0, 0]
+    )
+
+    window.emit("focus")
+    assert.equal(window.maximizeCount, 1)
   })
 
   it("restores minimized windows and does not reshow visible windows", () => {

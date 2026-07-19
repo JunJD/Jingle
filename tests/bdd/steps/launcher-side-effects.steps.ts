@@ -76,6 +76,23 @@ When(
   }
 )
 
+When(
+  "我通过 Launcher API 执行 Windows packaged application {string}",
+  async function (this: JingleWorld, appUserModelId: string) {
+    const result = await executeLauncherAction(this, {
+      executor: "shell",
+      target: { appUserModelId },
+      type: "launch-windows-packaged-application"
+    })
+
+    this.setScenarioValue("launcherAction.latestResult", JSON.stringify(result))
+    this.setScenarioValue(
+      "launcherAction.packagedApplicationHistoryKey",
+      `application:windows-packaged:${appUserModelId}`
+    )
+  }
+)
+
 Then("Launcher API 动作执行成功", function (this: JingleWorld) {
   const result = JSON.parse(
     this.getScenarioValue("launcherAction.latestResult")
@@ -88,6 +105,16 @@ Then(
   "launcher history 标题为 {string} 的项 historyKey 应等于当前执行 local start 的 historyKey",
   function (this: JingleWorld, title: string) {
     const expectedHistoryKey = this.getScenarioValue("launcherAction.localStartHistoryKey")
+    const item = getLatestLauncherHistory(this).find((candidate) => candidate.title === title)
+
+    expect(item?.historyKey).toBe(expectedHistoryKey)
+  }
+)
+
+Then(
+  "launcher history 标题为 {string} 的项 historyKey 应等于当前执行 packaged application 的 historyKey",
+  function (this: JingleWorld, title: string) {
+    const expectedHistoryKey = this.getScenarioValue("launcherAction.packagedApplicationHistoryKey")
     const item = getLatestLauncherHistory(this).find((candidate) => candidate.title === title)
 
     expect(item?.historyKey).toBe(expectedHistoryKey)

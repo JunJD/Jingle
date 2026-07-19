@@ -1,7 +1,7 @@
 import { getLauncherViewportHeightForBody, type LauncherShellConfig } from "@shared/launcher"
+import { DURABLE_WINDOW_HEADER_HEIGHT } from "@shared/durable-window"
 
 const AI_PAGE_CONTENT_HEIGHT = 468
-const AI_HEADER_HEIGHT = 48
 export const AI_FOOTER_HEIGHT = 64
 
 export function getAiShellConfig(
@@ -15,7 +15,7 @@ export function getAiShellConfig(
   return {
     ...shellConfig,
     footerHeight,
-    headerHeight: AI_HEADER_HEIGHT
+    headerHeight: DURABLE_WINDOW_HEADER_HEIGHT
   }
 }
 

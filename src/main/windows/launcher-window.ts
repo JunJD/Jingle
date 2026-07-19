@@ -14,6 +14,7 @@ import { attachLauncherWindowDragController } from "./launcher-window-drag-contr
 import type { LauncherShownEvent } from "@shared/launcher-presentation"
 import { diagnosticsLogger } from "../diagnostics/instance"
 import { registerWindowIdentity } from "./window-identity"
+import { claimWindowActivation } from "./window-presentation"
 
 const LAUNCHER_CONTENT_WIDTH = 760
 const LAUNCHER_HORIZONTAL_MARGIN = 24
@@ -255,24 +256,16 @@ export function presentLauncherWindow(launcherWindow: BrowserWindow, presentatio
   }
 
   cancelLauncherPresentation(launcherWindow)
-  if (launcherWindow.isDestroyed() || !launcherWindow.isVisible()) {
-    return
-  }
-
-  if (process.platform === "win32") {
-    launcherWindow.setOpacity(1)
-  }
 }
 
 function beginLauncherPresentation(launcherWindow: BrowserWindow): LauncherShownEvent {
   cancelLauncherPresentation(launcherWindow)
   const presentationId = ++nextLauncherPresentationId
-  const gatePresentation =
+  const awaitPresentationAcknowledgement =
     process.platform === "win32" && launcherWindowsShownOnce.has(launcherWindow)
   let timeout: NodeJS.Timeout | null = null
 
-  if (gatePresentation) {
-    launcherWindow.setOpacity(0)
+  if (awaitPresentationAcknowledgement) {
     timeout = setTimeout(() => {
       const presentation = launcherPresentationStates.get(launcherWindow)
       if (!presentation || presentation.id !== presentationId) {
@@ -322,6 +315,7 @@ function emitLauncherShown(launcherWindow: BrowserWindow, event: LauncherShownEv
 export function showLauncherWindow(launcherWindow: BrowserWindow): void {
   if (launcherWindow.isVisible()) {
     if (!launcherWindow.isFocused()) {
+      claimWindowActivation()
       launcherWindow.focus()
       launcherWindow.moveTop()
     }
@@ -342,8 +336,9 @@ export function showLauncherWindow(launcherWindow: BrowserWindow): void {
     launcherWindow.setAlwaysOnTop(true)
   }
 
+  claimWindowActivation()
   launcherWindow.show()
-  if (process.platform === "darwin") {
+  if (process.platform === "darwin" || process.platform === "win32") {
     launcherWindow.focus()
     launcherWindow.moveTop()
   }
@@ -469,9 +464,6 @@ export function createLauncherWindow(): BrowserWindow {
 
   launcherWindow.on("hide", () => {
     cancelLauncherPresentation(launcherWindow)
-    if (process.platform === "win32" && !launcherWindow.isDestroyed()) {
-      launcherWindow.setOpacity(1)
-    }
     launcherDragController.cancel()
     launcherVisibleOrigins.delete(launcherWindow)
     if (process.platform === "darwin") {

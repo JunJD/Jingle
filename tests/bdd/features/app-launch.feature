@@ -105,6 +105,14 @@ Feature: Jingle 桌面启动
     When 我在 Launcher 首页按下 Escape
     Then Launcher 窗口已隐藏
 
+  Scenario: 关闭最后一个 Main 窗口后保持驻留
+    Given Jingle 桌面应用已启动
+    When 我关闭 Main 窗口
+    Then Jingle 桌面进程仍在运行
+    And Launcher 窗口可用
+    When 我通过应用菜单退出 Jingle
+    Then Jingle 桌面进程已退出
+
   Scenario: Launcher 可以打开设置窗口
     Given Jingle 桌面应用已启动
     When 我从 Launcher 打开设置窗口

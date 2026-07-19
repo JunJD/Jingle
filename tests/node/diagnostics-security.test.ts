@@ -4,6 +4,7 @@ import { createHash } from "node:crypto"
 import {
   chmodSync,
   existsSync,
+  linkSync,
   mkdirSync,
   readFileSync,
   rmSync,
@@ -16,6 +17,7 @@ import { join, resolve } from "node:path"
 import test from "node:test"
 import { DiagnosticsGraphRecorder } from "../../src/main/diagnostics/graph"
 import { APPEND_DIAGNOSTIC_GRAPH_EVENT, DiagnosticsLogger } from "../../src/main/diagnostics/logger"
+import { assertPrivateRegularFileSync } from "../../src/main/diagnostics/private-files"
 import {
   errorFromUnhandledRejection,
   serializeProcessError
@@ -57,6 +59,78 @@ function createTempDir(label: string): string {
 
 function mode(path: string): number {
   return statSync(path).mode & 0o777
+}
+
+interface WindowsAclSnapshot {
+  currentSid: string
+  ownerSid: string
+  protected: boolean
+  rules: Array<{ inherited: boolean; sid: string; type: string }>
+  sddl: string
+}
+
+function readWindowsAcl(path: string): WindowsAclSnapshot {
+  const systemRoot = process.env.SystemRoot
+  assert.ok(systemRoot)
+  const script = String.raw`
+param([Parameter(Mandatory = $true)][string]$targetPath)
+$ErrorActionPreference = 'Stop'
+$acl = Get-Acl -LiteralPath $targetPath
+$identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+$rules = @($acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) | ForEach-Object {
+  [PSCustomObject]@{
+    inherited = $_.IsInherited
+    sid = $_.IdentityReference.Value
+    type = $_.AccessControlType.ToString()
+  }
+})
+[PSCustomObject]@{
+  currentSid = $identity.User.Value
+  ownerSid = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+  protected = $acl.AreAccessRulesProtected
+  rules = $rules
+  sddl = $acl.Sddl
+} | ConvertTo-Json -Compress -Depth 4
+`
+  const result = spawnSync(
+    join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+    ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", `& {${script}}`, path],
+    { encoding: "utf8", windowsHide: true }
+  )
+  assert.equal(result.status, 0, result.stderr)
+  return JSON.parse(result.stdout) as WindowsAclSnapshot
+}
+
+function assertWindowsPrivatePathsInFreshProcess(root: string, logFilePath: string): void {
+  const script = String.raw`
+const { join } = require("node:path")
+const {
+  assertPrivateRegularFileSync,
+  ensurePrivateDescendantDirectorySync,
+  ensurePrivateDirectorySync
+} = require("./src/main/diagnostics/private-files.ts")
+const root = process.env.JINGLE_TEST_PRIVATE_ROOT
+const logFilePath = process.env.JINGLE_TEST_PRIVATE_LOG_FILE
+if (!root || !logFilePath) {
+  throw new Error("Missing Windows private path test environment.")
+}
+ensurePrivateDirectorySync(root)
+ensurePrivateDescendantDirectorySync(root, join(root, "logs"))
+if (!assertPrivateRegularFileSync(logFilePath)) {
+  throw new Error("Diagnostics log file disappeared during cold-cache verification.")
+}
+`
+  const result = spawnSync(process.execPath, ["--import", "tsx", "-e", script], {
+    cwd: resolve("."),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      JINGLE_TEST_PRIVATE_LOG_FILE: logFilePath,
+      JINGLE_TEST_PRIVATE_ROOT: root
+    },
+    windowsHide: true
+  })
+  assert.equal(result.status, 0, result.stderr)
 }
 
 function assertSecretsAbsent(value: string): void {
@@ -194,6 +268,81 @@ test(
         false,
         "the CAS writer must not follow the prefix symlink"
       )
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+      rmSync(external, { force: true, recursive: true })
+    }
+  }
+)
+
+test(
+  "Windows diagnostics replace inherited access with a private ACL",
+  { skip: process.platform !== "win32" },
+  async () => {
+    const root = createTempDir("windows-private-acl")
+    try {
+      const grant = spawnSync("icacls.exe", [root, "/grant", "*S-1-1-0:(OI)(CI)F", "/Q"], {
+        encoding: "utf8",
+        windowsHide: true
+      })
+      assert.equal(grant.status, 0, grant.stderr)
+
+      const logger = new DiagnosticsLogger({ logDir: join(root, "logs"), rootDir: root })
+      logger.info("private Windows ACL")
+      await logger.flush()
+
+      const securedPaths = [root, join(root, "logs"), logger.getLogFilePath()]
+      const initialAcls = new Map(
+        securedPaths.map((securedPath) => [securedPath, readWindowsAcl(securedPath)])
+      )
+      assertWindowsPrivatePathsInFreshProcess(root, logger.getLogFilePath())
+      assertWindowsPrivatePathsInFreshProcess(root, logger.getLogFilePath())
+
+      for (const securedPath of securedPaths) {
+        const acl = readWindowsAcl(securedPath)
+        const initialAcl = initialAcls.get(securedPath)
+        assert.ok(initialAcl)
+        const allowedSids = new Set([acl.currentSid, "S-1-5-18", "S-1-5-32-544"])
+        assert.equal(acl.protected, true)
+        assert.equal(acl.ownerSid, acl.currentSid)
+        assert.equal(acl.sddl, initialAcl.sddl)
+        assert.equal(
+          acl.rules.some((rule) => rule.type === "Allow" && !allowedSids.has(rule.sid)),
+          false
+        )
+        assert.equal(
+          acl.rules.some((rule) => rule.inherited),
+          false
+        )
+      }
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  }
+)
+
+test(
+  "Windows diagnostics reject junction directories and multiply linked files",
+  { skip: process.platform !== "win32" },
+  () => {
+    const root = createTempDir("windows-private-links")
+    const external = createTempDir("windows-private-links-external")
+    try {
+      const linkedLogs = join(root, "linked-logs")
+      symlinkSync(external, linkedLogs, "junction")
+      assert.throws(
+        () => new DiagnosticsLogger({ logDir: linkedLogs, rootDir: root }),
+        /private regular directory/
+      )
+
+      const logDir = join(root, "logs")
+      mkdirSync(logDir)
+      const externalFile = join(external, "external.log")
+      const linkedFile = join(logDir, "jingle.log")
+      writeFileSync(externalFile, "external")
+      linkSync(externalFile, linkedFile)
+      assert.throws(() => assertPrivateRegularFileSync(linkedFile), /private regular file/)
+      assert.equal(readFileSync(externalFile, "utf8"), "external")
     } finally {
       rmSync(root, { force: true, recursive: true })
       rmSync(external, { force: true, recursive: true })

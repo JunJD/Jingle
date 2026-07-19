@@ -261,6 +261,22 @@ When("我显示 Launcher 窗口", async function (this: JingleWorld) {
   await this.getPageByKind("launcher")
 })
 
+When("我关闭 Main 窗口", async function (this: JingleWorld) {
+  await this.closeWindow("main")
+})
+
+Then("Jingle 桌面进程仍在运行", function (this: JingleWorld) {
+  expect(this.isAppRunning()).toBe(true)
+})
+
+When("我通过应用菜单退出 Jingle", async function (this: JingleWorld) {
+  await this.quitFromApplicationMenu()
+})
+
+Then("Jingle 桌面进程已退出", function (this: JingleWorld) {
+  expect(this.isAppRunning()).toBe(false)
+})
+
 When("我在 Launcher 中搜索 {string}", async function (this: JingleWorld, query: string) {
   const page = await this.getPageByKind("launcher")
   const input = getLauncherInput(page, "home")

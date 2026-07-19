@@ -13,6 +13,7 @@ import { registerNativeExtensionAssetProtocol } from "./native-extensions/asset-
 import { NATIVE_EXTENSION_ASSET_PROTOCOL } from "./native-extensions/assets"
 import { startNativeMinimalIsland, stopNativeMinimalIsland } from "./services/native-minimal-island"
 import { stopNativeSelectionCapture } from "./services/native-selection-capture"
+import { refreshLauncherApplicationCatalog } from "./services/launcher-search"
 import { installProcessDiagnostics } from "./diagnostics/electron-events"
 import {
   diagnosticsGraph,
@@ -169,7 +170,19 @@ function getLauncherWindow(): BrowserWindow | null {
 }
 
 function showLauncher(): void {
-  showLauncherWindow(getOrCreateLauncherWindow())
+  const window = getOrCreateLauncherWindow()
+  showLauncherWindow(window)
+  void refreshLauncherApplicationCatalog()
+    .then((changed) => {
+      if (changed && !window.isDestroyed()) {
+        window.webContents.send("launcher:search-index-updated")
+      }
+    })
+    .catch((error: unknown) => {
+      console.warn("[LauncherSearch] Application catalog refresh failed:", {
+        error: error instanceof Error ? error.message : String(error)
+      })
+    })
 }
 
 function toggleLauncher(): void {
@@ -179,7 +192,7 @@ function toggleLauncher(): void {
     return
   }
 
-  showLauncherWindow(launcherWindow)
+  showLauncher()
 }
 
 function openSettingsWindow(payload?: SettingsWindowNavigationPayload): void {
@@ -436,5 +449,5 @@ app.on("before-quit", (event) => {
 })
 
 app.on("window-all-closed", () => {
-  // DurableWindowLifecycleService owns platform exit semantics.
+  // Durable window lifecycle owns the platform-specific residency policy.
 })

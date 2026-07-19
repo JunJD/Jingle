@@ -115,7 +115,12 @@ async function launchElectronApp(options: Parameters<typeof electron.launch>[0])
 }
 
 async function closeElectronApp(electronApp: ElectronApplication): Promise<void> {
-  const process = electronApp.process()
+  let process: ReturnType<ElectronApplication["process"]>
+  try {
+    process = electronApp.process()
+  } catch {
+    return
+  }
   let timeout: ReturnType<typeof setTimeout> | null = null
 
   try {
@@ -129,7 +134,11 @@ async function closeElectronApp(electronApp: ElectronApplication): Promise<void>
       })
     ])
   } catch {
-    process.kill()
+    try {
+      process.kill()
+    } catch {
+      // The Electron process may already have terminated and detached from Playwright.
+    }
     await electronApp.waitForEvent("close", { timeout: ELECTRON_CLOSE_TIMEOUT_MS }).catch(() => {})
   } finally {
     if (timeout) {
@@ -186,7 +195,11 @@ export class JingleWorld extends World {
     await prepareDatabase(jingleHome)
 
     this.electronApp = await launchElectronApp({
-      args: ["."],
+      // Keep Windows BDD rendering independent from the host GPU sandbox.
+      args:
+        process.platform === "win32"
+          ? ["--disable-gpu", "--disable-gpu-sandbox", "--disable-software-rasterizer", "."]
+          : ["."],
       cwd: REPO_ROOT,
       env: {
         ...process.env,
@@ -259,6 +272,68 @@ export class JingleWorld extends World {
     const browserWindow = await this.electronApp.browserWindow(page)
 
     return browserWindow.evaluate((window) => window.isVisible())
+  }
+
+  async closeWindow(windowKind: BddWindowKind): Promise<void> {
+    if (!this.electronApp) {
+      throw new Error("BDD Electron app is not available. Launch the app before closing a window.")
+    }
+
+    const page = await resolveWindowByKind(this.electronApp, windowKind)
+    const browserWindow = await this.electronApp.browserWindow(page)
+    const pageClosed = page.waitForEvent("close")
+    await browserWindow.evaluate((window) => window.close())
+    await pageClosed
+  }
+
+  isAppRunning(): boolean {
+    return Boolean(this.electronApp && this.electronApp.process().exitCode === null)
+  }
+
+  async quitFromApplicationMenu(): Promise<void> {
+    if (!this.electronApp) {
+      throw new Error("BDD Electron app is not available. Launch the app before quitting.")
+    }
+
+    const electronApp = this.electronApp
+    const childProcess = electronApp.process()
+    const appClosed = electronApp.waitForEvent("close", { timeout: 15_000 })
+    const processExited = new Promise<{
+      code: number | null
+      signal: NodeJS.Signals | null
+    }>((resolve) => {
+      if (childProcess.exitCode !== null || childProcess.signalCode !== null) {
+        resolve({ code: childProcess.exitCode, signal: childProcess.signalCode })
+        return
+      }
+      childProcess.once("exit", (code, signal) => resolve({ code, signal }))
+    })
+    const quitDispatched = await electronApp.evaluate(({ Menu }) => {
+      const queue = [...(Menu.getApplicationMenu()?.items ?? [])]
+      while (queue.length > 0) {
+        const item = queue.shift()
+        if (item?.role === "quit" || item?.label === "Quit") {
+          setImmediate(() => {
+            item.click?.(undefined as never, undefined as never, undefined as never)
+          })
+          return true
+        }
+        if (item?.submenu) queue.push(...item.submenu.items)
+      }
+      return false
+    })
+    if (!quitDispatched) {
+      throw new Error("Quit application menu item is unavailable.")
+    }
+
+    const [, exit] = await Promise.all([appClosed, processExited])
+    if (exit.code !== 0 || exit.signal !== null) {
+      throw new Error(
+        `Jingle did not quit cleanly: exitCode=${String(exit.code)}, signal=${String(exit.signal)}.`
+      )
+    }
+    this.electronApp = null
+    this.page = null
   }
 
   async getApplicationMenuAccelerator(itemLabel: string): Promise<string | null> {

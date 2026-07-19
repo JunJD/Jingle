@@ -1,6 +1,7 @@
 import type { LauncherSearchRequest, LauncherSearchResponse } from "@shared/launcher-search"
 import {
   applicationsLauncherSearchProvider,
+  refreshApplicationCatalogIfStale,
   startApplicationIndexRefreshWatcher
 } from "./providers/applications"
 import { browserHistoryLauncherSearchProvider } from "./providers/browser-history"
@@ -84,14 +85,26 @@ export async function warmLauncherSearchProviders(): Promise<void> {
   )
 }
 
-export function invalidateLauncherSearch(): void {
+function invalidateLauncherSearchResponseCache(): void {
   searchCacheGeneration += 1
   searchResponseCache.clear()
   inflightSearches.clear()
+}
+
+export function invalidateLauncherSearch(): void {
+  invalidateLauncherSearchResponseCache()
 
   for (const provider of providers) {
     provider.invalidate?.()
   }
+}
+
+export async function refreshLauncherApplicationCatalog(): Promise<boolean> {
+  const changed = await refreshApplicationCatalogIfStale()
+  if (changed) {
+    invalidateLauncherSearchResponseCache()
+  }
+  return changed
 }
 
 export function startLauncherSearchIndexRefresh(

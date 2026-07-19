@@ -15,3 +15,11 @@
     那么 local start 标题为 "BDD Launcher Local Start" 的项 useCount 应为 1
     而且 launcher history 第 1 项标题应为 "BDD Launcher Local Start"
     而且 launcher history 标题为 "BDD Launcher Local Start" 的项 historyKey 应等于当前执行 local start 的 historyKey
+
+  场景: Launcher 执行 Windows packaged application 会写入可重放的 history
+    假如 Jingle 桌面应用已启动
+    当 我通过 Launcher API 执行 Windows packaged application "Jingle.BDD_family!App"
+    那么 Launcher API 动作执行成功
+    当 我读取 launcher history 列表
+    那么 launcher history 第 1 项标题应为 "Jingle.BDD_family!App"
+    而且 launcher history 标题为 "Jingle.BDD_family!App" 的项 historyKey 应等于当前执行 packaged application 的 historyKey
