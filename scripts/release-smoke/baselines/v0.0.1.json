@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "tag": "v0.0.1",
+  "tagObject": "01fdb3ab2b1100e11c00925d4a72ab058d4fb746",
+  "sourceCommit": "12bc226bcc506dc412f114cee68f7d1692364962",
+  "prismaVersion": "6.18.0",
+  "assets": {
+    "darwin-arm64": {
+      "name": "Jingle-0.0.1-mac-arm64.dmg",
+      "sha256": "add1bf0f06f4c1097d8ef3de6fb9da94f89e0cbc2e7f75b7d0409cb8f0c23d16",
+      "size": 137292725
+    },
+    "linux-x64": {
+      "name": "Jingle-0.0.1-linux-x86_64.AppImage",
+      "sha256": "fddce6d868282257c1e0ecc1b98cfbed9e3bc8b7918a6bf93d6f76a464e976a3",
+      "size": 141583317
+    },
+    "win32-x64": {
+      "name": "Jingle-0.0.1-win-x64.exe",
+      "sha256": "842f33ea4975290799a3544d605acfec5a08146bd15a87077184d0ae4724fa9d",
+      "size": 116798109
+    }
+  },
+  "migrations": [
+    {
+      "name": "20260412200000_baseline",
+      "sha256": "5000a2be4fc6d276cc56508c6498a75e4c1b984c2b5dec24738efc9928110524"
+    },
+    {
+      "name": "20260418180000_add_trigram_message_search",
+      "sha256": "0b49a901e56a959359c7b3fc0d20966b9bc3863067d1c74509d29eb0fe38c714"
+    },
+    {
+      "name": "20260419032116",
+      "sha256": "8bc026d12d8fd5f6e8c48063ba8da3cd89f9c8a756fd5b601f5fb6f9ecc701f0"
+    },
+    {
+      "name": "20260420000000_add_checkpoint_run_id",
+      "sha256": "39ed94294cb65c829c05154e19e3f39e71aec1b94e164451c7f2db2a719f1135"
+    },
+    {
+      "name": "20260523000000_add_agent_memory",
+      "sha256": "2a404cf78cbf872540e6d84c689f0850f7873c0d3d8292f4b0d4955bcc05ef74"
+    },
+    {
+      "name": "20260606000000_add_message_projection_table",
+      "sha256": "a9df881663e1a623657ed6c91860f9712d8b364d41391924116a03c718bc13aa"
+    },
+    {
+      "name": "20260608000000_add_checkpoint_blobs",
+      "sha256": "04789eb0be2930a4b45bcf7c0db76f72916a1ce88732020469431207593d9b17"
+    },
+    {
+      "name": "20260613000000_add_agent_event_log_trace",
+      "sha256": "43bde722db83f39a4b4c3b68108e8674bc22d6b14036838e10b9831e1a0296e4"
+    },
+    {
+      "name": "20260619000000_add_thread_workspace_bindings",
+      "sha256": "1d906bc9cb30f94e5b5ece78e2a6e39aa76ea0c976750f1669effdc0ca982d5c"
+    },
+    {
+      "name": "20260620000000_add_thread_archived_at",
+      "sha256": "3d9dd1538fa952e077d60035e1d7a36cec5bec47c0ae976da40f05bba88ec91b"
+    },
+    {
+      "name": "20260621000000_message_state_checkpoint_redesign",
+      "sha256": "7a1e63b263017387bcfbcf1905aced6a7b12e789c17f5782c664205b7e0bc74a"
+    },
+    {
+      "name": "20260621030000_add_thread_digests",
+      "sha256": "fa07a8f7abf256d45c84eeeaea81f9601b124e53348b9b5ae733d545f81385a5"
+    },
+    {
+      "name": "20260705000000_add_thread_workflow_classification",
+      "sha256": "7270f1b1e08d37ef758cead0d94c8fb173e0a67113e772ab4127fc7282223218"
+    }
+  ]
+}
