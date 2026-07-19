@@ -391,7 +391,6 @@ if (hasSingleInstanceLock) {
       isDev,
       openIpcNetworkWindow,
       openSettingsWindow,
-      quitApplication: () => app.quit(),
       showLauncherWindow: showLauncher,
       showMainWindow: showMain,
       toggleLauncherWindow: toggleLauncher
@@ -449,5 +448,5 @@ app.on("before-quit", (event) => {
 })
 
 app.on("window-all-closed", () => {
-  // DurableWindowLifecycleService owns platform exit semantics.
+  // Keep the desktop process resident; explicit Quit owns shutdown.
 })

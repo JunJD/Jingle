@@ -261,6 +261,68 @@ export class JingleWorld extends World {
     return browserWindow.evaluate((window) => window.isVisible())
   }
 
+  async closeWindow(windowKind: BddWindowKind): Promise<void> {
+    if (!this.electronApp) {
+      throw new Error("BDD Electron app is not available. Launch the app before closing a window.")
+    }
+
+    const page = await resolveWindowByKind(this.electronApp, windowKind)
+    const browserWindow = await this.electronApp.browserWindow(page)
+    const pageClosed = page.waitForEvent("close")
+    await browserWindow.evaluate((window) => window.close())
+    await pageClosed
+  }
+
+  isAppRunning(): boolean {
+    return Boolean(this.electronApp && this.electronApp.process().exitCode === null)
+  }
+
+  async quitFromApplicationMenu(): Promise<void> {
+    if (!this.electronApp) {
+      throw new Error("BDD Electron app is not available. Launch the app before quitting.")
+    }
+
+    const electronApp = this.electronApp
+    const childProcess = electronApp.process()
+    const appClosed = electronApp.waitForEvent("close", { timeout: 15_000 })
+    const processExited = new Promise<{
+      code: number | null
+      signal: NodeJS.Signals | null
+    }>((resolve) => {
+      if (childProcess.exitCode !== null || childProcess.signalCode !== null) {
+        resolve({ code: childProcess.exitCode, signal: childProcess.signalCode })
+        return
+      }
+      childProcess.once("exit", (code, signal) => resolve({ code, signal }))
+    })
+    const quitDispatched = await electronApp.evaluate(({ Menu }) => {
+      const queue = [...(Menu.getApplicationMenu()?.items ?? [])]
+      while (queue.length > 0) {
+        const item = queue.shift()
+        if (item?.role === "quit" || item?.label === "Quit") {
+          setImmediate(() => {
+            item.click?.(undefined as never, undefined as never, undefined as never)
+          })
+          return true
+        }
+        if (item?.submenu) queue.push(...item.submenu.items)
+      }
+      return false
+    })
+    if (!quitDispatched) {
+      throw new Error("Quit application menu item is unavailable.")
+    }
+
+    const [, exit] = await Promise.all([appClosed, processExited])
+    if (exit.code !== 0 || exit.signal !== null) {
+      throw new Error(
+        `Jingle did not quit cleanly: exitCode=${String(exit.code)}, signal=${String(exit.signal)}.`
+      )
+    }
+    this.electronApp = null
+    this.page = null
+  }
+
   async getApplicationMenuAccelerator(itemLabel: string): Promise<string | null> {
     if (!this.electronApp) {
       throw new Error("BDD Electron app is not available. Launch the app before using page steps.")

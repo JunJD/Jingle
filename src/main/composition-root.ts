@@ -117,7 +117,6 @@ export interface MainCompositionContext {
   isDev: boolean
   openIpcNetworkWindow: () => void
   openSettingsWindow: (payload?: SettingsWindowNavigationPayload) => void
-  quitApplication: () => void
   showLauncherWindow: () => void
   showMainWindow: () => void
   toggleLauncherWindow: () => void
@@ -296,8 +295,7 @@ export function createMainCompositionRoot(
   registerAgentModule(childContainer)
   registerMainWindowModule(childContainer, {
     createMainWindow: context.createMainWindow,
-    createThreadWindow: context.createThreadWindow,
-    quitApplication: context.quitApplication
+    createThreadWindow: context.createThreadWindow
   })
   registerArtifactsModule(childContainer)
   registerContentAnnotationsModule(childContainer)
