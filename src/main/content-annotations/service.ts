@@ -99,6 +99,31 @@ function diffRangeText(
   return selected.map((line) => line.text).join("\n")
 }
 
+function tableCellText(
+  part: Extract<AssistantContentPart, { kind: "table" }>,
+  anchor: Extract<ContentAnchor, { kind: "table-cell" }>
+): string | null {
+  const column = part.payload.columns.find((candidate) => candidate.id === anchor.columnId)
+  if (!column) return null
+  if (anchor.rowId === "header") return column.label
+  return (
+    part.payload.rows.find((candidate) => candidate.id === anchor.rowId)?.cells[column.id] ?? null
+  )
+}
+
+function revisionStableAnchorQuote(
+  part: AssistantContentPart,
+  anchor: ContentAnchor
+): string | null {
+  const quote =
+    anchor.kind === "whole-card"
+      ? wholeCardText(part).trim()
+      : part.kind === "table" && anchor.kind === "table-cell"
+        ? tableCellText(part, anchor)
+        : null
+  return quote ? quote : null
+}
+
 function resolveCanonicalAnchor(input: {
   anchor: ContentAnchor
   cardSlot: string
@@ -131,11 +156,7 @@ function resolveCanonicalAnchor(input: {
     return owned && diffRangeText(part.payload.patch, anchor)?.includes(quote) ? anchor : null
   }
   if (part.kind === "table" && anchor.kind === "table-cell") {
-    const column = part.payload.columns.find((candidate) => candidate.id === anchor.columnId)
-    if (!column) return null
-    if (anchor.rowId === "header") return quote === column.label ? anchor : null
-    const row = part.payload.rows.find((candidate) => candidate.id === anchor.rowId)
-    return row?.cells[column.id] === quote ? anchor : null
+    return tableCellText(part, anchor) === quote ? anchor : null
   }
   return null
 }
@@ -270,13 +291,16 @@ export class ContentAnnotationsService {
         this.throwConflict(input.id)
       }
       let repairAnchor = input.repair?.anchor
+      let repairQuote: string | undefined
       if (input.repair) {
+        let nextRepairQuote = input.repair.quote
         if (
           input.repair.expected.cardRevision !== current.cardRevision ||
           input.repair.expected.contextHash !== current.contextHash
         ) {
           this.throwConflict(input.id)
         }
+        if (input.repair.quote !== current.quote) this.throwConflict(input.id)
         const source = readContentCardIdSource(current.cardId)
         if (!source || source.sourceType !== "message" || !source.slot.startsWith("part:")) {
           throw new JingleIpcError({
@@ -295,7 +319,6 @@ export class ContentAnnotationsService {
           const validOrphan =
             input.repair.cardRevision === (currentPart?.revision ?? current.cardRevision) &&
             (!currentPart || currentPart.kind === source.kind) &&
-            input.repair.quote === current.quote &&
             (currentPart !== undefined || input.repair.contextHash === current.contextHash) &&
             JSON.stringify(input.repair.anchor) === current.anchorJson
           if (!validOrphan) {
@@ -315,12 +338,25 @@ export class ContentAnnotationsService {
             message: "Annotation repair does not match the durable content part."
           })
         } else if (input.repair.anchorResolution === "resolved") {
+          const structuralQuote =
+            input.repair.cardRevision !== current.cardRevision
+              ? revisionStableAnchorQuote(currentPart, input.repair.anchor)
+              : null
+          if (structuralQuote !== null) {
+            if (JSON.stringify(input.repair.anchor) !== current.anchorJson) {
+              throw new JingleIpcError({
+                code: "FAILED_PRECONDITION",
+                message: "Revision-stable annotation repair cannot change its structural anchor."
+              })
+            }
+            nextRepairQuote = structuralQuote
+          }
           repairAnchor =
             resolveCanonicalAnchor({
               anchor: input.repair.anchor,
               cardSlot: source.slot,
               part: currentPart,
-              quote: input.repair.quote
+              quote: nextRepairQuote
             }) ?? undefined
           if (!repairAnchor) {
             throw new JingleIpcError({
@@ -329,6 +365,7 @@ export class ContentAnnotationsService {
             })
           }
         }
+        repairQuote = nextRepairQuote
       }
       const result = await transaction.contentAnnotation.updateMany({
         data: {
@@ -340,7 +377,7 @@ export class ContentAnnotationsService {
                 anchorResolution: input.repair.anchorResolution,
                 cardRevision: input.repair.cardRevision,
                 contextHash: input.repair.contextHash,
-                quote: input.repair.quote
+                quote: repairQuote
               }
             : {}),
           revision: { increment: 1 },

@@ -686,3 +686,235 @@ test("standard diff repair persists only an exact canonical side range", async (
   assert.deepEqual(repairedDeletion.anchor, deletionCandidate.anchor)
   assert.deepEqual(repairedAddition.anchor, additionCandidate.anchor)
 })
+
+test("whole-card revision repair derives the current durable quote", async () => {
+  const service = new ContentAnnotationsService()
+  const now = BigInt(Date.now())
+  const runId = "run-annotation-whole-card-repair"
+  const messageId = "message-annotation-whole-card-repair"
+  await createRun(runId, "thread-annotations", { status: "success" })
+  await getPrismaClient().message.create({
+    data: {
+      content: JSON.stringify("Before whole card"),
+      createdAt: now,
+      kind: "assistant",
+      messageId,
+      rawHash: "hash-whole-card-before",
+      rawMessage: "Before whole card",
+      role: "assistant",
+      runId,
+      searchText: "Before whole card",
+      seq: 5,
+      threadId: "thread-annotations",
+      updatedAt: now
+    }
+  })
+  await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
+  const initialProjection = await readAssistantContentPartsProjection({
+    messageId,
+    threadId: "thread-annotations"
+  })
+  assert.ok(initialProjection)
+  const initialPart = initialProjection.parts[0]!
+  const identitySource = {
+    kind: initialPart.kind,
+    slot: `part:${initialPart.id}`,
+    sourceId: messageId,
+    sourceType: "message" as const
+  }
+  const created = await service.create({
+    body: "Track the whole card.",
+    id: "annotation-whole-card-repair",
+    intent: "comment",
+    selection: {
+      anchor: { kind: "whole-card" },
+      anchorResolution: "resolved",
+      card: {
+        ...identitySource,
+        cardId: createContentCardId(identitySource),
+        revision: initialPart.revision,
+        threadId: "thread-annotations"
+      },
+      contextHash: `revision:${initialPart.revision}`,
+      quote: "Before whole card"
+    }
+  })
+
+  await getPrismaClient().message.update({
+    data: {
+      content: JSON.stringify("After whole card"),
+      rawHash: "hash-whole-card-after",
+      rawMessage: "After whole card",
+      searchText: "After whole card",
+      updatedAt: now + 1n
+    },
+    where: { threadId_messageId: { messageId, threadId: "thread-annotations" } }
+  })
+  await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
+  const currentProjection = await readAssistantContentPartsProjection({
+    messageId,
+    threadId: "thread-annotations"
+  })
+  assert.ok(currentProjection)
+  const currentPart = currentProjection.parts[0]!
+  assert.equal(currentPart.id, initialPart.id)
+  assert.notEqual(currentPart.revision, initialPart.revision)
+
+  await assert.rejects(
+    service.update({
+      expectedRevision: created.revision,
+      id: created.id,
+      repair: {
+        anchor: created.anchor,
+        anchorResolution: "resolved",
+        cardRevision: currentPart.revision,
+        contextHash: `revision:${currentPart.revision}`,
+        expected: { cardRevision: created.cardRevision, contextHash: created.contextHash },
+        quote: "Retargeted quote"
+      }
+    }),
+    (error: Error & { code?: string }) => error.code === "CONFLICT"
+  )
+
+  const repaired = await service.update({
+    expectedRevision: created.revision,
+    id: created.id,
+    repair: {
+      anchor: created.anchor,
+      anchorResolution: "resolved",
+      cardRevision: currentPart.revision,
+      contextHash: `revision:${currentPart.revision}`,
+      expected: { cardRevision: created.cardRevision, contextHash: created.contextHash },
+      quote: created.quote
+    }
+  })
+  assert.deepEqual(repaired.anchor, created.anchor)
+  assert.equal(repaired.anchorResolution, "resolved")
+  assert.equal(repaired.cardRevision, currentPart.revision)
+  assert.equal(repaired.quote, "After whole card")
+})
+
+test("table-cell revision repair keeps its stable marker and derives the current quote", async () => {
+  const service = new ContentAnnotationsService()
+  const now = BigInt(Date.now())
+  const runId = "run-annotation-table-cell-repair"
+  const messageId = "message-annotation-table-cell-repair"
+  const initialContent = ["| Item | Value |", "| --- | --- |", "| target | Before cell |"].join(
+    "\n"
+  )
+  await createRun(runId, "thread-annotations", { status: "success" })
+  await getPrismaClient().message.create({
+    data: {
+      content: JSON.stringify(initialContent),
+      createdAt: now,
+      kind: "assistant",
+      messageId,
+      rawHash: "hash-table-cell-before",
+      rawMessage: initialContent,
+      role: "assistant",
+      runId,
+      searchText: initialContent,
+      seq: 6,
+      threadId: "thread-annotations",
+      updatedAt: now
+    }
+  })
+  await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
+  const initialProjection = await readAssistantContentPartsProjection({
+    messageId,
+    threadId: "thread-annotations"
+  })
+  assert.ok(initialProjection)
+  const initialPart = initialProjection.parts.find((part) => part.kind === "table")
+  assert.ok(initialPart)
+  const row = initialPart.payload.rows[0]
+  const itemColumn = initialPart.payload.columns[0]
+  const valueColumn = initialPart.payload.columns[1]
+  assert.ok(row)
+  assert.ok(itemColumn)
+  assert.ok(valueColumn)
+  assert.equal(row.cells[valueColumn.id], "Before cell")
+  const identitySource = {
+    kind: initialPart.kind,
+    slot: `part:${initialPart.id}`,
+    sourceId: messageId,
+    sourceType: "message" as const
+  }
+  const created = await service.create({
+    body: "Track this table cell.",
+    id: "annotation-table-cell-repair",
+    intent: "comment",
+    selection: {
+      anchor: { columnId: valueColumn.id, kind: "table-cell", rowId: row.id },
+      anchorResolution: "resolved",
+      card: {
+        ...identitySource,
+        cardId: createContentCardId(identitySource),
+        revision: initialPart.revision,
+        threadId: "thread-annotations"
+      },
+      contextHash: `revision:${initialPart.revision}`,
+      quote: "Before cell"
+    }
+  })
+
+  const currentRevision = `sha256:${"a".repeat(64)}`
+  await getPrismaClient().assistantContentPart.update({
+    data: {
+      payloadJson: JSON.stringify({
+        ...initialPart.payload,
+        rows: initialPart.payload.rows.map((candidate) =>
+          candidate.id === row.id
+            ? { ...candidate, cells: { ...candidate.cells, [valueColumn.id]: "After cell" } }
+            : candidate
+        )
+      }),
+      revision: currentRevision
+    },
+    where: { partId: initialPart.id }
+  })
+  const currentProjection = await readAssistantContentPartsProjection({
+    messageId,
+    threadId: "thread-annotations"
+  })
+  assert.ok(currentProjection)
+  const currentPart = currentProjection.parts.find((part) => part.kind === "table")
+  assert.ok(currentPart)
+  assert.equal(currentPart.id, initialPart.id)
+  assert.equal(currentPart.revision, currentRevision)
+  const currentRow = currentPart.payload.rows.find((candidate) => candidate.id === row.id)
+  assert.equal(currentRow?.cells[valueColumn.id], "After cell")
+
+  await assert.rejects(
+    service.update({
+      expectedRevision: created.revision,
+      id: created.id,
+      repair: {
+        anchor: { columnId: itemColumn.id, kind: "table-cell", rowId: row.id },
+        anchorResolution: "resolved",
+        cardRevision: currentPart.revision,
+        contextHash: `revision:${currentPart.revision}`,
+        expected: { cardRevision: created.cardRevision, contextHash: created.contextHash },
+        quote: created.quote
+      }
+    }),
+    (error: Error & { code?: string }) => error.code === "FAILED_PRECONDITION"
+  )
+
+  const repaired = await service.update({
+    expectedRevision: created.revision,
+    id: created.id,
+    repair: {
+      anchor: created.anchor,
+      anchorResolution: "resolved",
+      cardRevision: currentPart.revision,
+      contextHash: `revision:${currentPart.revision}`,
+      expected: { cardRevision: created.cardRevision, contextHash: created.contextHash },
+      quote: created.quote
+    }
+  })
+  assert.deepEqual(repaired.anchor, created.anchor)
+  assert.equal(repaired.anchorResolution, "resolved")
+  assert.equal(repaired.cardRevision, currentPart.revision)
+  assert.equal(repaired.quote, "After cell")
+})
