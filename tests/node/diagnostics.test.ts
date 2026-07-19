@@ -165,11 +165,42 @@ test("process diagnostics normalize fatal main process errors", () => {
   )
 
   assert.equal(
-    formatFatalMainProcessError(error, "/tmp/jingle.log"),
+    formatFatalMainProcessError(error, "/tmp/jingle.log", { kind: "written" }),
     [
       "Object has been destroyed",
       "",
       "Diagnostics were written to: /tmp/jingle.log",
+      "",
+      "Jingle will quit now. Please restart the app."
+    ].join("\n")
+  )
+
+  assert.equal(
+    formatFatalMainProcessError(error, "/tmp/jingle.log", { kind: "partial" }),
+    [
+      "Object has been destroyed",
+      "",
+      "Some diagnostics were written to: /tmp/jingle.log",
+      "",
+      "Jingle will quit now. Please restart the app."
+    ].join("\n")
+  )
+  assert.equal(
+    formatFatalMainProcessError(error, "/tmp/jingle.log", { kind: "failed" }),
+    [
+      "Object has been destroyed",
+      "",
+      "Diagnostics could not be confirmed as written before Jingle quit.",
+      "",
+      "Jingle will quit now. Please restart the app."
+    ].join("\n")
+  )
+  assert.equal(
+    formatFatalMainProcessError(error, "/tmp/jingle.log", { kind: "timed_out" }),
+    [
+      "Object has been destroyed",
+      "",
+      "Diagnostics did not finish writing before Jingle quit.",
       "",
       "Jingle will quit now. Please restart the app."
     ].join("\n")

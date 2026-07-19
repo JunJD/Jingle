@@ -6,7 +6,10 @@ import type {
 import {
   captureElectronFailure,
   createFatalDiagnosticSingleFlight,
-  exitAfterFatalErrorPresentation
+  exitAfterFatalErrorPresentation,
+  settleFatalDiagnosticWrites,
+  waitForFatalDiagnosticWrite,
+  type FatalDiagnosticWriteOutcome
 } from "./electron-failure"
 import { diagnosticsGraph, diagnosticsLogger } from "./instance"
 import {
@@ -22,25 +25,11 @@ interface ProcessDiagnosticsOptions {
 
 const FATAL_DIAGNOSTICS_TIMEOUT_MS = 1_500
 
-async function waitForFatalDiagnostic(write: Promise<void>): Promise<void> {
-  let timeout: NodeJS.Timeout | undefined
-  await Promise.race([
-    write.catch(() => undefined),
-    new Promise<void>((resolve) => {
-      timeout = setTimeout(resolve, FATAL_DIAGNOSTICS_TIMEOUT_MS)
-      timeout.unref()
-    })
-  ])
-  if (timeout) {
-    clearTimeout(timeout)
-  }
-}
-
 function recordFatalMainProcessError(
   message: string,
   error: unknown,
   origin: string
-): Promise<void> {
+): Promise<FatalDiagnosticWriteOutcome> {
   captureElectronFailure(diagnosticsGraph, {
     error,
     kind: "main-process-fatal",
@@ -54,19 +43,26 @@ function recordFatalMainProcessError(
     recoverable: false,
     stateImpact: "process_terminating"
   })
-  return Promise.allSettled([legacyWrite, diagnosticsGraph.flush()]).then(() => undefined)
+  return settleFatalDiagnosticWrites([legacyWrite, diagnosticsGraph.flush()])
 }
 
 async function quitAfterFatalMainProcessError(
   error: unknown,
-  diagnosticWrite: Promise<void>
+  diagnosticWrite: Promise<FatalDiagnosticWriteOutcome>
 ): Promise<void> {
-  await waitForFatalDiagnostic(diagnosticWrite)
+  const diagnosticWriteOutcome = await waitForFatalDiagnosticWrite(
+    diagnosticWrite,
+    FATAL_DIAGNOSTICS_TIMEOUT_MS
+  )
   exitAfterFatalErrorPresentation(
     () =>
       dialog.showErrorBox(
         "Jingle encountered an unrecoverable error",
-        formatFatalMainProcessError(error, diagnosticsLogger.getLogFilePath())
+        formatFatalMainProcessError(
+          error,
+          diagnosticsLogger.getLogFilePath(),
+          diagnosticWriteOutcome
+        )
       ),
     (code) => app.exit(code)
   )

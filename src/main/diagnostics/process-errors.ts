@@ -1,5 +1,6 @@
 import { types } from "node:util"
 import { sanitizeDiagnosticValue } from "./redaction"
+import type { FatalDiagnosticWriteOutcome } from "./electron-failure"
 
 export interface SerializedProcessError {
   message: string
@@ -36,12 +37,32 @@ export function errorFromUnhandledRejection(reason: unknown): Error {
   return new Error(`Unhandled promise rejection: ${serializeProcessError(reason).message}`)
 }
 
-export function formatFatalMainProcessError(error: unknown, logFilePath: string): string {
+function formatFatalDiagnosticWriteStatus(
+  logFilePath: string,
+  outcome: FatalDiagnosticWriteOutcome
+): string {
+  switch (outcome.kind) {
+    case "written":
+      return `Diagnostics were written to: ${logFilePath}`
+    case "partial":
+      return `Some diagnostics were written to: ${logFilePath}`
+    case "failed":
+      return "Diagnostics could not be confirmed as written before Jingle quit."
+    case "timed_out":
+      return "Diagnostics did not finish writing before Jingle quit."
+  }
+}
+
+export function formatFatalMainProcessError(
+  error: unknown,
+  logFilePath: string,
+  diagnosticWriteOutcome: FatalDiagnosticWriteOutcome
+): string {
   const serialized = serializeProcessError(error)
   return [
     serialized.message || "Jingle encountered an unrecoverable main process error.",
     "",
-    `Diagnostics were written to: ${logFilePath}`,
+    formatFatalDiagnosticWriteStatus(logFilePath, diagnosticWriteOutcome),
     "",
     "Jingle will quit now. Please restart the app."
   ].join("\n")

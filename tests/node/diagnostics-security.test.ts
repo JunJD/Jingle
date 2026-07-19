@@ -19,7 +19,9 @@ import {
   captureElectronFailure,
   captureElectronRendererRecovery,
   createFatalDiagnosticSingleFlight,
-  exitAfterFatalErrorPresentation
+  exitAfterFatalErrorPresentation,
+  settleFatalDiagnosticWrites,
+  waitForFatalDiagnosticWrite
 } from "../../src/main/diagnostics/electron-failure"
 import { APPEND_DIAGNOSTIC_GRAPH_EVENT, DiagnosticsLogger } from "../../src/main/diagnostics/logger"
 import type {
@@ -254,8 +256,8 @@ test("Electron main failure evidence rejects non-errors and proxies without exec
 test("fatal Electron process hooks share one diagnostic write", async () => {
   const calls: Array<{ error: unknown; message: string; origin: string }> = []
   let finishWrite: () => void = () => undefined
-  const pendingWrite = new Promise<void>((resolve) => {
-    finishWrite = resolve
+  const pendingWrite = new Promise<{ kind: "written" }>((resolve) => {
+    finishWrite = () => resolve({ kind: "written" })
   })
   const recordOnce = createFatalDiagnosticSingleFlight((message, error, origin) => {
     calls.push({ error, message, origin })
@@ -272,6 +274,45 @@ test("fatal Electron process hooks share one diagnostic write", async () => {
   await Promise.all([monitorWrite, handlerWrite])
   assert.equal(recordOnce("late", new Error("late"), "unhandledRejection"), monitorWrite)
   assert.equal(calls.length, 1)
+})
+
+test("fatal Electron single-flight starts synchronously and caches recorder throws", async () => {
+  let callCount = 0
+  const recordOnce = createFatalDiagnosticSingleFlight(() => {
+    callCount += 1
+    throw new Error("diagnostics unavailable")
+  })
+
+  const first = recordOnce("monitor", new Error("fatal"), "uncaughtException")
+  assert.equal(callCount, 1)
+  const second = recordOnce("handler", new Error("late"), "uncaughtException")
+  assert.equal(first, second)
+  assert.equal(callCount, 1)
+  assert.deepEqual(await first, { kind: "failed" })
+})
+
+test("fatal Electron diagnostic writes report bounded truthful outcomes", async () => {
+  assert.deepEqual(await settleFatalDiagnosticWrites([Promise.resolve(), Promise.resolve()]), {
+    kind: "written"
+  })
+  assert.deepEqual(
+    await settleFatalDiagnosticWrites([Promise.resolve(), Promise.reject(new Error("full"))]),
+    { kind: "partial" }
+  )
+  assert.deepEqual(
+    await settleFatalDiagnosticWrites([
+      Promise.reject(new Error("disk full")),
+      Promise.reject(new Error("permission denied"))
+    ]),
+    { kind: "failed" }
+  )
+  assert.deepEqual(await waitForFatalDiagnosticWrite(new Promise(() => undefined), 5), {
+    kind: "timed_out"
+  })
+  assert.deepEqual(
+    await waitForFatalDiagnosticWrite(Promise.reject(new Error("write failed")), 50),
+    { kind: "failed" }
+  )
 })
 
 test("fatal Electron process exit does not depend on native error presentation", () => {

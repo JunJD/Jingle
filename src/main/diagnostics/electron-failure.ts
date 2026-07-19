@@ -61,7 +61,51 @@ type ElectronFailureInput =
       windowKind: AppWindowKind | unknown
     }
 
-type FatalDiagnosticRecorder = (message: string, error: unknown, origin: string) => Promise<void>
+export type FatalDiagnosticWriteOutcome = Readonly<{
+  kind: "failed" | "partial" | "timed_out" | "written"
+}>
+
+type FatalDiagnosticRecorder = (
+  message: string,
+  error: unknown,
+  origin: string
+) => Promise<FatalDiagnosticWriteOutcome>
+
+const FAILED_FATAL_DIAGNOSTIC_WRITE = Object.freeze({ kind: "failed" } as const)
+const PARTIAL_FATAL_DIAGNOSTIC_WRITE = Object.freeze({ kind: "partial" } as const)
+const TIMED_OUT_FATAL_DIAGNOSTIC_WRITE = Object.freeze({ kind: "timed_out" } as const)
+const WRITTEN_FATAL_DIAGNOSTIC_WRITE = Object.freeze({ kind: "written" } as const)
+
+export async function settleFatalDiagnosticWrites(
+  writes: readonly [Promise<void>, Promise<void>]
+): Promise<FatalDiagnosticWriteOutcome> {
+  const results = await Promise.allSettled(writes)
+  const fulfilled = results.filter((result) => result.status === "fulfilled").length
+  if (fulfilled === writes.length) {
+    return WRITTEN_FATAL_DIAGNOSTIC_WRITE
+  }
+  return fulfilled > 0 ? PARTIAL_FATAL_DIAGNOSTIC_WRITE : FAILED_FATAL_DIAGNOSTIC_WRITE
+}
+
+export async function waitForFatalDiagnosticWrite(
+  write: Promise<FatalDiagnosticWriteOutcome>,
+  timeoutMs: number
+): Promise<FatalDiagnosticWriteOutcome> {
+  let timeout: NodeJS.Timeout | undefined
+  try {
+    return await Promise.race([
+      write.catch(() => FAILED_FATAL_DIAGNOSTIC_WRITE),
+      new Promise<FatalDiagnosticWriteOutcome>((resolve) => {
+        timeout = setTimeout(() => resolve(TIMED_OUT_FATAL_DIAGNOSTIC_WRITE), timeoutMs)
+        timeout.unref()
+      })
+    ])
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout)
+    }
+  }
+}
 
 interface ElectronRendererRecoveryInput {
   event: RendererWindowRecoveryEvent
@@ -73,9 +117,16 @@ interface ElectronRendererRecoveryInput {
 export function createFatalDiagnosticSingleFlight(
   record: FatalDiagnosticRecorder
 ): FatalDiagnosticRecorder {
-  let write: Promise<void> | null = null
+  let write: Promise<FatalDiagnosticWriteOutcome> | null = null
   return (message, error, origin) => {
-    write ??= record(message, error, origin)
+    if (write) {
+      return write
+    }
+    try {
+      write = record(message, error, origin)
+    } catch {
+      write = Promise.resolve(FAILED_FATAL_DIAGNOSTIC_WRITE)
+    }
     return write
   }
 }
