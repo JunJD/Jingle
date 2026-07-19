@@ -65,6 +65,7 @@
     "dist:mac": "npm run build && node scripts/run-electron-builder.mjs --mac --publish never",
     "dist:win": "node scripts/build-win-icon.mjs && npm run build && node scripts/run-electron-builder.mjs --win --publish never",
     "dist:linux": "npm run build && node scripts/run-electron-builder.mjs --linux --publish never",
+    "release:smoke:installed": "node scripts/release-smoke/installed.mjs",
     "audit:frontend-packages": "node scripts/audit-frontend-package-relations.mjs --root . --frontend src/renderer/src",
     "test:bdd:smoke": "npm run build && cucumber-js --config tests/bdd/cucumber.config.cjs --tags @smoke",
     "test:bdd": "npm run build && cucumber-js --config tests/bdd/cucumber.config.cjs",

@@ -242,3 +242,29 @@ jobs:
             done
             echo "- Build-only: no artifact was uploaded."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run installed first-launch smoke
+        shell: bash
+        run: |
+          mkdir -p release-smoke-diagnostics
+          printf 'runner_os=%s\nrunner_arch=%s\n' \
+            '${{ runner.os }}' '${{ runner.arch }}' \
+            > release-smoke-diagnostics/workflow-context.txt
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            xvfb-run --auto-servernum -- pnpm run release:smoke:installed -- \
+              --current-dir dist \
+              --diagnostics-dir release-smoke-diagnostics
+          else
+            pnpm run release:smoke:installed -- \
+              --current-dir dist \
+              --diagnostics-dir release-smoke-diagnostics
+          fi
+
+      - name: Upload installed smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installed-smoke-diagnostics-${{ matrix.name }}
+          path: release-smoke-diagnostics
+          if-no-files-found: warn
+          retention-days: 3
