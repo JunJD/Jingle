@@ -1,5 +1,6 @@
 import { BrowserWindow } from "electron"
 import { join } from "path"
+import { DURABLE_WINDOW_HEADER_HEIGHT } from "@shared/durable-window"
 import { attachWindowDiagnostics } from "../diagnostics/electron-events"
 import { getAppThemeSettings } from "../preferences"
 import { installExternalWindowOpenHandler } from "./external-window-open"
@@ -26,7 +27,11 @@ export function createMainWindow(threadId: string | null): BrowserWindow {
     titleBarStyle: "hidden",
     ...(isMac
       ? { trafficLightPosition: { x: 16, y: 16 } }
-      : { titleBarOverlay: createThemeTitleBarOverlay(appThemeSettings) }),
+      : {
+          titleBarOverlay: createThemeTitleBarOverlay(appThemeSettings, {
+            height: DURABLE_WINDOW_HEADER_HEIGHT
+          })
+        }),
     webPreferences: { preload: join(__dirname, "../preload/index.js"), sandbox: false }
   })
   registerWindowIdentity(window.webContents, {

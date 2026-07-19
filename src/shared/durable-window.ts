@@ -1,5 +1,6 @@
 export const PRIMARY_MAIN_WINDOW_KIND = "main"
 export const THREAD_WINDOW_KIND = "thread-window"
+export const DURABLE_WINDOW_HEADER_HEIGHT = 48
 
 export type DurableWindowKind = typeof PRIMARY_MAIN_WINDOW_KIND | typeof THREAD_WINDOW_KIND
 

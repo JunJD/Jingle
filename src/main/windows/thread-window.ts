@@ -1,6 +1,6 @@
 import { BrowserWindow, screen, type Rectangle } from "electron"
 import { join } from "path"
-import { THREAD_WINDOW_KIND } from "@shared/durable-window"
+import { DURABLE_WINDOW_HEADER_HEIGHT, THREAD_WINDOW_KIND } from "@shared/durable-window"
 import { attachWindowDiagnostics } from "../diagnostics/electron-events"
 import { getAppThemeSettings } from "../preferences"
 import { installExternalWindowOpenHandler } from "./external-window-open"
@@ -63,7 +63,11 @@ export function createThreadWindow(
     titleBarStyle: "hidden",
     ...(isMac
       ? { trafficLightPosition: { x: 16, y: 16 } }
-      : { titleBarOverlay: createThemeTitleBarOverlay(appThemeSettings) }),
+      : {
+          titleBarOverlay: createThemeTitleBarOverlay(appThemeSettings, {
+            height: DURABLE_WINDOW_HEADER_HEIGHT
+          })
+        }),
     webPreferences: { preload: join(__dirname, "../preload/index.js"), sandbox: false }
   })
   registerWindowIdentity(window.webContents, {

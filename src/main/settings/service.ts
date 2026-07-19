@@ -1,5 +1,6 @@
 import { BrowserWindow } from "electron"
 import type { AppThemeSettings } from "@shared/app-theme"
+import { DURABLE_WINDOW_HEADER_HEIGHT } from "@shared/durable-window"
 import type { LauncherSettings } from "@shared/launcher-settings"
 import type { AgentConfig } from "../types"
 import {
@@ -49,15 +50,18 @@ export class SettingsService {
         continue
       }
 
+      const windowIdentity = getWindowIdentity(window.webContents)
+      const isDurableWindow = isDurableWindowIdentity(windowIdentity)
       const hasThemeAwareNativeChrome =
-        isSettingsWindowWebContents(window.webContents) ||
-        isDurableWindowIdentity(getWindowIdentity(window.webContents))
+        isSettingsWindowWebContents(window.webContents) || isDurableWindow
 
       if (hasThemeAwareNativeChrome) {
         try {
           window.setBackgroundColor(settings.config.theme.surface)
           if (process.platform !== "darwin") {
-            updateThemeTitleBarOverlay(window, settings)
+            updateThemeTitleBarOverlay(window, settings, {
+              height: isDurableWindow ? DURABLE_WINDOW_HEADER_HEIGHT : undefined
+            })
           }
         } catch (error) {
           console.warn("[Settings] Failed to update the native window theme.", error)
