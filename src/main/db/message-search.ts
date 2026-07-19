@@ -214,35 +214,110 @@ export async function rebuildMessageSearchIndexFromMessages(threadId?: string): 
   const prisma = getPrismaClient()
 
   if (threadId) {
-    await prisma.$executeRaw`DELETE FROM "messages_fts" WHERE thread_id = ${threadId}`
-    await prisma.$executeRaw`DELETE FROM "messages_fts_trigram" WHERE thread_id = ${threadId}`
-    await prisma.$executeRaw(
-      Prisma.sql`INSERT INTO "messages_fts" ("thread_id", "message_id", "role", "search_text")
-        SELECT "thread_id", "message_id", "role", "search_text"
-        FROM "messages"
-        WHERE "thread_id" = ${threadId} AND length("search_text") > 0`
-    )
-    await prisma.$executeRaw(
-      Prisma.sql`INSERT INTO "messages_fts_trigram" ("thread_id", "message_id", "role", "search_text")
-        SELECT "thread_id", "message_id", "role", "search_text"
-        FROM "messages"
-        WHERE "thread_id" = ${threadId} AND length("search_text") > 0`
-    )
+    await prisma.$transaction([
+      prisma.$executeRaw`DELETE FROM "messages_fts" WHERE thread_id = ${threadId}`,
+      prisma.$executeRaw`DELETE FROM "messages_fts_trigram" WHERE thread_id = ${threadId}`,
+      prisma.$executeRaw(
+        Prisma.sql`INSERT INTO "messages_fts" ("thread_id", "message_id", "role", "search_text")
+          SELECT "thread_id", "message_id", "role", "search_text"
+          FROM "messages"
+          WHERE "thread_id" = ${threadId} AND length("search_text") > 0`
+      ),
+      prisma.$executeRaw(
+        Prisma.sql`INSERT INTO "messages_fts_trigram" ("thread_id", "message_id", "role", "search_text")
+          SELECT "thread_id", "message_id", "role", "search_text"
+          FROM "messages"
+          WHERE "thread_id" = ${threadId} AND length("search_text") > 0`
+      )
+    ])
     return
   }
 
-  await prisma.$executeRaw`DELETE FROM "messages_fts"`
-  await prisma.$executeRaw`DELETE FROM "messages_fts_trigram"`
-  await prisma.$executeRaw(
-    Prisma.sql`INSERT INTO "messages_fts" ("thread_id", "message_id", "role", "search_text")
-      SELECT "thread_id", "message_id", "role", "search_text"
+  await prisma.$transaction([
+    prisma.$executeRaw`DELETE FROM "messages_fts"`,
+    prisma.$executeRaw`DELETE FROM "messages_fts_trigram"`,
+    prisma.$executeRaw(
+      Prisma.sql`INSERT INTO "messages_fts" ("thread_id", "message_id", "role", "search_text")
+        SELECT "thread_id", "message_id", "role", "search_text"
+        FROM "messages"
+        WHERE length("search_text") > 0`
+    ),
+    prisma.$executeRaw(
+      Prisma.sql`INSERT INTO "messages_fts_trigram" ("thread_id", "message_id", "role", "search_text")
+        SELECT "thread_id", "message_id", "role", "search_text"
+        FROM "messages"
+        WHERE length("search_text") > 0`
+    )
+  ])
+}
+
+export async function syncMessageSearchIndexEntriesFromMessages(input: {
+  messageIds: readonly string[]
+  threadId: string
+}): Promise<void> {
+  const messageIds = Array.from(new Set(input.messageIds)).sort()
+  if (messageIds.length === 0) return
+
+  const prisma = getPrismaClient()
+  const ids = Prisma.join(messageIds)
+  await prisma.$transaction([
+    prisma.$executeRaw(
+      Prisma.sql`DELETE FROM "messages_fts"
+        WHERE "thread_id" = ${input.threadId} AND "message_id" IN (${ids})`
+    ),
+    prisma.$executeRaw(
+      Prisma.sql`DELETE FROM "messages_fts_trigram"
+        WHERE "thread_id" = ${input.threadId} AND "message_id" IN (${ids})`
+    ),
+    prisma.$executeRaw(
+      Prisma.sql`INSERT INTO "messages_fts" ("thread_id", "message_id", "role", "search_text")
+        SELECT "thread_id", "message_id", "role", "search_text"
+        FROM "messages"
+        WHERE "thread_id" = ${input.threadId}
+          AND "message_id" IN (${ids})
+          AND length("search_text") > 0`
+    ),
+    prisma.$executeRaw(
+      Prisma.sql`INSERT INTO "messages_fts_trigram" ("thread_id", "message_id", "role", "search_text")
+        SELECT "thread_id", "message_id", "role", "search_text"
+        FROM "messages"
+        WHERE "thread_id" = ${input.threadId}
+          AND "message_id" IN (${ids})
+          AND length("search_text") > 0`
+    )
+  ])
+}
+
+export async function findMessageSearchProjectionDriftThreadIds(): Promise<string[]> {
+  const rows = await getPrismaClient().$queryRaw<Array<{ threadId: string }>>`
+    WITH "message_search_projection_rows" AS (
+      SELECT "thread_id", "message_id", "role", "search_text", 'canonical' AS "source"
       FROM "messages"
-      WHERE length("search_text") > 0`
-  )
-  await prisma.$executeRaw(
-    Prisma.sql`INSERT INTO "messages_fts_trigram" ("thread_id", "message_id", "role", "search_text")
-      SELECT "thread_id", "message_id", "role", "search_text"
-      FROM "messages"
-      WHERE length("search_text") > 0`
-  )
+      WHERE length("search_text") > 0
+      UNION ALL
+      SELECT "thread_id", "message_id", "role", "search_text", 'unicode' AS "source"
+      FROM "messages_fts"
+      UNION ALL
+      SELECT "thread_id", "message_id", "role", "search_text", 'trigram' AS "source"
+      FROM "messages_fts_trigram"
+    ),
+    "message_search_projection_counts" AS (
+      SELECT
+        "thread_id",
+        "message_id",
+        "role",
+        "search_text",
+        SUM(CASE WHEN "source" = 'canonical' THEN 1 ELSE 0 END) AS "canonical_count",
+        SUM(CASE WHEN "source" = 'unicode' THEN 1 ELSE 0 END) AS "unicode_count",
+        SUM(CASE WHEN "source" = 'trigram' THEN 1 ELSE 0 END) AS "trigram_count"
+      FROM "message_search_projection_rows"
+      GROUP BY "thread_id", "message_id", "role", "search_text"
+    )
+    SELECT DISTINCT "thread_id" AS "threadId"
+    FROM "message_search_projection_counts"
+    WHERE "canonical_count" <> "unicode_count"
+       OR "canonical_count" <> "trigram_count"
+    ORDER BY "thread_id" ASC
+  `
+  return rows.map((row) => row.threadId)
 }

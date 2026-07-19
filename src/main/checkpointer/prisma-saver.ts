@@ -36,7 +36,8 @@ import { getPrismaClient } from "../db/client"
 import {
   loadMessagesForStateVersion,
   persistMessageStateVersion,
-  prepareMessageStateItems
+  prepareMessageStateItems,
+  type MessageSearchProjectionDelta
 } from "../db/message-state"
 import { decodeSerializedPayload, encodeSerializedPayload } from "./storage-codec"
 
@@ -489,10 +490,11 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
 
       const valueBlobs = serializedBlobs.filter((blob) => blob.type !== "empty")
       const emptyBlobs = serializedBlobs.filter((blob) => blob.type === "empty")
+      let messageSearchProjectionDelta: MessageSearchProjectionDelta = { messageIds: [] }
 
       await prisma.$transaction(async (tx) => {
         if (messagesVersion) {
-          await persistMessageStateVersion(
+          messageSearchProjectionDelta = await persistMessageStateVersion(
             {
               checkpointId: checkpoint.id,
               checkpointNs,
@@ -570,6 +572,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
         checkpoint: preparedCheckpoint,
         checkpointNs,
         metadata,
+        messageSearchProjectionDelta,
         runId,
         threadId
       })
@@ -725,7 +728,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
           } as const
         }
 
-        await persistMessageStateVersion(
+        const messageSearchProjectionDelta = await persistMessageStateVersion(
           {
             checkpointId: preparedCheckpoint.id,
             checkpointNs: input.checkpointNs,
@@ -830,6 +833,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
 
         return {
           checkpoint: preparedCheckpoint,
+          messageSearchProjectionDelta,
           receipt,
           runId: latest.runId,
           status: "committed"
@@ -840,6 +844,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
         void this.afterPut({
           checkpoint: transactionResult.checkpoint,
           checkpointNs: input.checkpointNs,
+          messageSearchProjectionDelta: transactionResult.messageSearchProjectionDelta,
           metadata: nextMetadata,
           runId: transactionResult.runId,
           threadId: input.threadId
@@ -895,6 +900,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
   protected async afterPut(input: {
     checkpoint: Checkpoint
     checkpointNs: string
+    messageSearchProjectionDelta: MessageSearchProjectionDelta
     metadata: CheckpointMetadata
     runId: string | null
     threadId: string

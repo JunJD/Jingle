@@ -237,6 +237,115 @@ test("message projection stores content separately from FTS and rebuilds search 
   )
 })
 
+test("startup drift recovery removes duplicate FTS rows", async () => {
+  const { createThread, getPrismaClient, syncMessageSearchIndexFromSnapshot } =
+    await loadDbModules()
+  const { flushMessageSearchProjection, startMessageSearchProjectionLifecycle } =
+    await import("../../src/main/checkpointer/runtime-checkpointer")
+  const threadId = "thread-duplicate-search-projection"
+
+  await createThread(threadId)
+  await syncMessageSearchIndexFromSnapshot(threadId, [
+    {
+      content: JSON.stringify("one canonical row"),
+      message_id: "message-duplicate-search-projection",
+      role: "user"
+    }
+  ])
+  const prisma = getPrismaClient()
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "messages_fts" ("thread_id", "message_id", "role", "search_text")
+     SELECT "thread_id", "message_id", "role", "search_text"
+     FROM "messages_fts" WHERE "thread_id" = ?`,
+    threadId
+  )
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "messages_fts_trigram" ("thread_id", "message_id", "role", "search_text")
+     SELECT "thread_id", "message_id", "role", "search_text"
+     FROM "messages_fts_trigram" WHERE "thread_id" = ?`,
+    threadId
+  )
+
+  await startMessageSearchProjectionLifecycle()
+  await flushMessageSearchProjection()
+
+  const [unicodeRows, trigramRows] = await Promise.all([
+    prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+      `SELECT COUNT(*) AS count FROM "messages_fts" WHERE thread_id = ?`,
+      threadId
+    ),
+    prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+      `SELECT COUNT(*) AS count FROM "messages_fts_trigram" WHERE thread_id = ?`,
+      threadId
+    )
+  ])
+  assert.equal(Number(unicodeRows[0]?.count ?? 0), 1)
+  assert.equal(Number(trigramRows[0]?.count ?? 0), 1)
+})
+
+test("steady message search projection updates only changed message IDs", async () => {
+  const {
+    createThread,
+    getPrismaClient,
+    syncMessageSearchIndexEntriesFromMessages,
+    syncMessageSearchIndexFromSnapshot
+  } = await loadDbModules()
+  const threadId = "thread-incremental-search-projection"
+
+  await createThread(threadId)
+  await syncMessageSearchIndexFromSnapshot(threadId, [
+    { content: JSON.stringify("first before"), message_id: "message-first", role: "user" },
+    { content: JSON.stringify("second unchanged"), message_id: "message-second", role: "assistant" }
+  ])
+  const prisma = getPrismaClient()
+  await prisma.message.update({
+    data: { searchText: "first after" },
+    where: {
+      threadId_messageId: {
+        messageId: "message-first",
+        threadId
+      }
+    }
+  })
+  for (const table of ["messages_fts", "messages_fts_trigram"] as const) {
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "${table}" ("thread_id", "message_id", "role", "search_text")
+       SELECT "thread_id", "message_id", "role", "search_text"
+       FROM "${table}" WHERE "thread_id" = ? AND "message_id" = ?`,
+      threadId,
+      "message-second"
+    )
+  }
+
+  await syncMessageSearchIndexEntriesFromMessages({
+    messageIds: ["message-first"],
+    threadId
+  })
+
+  const firstRows = await prisma.$queryRawUnsafe<Array<{ search_text: string }>>(
+    `SELECT search_text FROM "messages_fts" WHERE thread_id = ? AND message_id = ?`,
+    threadId,
+    "message-first"
+  )
+  const unchangedCounts = await Promise.all(
+    ["messages_fts", "messages_fts_trigram"].map((table) =>
+      prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+        `SELECT COUNT(*) AS count FROM "${table}" WHERE thread_id = ? AND message_id = ?`,
+        threadId,
+        "message-second"
+      )
+    )
+  )
+  assert.deepEqual(
+    firstRows.map((row) => row.search_text),
+    ["first after"]
+  )
+  assert.deepEqual(
+    unchangedCounts.map((rows) => Number(rows[0]?.count ?? 0)),
+    [2, 2]
+  )
+})
+
 test("message search projection removes stale checkpoint messages", async () => {
   const { createThread, getPrismaClient, syncMessageSearchIndexFromSnapshot } =
     await loadDbModules()

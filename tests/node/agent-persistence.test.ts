@@ -4853,7 +4853,7 @@ test("checkpoint writes are serialized on one saver instance", async () => {
   assert.equal(maxActiveWrites, 1)
 })
 
-test("prisma checkpoint saver stores message facts without runtime side effects", async () => {
+test("prisma checkpoint saver stores message facts without runtime projection side effects", async () => {
   const { createThread, createRun, getLatestHitlRequest, getPrismaClient } = await loadDbModules()
   const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
 
@@ -4907,7 +4907,7 @@ test("prisma checkpoint saver stores message facts without runtime side effects"
   const messageEvents = await prisma.messageEvent.findMany({ where: { threadId } })
   const messageStateVersions = await prisma.messageStateVersion.findMany({ where: { threadId } })
 
-  assert.equal(searchRows.length, 1)
+  assert.equal(searchRows.length, 0)
   assert.deepEqual(
     messageEvents.map((event) => `${event.type}:${event.messageId ?? ""}`),
     ["message.upsert:message-user-pure"]
@@ -5627,14 +5627,134 @@ test("runtime checkpointer stores message facts in the checkpoint transaction", 
   assert.equal(searchRows.length, 1)
 })
 
-test("closeRuntimeCheckpointers closes checkpointers without a message projection queue", async () => {
+test("message search projection failure cannot roll back a committed checkpoint", async () => {
+  const { createThread, createRun, getPrismaClient } = await loadDbModules()
+  const {
+    createMessageSearchProjectionCoordinator,
+    flushMessageSearchProjection,
+    RuntimeCheckpointSaver,
+    startMessageSearchProjectionLifecycle
+  } = await import("../../src/main/checkpointer/runtime-checkpointer")
+  const threadId = "thread-runtime-search-projection-failure"
+  const runId = "run-runtime-search-projection-failure"
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-runtime-search-projection-failure"
+  checkpoint.channel_values = {
+    messages: [
+      {
+        kwargs: { content: "checkpoint survives derived failure", id: "message-derived-failure" },
+        type: "human"
+      }
+    ]
+  }
+
+  let markProjectionStarted: (() => void) | undefined
+  const projectionStarted = new Promise<void>((resolve) => {
+    markProjectionStarted = resolve
+  })
+  let releaseProjection: (() => void) | undefined
+  const projectionRelease = new Promise<void>((resolve) => {
+    releaseProjection = resolve
+  })
+  const projectionCoordinator = createMessageSearchProjectionCoordinator({
+    async syncEntries() {
+      markProjectionStarted?.()
+      await projectionRelease
+      throw new Error("forced message search projection failure")
+    }
+  })
+  const saver = new RuntimeCheckpointSaver({
+    messageSearchProjectionCoordinator: projectionCoordinator
+  })
+  await saver.put(
+    {
+      configurable: { thread_id: threadId },
+      metadata: { run_id: runId }
+    },
+    checkpoint,
+    { parents: {}, source: "update", step: 0 }
+  )
+
+  const prisma = getPrismaClient()
+  const warningArgs: unknown[][] = []
+  const originalWarn = console.warn
+  console.warn = (...args: unknown[]) => warningArgs.push(args)
+  const projectionFlush = projectionCoordinator.flush()
+  try {
+    await projectionStarted
+
+    assert.equal(await prisma.checkpoint.count({ where: { threadId } }), 1)
+    assert.equal(await prisma.messageEvent.count({ where: { threadId } }), 1)
+    assert.equal(await prisma.messageStateVersion.count({ where: { threadId } }), 1)
+    assert.equal(await prisma.message.count({ where: { threadId } }), 1)
+
+    releaseProjection?.()
+    await projectionFlush
+  } finally {
+    releaseProjection?.()
+    await projectionFlush
+    console.warn = originalWarn
+  }
+
+  assert.equal(
+    warningArgs.some((args) => String(args[0]).includes("MessageSearchProjector")),
+    true
+  )
+
+  await saver.close()
+  await startMessageSearchProjectionLifecycle()
+  await flushMessageSearchProjection()
+  const restoredRows = await prisma.$queryRawUnsafe<Array<{ search_text: string }>>(
+    `SELECT search_text FROM "messages_fts" WHERE thread_id = ?`,
+    threadId
+  )
+  assert.deepEqual(
+    restoredRows.map((row) => row.search_text),
+    ["checkpoint survives derived failure"]
+  )
+})
+
+test("closeRuntimeCheckpointers closes producers before flushing message search projection", async () => {
+  const { createThread, createRun, getPrismaClient } = await loadDbModules()
   const { closeRuntimeCheckpointers, getCheckpointer } =
     await import("../../src/main/checkpointer/runtime-checkpointer-manager")
-  const threadId = "thread-close-runtime-no-search-projection"
+  const threadId = "thread-close-runtime-search-projection"
+  const runId = "run-close-runtime-search-projection"
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
   const firstSaver = await getCheckpointer(threadId)
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-close-runtime-search-projection"
+  checkpoint.channel_values = {
+    messages: [
+      {
+        kwargs: { content: "flush after saver close", id: "message-close-runtime" },
+        type: "human"
+      }
+    ]
+  }
+  await firstSaver.put(
+    {
+      configurable: { thread_id: threadId },
+      metadata: { run_id: runId }
+    },
+    checkpoint,
+    { parents: {}, source: "update", step: 0 }
+  )
 
   await closeRuntimeCheckpointers()
 
+  const rows = await getPrismaClient().$queryRawUnsafe<Array<{ search_text: string }>>(
+    `SELECT search_text FROM "messages_fts" WHERE thread_id = ?`,
+    threadId
+  )
+  assert.deepEqual(
+    rows.map((row) => row.search_text),
+    ["flush after saver close"]
+  )
   const secondSaver = await getCheckpointer(threadId)
   assert.notEqual(secondSaver, firstSaver)
   await closeRuntimeCheckpointers()

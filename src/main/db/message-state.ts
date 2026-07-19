@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "crypto"
 import type { SerializerProtocol } from "@langchain/langgraph-checkpoint"
-import { Prisma, type PrismaClient } from "@prisma/client"
+import type { PrismaClient } from "@prisma/client"
 import { readJingleLangGraphSerializedMessage } from "@jingle/langchain-agent-harness/transitional"
 import type { ContentBlock } from "@shared/app-types"
 import {
@@ -61,6 +61,10 @@ export interface PreparedMessageStateItem {
   role: string
   toolCallId: string | null
   toolCalls: string | null
+}
+
+export interface MessageSearchProjectionDelta {
+  messageIds: string[]
 }
 
 interface UserMessageAdmissionIdentity {
@@ -458,44 +462,12 @@ async function deleteProjectedMessage(
     threadId: string
   }
 ): Promise<void> {
-  await Promise.all([
-    tx.message.deleteMany({
-      where: {
-        messageId: input.messageId,
-        threadId: input.threadId
-      }
-    }),
-    tx.$executeRaw`DELETE FROM "messages_fts" WHERE thread_id = ${input.threadId} AND message_id = ${input.messageId}`,
-    tx.$executeRaw`DELETE FROM "messages_fts_trigram" WHERE thread_id = ${input.threadId} AND message_id = ${input.messageId}`
-  ])
-}
-
-async function replaceMessageSearchIndex(
-  tx: TransactionClient,
-  input: {
-    messageId: string
-    role: string
-    searchText: string
-    threadId: string
-  }
-): Promise<void> {
-  await Promise.all([
-    tx.$executeRaw`DELETE FROM "messages_fts" WHERE thread_id = ${input.threadId} AND message_id = ${input.messageId}`,
-    tx.$executeRaw`DELETE FROM "messages_fts_trigram" WHERE thread_id = ${input.threadId} AND message_id = ${input.messageId}`
-  ])
-
-  if (input.searchText.length > 0) {
-    await Promise.all([
-      tx.$executeRaw(
-        Prisma.sql`INSERT INTO "messages_fts" ("thread_id", "message_id", "role", "search_text")
-          VALUES (${input.threadId}, ${input.messageId}, ${input.role}, ${input.searchText})`
-      ),
-      tx.$executeRaw(
-        Prisma.sql`INSERT INTO "messages_fts_trigram" ("thread_id", "message_id", "role", "search_text")
-          VALUES (${input.threadId}, ${input.messageId}, ${input.role}, ${input.searchText})`
-      )
-    ])
-  }
+  await tx.message.deleteMany({
+    where: {
+      messageId: input.messageId,
+      threadId: input.threadId
+    }
+  })
 }
 
 async function upsertProjectedMessage(
@@ -558,12 +530,6 @@ async function upsertProjectedMessage(
       }
     }
   })
-  await replaceMessageSearchIndex(tx, {
-    messageId: input.item.messageId,
-    role: input.item.role,
-    searchText,
-    threadId: input.threadId
-  })
 }
 
 export async function prepareMessageStateItems(input: {
@@ -584,7 +550,7 @@ export async function prepareMessageStateItems(input: {
 export async function persistMessageStateVersion(
   input: PersistMessageStateInput,
   tx: TransactionClient = getPrismaClient()
-): Promise<void> {
+): Promise<MessageSearchProjectionDelta> {
   const now = BigInt(Date.now())
   const previous = await loadLatestMessageState(tx, {
     checkpointNs: input.checkpointNs,
@@ -713,6 +679,17 @@ export async function persistMessageStateVersion(
       }
     }
   })
+
+  return {
+    messageIds: shouldUpdateProjection
+      ? Array.from(
+          new Set([
+            ...removedItems.map((item) => item.messageId),
+            ...changedItems.map((item) => item.messageId)
+          ])
+        ).sort()
+      : []
+  }
 }
 
 export async function loadMessagesForStateVersion(
