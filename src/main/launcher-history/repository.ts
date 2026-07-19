@@ -5,11 +5,31 @@ import { createLauncherHistoryKey, sortLauncherHistoryItems } from "@shared/laun
 import { getJingleHomeDir } from "../storage"
 import {
   getApplicationDisplayName,
-  getApplicationIconDataUrl
+  getApplicationIconDataUrl,
+  getApplicationSubtitle,
+  getWindowsPackagedApplicationIdForPath
 } from "../services/launcher-search/providers/applications"
 
 interface LauncherHistoryStoreShape {
   items: LauncherHistoryItem[]
+}
+
+export interface LauncherHistoryStoreAdapter {
+  get(key: "items", defaultValue: LauncherHistoryItem[]): unknown
+  set(key: "items", value: LauncherHistoryItem[]): void
+}
+
+export interface LauncherHistoryRepositoryOptions {
+  applicationIconResolver?: (applicationIdentity: string) => Promise<string | undefined>
+  applicationNameResolver?: (applicationIdentity: string) => Promise<string | undefined>
+  applicationSubtitleResolver?: (applicationIdentity: string) => Promise<string | undefined>
+  canonicalApplicationResolver?: (applicationPath: string) => Promise<string | undefined>
+  store?: LauncherHistoryStoreAdapter
+}
+
+interface EnrichedLauncherHistoryItem {
+  hasCanonicalPackagedMetadata: boolean
+  item: LauncherHistoryItem
 }
 
 function hasLauncherHistoryKey(value: unknown): value is LauncherHistoryItem {
@@ -23,27 +43,51 @@ function hasLauncherHistoryKey(value: unknown): value is LauncherHistoryItem {
 }
 
 export class LauncherHistoryRepository {
-  private readonly store = new Store<LauncherHistoryStoreShape>({
-    name: "launcher-history",
-    cwd: getJingleHomeDir(),
-    defaults: {
-      items: []
-    }
-  })
+  private readonly applicationIconResolver: NonNullable<
+    LauncherHistoryRepositoryOptions["applicationIconResolver"]
+  >
+  private readonly applicationNameResolver: NonNullable<
+    LauncherHistoryRepositoryOptions["applicationNameResolver"]
+  >
+  private readonly applicationSubtitleResolver: NonNullable<
+    LauncherHistoryRepositoryOptions["applicationSubtitleResolver"]
+  >
+  private readonly canonicalApplicationResolver: NonNullable<
+    LauncherHistoryRepositoryOptions["canonicalApplicationResolver"]
+  >
+  private readonly store: LauncherHistoryStoreAdapter
+
+  constructor(options: LauncherHistoryRepositoryOptions = {}) {
+    this.applicationIconResolver = options.applicationIconResolver ?? getApplicationIconDataUrl
+    this.applicationNameResolver = options.applicationNameResolver ?? getApplicationDisplayName
+    this.applicationSubtitleResolver = options.applicationSubtitleResolver ?? getApplicationSubtitle
+    this.canonicalApplicationResolver =
+      options.canonicalApplicationResolver ?? getWindowsPackagedApplicationIdForPath
+    this.store = options.store ?? createStore()
+  }
 
   async list(): Promise<LauncherHistoryItem[]> {
     const storedItems = this.readStoredItems()
     const items = this.readItems(storedItems)
-    const enrichedItems = await Promise.all(items.map((item) => this.enrichItem(item)))
+    const enrichedEntries = await Promise.all(
+      items.map(async (item): Promise<EnrichedLauncherHistoryItem> => {
+        return {
+          hasCanonicalPackagedMetadata: isCanonicalPackagedHistoryItem(item),
+          item: await this.enrichItem(item)
+        }
+      })
+    )
+    const mergedItems = mergeLauncherHistoryItems(enrichedEntries)
 
     if (
       storedItems.length !== items.length ||
-      enrichedItems.some((item, index) => item !== items[index])
+      mergedItems.length !== items.length ||
+      mergedItems.some((item, index) => item !== items[index])
     ) {
-      this.writeItems(enrichedItems)
+      this.writeItems(mergedItems)
     }
 
-    return sortLauncherHistoryItems(enrichedItems)
+    return sortLauncherHistoryItems(mergedItems)
   }
 
   record(input: RecordLauncherHistoryItemInput): LauncherHistoryItem {
@@ -129,45 +173,224 @@ export class LauncherHistoryRepository {
       return item
     }
 
-    const applicationIdentity =
-      item.action.type === "open-path" && item.action.target.kind === "application"
-        ? item.action.target.path
-        : item.action.type === "launch-windows-packaged-application"
-          ? item.action.target.appUserModelId
-          : null
+    const originalHistoryKey = getCanonicalApplicationHistoryKey(item)
+    let applicationIdentity: string | null = null
+    let migratedToPackagedApplication = false
+    let nextItem = item
 
-    if (!applicationIdentity) {
-      return item
-    }
-
-    const canonicalHistoryKey =
-      item.action.type === "launch-windows-packaged-application"
-        ? createLauncherHistoryKey({
-            appUserModelId: applicationIdentity,
+    if (item.action.type === "open-path" && item.action.target.kind === "application") {
+      applicationIdentity = item.action.target.path
+      const shouldResolveCanonicalApplication =
+        !item.action.localStartItemId && item.historyKey === originalHistoryKey
+      const appUserModelId = shouldResolveCanonicalApplication
+        ? await this.canonicalApplicationResolver(applicationIdentity)
+        : undefined
+      if (appUserModelId) {
+        applicationIdentity = appUserModelId
+        migratedToPackagedApplication = true
+        nextItem = {
+          ...item,
+          action: {
+            executor: "shell",
+            target: { appUserModelId },
+            type: "launch-windows-packaged-application"
+          },
+          historyKey: createLauncherHistoryKey({
+            appUserModelId,
             type: "windows-packaged-application"
           })
-        : createLauncherHistoryKey({
-            path: applicationIdentity,
-            type: "application"
-          })
-    const shouldRefreshTitle = item.historyKey === canonicalHistoryKey
-    const [iconDataUrl, displayName] = await Promise.all([
-      item.iconDataUrl
-        ? Promise.resolve(item.iconDataUrl)
-        : getApplicationIconDataUrl(applicationIdentity),
+        }
+      }
+    } else if (item.action.type === "launch-windows-packaged-application") {
+      applicationIdentity = item.action.target.appUserModelId
+    }
+
+    if (!applicationIdentity) {
+      return nextItem
+    }
+
+    const shouldRefreshTitle = item.historyKey === originalHistoryKey
+    const shouldRefreshPackagedSubtitle =
+      nextItem.action.type === "launch-windows-packaged-application" && shouldRefreshTitle
+    const [resolvedIconDataUrl, displayName, resolvedSubtitle] = await Promise.all([
+      nextItem.iconDataUrl && !migratedToPackagedApplication
+        ? Promise.resolve(nextItem.iconDataUrl)
+        : this.applicationIconResolver(applicationIdentity),
       shouldRefreshTitle
-        ? getApplicationDisplayName(applicationIdentity)
+        ? this.applicationNameResolver(applicationIdentity)
+        : Promise.resolve(undefined),
+      shouldRefreshPackagedSubtitle
+        ? this.applicationSubtitleResolver(applicationIdentity)
         : Promise.resolve(undefined)
     ])
+    const iconDataUrl = resolvedIconDataUrl ?? nextItem.iconDataUrl
+    const subtitle =
+      resolvedSubtitle ?? (migratedToPackagedApplication ? applicationIdentity : nextItem.subtitle)
 
-    if (iconDataUrl === item.iconDataUrl && (!displayName || displayName === item.title)) {
+    if (
+      nextItem === item &&
+      iconDataUrl === item.iconDataUrl &&
+      (!displayName || displayName === item.title) &&
+      subtitle === item.subtitle
+    ) {
       return item
     }
 
     return {
-      ...item,
+      ...nextItem,
       ...(iconDataUrl ? { iconDataUrl } : {}),
-      ...(displayName ? { title: displayName } : {})
+      ...(displayName ? { title: displayName } : {}),
+      subtitle
     }
   }
+}
+
+function createStore(): LauncherHistoryStoreAdapter {
+  return new Store<LauncherHistoryStoreShape>({
+    name: "launcher-history",
+    cwd: getJingleHomeDir(),
+    defaults: {
+      items: []
+    }
+  })
+}
+
+function getCanonicalApplicationHistoryKey(item: LauncherHistoryItem): string | null {
+  if (item.action.type === "open-path" && item.action.target.kind === "application") {
+    return createLauncherHistoryKey({
+      path: item.action.target.path,
+      type: "application"
+    })
+  }
+
+  if (item.action.type === "launch-windows-packaged-application") {
+    return createLauncherHistoryKey({
+      appUserModelId: item.action.target.appUserModelId,
+      type: "windows-packaged-application"
+    })
+  }
+
+  return null
+}
+
+function isCanonicalPackagedHistoryItem(item: LauncherHistoryItem): boolean {
+  return (
+    item.action.type === "launch-windows-packaged-application" &&
+    item.historyKey === getCanonicalApplicationHistoryKey(item)
+  )
+}
+
+function mergeLauncherHistoryItems(entries: EnrichedLauncherHistoryItem[]): LauncherHistoryItem[] {
+  const entriesByHistoryKey = new Map<string, EnrichedLauncherHistoryItem[]>()
+
+  for (const entry of entries) {
+    const matchingEntries = entriesByHistoryKey.get(entry.item.historyKey)
+    if (matchingEntries) {
+      matchingEntries.push(entry)
+    } else {
+      entriesByHistoryKey.set(entry.item.historyKey, [entry])
+    }
+  }
+
+  return Array.from(entriesByHistoryKey.entries(), ([historyKey, matchingEntries]) => {
+    if (matchingEntries.length === 1) {
+      return matchingEntries[0]!.item
+    }
+
+    return mergeLauncherHistoryItemGroup(historyKey, matchingEntries)
+  })
+}
+
+function mergeLauncherHistoryItemGroup(
+  historyKey: string,
+  entries: EnrichedLauncherHistoryItem[]
+): LauncherHistoryItem {
+  const items = entries.map((entry) => entry.item)
+  const itemsByRecency = items.toSorted(compareLauncherHistoryItemRecency)
+  const metadataItemsByPriority = [
+    ...entries
+      .filter((entry) => entry.hasCanonicalPackagedMetadata)
+      .map((entry) => entry.item)
+      .toSorted(compareLauncherHistoryItemRecency),
+    ...entries
+      .filter((entry) => !entry.hasCanonicalPackagedMetadata)
+      .map((entry) => entry.item)
+      .toSorted(compareLauncherHistoryItemRecency)
+  ]
+  const latestItem = itemsByRecency[0]!
+  const canonicalItem =
+    itemsByRecency.find((item) => getCanonicalApplicationHistoryKey(item) === historyKey) ??
+    latestItem
+  const iconDataUrl = findLatestNonEmptyMetadata(
+    metadataItemsByPriority,
+    (item) => item.iconDataUrl
+  )
+  const mergedItem: LauncherHistoryItem = {
+    ...latestItem,
+    action: canonicalItem.action,
+    createdAt: findEarliestTimestamp(items, (item) => item.createdAt),
+    historyKey,
+    lastUsedAt: findLatestTimestamp(items, (item) => item.lastUsedAt),
+    pin: items.some((item) => item.pin),
+    subtitle:
+      findLatestNonEmptyMetadata(metadataItemsByPriority, (item) => item.subtitle) ??
+      latestItem.subtitle,
+    title:
+      findLatestNonEmptyMetadata(metadataItemsByPriority, (item) => item.title) ?? latestItem.title,
+    updatedAt: findLatestTimestamp(items, (item) => item.updatedAt),
+    useCount: items.reduce((total, item) => total + item.useCount, 0)
+  }
+
+  if (iconDataUrl) {
+    mergedItem.iconDataUrl = iconDataUrl
+  } else {
+    delete mergedItem.iconDataUrl
+  }
+
+  return mergedItem
+}
+
+function compareLauncherHistoryItemRecency(
+  left: LauncherHistoryItem,
+  right: LauncherHistoryItem
+): number {
+  return (
+    right.updatedAt.localeCompare(left.updatedAt) ||
+    right.lastUsedAt.localeCompare(left.lastUsedAt) ||
+    right.createdAt.localeCompare(left.createdAt)
+  )
+}
+
+function findLatestNonEmptyMetadata(
+  itemsByRecency: LauncherHistoryItem[],
+  selectValue: (item: LauncherHistoryItem) => string | undefined
+): string | undefined {
+  for (const item of itemsByRecency) {
+    const value = selectValue(item)
+    if (value?.trim()) {
+      return value
+    }
+  }
+
+  return undefined
+}
+
+function findEarliestTimestamp(
+  items: LauncherHistoryItem[],
+  selectTimestamp: (item: LauncherHistoryItem) => string
+): string {
+  return items.reduce((earliest, item) => {
+    const timestamp = selectTimestamp(item)
+    return timestamp.localeCompare(earliest) < 0 ? timestamp : earliest
+  }, selectTimestamp(items[0]!))
+}
+
+function findLatestTimestamp(
+  items: LauncherHistoryItem[],
+  selectTimestamp: (item: LauncherHistoryItem) => string
+): string {
+  return items.reduce((latest, item) => {
+    const timestamp = selectTimestamp(item)
+    return timestamp.localeCompare(latest) > 0 ? timestamp : latest
+  }, selectTimestamp(items[0]!))
 }
