@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@jingle/extension-api": "workspace:*",
-    "react": "^19.2.1",
-    "zod": "^4.0.0"
+    "react": "^19.2.7",
+    "zod": "^4.4.3"
   }
 }
