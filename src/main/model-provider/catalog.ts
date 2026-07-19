@@ -397,10 +397,10 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     status: "active"
   },
   {
-    id: toProviderModelId("google", "gemini-3-pro-preview"),
-    name: "Gemini 3 Pro Preview",
+    id: toProviderModelId("google", "gemini-3.1-pro-preview"),
+    name: "Gemini 3.1 Pro Preview",
     provider: "google",
-    model: "gemini-3-pro-preview",
+    model: "gemini-3.1-pro-preview",
     description: "State-of-the-art reasoning and multimodal understanding",
     contextLimit: 1_048_576,
     maxOutputTokens: 65_536,

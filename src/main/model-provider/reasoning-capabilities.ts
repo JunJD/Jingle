@@ -148,6 +148,13 @@ const BUILTIN_REGISTRY = new Map<string, RegistryEntry>([
   ...entries(
     "google",
     ["gemini-3-flash-preview"],
+    ["minimal", "low", "medium", "high"],
+    "google-thinking-level",
+    "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+  ),
+  ...entries(
+    "google",
+    ["gemini-3.1-pro-preview"],
     ["low", "medium", "high"],
     "google-thinking-level",
     "https://ai.google.dev/gemini-api/docs/generate-content/thinking"

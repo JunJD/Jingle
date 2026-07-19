@@ -20,18 +20,28 @@ export function createGoogleChatModel(
     maxOutputTokens: resolveRequiredMaxOutputTokens(runtimeConfig.maxOutputTokens),
     model: runtimeConfig.modelName,
     temperature: options.temperature,
-    ...(thinkingConfig ? { thinkingConfig } : {})
+    ...(thinkingConfig
+      ? {
+          // @langchain/google-genai@2.1.26 omits the documented MINIMAL value
+          // from its type union but forwards the field unchanged to Google.
+          thinkingConfig: thinkingConfig as SdkGoogleThinkingConfig
+        }
+      : {})
   })
 }
 
-type GoogleThinkingConfig = NonNullable<GoogleGenerativeAIChatInput["thinkingConfig"]>
-type GoogleThinkingLevel = NonNullable<GoogleThinkingConfig["thinkingLevel"]>
+type SdkGoogleThinkingConfig = NonNullable<GoogleGenerativeAIChatInput["thinkingConfig"]>
+type GoogleThinkingConfig = Omit<SdkGoogleThinkingConfig, "thinkingLevel"> & {
+  thinkingLevel: GoogleThinkingLevel
+}
+type GoogleThinkingLevel = NonNullable<SdkGoogleThinkingConfig["thinkingLevel"]> | "MINIMAL"
 type GoogleThinkingEffort = NonNullable<ProtocolCreateModelInput["runtimeConfig"]["thinkingEffort"]>
 
 const GOOGLE_THINKING_LEVEL_BY_EFFORT: Partial<Record<GoogleThinkingEffort, GoogleThinkingLevel>> =
   {
     high: "HIGH",
     low: "LOW",
+    minimal: "MINIMAL",
     medium: "MEDIUM"
   }
 

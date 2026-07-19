@@ -234,16 +234,18 @@ test("openai-compatible chat models omit max tokens when the model has no config
 
 test("google chat models pass configured catalog output limits", () => {
   const model = createProviderChatModelFromAdapter(
-    createRuntimeConfig("google", "gemini-3-pro-preview")
+    createRuntimeConfig("google", "gemini-3.1-pro-preview")
   )
 
   assert.ok(model instanceof ChatGoogleGenerativeAI)
   assert.equal(model.maxOutputTokens, 65536)
   assert.equal(model.thinkingConfig, undefined)
+  assert.equal(getModelConfig("google:gemini-3-pro-preview"), undefined)
 })
 
 test("google flash maps every admitted Jingle effort to an exact SDK thinking level", () => {
   const rows = [
+    ["minimal", "MINIMAL"],
     ["low", "LOW"],
     ["medium", "MEDIUM"],
     ["high", "HIGH"]
@@ -261,7 +263,7 @@ test("google flash maps every admitted Jingle effort to an exact SDK thinking le
   }
 })
 
-test("google flash sends admitted thinking level in the SDK request body", async () => {
+test("google flash sends admitted minimal thinking level in the SDK request body", async () => {
   let requestBody: Record<string, unknown> | null = null
   globalThis.fetch = async (_input, init) => {
     requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
@@ -287,14 +289,14 @@ test("google flash sends admitted thinking level in the SDK request body", async
   const model = createProviderChatModelFromAdapter(
     createRuntimeConfig("google", "gemini-3-flash-preview", {
       reasoningEffortTransport: "google-thinking-level",
-      thinkingEffort: "high"
+      thinkingEffort: "minimal"
     })
   )
   await model.invoke("transport smoke")
 
   const generationConfig = (requestBody as { generationConfig?: Record<string, unknown> } | null)
     ?.generationConfig
-  assert.deepEqual(generationConfig?.thinkingConfig, { thinkingLevel: "HIGH" })
+  assert.deepEqual(generationConfig?.thinkingConfig, { thinkingLevel: "MINIMAL" })
 })
 
 test("google adapter rejects non-null effort without its exact transport", () => {
