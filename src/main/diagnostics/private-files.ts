@@ -11,10 +11,16 @@ import {
 } from "node:fs"
 import { lstat, mkdir, open, realpath, type FileHandle } from "node:fs/promises"
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path"
+import {
+  DiagnosticsPrivateWindowsAclError,
+  ensurePrivateWindowsAcl,
+  ensurePrivateWindowsAclSync
+} from "./windows-private-acl"
 
 const PRIVATE_DIRECTORY_MODE = 0o700
 const PRIVATE_FILE_MODE = 0o600
 const NO_FOLLOW = constants.O_NOFOLLOW ?? 0
+const SUPPORTS_POSIX_FILE_MODES = process.platform !== "win32"
 
 function isMissingError(error: unknown): boolean {
   return Boolean(
@@ -67,8 +73,17 @@ function assertPrivateDirectorySync(path: string): string {
     ) {
       throw new Error("Diagnostics directory is not a private regular directory.")
     }
-    fchmodSync(fd, PRIVATE_DIRECTORY_MODE)
-    return realpathSync(absolutePath)
+    if (SUPPORTS_POSIX_FILE_MODES) {
+      fchmodSync(fd, PRIVATE_DIRECTORY_MODE)
+    } else {
+      ensurePrivateWindowsAclSync(absolutePath, "directory", opened)
+    }
+    const resolvedPath = realpathSync(absolutePath)
+    const secured = lstatSync(absolutePath)
+    if (secured.isSymbolicLink() || !secured.isDirectory() || !sameFile(opened, secured)) {
+      throw new Error("Diagnostics directory changed while it was being secured.")
+    }
+    return resolvedPath
   } finally {
     closeSync(fd)
   }
@@ -129,8 +144,17 @@ export async function assertPrivateDirectory(path: string): Promise<string> {
     ) {
       throw new Error("Diagnostics directory is not a private regular directory.")
     }
-    await handle.chmod(PRIVATE_DIRECTORY_MODE)
-    return realpath(absolutePath)
+    if (SUPPORTS_POSIX_FILE_MODES) {
+      await handle.chmod(PRIVATE_DIRECTORY_MODE)
+    } else {
+      await ensurePrivateWindowsAcl(absolutePath, "directory", opened)
+    }
+    const resolvedPath = await realpath(absolutePath)
+    const secured = await lstat(absolutePath)
+    if (secured.isSymbolicLink() || !secured.isDirectory() || !sameFile(opened, secured)) {
+      throw new Error("Diagnostics directory changed while it was being secured.")
+    }
+    return resolvedPath
   } finally {
     await handle.close()
   }
@@ -177,14 +201,37 @@ export function assertPrivateRegularFileSync(path: string): Stats | null {
     fd = openSync(path, constants.O_RDONLY | NO_FOLLOW)
     const opened = fstatSync(fd)
     const after = lstatSync(path)
-    if (!opened.isFile() || after.isSymbolicLink() || !after.isFile() || !sameFile(opened, after)) {
+    if (
+      !opened.isFile() ||
+      opened.nlink !== 1 ||
+      after.isSymbolicLink() ||
+      !after.isFile() ||
+      after.nlink !== 1 ||
+      !sameFile(opened, after)
+    ) {
       throw new Error("Diagnostics file is not a private regular file.")
     }
-    fchmodSync(fd, PRIVATE_FILE_MODE)
+    if (SUPPORTS_POSIX_FILE_MODES) {
+      fchmodSync(fd, PRIVATE_FILE_MODE)
+    } else {
+      ensurePrivateWindowsAclSync(path, "file", opened)
+    }
+    const secured = lstatSync(path)
+    if (
+      secured.isSymbolicLink() ||
+      !secured.isFile() ||
+      secured.nlink !== 1 ||
+      !sameFile(opened, secured)
+    ) {
+      throw new Error("Diagnostics file changed while it was being secured.")
+    }
     return opened
   } catch (error) {
     if (isMissingError(error)) {
       return null
+    }
+    if (error instanceof DiagnosticsPrivateWindowsAclError) {
+      throw error
     }
     throw new Error("Diagnostics file is not a private regular file.")
   } finally {
@@ -215,17 +262,20 @@ async function openPrivateRegularFile(
   }
   try {
     const stat = await handle.stat()
-    if (!stat.isFile()) {
+    if (!stat.isFile() || stat.nlink !== 1) {
       throw new Error("Diagnostics file is not a private regular file.")
     }
-    if (create || (stat.mode & 0o777) !== PRIVATE_FILE_MODE) {
+    if (SUPPORTS_POSIX_FILE_MODES && (create || (stat.mode & 0o777) !== PRIVATE_FILE_MODE)) {
       await handle.chmod(PRIVATE_FILE_MODE)
+    } else if (!SUPPORTS_POSIX_FILE_MODES) {
+      await ensurePrivateWindowsAcl(absolutePath, "file", stat)
     }
     const after = await lstat(absolutePath)
     const resolvedFile = await realpath(absolutePath)
     if (
       after.isSymbolicLink() ||
       !after.isFile() ||
+      after.nlink !== 1 ||
       !sameFile(stat, after) ||
       !isWithin(parent, resolvedFile)
     ) {
