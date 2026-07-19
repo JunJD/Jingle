@@ -10,12 +10,15 @@ import {
 
 function createApplicationRecord(
   input: Pick<LauncherApplicationRecord, "displayName" | "path"> &
-    Partial<Pick<LauncherApplicationRecord, "keywords" | "localizedNames">>
+    Partial<
+      Pick<LauncherApplicationRecord, "appUserModelId" | "keywords" | "localizedNames">
+    >
 ): LauncherApplicationRecord {
   const bundleName = input.displayName
   const localizedNames = input.localizedNames ?? []
 
   return {
+    ...(input.appUserModelId ? { appUserModelId: input.appUserModelId } : {}),
     bundleName,
     displayName: input.displayName,
     id: input.path,
@@ -152,6 +155,225 @@ test("Windows packaged applications use their manifest icon and dedicated launch
   } finally {
     await rm(temporaryDirectory, { force: true, recursive: true })
   }
+})
+
+test("Windows packaged discovery replaces a path shortcut with the same structured AUMID", async () => {
+  const appUserModelId = "Microsoft.WindowsSoundRecorder_8wekyb3d8bbwe!App"
+  const provider = new ApplicationsLauncherSearchProvider({
+    loadApplicationCatalog: async () => [
+      createApplicationRecord({
+        appUserModelId: appUserModelId.toUpperCase(),
+        displayName: "Legacy Recorder Shortcut",
+        path: "C:\\Start Menu\\Legacy Recorder Shortcut.lnk"
+      })
+    ],
+    loadWindowsPackagedApplications: async () => [
+      createWindowsPackagedApplicationRecord({
+        appUserModelId,
+        displayName: "Sound Recorder"
+      })
+    ],
+    platform: "win32",
+    resolveApplicationIconDataUrl: async () => undefined
+  })
+
+  assert.equal(
+    (
+      await provider.search({
+        limit: 10,
+        query: "legacy recorder shortcut",
+        sources: ["applications"]
+      })
+    ).results.length,
+    0
+  )
+
+  const [packagedResult] = (
+    await provider.search({ limit: 10, query: "sound recorder", sources: ["applications"] })
+  ).results
+  assert.equal(packagedResult?.action.type, "launch-windows-packaged-application")
+  assert.equal(
+    await provider.getWindowsPackagedApplicationIdForPath(
+      "c:\\start menu\\LEGACY RECORDER SHORTCUT.lnk"
+    ),
+    appUserModelId
+  )
+})
+
+test("Windows packaged discovery does not dedupe a same-title path without structured AUMID", async () => {
+  const displayName = "Sound Recorder"
+  const provider = new ApplicationsLauncherSearchProvider({
+    loadApplicationCatalog: async () => [
+      createApplicationRecord({
+        displayName,
+        path: "C:\\Start Menu\\Sound Recorder.lnk"
+      })
+    ],
+    loadWindowsPackagedApplications: async () => [
+      createWindowsPackagedApplicationRecord({
+        appUserModelId: "Microsoft.WindowsSoundRecorder_8wekyb3d8bbwe!App",
+        displayName
+      })
+    ],
+    platform: "win32",
+    resolveApplicationIconDataUrl: async () => undefined
+  })
+
+  const results = (
+    await provider.search({ limit: 10, query: "sound recorder", sources: ["applications"] })
+  ).results
+
+  assert.equal(results.length, 2)
+  assert.deepEqual(
+    results.map((result) => result.action.type).toSorted(),
+    ["launch-windows-packaged-application", "open-path"]
+  )
+  assert.equal(
+    await provider.getWindowsPackagedApplicationIdForPath(
+      "C:\\Start Menu\\Sound Recorder.lnk"
+    ),
+    undefined
+  )
+})
+
+test("Windows packaged discovery failure preserves a path shortcut with structured AUMID", async () => {
+  const appUserModelId = "Microsoft.WindowsSoundRecorder_8wekyb3d8bbwe!App"
+  const provider = new ApplicationsLauncherSearchProvider({
+    loadApplicationCatalog: async () => [
+      createApplicationRecord({
+        appUserModelId,
+        displayName: "Sound Recorder Shortcut",
+        path: "C:\\Start Menu\\Sound Recorder Shortcut.lnk"
+      })
+    ],
+    loadWindowsPackagedApplications: async () => {
+      throw new Error("packaged discovery unavailable")
+    },
+    platform: "win32",
+    resolveApplicationIconDataUrl: async () => undefined
+  })
+
+  const [result] = (
+    await provider.search({
+      limit: 10,
+      query: "sound recorder shortcut",
+      sources: ["applications"]
+    })
+  ).results
+
+  assert.equal(result?.action.type, "open-path")
+  assert.deepEqual(result?.action.target, {
+    kind: "application",
+    path: "C:\\Start Menu\\Sound Recorder Shortcut.lnk"
+  })
+  assert.equal(
+    await provider.getWindowsPackagedApplicationIdForPath(
+      "C:\\Start Menu\\Sound Recorder Shortcut.lnk"
+    ),
+    undefined
+  )
+})
+
+test("Windows packaged refresh restores a suppressed shortcut when the package disappears", async () => {
+  let now = 0
+  let packagedApplications = [
+    createWindowsPackagedApplicationRecord({
+      appUserModelId: "Microsoft.WindowsSoundRecorder_8wekyb3d8bbwe!App",
+      displayName: "Sound Recorder"
+    })
+  ]
+  const shortcutPath = "C:\\Start Menu\\Legacy Recorder Shortcut.lnk"
+  const provider = new ApplicationsLauncherSearchProvider({
+    loadApplicationCatalog: async () => [
+      createApplicationRecord({
+        appUserModelId: "MICROSOFT.WINDOWSSOUNDRECORDER_8WEKYB3D8BBWE!APP",
+        displayName: "Legacy Recorder Shortcut",
+        path: shortcutPath
+      })
+    ],
+    loadWindowsPackagedApplications: async () => packagedApplications,
+    now: () => now,
+    platform: "win32",
+    resolveApplicationIconDataUrl: async () => undefined
+  })
+
+  assert.equal(
+    (
+      await provider.search({
+        limit: 10,
+        query: "legacy recorder shortcut",
+        sources: ["applications"]
+      })
+    ).results.length,
+    0
+  )
+
+  packagedApplications = []
+  now = 31_000
+  assert.equal(await provider.refreshIfStale(), true)
+
+  const [fallbackResult] = (
+    await provider.search({
+      limit: 10,
+      query: "legacy recorder shortcut",
+      sources: ["applications"]
+    })
+  ).results
+  assert.equal(fallbackResult?.action.type, "open-path")
+  assert.deepEqual(fallbackResult?.action.target, {
+    kind: "application",
+    path: shortcutPath
+  })
+  assert.equal(await provider.getWindowsPackagedApplicationIdForPath(shortcutPath), undefined)
+})
+
+test("Windows packaged AUMID replacement restores the shortcut for the previous AUMID", async () => {
+  let now = 0
+  let packagedApplications = [
+    createWindowsPackagedApplicationRecord({
+      appUserModelId: "Contoso.Recorder_oldfamily!App",
+      displayName: "Old Store Recorder"
+    })
+  ]
+  const shortcutPath = "C:\\Start Menu\\Old Recorder Shortcut.lnk"
+  const provider = new ApplicationsLauncherSearchProvider({
+    loadApplicationCatalog: async () => [
+      createApplicationRecord({
+        appUserModelId: "Contoso.Recorder_oldfamily!App",
+        displayName: "Old Recorder Shortcut",
+        path: shortcutPath
+      })
+    ],
+    loadWindowsPackagedApplications: async () => packagedApplications,
+    now: () => now,
+    platform: "win32",
+    resolveApplicationIconDataUrl: async () => undefined
+  })
+
+  await provider.warmup()
+  packagedApplications = [
+    createWindowsPackagedApplicationRecord({
+      appUserModelId: "Contoso.Recorder_newfamily!App",
+      displayName: "New Store Recorder"
+    })
+  ]
+  now = 31_000
+  assert.equal(await provider.refreshIfStale(), true)
+
+  const [fallbackResult] = (
+    await provider.search({
+      limit: 10,
+      query: "old recorder shortcut",
+      sources: ["applications"]
+    })
+  ).results
+  assert.equal(fallbackResult?.action.type, "open-path")
+  assert.equal(await provider.getWindowsPackagedApplicationIdForPath(shortcutPath), undefined)
+
+  const [replacementResult] = (
+    await provider.search({ limit: 10, query: "new store recorder", sources: ["applications"] })
+  ).results
+  assert.equal(replacementResult?.action.type, "launch-windows-packaged-application")
 })
 
 test("Windows packaged refresh preserves the last catalog on discovery failure and retries", async () => {
