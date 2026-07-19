@@ -13,6 +13,7 @@ import { DurableWindowController } from "./controller"
 import { PrimaryMainWindowService, type PrimaryMainWindowRuntime } from "./service"
 import { ThreadWindowService, type ThreadWindowRuntime } from "../thread-window/service"
 import { DurableWindowLifecycleService } from "../durable-window/lifecycle"
+import { requestWindowPresentation } from "../windows/window-presentation"
 
 const TOKEN = Symbol("DurableWindowRuntime")
 export function registerMainWindowModule(
@@ -35,6 +36,7 @@ export function registerMainWindowModule(
         getSessionState: getMainWindowSessionState,
         onWindowClosed: () => lifecycle.windowClosed(),
         onWindowOpened: () => lifecycle.windowOpened(),
+        presentWindow: requestWindowPresentation,
         setSessionState: setMainWindowSessionState,
         setWindowThread: (window, threadId) =>
           setDurableWindowIdentityThread(window.webContents, threadId)

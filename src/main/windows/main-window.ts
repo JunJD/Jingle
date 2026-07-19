@@ -36,10 +36,9 @@ export function createMainWindow(threadId: string | null): BrowserWindow {
   })
   const observeFailure = attachWindowDiagnostics(window, "main")
   attachMainWindowStatePersistence(window)
-  window.once("ready-to-show", () => {
-    if (placement.isMaximized || placement.isFirstLaunch) window.maximize()
+  installWindowPresentation(window, {
+    maximizeOnActivation: placement.isMaximized || placement.isFirstLaunch
   })
-  installWindowPresentation(window)
   installExternalWindowOpenHandler(window.webContents)
   startRendererWindowLoad(window, "main", {
     onFailure: observeFailure,

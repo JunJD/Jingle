@@ -14,6 +14,7 @@ import { attachLauncherWindowDragController } from "./launcher-window-drag-contr
 import type { LauncherShownEvent } from "@shared/launcher-presentation"
 import { diagnosticsLogger } from "../diagnostics/instance"
 import { registerWindowIdentity } from "./window-identity"
+import { claimWindowActivation } from "./window-presentation"
 
 const LAUNCHER_CONTENT_WIDTH = 760
 const LAUNCHER_HORIZONTAL_MARGIN = 24
@@ -322,6 +323,7 @@ function emitLauncherShown(launcherWindow: BrowserWindow, event: LauncherShownEv
 export function showLauncherWindow(launcherWindow: BrowserWindow): void {
   if (launcherWindow.isVisible()) {
     if (!launcherWindow.isFocused()) {
+      claimWindowActivation()
       launcherWindow.focus()
       launcherWindow.moveTop()
     }
@@ -342,6 +344,7 @@ export function showLauncherWindow(launcherWindow: BrowserWindow): void {
     launcherWindow.setAlwaysOnTop(true)
   }
 
+  claimWindowActivation()
   launcherWindow.show()
   if (process.platform === "darwin") {
     launcherWindow.focus()

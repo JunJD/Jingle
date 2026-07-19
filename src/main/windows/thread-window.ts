@@ -72,10 +72,9 @@ export function createThreadWindow(
     windowId: input.windowId
   })
   const observeFailure = attachWindowDiagnostics(window, THREAD_WINDOW_KIND)
-  window.once("ready-to-show", () => {
-    if (input.isMaximized) window.maximize()
+  installWindowPresentation(window, {
+    maximizeOnActivation: input.isMaximized
   })
-  installWindowPresentation(window)
   installExternalWindowOpenHandler(window.webContents)
   startRendererWindowLoad(window, THREAD_WINDOW_KIND, {
     onFailure: observeFailure,

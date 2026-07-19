@@ -57,6 +57,7 @@ describe("PrimaryMainWindowService", () => {
       getSessionState: () => state,
       onWindowClosed: () => {},
       onWindowOpened: () => {},
+      presentWindow: (window) => window.focus(),
       setSessionState: (next) => (state = next),
       setWindowThread: (_window, threadId) => bindings.push(threadId)
     })
@@ -79,6 +80,7 @@ describe("PrimaryMainWindowService", () => {
       getSessionState: () => state,
       onWindowClosed: () => {},
       onWindowOpened: () => {},
+      presentWindow: (target) => target.focus(),
       setSessionState: (next) => (state = next),
       setWindowThread: () => {}
     })

@@ -7,6 +7,7 @@ export interface PrimaryMainWindowRuntime {
   getSessionState: () => MainWindowSessionState
   onWindowClosed: () => void
   onWindowOpened: () => void
+  presentWindow: (window: BrowserWindow) => void
   setSessionState: (state: MainWindowSessionState) => MainWindowSessionState
   setWindowThread: (window: BrowserWindow, threadId: string) => void
 }
@@ -33,9 +34,7 @@ export class PrimaryMainWindowService {
       return
     }
     if (params.threadId) this.bindThread(this.window, params.threadId)
-    if (this.window.isMinimized()) this.window.restore()
-    if (!this.window.isVisible()) this.window.show()
-    this.window.focus()
+    this.runtime.presentWindow(this.window)
   }
 
   bindSenderThread(sender: WebContents, threadId: string): void {
