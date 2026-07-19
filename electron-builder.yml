@@ -4,11 +4,6 @@ directories:
   output: dist
 npmRebuild: false
 afterPack: scripts/after-pack-audit.cjs
-electronLanguages:
-  - en
-  - en_GB
-  - zh_CN
-  - zh_TW
 files:
   - out/**
   - prisma/migrations/**
@@ -108,6 +103,11 @@ asarUnpack:
 mac:
   category: public.app-category.productivity
   icon: resources/icon.icns
+  electronLanguages:
+    - en
+    - en_GB
+    - zh_CN
+    - zh_TW
   extendInfo:
     NSRemindersFullAccessUsageDescription: Jingle needs access to Reminders to list, create, complete, and delete reminders you request.
     NSRemindersUsageDescription: Jingle needs access to Reminders to list, create, complete, and delete reminders you request.
@@ -135,11 +135,21 @@ dmg:
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 win:
   icon: resources/icon.ico
+  electronLanguages:
+    - en-US
+    - en-GB
+    - zh-CN
+    - zh-TW
   target:
     - nsis
 linux:
   category: Utility
   icon: resources/icon.png
+  electronLanguages:
+    - en-US
+    - en-GB
+    - zh-CN
+    - zh-TW
   target:
     - AppImage
 nsis:
