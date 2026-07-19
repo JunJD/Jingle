@@ -165,6 +165,8 @@ make extension-dev EXTENSION=/absolute/path/to/my-extension
 
 CLI 会对最终 runtime bundle 的精确字节计算 `sha256:<64 lowercase hex>`，把 digest 同时写入内容寻址文件名和 `jingle.extension.json.runtimeArtifactRevision`。宿主只有在 descriptor、文件名和实际字节三者一致时才接受该 revision。旧 descriptor 没有这个字段时仍可加载，但 runtime artifact revision 明确不可用，不能从 version、路径或 mtime 推断。
 
+同一 package 目标的发布由跨进程锁和忽略目录中的事务 journal 串行化。若 CLI 进程在旧目录移入 backup 后退出，下次发布会先恢复最后一个已发布目录；若新 staging 已经提升到最终目录，则保留新目录并清理旧 backup。journal 会绑定锁解析出的物理目标路径；无法严格解析或目标不一致时发布会停止，不会扫描或猜测其他版本的临时目录。
+
 然后启动 Jingle dev app：
 
 ```bash

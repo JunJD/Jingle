@@ -10,11 +10,12 @@ const unprivilegedPortCount = 65_536 - firstUnprivilegedPort
 const heldLocksByToken = new Map()
 
 export async function acquirePublishLock(targetPath) {
-  const identity = await canonicalTargetIdentity(targetPath)
+  const target = await canonicalPublishTarget(targetPath)
+  const { identity } = target
   const address = lockAddress(identity)
   const ownerToken = randomUUID()
   const server = net.createServer((socket) => socket.destroy())
-  const lock = Object.freeze({ identity, ownerToken })
+  const lock = Object.freeze({ identity, ownerToken, targetPath: target.path })
   const record = { address, error: null, lock, server, state: "acquiring" }
 
   try {
@@ -124,13 +125,17 @@ export function formatPublishLockErrorDiagnostics(error) {
   ]
 }
 
-async function canonicalTargetIdentity(targetPath) {
+async function canonicalPublishTarget(targetPath) {
   const absolutePath = resolve(targetPath).normalize("NFC")
   const canonicalParent = await canonicalizePath(dirname(absolutePath))
   const canonicalPath = join(canonicalParent, basename(absolutePath)).normalize("NFC")
-  return process.platform === "win32" || process.platform === "darwin"
-    ? canonicalPath.toLowerCase()
-    : canonicalPath
+  return {
+    identity:
+      process.platform === "win32" || process.platform === "darwin"
+        ? canonicalPath.toLowerCase()
+        : canonicalPath,
+    path: canonicalPath
+  }
 }
 
 async function canonicalizePath(inputPath) {

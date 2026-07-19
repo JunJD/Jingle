@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createHash, randomUUID } from "node:crypto"
+import { createHash } from "node:crypto"
 import {
   cpSync,
   existsSync,
@@ -9,9 +9,8 @@ import {
   watch,
   writeFileSync
 } from "node:fs"
-import { mkdtemp, rename, rm } from "node:fs/promises"
+import { mkdtemp, rm } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
-import { setTimeout as delay } from "node:timers/promises"
 import { pathToFileURL } from "node:url"
 import { build } from "esbuild"
 import ts from "typescript"
@@ -21,13 +20,17 @@ import {
   formatPublishLockErrorDiagnostics,
   releasePublishLock
 } from "./publish-lock.mjs"
+import {
+  abandonPreparedPackage,
+  beginPackagePublish,
+  publishPreparedPackage,
+  renamePathWithRetry
+} from "./publish-journal.mjs"
 
 const repoRoot = process.cwd()
 const defaultOutputRoot = resolve(repoRoot, ".jingle-build", "installed-extensions")
-const extensionPackageTemporaryDirectoryPrefix = ".jingle-extension-tmp-"
 const reactBridgeGlobalKey = "jingle.extensionRuntime.reactBridge"
 const reactBridgeVersion = 1
-const windowsFilesystemRetryCodes = new Set(["EACCES", "EBUSY", "EPERM"])
 
 const command = process.argv[2]
 const args = process.argv.slice(3)
@@ -264,12 +267,8 @@ async function buildExtension(input) {
   const version = packageJson.version ?? "0.0.0"
   const trust = resolvePackageTrust(packageJson, input.trustOverride)
   const packageRoot = resolve(input.outputRoot, manifest.name, version)
-  const packageParent = dirname(packageRoot)
-  const stagingRoot = join(
-    packageParent,
-    `${extensionPackageTemporaryDirectoryPrefix}staging-${randomUUID()}`
-  )
   const publishLock = await acquirePublishLock(packageRoot)
+  let publishTransaction = null
   let transactionError = null
   let releaseError = null
   let publishedPackageRoot = null
@@ -277,6 +276,8 @@ async function buildExtension(input) {
   try {
     try {
       assertPublishLockHeld(publishLock)
+      publishTransaction = await beginPackagePublish(publishLock)
+      const { stagingRoot } = publishTransaction
       mkdirSync(join(stagingRoot, "dist"), { recursive: true })
       writeJson(join(stagingRoot, "manifest.json"), manifest)
       writeJson(join(stagingRoot, "runtime-metadata.json"), runtimeMetadata)
@@ -331,21 +332,17 @@ async function buildExtension(input) {
         trust,
         version
       })
-      await publishPackageDirectory(stagingRoot, packageRoot, publishLock)
-      publishedPackageRoot = packageRoot
+      await publishPreparedPackage(publishTransaction, publishLock)
+      publishedPackageRoot = publishTransaction.packageRoot
     } catch (error) {
       let failure = error
-      if (existsSync(stagingRoot)) {
+      if (publishTransaction) {
         try {
-          assertPublishLockHeld(publishLock)
-          const cleanupError = await removePackageDirectory(stagingRoot)
-          if (cleanupError) {
-            throw cleanupError
-          }
+          await abandonPreparedPackage(publishTransaction, publishLock)
         } catch (cleanupError) {
           failure = new AggregateError(
             [error, cleanupError],
-            `Extension build failed and staging cleanup could not finish safely: ${stagingRoot}`
+            `Extension build failed and transaction cleanup could not finish safely: ${packageRoot}`
           )
           copyPublicationFailureFacts(error, failure)
         }
@@ -385,7 +382,7 @@ async function buildExtension(input) {
 
   return {
     id: manifest.name,
-    packageRoot,
+    packageRoot: publishTransaction?.packageRoot ?? packageRoot,
     trust,
     version
   }
@@ -393,57 +390,6 @@ async function buildExtension(input) {
 
 function createRuntimeArtifactRevision(runtimeModulePath) {
   return `sha256:${createHash("sha256").update(readFileSync(runtimeModulePath)).digest("hex")}`
-}
-
-async function publishPackageDirectory(stagingRoot, packageRoot, publishLock) {
-  const backupRoot = join(
-    dirname(packageRoot),
-    `${extensionPackageTemporaryDirectoryPrefix}backup-${randomUUID()}`
-  )
-  let previousArtifactMoved = false
-
-  try {
-    assertPublishLockHeld(publishLock)
-    if (existsSync(packageRoot)) {
-      await renamePathWithRetry(packageRoot, backupRoot)
-      previousArtifactMoved = true
-    }
-    assertPublishLockHeld(publishLock)
-    await renamePathWithRetry(stagingRoot, packageRoot)
-  } catch (publishError) {
-    if (previousArtifactMoved && !existsSync(packageRoot)) {
-      try {
-        assertPublishLockHeld(publishLock)
-        await renamePathWithRetry(backupRoot, packageRoot)
-      } catch (rollbackError) {
-        const error = new AggregateError(
-          [publishError, rollbackError],
-          `Extension publish failed and rollback could not restore ${packageRoot}; previous artifact remains at ${backupRoot}`
-        )
-        error.code = "JINGLE_EXTENSION_PUBLISH_ROLLBACK_FAILED"
-        error.publishedPackageRollback = { backupRoot, packageRoot }
-        throw error
-      }
-    }
-    throw publishError
-  }
-
-  if (previousArtifactMoved) {
-    try {
-      assertPublishLockHeld(publishLock)
-    } catch (error) {
-      error.publishedPackageRoot = packageRoot
-      error.previousPackageBackupRoot = backupRoot
-      throw error
-    }
-    const cleanupError = await removePackageDirectory(backupRoot)
-    if (cleanupError) {
-      console.warn(
-        `Published extension but could not remove ignored backup directory: ${backupRoot}`
-      )
-      console.warn(cleanupError instanceof Error ? cleanupError.message : String(cleanupError))
-    }
-  }
 }
 
 function getRollbackFailureFacts(error) {
@@ -503,29 +449,6 @@ function isPackageDirectoryPresent(packageRoot) {
   } catch {
     return false
   }
-}
-
-async function renamePathWithRetry(source, destination) {
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      await rename(source, destination)
-      return
-    } catch (error) {
-      if (!isWindowsFilesystemLockError(error) || attempt >= 5) {
-        throw error
-      }
-      await delay((attempt + 1) * 100)
-    }
-  }
-}
-
-function isWindowsFilesystemLockError(error) {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    typeof error.code === "string" &&
-    windowsFilesystemRetryCodes.has(error.code)
-  )
 }
 
 async function removePackageDirectory(packageRoot) {
