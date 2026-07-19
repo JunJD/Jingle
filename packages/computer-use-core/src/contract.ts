@@ -57,6 +57,67 @@ export interface ComputerUseObservation {
   window: ComputerUseWindowIdentity
 }
 
+export type ComputerUseForcedReanchorReason =
+  | "context_compaction"
+  | "external_mutation_uncertain"
+  | "process_restart"
+  | "requested"
+
+export type ComputerUseFullViewReason =
+  | ComputerUseForcedReanchorReason
+  | "diff_over_budget"
+  | "initial"
+  | "low_identity_confidence"
+  | "root_replacement"
+  | "state_evicted"
+
+export type ComputerUseIdentityReason =
+  | "platform_fingerprint"
+  | "semantic_match"
+  | "stable_ref_overlap"
+
+export interface ComputerUseProjectionTruncation {
+  byteLimit: number
+  omittedElements: number
+  truncatedFields: number
+}
+
+export interface ComputerUseFoldedFullView {
+  application: ComputerUseObservation["application"]
+  capturedAt: number
+  elements: readonly ComputerUseElement[]
+  epoch: number
+  hasMore: boolean
+  kind: "full"
+  reason: ComputerUseFullViewReason
+  stateId: string
+  totalElements: number
+  truncation: ComputerUseProjectionTruncation
+}
+
+export interface ComputerUseObservationDiff {
+  added: readonly ComputerUseElement[]
+  baseStateId: string
+  capturedAt: number
+  identityConfidence: number
+  identityReason: ComputerUseIdentityReason
+  kind: "diff"
+  removed: readonly string[]
+  successorEpoch: number
+  successorStateId: string
+  updated: readonly ComputerUseElement[]
+}
+
+export type ComputerUseModelObservation = ComputerUseFoldedFullView | ComputerUseObservationDiff
+
+export interface ComputerUseObservationQueryResult {
+  elements: readonly ComputerUseElement[]
+  hasMore: boolean
+  stateId: string
+  totalElements: number
+  truncation: ComputerUseProjectionTruncation
+}
+
 export type ComputerUseBackendObservation = Omit<
   ComputerUseObservation,
   "epoch" | "stateId"

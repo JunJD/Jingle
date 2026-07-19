@@ -39,6 +39,13 @@ function observation(overrides: Partial<ComputerUseObservation> = {}): ComputerU
   }
 }
 
+function observationInput(
+  overrides: Partial<ComputerUseObservation> = {}
+): Omit<ComputerUseObservation, "stateId"> {
+  const { stateId: _stateId, ...input } = observation(overrides)
+  return input
+}
+
 function typeTextObservation(): ComputerUseObservation {
   return observation({
     elements: [
@@ -474,6 +481,482 @@ test("observation store keeps immutable bounded states", () => {
   assert.equal(Object.isFrozen(second), true)
   assert.equal(Object.isFrozen(second.window), true)
   assert.equal(Object.isFrozen(second.elements), true)
+})
+
+test("model observation starts folded, then derives a trustworthy state-owned diff", () => {
+  const store = new ComputerUseObservationStore(8, { foldedElementLimit: 2 })
+  const base = store.create({
+    ...observationInput(),
+    elements: [
+      { actions: ["press"], index: 0, ref: "ref-save", role: "button", title: "Save" },
+      {
+        actions: ["type_text"],
+        index: 1,
+        ref: "ref-name",
+        role: "text_field",
+        value: "before"
+      },
+      { actions: ["press"], index: 2, ref: "ref-remove", role: "button", title: "Old" }
+    ]
+  })
+  const initial = store.project({ stateId: base.stateId })
+  assert.equal(initial.kind, "full")
+  if (initial.kind !== "full") throw new Error("expected folded full view")
+  assert.equal(initial.reason, "initial")
+  assert.equal(initial.stateId, base.stateId)
+  assert.equal(initial.elements.length, 2)
+  assert.equal(initial.hasMore, true)
+  assert.equal(initial.totalElements, 3)
+  assert.deepEqual(initial.truncation, {
+    byteLimit: 48 * 1024,
+    omittedElements: 1,
+    truncatedFields: 0
+  })
+  assert.equal("resourceKey" in initial, false)
+  assert.equal("window" in initial, false)
+
+  const successor = store.create({
+    ...observationInput({ capturedAt: 2, epoch: 1 }),
+    elements: [
+      { actions: ["press"], index: 0, ref: "ref-save", role: "button", title: "Save" },
+      {
+        actions: ["type_text"],
+        index: 1,
+        ref: "ref-name",
+        role: "text_field",
+        value: "after"
+      },
+      { actions: ["press"], index: 2, ref: "ref-added", role: "button", title: "New" }
+    ]
+  })
+  const projection = store.project({ baseStateId: base.stateId, stateId: successor.stateId })
+  assert.equal(projection.kind, "diff")
+  if (projection.kind !== "diff") throw new Error("expected observation diff")
+  assert.equal(projection.baseStateId, base.stateId)
+  assert.equal(projection.successorStateId, successor.stateId)
+  assert.deepEqual(
+    projection.added.map((element) => element.ref),
+    ["ref-added"]
+  )
+  assert.deepEqual(
+    projection.updated.map((element) => [element.ref, element.value]),
+    [["ref-name", "after"]]
+  )
+  assert.deepEqual(projection.removed, ["ref-remove"])
+  assert.equal(projection.identityConfidence, 2 / 3)
+  assert.equal(projection.identityReason, "stable_ref_overlap")
+  assert.equal(Object.isFrozen(projection), true)
+  assert.equal(Object.isFrozen(projection.added), true)
+  assert.equal(store.get(successor.stateId)?.elements.length, 3)
+
+  assert.deepEqual(store.expand({ offset: 2, stateId: successor.stateId }).elements, [
+    successor.elements[2]
+  ])
+  assert.deepEqual(store.search({ query: "AFTER", stateId: successor.stateId }).elements, [
+    successor.elements[1]
+  ])
+  const inspected = store.inspect({
+    refs: ["ref-added", "ref-save"],
+    stateId: successor.stateId
+  })
+  assert.equal(inspected.stateId, successor.stateId)
+  assert.deepEqual(inspected.elements, [successor.elements[2], successor.elements[0]])
+  assert.throws(() => store.inspect({ refs: ["ref-added"], stateId: base.stateId }))
+})
+
+test("observation queries report refs omitted by query limits", () => {
+  const store = new ComputerUseObservationStore()
+  const observation = store.create({
+    ...observationInput(),
+    elements: Array.from({ length: 100 }, (_, index) => ({
+      actions: ["press"],
+      index,
+      ref: `ref-${index}`,
+      role: "button",
+      title: "matching control"
+    }))
+  })
+
+  const search = store.search({ limit: 20, query: "matching", stateId: observation.stateId })
+  assert.equal(search.elements.length, 20)
+  assert.equal(search.totalElements, 100)
+  assert.equal(search.hasMore, true)
+  assert.equal(search.truncation.omittedElements, 80)
+
+  const expand = store.expand({ limit: 20, offset: 10, stateId: observation.stateId })
+  assert.equal(expand.elements.length, 20)
+  assert.equal(expand.elements[0]?.ref, "ref-10")
+  assert.equal(expand.hasMore, true)
+  assert.equal(expand.truncation.omittedElements, 70)
+
+  const tail = store.expand({ limit: 20, offset: 90, stateId: observation.stateId })
+  assert.equal(tail.elements.length, 10)
+  assert.equal(tail.hasMore, false)
+  assert.equal(tail.truncation.omittedElements, 0)
+})
+
+test("observation projection re-anchors at every unsafe incremental boundary", () => {
+  const createState = (
+    store: ComputerUseObservationStore,
+    epoch: number,
+    refs: readonly string[],
+    overrides: Partial<ComputerUseObservation> = {}
+  ) =>
+    store.create({
+      ...observationInput({ capturedAt: epoch + 1, epoch, ...overrides }),
+      elements: refs.map((ref, index) => ({
+        actions: ["press"],
+        index,
+        ref,
+        role: "button",
+        title: ref
+      }))
+    })
+
+  const store = new ComputerUseObservationStore(8)
+  const base = createState(store, 0, ["a", "b", "c", "d"])
+  const replacement = createState(store, 1, ["w", "x", "y", "z"])
+  const rootProjection = store.project({
+    baseStateId: base.stateId,
+    stateId: replacement.stateId
+  })
+  assert.equal(rootProjection.kind, "full")
+  assert.equal(rootProjection.kind === "full" ? rootProjection.reason : null, "root_replacement")
+
+  const lowConfidence = createState(store, 2, ["a", "new-1", "new-2", "new-3"])
+  const lowProjection = store.project({
+    baseStateId: base.stateId,
+    stateId: lowConfidence.stateId
+  })
+  assert.equal(lowProjection.kind, "full")
+  assert.equal(
+    lowProjection.kind === "full" ? lowProjection.reason : null,
+    "low_identity_confidence"
+  )
+
+  const otherRoot = createState(store, 3, ["a", "b", "c", "d"], {
+    resourceKey: "desktop-pid:84",
+    window: { generation: "g2", nativeId: "w2", pid: 84, platform: "macos" }
+  })
+  const otherRootProjection = store.project({
+    baseStateId: base.stateId,
+    stateId: otherRoot.stateId
+  })
+  assert.equal(
+    otherRootProjection.kind === "full" ? otherRootProjection.reason : null,
+    "root_replacement"
+  )
+
+  for (const reason of [
+    "context_compaction",
+    "external_mutation_uncertain",
+    "process_restart",
+    "requested"
+  ] as const) {
+    const forced = store.project({ forceFullReason: reason, stateId: lowConfidence.stateId })
+    assert.equal(forced.kind === "full" ? forced.reason : null, reason)
+  }
+
+  const evictingStore = new ComputerUseObservationStore(1)
+  const evicted = createState(evictingStore, 0, ["stable"])
+  const retained = createState(evictingStore, 1, ["stable"])
+  const evictedProjection = evictingStore.project({
+    baseStateId: evicted.stateId,
+    stateId: retained.stateId
+  })
+  assert.equal(evictedProjection.kind === "full" ? evictedProjection.reason : null, "state_evicted")
+
+  const budgetStore = new ComputerUseObservationStore(8, { diffChangeLimit: 1 })
+  const budgetBase = createState(budgetStore, 0, ["stable", "removed"])
+  const budgetSuccessor = createState(budgetStore, 1, ["stable", "added"])
+  const overBudget = budgetStore.project({
+    baseStateId: budgetBase.stateId,
+    stateId: budgetSuccessor.stateId
+  })
+  assert.equal(overBudget.kind === "full" ? overBudget.reason : null, "diff_over_budget")
+
+  const byteBudgetStore = new ComputerUseObservationStore(8, { diffByteLimit: 1 })
+  const byteBase = createState(byteBudgetStore, 0, ["stable"])
+  const byteSuccessor = createState(byteBudgetStore, 1, ["stable"])
+  const byteOverBudget = byteBudgetStore.project({
+    baseStateId: byteBase.stateId,
+    stateId: byteSuccessor.stateId
+  })
+  assert.equal(byteOverBudget.kind === "full" ? byteOverBudget.reason : null, "diff_over_budget")
+})
+
+test("observation store rejects noncanonical indexes and missing query states", () => {
+  const store = new ComputerUseObservationStore()
+  assert.throws(() =>
+    store.create({
+      ...observationInput(),
+      elements: [{ actions: ["press"], index: 2, ref: "ref", role: "button" }]
+    })
+  )
+  assert.throws(() => store.expand({ stateId: "evicted" }), /missing or was evicted/)
+  assert.throws(() => store.search({ query: "", stateId: "evicted" }), /missing or was evicted/)
+  assert.throws(
+    () => new ComputerUseObservationStore(8, { minimumStableRefCoverage: 0 }),
+    /between 0.5 and 1/
+  )
+  assert.throws(
+    () => new ComputerUseObservationStore(8, { fullByteLimit: 4_095 }),
+    /at least 4096 bytes/
+  )
+  assert.throws(
+    () => new ComputerUseObservationStore(8, { diffByteLimit: 64 * 1024 + 1 }),
+    /must not exceed 65536/
+  )
+})
+
+test("model observations are exact-shaped and byte-bounded", () => {
+  const huge = "x".repeat(COMPUTER_USE_NATIVE_RESPONSE_LIMITS.text)
+  const store = new ComputerUseObservationStore(8, {
+    diffByteLimit: 1,
+    foldedElementLimit: 80,
+    fullByteLimit: 8 * 1024,
+    queryByteLimit: 8 * 1024
+  })
+  const elements = Array.from(
+    { length: 80 },
+    (_, index) =>
+      ({
+        actions: ["press"],
+        description: huge,
+        index,
+        nativeWindow: { nativeId: `native-${index}`, pid: 42 },
+        ref: `ref-${index}`,
+        resourceKey: "desktop-pid:42",
+        role: "button",
+        title: huge,
+        value: huge
+      }) as ComputerUseObservation["elements"][number]
+  )
+  const base = store.create({
+    ...observationInput({
+      application: {
+        id: "com.example.fixture",
+        name: "Fixture",
+        pid: 42
+      } as ComputerUseObservation["application"]
+    }),
+    elements
+  })
+  const full = store.project({ stateId: base.stateId })
+  assert.equal(full.kind, "full")
+  if (full.kind !== "full") throw new Error("expected bounded full view")
+  assert.equal(Buffer.byteLength(JSON.stringify(full)) <= 8_192, true)
+  assert.equal(full.truncation.byteLimit, 8_192)
+  assert.equal(full.truncation.omittedElements > 0, true)
+  assert.equal(full.truncation.truncatedFields > 0, true)
+  assert.deepEqual(Object.keys(full).sort(), [
+    "application",
+    "capturedAt",
+    "elements",
+    "epoch",
+    "hasMore",
+    "kind",
+    "reason",
+    "stateId",
+    "totalElements",
+    "truncation"
+  ])
+  assert.deepEqual(Object.keys(full.application).sort(), ["id", "name"])
+  assert.deepEqual(Object.keys(full.elements[0]!).sort(), [
+    "actions",
+    "description",
+    "index",
+    "ref",
+    "role",
+    "title",
+    "value"
+  ])
+  assert.equal(JSON.stringify(full).includes("nativeWindow"), false)
+  assert.equal(JSON.stringify(full).includes("resourceKey"), false)
+  assert.equal(JSON.stringify(full).includes('"pid"'), false)
+
+  const expanded = store.expand({ limit: 80, stateId: base.stateId })
+  assert.equal(Buffer.byteLength(JSON.stringify(expanded)) <= 8_192, true)
+  assert.equal(expanded.truncation.omittedElements > 0, true)
+  assert.equal(expanded.truncation.truncatedFields > 0, true)
+
+  const successor = store.create({
+    ...observationInput({ capturedAt: 2, epoch: 1 }),
+    elements: elements.map((element, index) => ({
+      ...element,
+      value: index === 0 ? `${huge}-changed` : element.value
+    }))
+  })
+  const fallback = store.project({ baseStateId: base.stateId, stateId: successor.stateId })
+  assert.equal(fallback.kind === "full" ? fallback.reason : null, "diff_over_budget")
+  assert.equal(Buffer.byteLength(JSON.stringify(fallback)) <= 8_192, true)
+})
+
+test("observation plug points cannot overstate confidence or contradict canonical states", () => {
+  const elements = (refs: readonly string[], value = "same") =>
+    refs.map((ref, index) => ({
+      actions: ["press" as const],
+      index,
+      ref,
+      role: "button",
+      value
+    }))
+  const ids = ["state-base", "state-successor"]
+  const conservativeStore = new ComputerUseObservationStore(
+    8,
+    {},
+    {
+      idFactory: { createStateId: () => ids.shift() ?? "state-exhausted" },
+      refMatcher: {
+        match: () => ({
+          confidence: 1,
+          reason: "platform_fingerprint",
+          stableRefs: ["stable"]
+        })
+      }
+    }
+  )
+  const base = conservativeStore.create({
+    ...observationInput(),
+    elements: elements(["stable", "base-1", "base-2", "base-3"])
+  })
+  const successor = conservativeStore.create({
+    ...observationInput({ capturedAt: 2, epoch: 1 }),
+    elements: elements(["stable", "next-1", "next-2", "next-3"])
+  })
+  assert.equal(base.stateId, "state-base")
+  assert.equal(successor.stateId, "state-successor")
+  const projection = conservativeStore.project({
+    baseStateId: base.stateId,
+    stateId: successor.stateId
+  })
+  assert.equal(projection.kind === "full" ? projection.reason : null, "low_identity_confidence")
+
+  let id = 0
+  const contradictoryStore = new ComputerUseObservationStore(
+    8,
+    {},
+    {
+      diffProjector: {
+        project: () => ({ added: [], removed: [], updated: [] })
+      },
+      idFactory: { createStateId: () => `contradictory-${id++}` }
+    }
+  )
+  const contradictoryBase = contradictoryStore.create({
+    ...observationInput(),
+    elements: elements(["stable"], "before")
+  })
+  const contradictorySuccessor = contradictoryStore.create({
+    ...observationInput({ capturedAt: 2, epoch: 1 }),
+    elements: elements(["stable"], "after")
+  })
+  assert.throws(
+    () =>
+      contradictoryStore.project({
+        baseStateId: contradictoryBase.stateId,
+        stateId: contradictorySuccessor.stateId
+      }),
+    /contradicted the complete stored observations/
+  )
+
+  let unsafeReasonId = 0
+  const unsafeReasonStore = new ComputerUseObservationStore(
+    8,
+    {},
+    {
+      idFactory: { createStateId: () => `unsafe-reason-${unsafeReasonId++}` },
+      refMatcher: {
+        match: () => ({
+          confidence: 1,
+          reason: "native-route:pid-42" as "stable_ref_overlap",
+          stableRefs: ["stable"]
+        })
+      }
+    }
+  )
+  const unsafeReasonBase = unsafeReasonStore.create({
+    ...observationInput(),
+    elements: elements(["stable"], "before")
+  })
+  const unsafeReasonSuccessor = unsafeReasonStore.create({
+    ...observationInput({ capturedAt: 2, epoch: 1 }),
+    elements: elements(["stable"], "after")
+  })
+  assert.throws(
+    () =>
+      unsafeReasonStore.project({
+        baseStateId: unsafeReasonBase.stateId,
+        stateId: unsafeReasonSuccessor.stateId
+      }),
+    /unknown identity reason/
+  )
+
+  let injectedId = 0
+  const injectedProjectionStore = new ComputerUseObservationStore(
+    8,
+    {},
+    {
+      diffProjector: {
+        project: ({ successor }) => ({
+          added: [],
+          removed: [],
+          updated: successor.elements
+            .slice(0, 1)
+            .map(
+              (element) =>
+                ({ ...element, pid: 42, resourceKey: "desktop-pid:42" }) as typeof element
+            )
+        })
+      },
+      idFactory: { createStateId: () => `injected-${injectedId++}` }
+    }
+  )
+  const injectedBase = injectedProjectionStore.create({
+    ...observationInput(),
+    elements: elements(["stable"], "before")
+  })
+  const injectedSuccessor = injectedProjectionStore.create({
+    ...observationInput({ capturedAt: 2, epoch: 1 }),
+    elements: elements(["stable"], "after")
+  })
+  const injectedProjection = injectedProjectionStore.project({
+    baseStateId: injectedBase.stateId,
+    stateId: injectedSuccessor.stateId
+  })
+  assert.equal(injectedProjection.kind, "diff")
+  if (injectedProjection.kind !== "diff") throw new Error("expected exact diff projection")
+  assert.deepEqual(Object.keys(injectedProjection.updated[0]!).sort(), [
+    "actions",
+    "index",
+    "ref",
+    "role",
+    "value"
+  ])
+  assert.equal(JSON.stringify(injectedProjection).includes("resourceKey"), false)
+  assert.equal(JSON.stringify(injectedProjection).includes('"pid"'), false)
+
+  const duplicateIdStore = new ComputerUseObservationStore(
+    2,
+    {},
+    {
+      idFactory: { createStateId: () => "duplicate" }
+    }
+  )
+  duplicateIdStore.create(observationInput())
+  assert.throws(() => duplicateIdStore.create(observationInput()), /already owned/)
+
+  const reusedIds = ["first", "second", "first"]
+  const evictedIdStore = new ComputerUseObservationStore(
+    1,
+    {},
+    {
+      idFactory: { createStateId: () => reusedIds.shift() ?? "exhausted" }
+    }
+  )
+  evictedIdStore.create(observationInput())
+  evictedIdStore.create(observationInput({ epoch: 1 }))
+  assert.throws(() => evictedIdStore.create(observationInput({ epoch: 2 })), /already owned/)
 })
 
 test("settings off revokes sessions before backend disposal completes", async () => {
