@@ -23,6 +23,7 @@ from typing import Any, Iterable
 
 MAX_ELEMENTS = 500
 MAX_DEPTH = 12
+PROTOCOL_VERSION = 1
 PRESS_ACTION_NAMES = {"activate", "click", "press", "toggle"}
 SCROLL_ACTION_NAMES = {
     "scroll down",
@@ -563,7 +564,7 @@ def _capability_matrix(environment: str, available: bool) -> dict[str, Any]:
     return {
         "environment": environment,
         "platform": "linux",
-        "protocolVersion": 1,
+        "protocolVersion": PROTOCOL_VERSION,
         "capabilities": [
             {"action": "press", "background": semantic, "foreground": "unavailable", "route": "at_spi_action"},
             {"action": "set_value", "background": semantic, "foreground": "unavailable", "route": "at_spi_editable_text"},
@@ -574,14 +575,46 @@ def _capability_matrix(environment: str, available: bool) -> dict[str, Any]:
     }
 
 
-def _probe(payload: dict[str, Any]) -> dict[str, Any]:
-    session_type = os.environ.get("XDG_SESSION_TYPE", "").lower() or "x11"
-    requested = str(payload.get("environment") or "")
-    detected = "linux-x11"
+def _detected_environment() -> str:
+    session_type = os.environ.get("XDG_SESSION_TYPE", "").strip().lower()
+    if session_type == "x11":
+        return "linux-x11"
     if session_type == "wayland":
         desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
         compositor = "gnome" if "gnome" in desktop else "kde" if "kde" in desktop else "other"
-        detected = f"linux-wayland-{compositor}"
+        return f"linux-wayland-{compositor}"
+    raise BackendError("unavailable", "A supported Linux session environment is required.")
+
+
+def _operation_response(
+    environment: str, method: str, result: dict[str, Any]
+) -> dict[str, Any]:
+    return {
+        "environment": environment,
+        "method": method,
+        "protocolVersion": PROTOCOL_VERSION,
+        "result": result,
+    }
+
+
+def _operation_environment(payload: dict[str, Any]) -> str:
+    environment = _detected_environment()
+    protocol_version = payload.get("protocolVersion")
+    if (
+        payload.get("environment") != environment
+        or type(protocol_version) is not int
+        or protocol_version != PROTOCOL_VERSION
+    ):
+        raise BackendError(
+            "unavailable", "Computer-use request belongs to another environment or protocol."
+        )
+    return environment
+
+
+def _probe(payload: dict[str, Any]) -> dict[str, Any]:
+    session_type = os.environ.get("XDG_SESSION_TYPE", "").lower() or "x11"
+    requested = str(payload.get("environment") or "")
+    detected = _detected_environment()
     supported = {
         "linux-x11",
         "linux-wayland-gnome",
@@ -617,9 +650,11 @@ def _dispatch(payload: dict[str, Any]) -> Any:
     if method == "probe":
         return _probe(payload)
     if method == "observe":
-        return _observe(payload.get("request") or {})
+        environment = _operation_environment(payload)
+        return _operation_response(environment, "observe", _observe(payload.get("request") or {}))
     if method == "execute":
-        return _execute(payload.get("request") or {})
+        environment = _operation_environment(payload)
+        return _operation_response(environment, "execute", _execute(payload.get("request") or {}))
     if method == "dispose_session":
         return None
     raise BackendError("refused", f"Unsupported method: {method!r}.")

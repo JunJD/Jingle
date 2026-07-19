@@ -145,6 +145,13 @@ interface RecordedNativeInvocation {
   signal?: AbortSignal
 }
 
+interface NativeOperationResponse {
+  environment: ComputerUseBackendEnvironment
+  method: "execute" | "observe"
+  protocolVersion: number
+  result: unknown
+}
+
 function recordingNativeBridge(
   handler: (
     request: JingleComputerUseNativeRequest,
@@ -163,6 +170,19 @@ function recordingNativeBridge(
       }
     },
     calls
+  }
+}
+
+function nativeOperationResponse(
+  method: "execute" | "observe",
+  result: unknown,
+  environment: ComputerUseBackendEnvironment = "macos-quartz"
+): NativeOperationResponse {
+  return {
+    environment,
+    method,
+    protocolVersion: 1,
+    result
   }
 }
 
@@ -2293,9 +2313,11 @@ test("native bridge keeps signals out of probe, observe, and execute JSON payloa
   const controller = new AbortController()
   const { bridge, calls } = recordingNativeBridge((request) => {
     if (request.method === "probe") return probedMatrix("macos-quartz")
-    if (request.method === "observe") return backendObservation
+    if (request.method === "observe") {
+      return nativeOperationResponse("observe", backendObservation)
+    }
     if (request.method === "execute") {
-      return {
+      return nativeOperationResponse("execute", {
         baseStateId: request.request.base.stateId,
         outcome: "worked",
         steps: [
@@ -2310,7 +2332,7 @@ test("native bridge keeps signals out of probe, observe, and execute JSON payloa
             outcome: "worked"
           }
         ]
-      }
+      })
     }
     return undefined
   })
@@ -2342,8 +2364,78 @@ test("native bridge keeps signals out of probe, observe, and execute JSON payloa
     assert.equal(call.signal, controller.signal)
     assert.equal(JSON.stringify(call.request).includes("signal"), false)
     if (call.request.method === "observe" || call.request.method === "execute") {
+      assert.equal(call.request.environment, "macos-quartz")
+      assert.equal(call.request.protocolVersion, 1)
       assert.equal(Object.hasOwn(call.request.request, "signal"), false)
     }
+  }
+})
+
+test("native operation responses reject missing or mismatched wire discriminators", async () => {
+  const base = typeTextObservation()
+  const { epoch: _epoch, stateId: _stateId, ...observationResult } = base
+  const action = { kind: "type_text", ref: "@e1", value: "hello" } as const
+  const executionResult = {
+    baseStateId: base.stateId,
+    outcome: "worked",
+    steps: [
+      {
+        action,
+        evidence: {
+          delivery: "semantic",
+          noSideEffectProof: false,
+          route: "ax_value",
+          verification: "verified"
+        },
+        outcome: "worked"
+      }
+    ]
+  }
+  const authorization = {
+    expiresAt: Date.now() + 1_000,
+    runId: "run",
+    sessionId: "session",
+    threadId: "thread",
+    window: base.window
+  }
+  const invalidObserveResponses: unknown[] = [
+    observationResult,
+    { method: "observe", protocolVersion: 1, result: observationResult },
+    nativeOperationResponse("observe", observationResult, "windows-win32"),
+    nativeOperationResponse("execute", observationResult),
+    { ...nativeOperationResponse("observe", observationResult), protocolVersion: 2 },
+    { ...nativeOperationResponse("observe", observationResult), protocolVersion: true },
+    { ...nativeOperationResponse("observe", observationResult), protocolVersion: "1" },
+    { ...nativeOperationResponse("observe", observationResult), unexpected: true }
+  ]
+  for (const response of invalidObserveResponses) {
+    const { bridge } = recordingNativeBridge((request) =>
+      request.method === "probe" ? probedMatrix("macos-quartz") : response
+    )
+    const backend = await createJingleComputerUseNativeBackend("macos-quartz", bridge)
+    await assert.rejects(backend.observe({}), /another environment or protocol/)
+  }
+
+  const invalidExecuteResponses: unknown[] = [
+    executionResult,
+    nativeOperationResponse("execute", executionResult, "linux-x11"),
+    nativeOperationResponse("observe", executionResult),
+    { ...nativeOperationResponse("execute", executionResult), protocolVersion: 2 },
+    { ...nativeOperationResponse("execute", executionResult), protocolVersion: true },
+    { ...nativeOperationResponse("execute", executionResult), protocolVersion: "1" },
+    { ...nativeOperationResponse("execute", executionResult), unexpected: true }
+  ]
+  for (const response of invalidExecuteResponses) {
+    const { bridge } = recordingNativeBridge((request) => {
+      if (request.method === "probe") return probedMatrix("macos-quartz")
+      if (request.method === "execute") return response
+      return undefined
+    })
+    const backend = await createJingleComputerUseNativeBackend("macos-quartz", bridge)
+    await assert.rejects(
+      backend.execute({ actions: [action], authorization, base, delivery: "background" }),
+      /another environment or protocol/
+    )
   }
 })
 
@@ -2352,7 +2444,9 @@ test("native observations are strictly decoded into bounded immutable facts", as
   const { epoch: _epoch, stateId: _stateId, ...validObservation } = base
   const { bridge } = recordingNativeBridge((request) => {
     if (request.method === "probe") return probedMatrix("macos-quartz")
-    if (request.method === "observe") return validObservation
+    if (request.method === "observe") {
+      return nativeOperationResponse("observe", validObservation)
+    }
     return undefined
   })
   const backend = await createJingleComputerUseNativeBackend("macos-quartz", bridge)
@@ -2437,7 +2531,9 @@ test("native observations are strictly decoded into bounded immutable facts", as
 
   for (const invalidObservation of invalidObservations) {
     const invalid = recordingNativeBridge((request) =>
-      request.method === "probe" ? probedMatrix("macos-quartz") : invalidObservation
+      request.method === "probe"
+        ? probedMatrix("macos-quartz")
+        : nativeOperationResponse("observe", invalidObservation)
     )
     const invalidBackend = await createJingleComputerUseNativeBackend(
       "macos-quartz",
@@ -2517,7 +2613,9 @@ test("native execution results reject malformed action, status, route, and evide
   for (const response of responses) {
     const invalid = recordingNativeBridge((request) => {
       if (request.method === "probe") return probedMatrix("macos-quartz")
-      if (request.method === "execute") return response
+      if (request.method === "execute") {
+        return nativeOperationResponse("execute", response)
+      }
       return undefined
     })
     const backend = await createJingleComputerUseNativeBackend("macos-quartz", invalid.bridge)
@@ -2534,7 +2632,9 @@ test("native execution results reject malformed action, status, route, and evide
 
   const valid = recordingNativeBridge((request) => {
     if (request.method === "probe") return probedMatrix("macos-quartz")
-    if (request.method === "execute") return validResult
+    if (request.method === "execute") {
+      return nativeOperationResponse("execute", validResult)
+    }
     return undefined
   })
   const backend = await createJingleComputerUseNativeBackend("macos-quartz", valid.bridge)
@@ -2566,7 +2666,9 @@ test("native execution results reject malformed action, status, route, and evide
   }
   const helperShaped = recordingNativeBridge((request) => {
     if (request.method === "probe") return probedMatrix("macos-quartz")
-    if (request.method === "execute") return earlyStop
+    if (request.method === "execute") {
+      return nativeOperationResponse("execute", earlyStop)
+    }
     return undefined
   })
   const helperBackend = await createJingleComputerUseNativeBackend(
@@ -2585,7 +2687,9 @@ test("native execution results reject malformed action, status, route, and evide
 
   const contradictoryHelper = recordingNativeBridge((request) => {
     if (request.method === "probe") return probedMatrix("macos-quartz")
-    if (request.method === "execute") return { ...earlyStop, outcome: "didnt" }
+    if (request.method === "execute") {
+      return nativeOperationResponse("execute", { ...earlyStop, outcome: "didnt" })
+    }
     return undefined
   })
   const contradictoryBackend = await createJingleComputerUseNativeBackend(

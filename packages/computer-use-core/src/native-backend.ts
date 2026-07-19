@@ -22,8 +22,18 @@ import type {
 
 export type JingleComputerUseNativeRequest =
   | { environment: ComputerUseBackendEnvironment; method: "probe" }
-  | { method: "observe"; request: Omit<ComputerUseObserveRequest, "signal"> }
-  | { method: "execute"; request: Omit<ComputerUseExecuteRequest, "signal"> }
+  | {
+      environment: ComputerUseBackendEnvironment
+      method: "observe"
+      protocolVersion: typeof JINGLE_COMPUTER_USE_PROTOCOL_VERSION
+      request: Omit<ComputerUseObserveRequest, "signal">
+    }
+  | {
+      environment: ComputerUseBackendEnvironment
+      method: "execute"
+      protocolVersion: typeof JINGLE_COMPUTER_USE_PROTOCOL_VERSION
+      request: Omit<ComputerUseExecuteRequest, "signal">
+    }
   | { method: "dispose_session"; sessionId: string }
 
 export interface JingleComputerUseNativeBridge {
@@ -127,9 +137,20 @@ class NativeComputerUseBackend implements ComputerUseBackend {
   async observe(request: ComputerUseObserveRequest): Promise<ComputerUseBackendObservation> {
     request.signal?.throwIfAborted()
     const { signal, ...nativeRequest } = request
-    const result = await this.bridge.invoke({ method: "observe", request: nativeRequest }, signal)
+    const result = await this.bridge.invoke(
+      {
+        environment: this.matrix.environment,
+        method: "observe",
+        protocolVersion: JINGLE_COMPUTER_USE_PROTOCOL_VERSION,
+        request: nativeRequest
+      },
+      signal
+    )
     signal?.throwIfAborted()
-    return decodeNativeObservation(this.matrix.platform, result)
+    return decodeNativeObservation(
+      this.matrix.platform,
+      decodeNativeOperationResponse(this.matrix.environment, "observe", result)
+    )
   }
 
   async execute(request: ComputerUseExecuteRequest): Promise<ComputerUseBackendExecutionResult> {
@@ -154,9 +175,21 @@ class NativeComputerUseBackend implements ComputerUseBackend {
       }
     }
     const { signal, ...nativeRequest } = request
-    const result = await this.bridge.invoke({ method: "execute", request: nativeRequest }, signal)
+    const result = await this.bridge.invoke(
+      {
+        environment: this.matrix.environment,
+        method: "execute",
+        protocolVersion: JINGLE_COMPUTER_USE_PROTOCOL_VERSION,
+        request: nativeRequest
+      },
+      signal
+    )
     signal?.throwIfAborted()
-    return decodeNativeExecutionResult(result, request, this.matrix)
+    return decodeNativeExecutionResult(
+      decodeNativeOperationResponse(this.matrix.environment, "execute", result),
+      request,
+      this.matrix
+    )
   }
 
   async disposeSession(sessionId: string): Promise<void> {
@@ -265,6 +298,24 @@ function hasExactKeys(
   const allowed = new Set([...required, ...optional])
   const keys = Object.keys(value)
   return required.every((key) => Object.hasOwn(value, key)) && keys.every((key) => allowed.has(key))
+}
+
+function decodeNativeOperationResponse(
+  environment: ComputerUseBackendEnvironment,
+  method: "execute" | "observe",
+  value: unknown
+): unknown {
+  if (
+    !hasExactKeys(value, ["environment", "method", "protocolVersion", "result"]) ||
+    value.environment !== environment ||
+    value.method !== method ||
+    value.protocolVersion !== JINGLE_COMPUTER_USE_PROTOCOL_VERSION
+  ) {
+    throw new Error(
+      `Computer-use native ${method} response belongs to another environment or protocol.`
+    )
+  }
+  return value.result
 }
 
 function decodeNativeObservation(

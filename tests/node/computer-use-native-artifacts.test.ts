@@ -19,6 +19,13 @@ interface NativeCapabilityMatrix {
   protocolVersion: number
 }
 
+interface NativeOperationResponse {
+  environment: string
+  method: "execute" | "observe"
+  protocolVersion: number
+  result: unknown
+}
+
 const repositoryRoot = process.cwd()
 const nativeSourceDirectory = resolve(repositoryRoot, "packages/computer-use-core/src/native")
 
@@ -36,6 +43,20 @@ function runJson(
   return JSON.parse(result.stdout)
 }
 
+function runJsonFailure(
+  executable: string,
+  args: readonly string[],
+  environment: NodeJS.ProcessEnv = process.env
+): string {
+  const result = spawnSync(executable, args, {
+    encoding: "utf8",
+    env: environment
+  })
+  assert.notEqual(result.status, 0)
+  assert.equal(result.stdout, "")
+  return result.stderr
+}
+
 function assertRawCapabilityMatrix(
   value: unknown,
   expected: Pick<NativeCapabilityMatrix, "environment" | "platform">
@@ -51,6 +72,23 @@ function assertRawCapabilityMatrix(
     matrix.capabilities.map((capability) => capability.action),
     ["press", "set_value", "type_text", "keypress", "scroll"]
   )
+}
+
+function assertRawOperationResponse(
+  value: unknown,
+  expected: Pick<NativeOperationResponse, "environment" | "method">
+): asserts value is NativeOperationResponse {
+  assert.ok(value && typeof value === "object" && !Array.isArray(value))
+  assert.deepEqual(Object.keys(value).sort(), [
+    "environment",
+    "method",
+    "protocolVersion",
+    "result"
+  ])
+  const response = value as NativeOperationResponse
+  assert.equal(response.environment, expected.environment)
+  assert.equal(response.method, expected.method)
+  assert.equal(response.protocolVersion, 1)
 }
 
 test("native artifact packaging is additive and retains the legacy helper", () => {
@@ -108,19 +146,106 @@ test("Linux probes are raw, environment-bound, and fail closed", () => {
     false
   )
 
-  assert.deepEqual(
-    runJson(
-      process.env.PYTHON ?? "python3",
-      [
-        sourcePath,
-        JSON.stringify({
-          method: "execute",
-          request: { base: { stateId: "state-test" } }
-        })
-      ],
-      waylandEnvironment
-    ),
-    { baseStateId: "state-test", outcome: "unavailable", steps: [] }
+  const execution = runJson(
+    process.env.PYTHON ?? "python3",
+    [
+      sourcePath,
+      JSON.stringify({
+        environment: "linux-wayland-gnome",
+        method: "execute",
+        protocolVersion: 1,
+        request: { base: { stateId: "state-test" } }
+      })
+    ],
+    waylandEnvironment
+  )
+  assertRawOperationResponse(execution, {
+    environment: "linux-wayland-gnome",
+    method: "execute"
+  })
+  assert.deepEqual(execution.result, {
+    baseStateId: "state-test",
+    outcome: "unavailable",
+    steps: []
+  })
+
+  for (const request of [
+    {
+      environment: "linux-x11",
+      method: "execute",
+      protocolVersion: 1,
+      request: { base: { stateId: "state-test" } }
+    },
+    {
+      environment: "linux-wayland-gnome",
+      method: "execute",
+      protocolVersion: 2,
+      request: { base: { stateId: "state-test" } }
+    },
+    {
+      environment: "linux-wayland-gnome",
+      method: "execute",
+      protocolVersion: true,
+      request: { base: { stateId: "state-test" } }
+    },
+    {
+      environment: "linux-wayland-gnome",
+      method: "execute",
+      protocolVersion: "1",
+      request: { base: { stateId: "state-test" } }
+    }
+  ]) {
+    assert.match(
+      runJsonFailure(
+        process.env.PYTHON ?? "python3",
+        [sourcePath, JSON.stringify(request)],
+        waylandEnvironment
+      ),
+      /another environment or protocol/
+    )
+  }
+
+  const unsupportedEnvironment = {
+    ...process.env,
+    XDG_CURRENT_DESKTOP: "",
+    XDG_SESSION_TYPE: "tty"
+  }
+  for (const request of [
+    { environment: "linux-x11", method: "probe" },
+    {
+      environment: "linux-x11",
+      method: "execute",
+      protocolVersion: 1,
+      request: { base: { stateId: "state-test" } }
+    }
+  ]) {
+    assert.match(
+      runJsonFailure(
+        process.env.PYTHON ?? "python3",
+        [sourcePath, JSON.stringify(request)],
+        unsupportedEnvironment
+      ),
+      /supported Linux session environment/
+    )
+  }
+})
+
+test("Windows helper pins its JSON wire to UTF-8 before reading requests", () => {
+  const source = readFileSync(
+    resolve(nativeSourceDirectory, "jingle-computer-use-windows.ps1"),
+    "utf8"
+  )
+  assert.match(source, /UTF8Encoding\(\$false\)/)
+  assert.match(source, /\[Console\]::InputEncoding = \$JingleComputerUseUtf8/)
+  assert.match(source, /\[Console\]::OutputEncoding = \$JingleComputerUseUtf8/)
+  assert.match(source, /\$rawEnvironment -isnot \[string\]/)
+  assert.match(source, /\$rawProtocolVersion -is \[int\]/)
+  assert.match(source, /\$Envelope\.PSObject\.Properties\["environment"\]/)
+  assert.match(source, /\$Envelope\.PSObject\.Properties\["protocolVersion"\]/)
+  assert.match(source, /\$envelope\.PSObject\.Properties\["method"\]/)
+  assert.match(source, /switch -CaseSensitive \(\$method\)/)
+  assert.ok(
+    source.indexOf("[Console]::OutputEncoding") < source.indexOf("[Console]::In.ReadToEnd()")
   )
 })
 
@@ -165,6 +290,17 @@ test(
         ]),
         null
       )
+      assert.match(
+        runJsonFailure(binaryPath, [
+          JSON.stringify({
+            environment: "windows-win32",
+            method: "observe",
+            protocolVersion: 1,
+            request: {}
+          })
+        ]),
+        /another environment or protocol/
+      )
     } finally {
       rmSync(temporaryDirectory, { force: true, recursive: true })
     }
@@ -197,15 +333,87 @@ test(
       false
     )
 
-    assert.deepEqual(
-      runJson("powershell.exe", [
+    const execution = runJson("powershell.exe", [
+      ...powershellArgs,
+      JSON.stringify({
+        environment: "windows-win32",
+        method: "execute",
+        protocolVersion: 1,
+        request: { base: { stateId: "state-test" } }
+      })
+    ])
+    assertRawOperationResponse(execution, {
+      environment: "windows-win32",
+      method: "execute"
+    })
+    assert.deepEqual(execution.result, {
+      baseStateId: "state-test",
+      outcome: "unavailable",
+      steps: []
+    })
+    assert.match(
+      runJsonFailure("powershell.exe", [
         ...powershellArgs,
         JSON.stringify({
+          environment: "macos-quartz",
           method: "execute",
+          protocolVersion: 1,
           request: { base: { stateId: "state-test" } }
         })
       ]),
-      { baseStateId: "state-test", outcome: "unavailable", steps: [] }
+      /another environment or protocol/
     )
+    for (const [request, pattern] of [
+      [
+        {
+          environment: "windows-win32",
+          method: "execute",
+          protocolVersion: true,
+          request: { base: { stateId: "state-test" } }
+        },
+        /another environment or protocol/
+      ],
+      [
+        {
+          environment: "windows-win32",
+          method: "execute",
+          protocolVersion: [1],
+          request: { base: { stateId: "state-test" } }
+        },
+        /another environment or protocol/
+      ],
+      [
+        {
+          environment: "windows-win32",
+          method: "execute",
+          protocolVersion: "1",
+          request: { base: { stateId: "state-test" } }
+        },
+        /another environment or protocol/
+      ],
+      [
+        {
+          environment: ["windows-win32"],
+          method: "execute",
+          protocolVersion: 1,
+          request: { base: { stateId: "state-test" } }
+        },
+        /another environment or protocol/
+      ],
+      [
+        {
+          environment: "windows-win32",
+          method: ["execute"],
+          protocolVersion: 1,
+          request: { base: { stateId: "state-test" } }
+        },
+        /method must be a string/
+      ]
+    ] as const) {
+      assert.match(
+        runJsonFailure("powershell.exe", [...powershellArgs, JSON.stringify(request)]),
+        pattern
+      )
+    }
   }
 )

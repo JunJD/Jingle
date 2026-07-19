@@ -3,12 +3,17 @@ import ApplicationServices
 import Darwin
 import Foundation
 
+private let jingleComputerUseEnvironment = "macos-quartz"
+private let jingleComputerUseProtocolVersion = 1
+
 private struct NativeError: Error, CustomStringConvertible {
     let description: String
 }
 
 private struct Request: Decodable {
+    let environment: String?
     let method: String
+    let protocolVersion: Int?
     let request: OperationRequest?
     let sessionId: String?
 }
@@ -99,9 +104,9 @@ private struct ProbeResult: Encodable {
         let route: String
     }
     let capabilities: [Capability]
-    let environment = "macos-quartz"
+    let environment = jingleComputerUseEnvironment
     let platform = "macos"
-    let protocolVersion = 1
+    let protocolVersion = jingleComputerUseProtocolVersion
 
     init(accessibilityTrusted: Bool) {
         let semantic = accessibilityTrusted ? "verified" : "unavailable"
@@ -113,6 +118,13 @@ private struct ProbeResult: Encodable {
             Capability(action: "scroll", background: "unavailable", foreground: "unavailable", route: "unavailable")
         ]
     }
+}
+
+private struct OperationResponse<Result: Encodable>: Encodable {
+    let environment = jingleComputerUseEnvironment
+    let method: String
+    let protocolVersion = jingleComputerUseProtocolVersion
+    let result: Result
 }
 
 private struct ResolvedWindow {
@@ -419,11 +431,19 @@ private enum JingleComputerUseMacOS {
             case "probe":
                 try write(ProbeResult(accessibilityTrusted: AXIsProcessTrusted()))
             case "observe":
+                guard command.environment == jingleComputerUseEnvironment,
+                      command.protocolVersion == jingleComputerUseProtocolVersion else {
+                    throw NativeError(description: "Observe request belongs to another environment or protocol.")
+                }
                 guard let request = command.request else { throw NativeError(description: "Observe request is missing.") }
-                try write(try observe(request))
+                try write(OperationResponse(method: "observe", result: try observe(request)))
             case "execute":
+                guard command.environment == jingleComputerUseEnvironment,
+                      command.protocolVersion == jingleComputerUseProtocolVersion else {
+                    throw NativeError(description: "Execute request belongs to another environment or protocol.")
+                }
                 guard let request = command.request else { throw NativeError(description: "Execute request is missing.") }
-                try write(try execute(request))
+                try write(OperationResponse(method: "execute", result: try execute(request)))
             case "dispose_session":
                 guard normalized(command.sessionId) != nil else { throw NativeError(description: "Session id is missing.") }
                 try write(Optional<String>.none)

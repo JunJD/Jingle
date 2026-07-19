@@ -40,6 +40,12 @@ only layer allowed to translate this contract into agent tools.
 The static capability matrices are fail-closed ceilings. The packaged helpers expose one
 raw JSON protocol and may enable only routes accepted by the core probe policy:
 
+- Every observe and execute response carries an exact environment, method, and protocol-version
+  discriminator. The core rejects a response before decoding its facts when any discriminator
+  differs from the capability probe that constructed the backend. The same expected environment
+  and protocol version travel on operation requests so current helpers reject drift before
+  observing or dispatching against the OS.
+
 - macOS uses Accessibility observations and background AX actions. Mutation support is
   reported only while the process has Accessibility permission.
 - Windows ships a real HWND/UI Automation observation backend, but every mutation remains

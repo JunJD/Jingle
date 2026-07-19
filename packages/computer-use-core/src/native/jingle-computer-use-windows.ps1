@@ -3,6 +3,11 @@
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version 2.0
+$JingleComputerUseEnvironment = "windows-win32"
+$JingleComputerUseProtocolVersion = 1
+$JingleComputerUseUtf8 = New-Object System.Text.UTF8Encoding($false)
+[Console]::InputEncoding = $JingleComputerUseUtf8
+[Console]::OutputEncoding = $JingleComputerUseUtf8
 
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -357,9 +362,9 @@ function Invoke-Execute {
 
 function Invoke-Probe {
     return [pscustomobject]@{
-        environment = "windows-win32"
+        environment = $JingleComputerUseEnvironment
         platform = "windows"
-        protocolVersion = 1
+        protocolVersion = $JingleComputerUseProtocolVersion
         capabilities = @(
             [pscustomobject]@{ action = "press"; background = "unavailable"; foreground = "unavailable"; route = "uia_action" },
             [pscustomobject]@{ action = "set_value"; background = "unavailable"; foreground = "unavailable"; route = "uia_value" },
@@ -370,15 +375,52 @@ function Invoke-Probe {
     }
 }
 
+function New-OperationResponse {
+    param([string]$Method, [object]$Result)
+    return [pscustomobject]@{
+        environment = $JingleComputerUseEnvironment
+        method = $Method
+        protocolVersion = $JingleComputerUseProtocolVersion
+        result = $Result
+    }
+}
+
+function Assert-OperationProtocol {
+    param([object]$Envelope)
+    $environmentProperty = $Envelope.PSObject.Properties["environment"]
+    $protocolVersionProperty = $Envelope.PSObject.Properties["protocolVersion"]
+    if ($null -eq $environmentProperty -or $null -eq $protocolVersionProperty) {
+        throw "Computer-use request belongs to another environment or protocol."
+    }
+    $rawEnvironment = $environmentProperty.Value
+    $rawProtocolVersion = $protocolVersionProperty.Value
+    $protocolIsInteger = $rawProtocolVersion -is [int] -or $rawProtocolVersion -is [long]
+    if ($rawEnvironment -isnot [string] -or
+        $rawEnvironment -cne $JingleComputerUseEnvironment -or
+        -not $protocolIsInteger -or
+        $rawProtocolVersion -ne $JingleComputerUseProtocolVersion) {
+        throw "Computer-use request belongs to another environment or protocol."
+    }
+}
+
 try {
     $json = if ($args.Count -gt 0 -and $args[0]) { $args[0] } else { [Console]::In.ReadToEnd() }
     if (-not $json) { throw "A JSON request is required." }
     $envelope = $json | ConvertFrom-Json
-    $method = [string](Get-OptionalProperty $envelope "method")
-    switch ($method) {
+    $methodProperty = $envelope.PSObject.Properties["method"]
+    if ($null -eq $methodProperty) { throw "Computer-use method must be a string." }
+    $method = $methodProperty.Value
+    if ($method -isnot [string]) { throw "Computer-use method must be a string." }
+    switch -CaseSensitive ($method) {
         "probe" { $result = Invoke-Probe }
-        "observe" { $result = Invoke-Observe (Get-OptionalProperty $envelope "request") }
-        "execute" { $result = Invoke-Execute (Get-OptionalProperty $envelope "request") }
+        "observe" {
+            Assert-OperationProtocol $envelope
+            $result = New-OperationResponse "observe" (Invoke-Observe (Get-OptionalProperty $envelope "request"))
+        }
+        "execute" {
+            Assert-OperationProtocol $envelope
+            $result = New-OperationResponse "execute" (Invoke-Execute (Get-OptionalProperty $envelope "request"))
+        }
         "dispose_session" { $result = $null }
         default { throw "Unsupported computer-use method: $method" }
     }
