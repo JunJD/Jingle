@@ -8,7 +8,7 @@ import { attachMainWindowStatePersistence, getMainWindowPlacement } from "./main
 import { showTerminalRendererWindowFailure } from "./renderer-window-failure-dialog"
 import { createThemeTitleBarOverlay } from "./title-bar-overlay"
 import { installWindowPresentation, requestWindowPresentation } from "./window-presentation"
-import { registerDurableWindowIdentity } from "./window-identity"
+import { getWindowIdentity, registerDurableWindowIdentity } from "./window-identity"
 
 export const PRIMARY_MAIN_WINDOW_ID = "primary-main"
 
@@ -45,7 +45,13 @@ export function createMainWindow(threadId: string | null): BrowserWindow {
   startRendererWindowLoad(window, "main", {
     onFailure: observeFailure,
     onTerminalFailure: showTerminalRendererWindowFailure,
-    query: threadId ? { threadId } : undefined
+    query: () => {
+      const identity = getWindowIdentity(window.webContents)
+      if (identity?.kind !== "main" || identity.windowId !== PRIMARY_MAIN_WINDOW_ID) {
+        throw new Error("Main window renderer identity is unavailable.")
+      }
+      return identity.threadId ? { threadId: identity.threadId } : undefined
+    }
   })
   requestWindowPresentation(window)
   return window

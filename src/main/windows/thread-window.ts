@@ -8,7 +8,7 @@ import { startRendererWindowLoad } from "./load-renderer-window"
 import { showTerminalRendererWindowFailure } from "./renderer-window-failure-dialog"
 import { createThemeTitleBarOverlay } from "./title-bar-overlay"
 import { installWindowPresentation, requestWindowPresentation } from "./window-presentation"
-import { registerDurableWindowIdentity } from "./window-identity"
+import { getWindowIdentity, registerDurableWindowIdentity } from "./window-identity"
 
 export interface CreateThreadWindowInput {
   bounds?: Rectangle
@@ -87,7 +87,16 @@ export function createThreadWindow(
         options.onRendererFailure()
       }
     },
-    query: { windowId: input.windowId, ...(input.threadId ? { threadId: input.threadId } : {}) }
+    query: () => {
+      const identity = getWindowIdentity(window.webContents)
+      if (identity?.kind !== THREAD_WINDOW_KIND || identity.windowId !== input.windowId) {
+        throw new Error("Thread window renderer identity is unavailable.")
+      }
+      return {
+        windowId: identity.windowId,
+        ...(identity.threadId ? { threadId: identity.threadId } : {})
+      }
+    }
   })
   requestWindowPresentation(window, { activate: options.activate })
   return window

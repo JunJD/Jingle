@@ -35,6 +35,10 @@ export type RendererWindowLoadFailure =
     }
 
 export type RendererWindowLoadFailureObserver = (failure: RendererWindowLoadFailure) => void
+export type RendererWindowQuery = Readonly<Record<string, string>>
+export type RendererWindowQuerySource =
+  | RendererWindowQuery
+  | (() => RendererWindowQuery | undefined)
 
 export type RendererWindowRecoveryDecision =
   | {
@@ -81,13 +85,13 @@ export function resolveRendererWindowRecoveryDecision(input: {
 export interface StartRendererWindowLoadOptions {
   onFailure: RendererWindowLoadFailureObserver
   onTerminalFailure?: RendererWindowLoadFailureObserver
-  query?: Record<string, string>
+  query?: RendererWindowQuerySource
 }
 
 async function loadRendererWindow(
   browserWindow: BrowserWindow,
   windowKind: AppWindowKind,
-  query: Record<string, string> | undefined,
+  querySource: RendererWindowQuerySource | undefined,
   isCurrent: () => boolean
 ): Promise<void> {
   if (SPLASH_WINDOW_KINDS.has(windowKind)) {
@@ -97,6 +101,7 @@ async function loadRendererWindow(
     }
   }
 
+  const query = typeof querySource === "function" ? querySource() : querySource
   const rendererQuery = {
     window: windowKind,
     ...(query ?? {}),
@@ -137,7 +142,7 @@ export function startRendererWindowLoad(
   let loadGeneration = 0
   let recoveryAttemptCount = 0
   let state: "active" | "closed" | "recovering" | "terminal" = "active"
-  const { onFailure, onTerminalFailure, query } = options
+  const { onFailure, onTerminalFailure, query: querySource } = options
 
   const observeFailure = (failure: RendererWindowLoadFailure): void => {
     try {
@@ -179,7 +184,7 @@ export function startRendererWindowLoad(
       if (!canContinueLoad()) {
         return
       }
-      void loadRendererWindow(browserWindow, windowKind, query, canContinueLoad)
+      void loadRendererWindow(browserWindow, windowKind, querySource, canContinueLoad)
         .then(() => {
           if (generation !== loadGeneration || state === "closed" || state === "terminal") {
             return

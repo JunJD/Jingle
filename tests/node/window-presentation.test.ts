@@ -14,7 +14,8 @@ import {
   type AppWindowKind,
   beginRendererWindowShutdown,
   resolveRendererWindowRecoveryDecision,
-  startRendererWindowLoad
+  startRendererWindowLoad,
+  type StartRendererWindowLoadOptions
 } from "../../src/main/windows/load-renderer-window"
 import type { RendererWindowLoadFailure } from "../../src/main/windows/load-renderer-window"
 import {
@@ -81,6 +82,7 @@ class FakeBrowserWindow extends EventEmitter {
   destroyCount = 0
   focusCount = 0
   loadFileCount = 0
+  loadFileQueries: Array<Record<string, string> | undefined> = []
   loadFilePromise: Promise<void> = new Promise(() => undefined)
   loadFileResults: Promise<void>[] = []
   minimized = false
@@ -114,8 +116,9 @@ class FakeBrowserWindow extends EventEmitter {
     return this.visible
   }
 
-  loadFile(): Promise<void> {
+  loadFile(_filePath: string, options?: { query?: Record<string, string> }): Promise<void> {
     this.loadFileCount += 1
+    this.loadFileQueries.push(options?.query)
     return this.loadFileResults.shift() ?? this.loadFilePromise
   }
 
@@ -150,6 +153,7 @@ function startLoad(
     logger?: FakeDiagnosticsLogger
     graph?: DiagnosticGraphSink
     onTerminalFailure?: () => void
+    query?: StartRendererWindowLoadOptions["query"]
     windowKind?: AppWindowKind
   } = {}
 ): FakeDiagnosticsLogger {
@@ -163,7 +167,8 @@ function startLoad(
   )
   startRendererWindowLoad(asBrowserWindow(window), windowKind, {
     onFailure,
-    onTerminalFailure: options.onTerminalFailure
+    onTerminalFailure: options.onTerminalFailure,
+    query: options.query
   })
   return logger
 }
@@ -364,6 +369,39 @@ describe("renderer window load lifecycle", () => {
       graph.inputs.map(({ eventCode }) => eventCode),
       ["electron.renderer_process_gone"]
     )
+  })
+
+  it("reads the latest Main binding for every recovered renderer bootstrap", async () => {
+    for (const initialThreadId of ["thread-a", null] as const) {
+      const window = new FakeBrowserWindow()
+      window.loadFileResults = [
+        Promise.resolve(),
+        Promise.resolve(),
+        Promise.resolve(),
+        Promise.resolve()
+      ]
+      let currentThreadId: string | null = initialThreadId
+      startLoad(window, {
+        query: () => (currentThreadId ? { threadId: currentThreadId } : undefined),
+        windowKind: "main"
+      })
+      await new Promise<void>((resolve) => setImmediate(resolve))
+
+      currentThreadId = "thread-b"
+      window.webContents.emit("render-process-gone", {}, {
+        exitCode: 9,
+        reason: "crashed"
+      } satisfies RenderProcessGoneDetails)
+      await new Promise<void>((resolve) => setImmediate(resolve))
+
+      const bootstrapQueries = window.loadFileQueries.filter(
+        (query) => query?.["window"] === "main"
+      )
+      assert.equal(bootstrapQueries.length, 2)
+      assert.equal(bootstrapQueries[0]?.["threadId"], initialThreadId ?? undefined)
+      assert.equal(bootstrapQueries[1]?.["threadId"], "thread-b")
+      assert.equal(window.destroyCount, 0)
+    }
   })
 
   it("does not let a stale Main splash load start a renderer navigation after recovery", async () => {
