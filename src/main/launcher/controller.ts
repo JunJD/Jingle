@@ -8,7 +8,6 @@ import type {
 } from "@shared/launcher-search"
 import { launcherPresentArgsSchema } from "@shared/launcher-presentation"
 import {
-  isLauncherWindowWebContents,
   presentLauncherWindow,
   setLauncherWindowViewportHeight,
   showLauncherWindow
@@ -141,7 +140,7 @@ export class LauncherController {
   private assertSearchSender(event: IpcMainInvokeEvent, request: unknown): void {
     this.assertMainFrame(event)
 
-    if (isLauncherWindowWebContents(event.sender)) {
+    if (getWindowIdentity(event.sender)?.kind === "launcher") {
       return
     }
 
@@ -161,11 +160,7 @@ export class LauncherController {
   private assertSearchCancellationSender(event: IpcMainInvokeEvent): void {
     this.assertMainFrame(event)
     const windowKind = getWindowIdentity(event.sender)?.kind
-    if (
-      isLauncherWindowWebContents(event.sender) ||
-      windowKind === "main" ||
-      windowKind === "thread-window"
-    ) {
+    if (windowKind === "launcher" || windowKind === "main" || windowKind === "thread-window") {
       return
     }
 
@@ -175,7 +170,7 @@ export class LauncherController {
   private assertLauncherSender(event: IpcMainInvokeEvent): void {
     this.assertMainFrame(event)
 
-    if (!isLauncherWindowWebContents(event.sender)) {
+    if (getWindowIdentity(event.sender)?.kind !== "launcher") {
       throw new Error("Launcher commands can only be invoked by the Launcher window.")
     }
   }

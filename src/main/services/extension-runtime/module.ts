@@ -7,7 +7,7 @@ import { NativeMenuBarService } from "../../native-menu-bar/service"
 import { NativeExtensionsService } from "../../native-extensions/service"
 import { SettingsService } from "../../settings/service"
 import { SettingsWindowRoutingService } from "../../settings-window-routing/service"
-import { isLauncherWindowWebContents } from "../../windows/launcher-window"
+import { getWindowIdentity } from "../../windows/window-identity"
 import { getJingleHomeDir } from "../../storage"
 import { wrapExtensionRuntimeHostForBdd } from "./bdd-host-capabilities"
 import { FileExtensionRuntimeCacheLeaseCoordinator } from "./cache-lease-coordinator"
@@ -63,7 +63,7 @@ export function registerExtensionRuntimeModule(container: DependencyContainer): 
       return new ExtensionRuntimeController(
         dependencyContainer.resolve(ExtensionRuntimeManager),
         dependencyContainer.resolve(ExtensionRuntimeRendererBridge),
-        isLauncherWindowWebContents
+        (sender) => getWindowIdentity(sender)?.kind === "launcher"
       )
     })
   })

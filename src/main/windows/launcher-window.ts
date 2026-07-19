@@ -1,4 +1,4 @@
-import { BrowserWindow, type Rectangle, screen, type WebContents } from "electron"
+import { BrowserWindow, type Rectangle, screen } from "electron"
 import { join } from "path"
 import { installExternalWindowOpenHandler } from "./external-window-open"
 import { startRendererWindowLoad } from "./load-renderer-window"
@@ -28,7 +28,6 @@ const LAUNCHER_WINDOW_GUTTER = process.platform === "win32" ? 12 : 0
 const WINDOWS_LAUNCHER_SHAPE_RADIUS = 12
 const WINDOWS_LAUNCHER_PRESENT_TIMEOUT_MS = 500
 const launcherVisibleOrigins = new WeakMap<BrowserWindow, { x: number; y: number }>()
-const launcherWindowWebContents = new WeakSet<WebContents>()
 const launcherWindowsShownOnce = new WeakSet<BrowserWindow>()
 const launcherPresentationStates = new WeakMap<
   BrowserWindow,
@@ -36,10 +35,6 @@ const launcherPresentationStates = new WeakMap<
 >()
 let launcherBlurHideSuppressionDepth = 0
 let nextLauncherPresentationId = 0
-
-export function isLauncherWindowWebContents(webContents: WebContents): boolean {
-  return launcherWindowWebContents.has(webContents) && !webContents.isDestroyed()
-}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
@@ -433,7 +428,6 @@ export function createLauncherWindow(): BrowserWindow {
     }
   })
   registerWindowIdentity(launcherWindow.webContents, { kind: "launcher" })
-  launcherWindowWebContents.add(launcherWindow.webContents)
   const observeRendererWindowLoadFailure = attachWindowDiagnostics(launcherWindow, "launcher")
   lockFixedWindowZoom(launcherWindow)
 
