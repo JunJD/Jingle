@@ -256,24 +256,16 @@ export function presentLauncherWindow(launcherWindow: BrowserWindow, presentatio
   }
 
   cancelLauncherPresentation(launcherWindow)
-  if (launcherWindow.isDestroyed() || !launcherWindow.isVisible()) {
-    return
-  }
-
-  if (process.platform === "win32") {
-    launcherWindow.setOpacity(1)
-  }
 }
 
 function beginLauncherPresentation(launcherWindow: BrowserWindow): LauncherShownEvent {
   cancelLauncherPresentation(launcherWindow)
   const presentationId = ++nextLauncherPresentationId
-  const gatePresentation =
+  const awaitPresentationAcknowledgement =
     process.platform === "win32" && launcherWindowsShownOnce.has(launcherWindow)
   let timeout: NodeJS.Timeout | null = null
 
-  if (gatePresentation) {
-    launcherWindow.setOpacity(0)
+  if (awaitPresentationAcknowledgement) {
     timeout = setTimeout(() => {
       const presentation = launcherPresentationStates.get(launcherWindow)
       if (!presentation || presentation.id !== presentationId) {
@@ -472,9 +464,6 @@ export function createLauncherWindow(): BrowserWindow {
 
   launcherWindow.on("hide", () => {
     cancelLauncherPresentation(launcherWindow)
-    if (process.platform === "win32" && !launcherWindow.isDestroyed()) {
-      launcherWindow.setOpacity(1)
-    }
     launcherDragController.cancel()
     launcherVisibleOrigins.delete(launcherWindow)
     if (process.platform === "darwin") {
