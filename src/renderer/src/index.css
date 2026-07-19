@@ -631,6 +631,8 @@ body[data-window="launcher"],
   --launcher-header-strip: color-mix(in srgb, var(--launcher-surface-strong) 54%, white 46%);
   --launcher-shell-shadow-ambient: rgba(32, 38, 45, 0.12);
   --launcher-shell-shadow-depth: rgba(32, 38, 45, 0.2);
+  --launcher-shell-shadow-offset-y: 8px;
+  --launcher-shell-shadow-blur-radius: 20px;
   --launcher-shell-blur: 18px;
   --launcher-shell-sheen-primary: rgba(255, 255, 255, 0.62);
   --launcher-shell-sheen-accent: color-mix(in srgb, var(--primary) 12%, transparent);
@@ -2005,6 +2007,8 @@ body[data-platform="win32"] .launcher-chrome {
   --launcher-panel-radius: var(--jingle-radius-panel);
   --launcher-shell-radius: var(--jingle-radius-panel);
   --launcher-window-gutter: 12px;
+  --launcher-shell-shadow-offset-y: 2px;
+  --launcher-shell-shadow-blur-radius: 8px;
   --launcher-shell-blur: 0px;
   --launcher-shell-outline: rgba(67, 76, 88, 0.06);
 }
@@ -2147,7 +2151,8 @@ body:not([data-platform="darwin"])[data-window="settings"] .settings-window-titl
   box-shadow:
     inset 0 1px 0 var(--launcher-shell-highlight),
     inset 0 -1px 0 color-mix(in srgb, var(--foreground) 4%, transparent),
-    0 8px 20px var(--launcher-shell-shadow-ambient);
+    0 var(--launcher-shell-shadow-offset-y) var(--launcher-shell-shadow-blur-radius)
+      var(--launcher-shell-shadow-ambient);
 }
 
 .launcher-window-shell::before,
@@ -2172,7 +2177,8 @@ body:not([data-platform="darwin"])[data-window="settings"] .settings-window-titl
   box-shadow:
     inset 0 1px 0 var(--launcher-shell-highlight),
     inset 0 -1px 0 color-mix(in srgb, var(--foreground) 4%, transparent),
-    0 8px 20px var(--launcher-shell-shadow-ambient),
+    0 var(--launcher-shell-shadow-offset-y) var(--launcher-shell-shadow-blur-radius)
+      var(--launcher-shell-shadow-ambient),
     0 0 0 1px color-mix(in srgb, white 8%, transparent);
 }
 
