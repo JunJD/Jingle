@@ -38,6 +38,7 @@ const repoRoot = process.cwd()
 const originalJingleHome = process.env.JINGLE_HOME
 const originalDeepSeekApiKey = process.env.DEEPSEEK_API_KEY
 let jingleHome = ""
+let testDiagnosticsGraph: typeof import("../../src/main/diagnostics/instance").diagnosticsGraph
 
 function createTestModelRuntimeSelection(modelId: string): ModelRuntimeSelection {
   return { modelId, thinkingEffort: "high" as const, version: 1 as const }
@@ -126,9 +127,6 @@ async function createAgentServiceForTest(
   const { AgentService } = await import("../../src/main/agent/service")
   const { JingleMemoryService } = await import("../../src/main/jingle-memory/service")
   const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
-  const { startNativeExtensionMainDefinitionRegistry } =
-    await import("../../src/main/services/native-extensions")
-  startNativeExtensionMainDefinitionRegistry()
 
   return new AgentService(
     (input.jingleMemoryService ?? new JingleMemoryService()) as ConstructorParameters<
@@ -140,7 +138,15 @@ async function createAgentServiceForTest(
     (input.workspaceService ?? (await createWorkspaceServiceForTest())) as ConstructorParameters<
       typeof AgentService
     >[2],
-    input.extensionRegistryReader as ConstructorParameters<typeof AgentService>[3]
+    (input.extensionRegistryReader ?? {
+      listManifests: () => [],
+      readMainDefinitionSnapshot: () => ({
+        definitions: [],
+        failures: [],
+        pendingExtensionNames: [],
+        revision: 1
+      })
+    }) as ConstructorParameters<typeof AgentService>[3]
   )
 }
 
@@ -258,6 +264,7 @@ async function createThreadsServiceForTest(
 test.before(async () => {
   jingleHome = await mkdtemp(join(tmpdir(), "jingle-agent-persistence-"))
   process.env.JINGLE_HOME = jingleHome
+  testDiagnosticsGraph = (await import("../../src/main/diagnostics/instance")).diagnosticsGraph
   process.env.DEEPSEEK_API_KEY = "sk-test-reasoning-admission"
   const { API_KEY_CREDENTIAL_VARIABLE } = await import("../../src/main/model-provider/catalog")
   const { setProviderCredential } = await import("../../src/main/model-provider/secrets")
@@ -2453,9 +2460,8 @@ test("admission binding failures preserve invoke rejection and resume acceptance
   })
 
   const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
-  const { diagnosticsGraph } = await import("../../src/main/diagnostics/instance")
   const diagnostics: unknown[] = []
-  const capture = mock.method(diagnosticsGraph, "capture", (input) => {
+  const capture = mock.method(testDiagnosticsGraph, "capture", (input) => {
     diagnostics.push(input)
     return { eventId: "diag:admission-persistence:1", sequence: 1, sessionId: "test" }
   })
@@ -2662,9 +2668,8 @@ test("terminal transaction failure emits restart-required recovery without a dur
   const consoleError = mock.method(console, "error", () => {})
   const previousRuntimeMode = process.env.JINGLE_BDD_AGENT_RUNTIME
   const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
-  const { diagnosticsGraph } = await import("../../src/main/diagnostics/instance")
   const diagnostics: unknown[] = []
-  const capture = mock.method(diagnosticsGraph, "capture", (input) => {
+  const capture = mock.method(testDiagnosticsGraph, "capture", (input) => {
     diagnostics.push(input)
     return { eventId: "diag:terminal-persistence:1", sequence: 1, sessionId: "test" }
   })
