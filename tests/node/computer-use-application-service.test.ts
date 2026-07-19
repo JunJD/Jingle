@@ -159,14 +159,11 @@ test("post-dispatch cancellation settles durable unknown and restart does not re
 
     assert.equal(settled.result.outcome, "unknown")
     assert.equal(settled.result.successor?.elements[0]?.value, "after")
-    assert.equal(settled.projection?.kind, "diff")
-    if (settled.projection?.kind === "diff") {
-      assert.equal(settled.projection.baseStateId, session.observation.stateId)
-      assert.equal(settled.projection.successorStateId, settled.result.successor?.stateId)
-      assert.deepEqual(
-        settled.projection.updated.map((element) => element.ref),
-        ["@editor"]
-      )
+    assert.equal(settled.projection?.kind, "full")
+    if (settled.projection?.kind === "full") {
+      assert.equal(settled.projection.reason, "external_mutation_uncertain")
+      assert.equal(settled.projection.stateId, settled.result.successor?.stateId)
+      assert.equal(settled.projection.elements[0]?.value, "after")
     }
     assert.equal(dispatches, 1)
 

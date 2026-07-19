@@ -96,6 +96,8 @@ export class ComputerUseApplicationService {
         result.successor && ownsSuccessor
           ? this.observations.project({
               baseStateId: input.baseStateId,
+              // Native refs are snapshot-local until a platform matcher proves continuity.
+              forceFullReason: "external_mutation_uncertain",
               stateId: result.successor.stateId
             })
           : undefined,
