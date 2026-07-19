@@ -300,14 +300,15 @@ function decodeNativeObservation(
     throw new Error("Computer-use native observation has an invalid element count.")
   }
   const refs = new Set<string>()
-  const indexes = new Set<number>()
   const elements = value.elements.map((candidate, index) => {
     const element = decodeNativeElement(candidate, index)
-    if (refs.has(element.ref) || indexes.has(element.index)) {
-      throw new Error("Computer-use native observation contains duplicate element identity.")
+    if (element.index !== index) {
+      throw new Error("Computer-use native observation element indexes are not canonical.")
+    }
+    if (refs.has(element.ref)) {
+      throw new Error("Computer-use native observation contains duplicate semantic refs.")
     }
     refs.add(element.ref)
-    indexes.add(element.index)
     return element
   })
   return deepFreeze({ application, capturedAt, elements, resourceKey, window })
@@ -599,7 +600,12 @@ function readText(value: unknown, path: string): string {
 }
 
 function isBoundedString(value: unknown, maximum: number): value is string {
-  return typeof value === "string" && value.length > 0 && value.length <= maximum
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= maximum &&
+    value.trim().length > 0
+  )
 }
 
 function isDenseArray(value: unknown, maximum: number): value is unknown[] {

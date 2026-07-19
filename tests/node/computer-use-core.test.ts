@@ -2366,10 +2366,30 @@ test("native observations are strictly decoded into bounded immutable facts", as
   const invalidObservations: unknown[] = [
     { ...validObservation, unexpected: true },
     { ...validObservation, application: { id: validObservation.application.id } },
+    { ...validObservation, application: { ...validObservation.application, id: " \n " } },
+    { ...validObservation, resourceKey: "   " },
+    {
+      ...validObservation,
+      resourceKey: " ".repeat(COMPUTER_USE_NATIVE_RESPONSE_LIMITS.token + 1)
+    },
     { ...validObservation, window: { ...validObservation.window, platform: "windows" } },
+    { ...validObservation, window: { ...validObservation.window, generation: "\t" } },
+    { ...validObservation, window: { ...validObservation.window, nativeId: "  " } },
     {
       ...validObservation,
       elements: [validObservation.elements[0], validObservation.elements[0]]
+    },
+    {
+      ...validObservation,
+      elements: [{ ...validObservation.elements[0], index: 7 }]
+    },
+    {
+      ...validObservation,
+      elements: [{ ...validObservation.elements[0], ref: "\n" }]
+    },
+    {
+      ...validObservation,
+      elements: [{ ...validObservation.elements[0], role: "  " }]
     },
     { ...validObservation, elements: Array(1) },
     {
