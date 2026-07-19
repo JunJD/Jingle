@@ -9,6 +9,7 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
+  rmdirSync,
   rmSync,
   unlinkSync,
   watch,
@@ -16,7 +17,7 @@ import {
   writeFileSync,
   type Stats
 } from "node:fs"
-import { lstat, mkdir, open, readFile, readdir, rename, rm, unlink } from "node:fs/promises"
+import { lstat, mkdir, open, readFile, readdir, rename, rmdir, rm, unlink } from "node:fs/promises"
 import { createHash, randomUUID } from "node:crypto"
 import { basename, dirname, join } from "node:path"
 import * as properLockfile from "proper-lockfile"
@@ -120,6 +121,7 @@ const ACTIVE_CACHE_FILE_PATTERN = /^store-([a-f0-9]{64})\.json$/
 const CORRUPT_CACHE_FILE_PATTERN = /^store-([a-f0-9]{64})\.json\.corrupt$/
 const CACHE_TEMPORARY_FILE_PATTERN =
   /^store-([a-f0-9]{64})\.json(?:\.corrupt)?\.[0-9]+\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/
+const CACHE_FILE_LOCK_PATTERN = /^store-[a-f0-9]{64}\.json\.lock$/
 const CACHE_WRITER_LEASE_FILE_PATTERN = /^writer-lease-[a-f0-9]{64}\.json$/
 const CACHE_WRITER_LEASE_TEMPORARY_FILE_PATTERN =
   /^writer-lease-[a-f0-9]{64}\.json\.[0-9]+\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/
@@ -580,6 +582,8 @@ async function updateCacheFile(
     // Every writer and recovery path takes the directory lock before its aggregate-file lock.
     assertLockIsOwned(directoryCompromisedError)
     assertActiveCacheWriterLease(cacheDir, writerLease)
+    await removeStaleCacheFileLocks(cacheDir, lockOptions.staleMs)
+    assertLockIsOwned(directoryCompromisedError)
     releaseFile = await acquireCacheLock(cacheFilePath, lockOptions, (error) => {
       compromisedError = error
     })
@@ -783,6 +787,8 @@ function readCacheFileWithRecoverySync(
   try {
     assertLockIsOwned(directoryCompromisedError)
     assertActiveCacheWriterLease(cacheDir, writerLease)
+    removeStaleCacheFileLocksSync(cacheDir, lockOptions.staleMs)
+    assertLockIsOwned(directoryCompromisedError)
     releaseFile = acquireCacheLockSync(cacheFilePath, lockOptions, (error) => {
       compromisedError = error
     })
@@ -1054,6 +1060,86 @@ function convergeCacheDirectoryQuotaSync(
       changed = removeRecognizedRegularFileSync(artifact.path) || changed
     }
     totals = measureCacheDirectoryArtifacts(scanCacheDirectoryArtifactsSync(cacheDir))
+  }
+  if (changed) {
+    syncDirectorySync(cacheDir)
+  }
+}
+
+async function removeStaleCacheFileLocks(cacheDir: string, staleMs: number): Promise<void> {
+  const staleBefore = Date.now() - staleMs
+  let changed = false
+  for (const name of await readdir(cacheDir)) {
+    if (!CACHE_FILE_LOCK_PATTERN.test(name)) {
+      continue
+    }
+    const path = join(cacheDir, name)
+    try {
+      const status = await lstat(path)
+      if (
+        !status.isDirectory() ||
+        !Number.isFinite(status.mtimeMs) ||
+        status.mtimeMs >= staleBefore
+      ) {
+        continue
+      }
+      try {
+        await rmdir(path)
+        changed = true
+      } catch (error) {
+        if (
+          !isNodeErrorWithCode(error, "ENOENT") &&
+          !isNodeErrorWithCode(error, "ENOTEMPTY") &&
+          !isNodeErrorWithCode(error, "EEXIST")
+        ) {
+          throw error
+        }
+      }
+    } catch (error) {
+      if (!isNodeErrorWithCode(error, "ENOENT")) {
+        throw error
+      }
+    }
+  }
+  if (changed) {
+    await syncDirectory(cacheDir)
+  }
+}
+
+function removeStaleCacheFileLocksSync(cacheDir: string, staleMs: number): void {
+  const staleBefore = Date.now() - staleMs
+  let changed = false
+  for (const name of readdirSync(cacheDir)) {
+    if (!CACHE_FILE_LOCK_PATTERN.test(name)) {
+      continue
+    }
+    const path = join(cacheDir, name)
+    try {
+      const status = lstatSync(path)
+      if (
+        !status.isDirectory() ||
+        !Number.isFinite(status.mtimeMs) ||
+        status.mtimeMs >= staleBefore
+      ) {
+        continue
+      }
+      try {
+        rmdirSync(path)
+        changed = true
+      } catch (error) {
+        if (
+          !isNodeErrorWithCode(error, "ENOENT") &&
+          !isNodeErrorWithCode(error, "ENOTEMPTY") &&
+          !isNodeErrorWithCode(error, "EEXIST")
+        ) {
+          throw error
+        }
+      }
+    } catch (error) {
+      if (!isNodeErrorWithCode(error, "ENOENT")) {
+        throw error
+      }
+    }
   }
   if (changed) {
     syncDirectorySync(cacheDir)

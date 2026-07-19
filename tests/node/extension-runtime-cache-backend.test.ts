@@ -12,6 +12,7 @@ import {
   statSync,
   symlinkSync,
   truncateSync,
+  utimesSync,
   writeFileSync
 } from "node:fs"
 import { tmpdir } from "node:os"
@@ -335,6 +336,64 @@ test("file runtime cache backend bounds namespaces and lets a late backend recre
     await lateBackend.flush()
 
     assert.deepEqual(lateBackend.loadStore(evictedScope), [["generation", "late-recreated"]])
+    assertCacheDirectoryQuota(cacheDir)
+  })
+})
+
+test("file runtime cache backend removes stale orphan locks across inactive namespaces", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const staleScopes = Array.from({ length: 4 }, (_, index) => ({
+      ...notionScope,
+      namespace: `crashed-namespace-${index}`
+    }))
+    const staleTimestamp = new Date(Date.now() - 60_000)
+    const staleLockPaths = staleScopes.map(
+      (scope) => `${getCacheFilePathForScope(cacheDir, scope)}.lock`
+    )
+    for (const lockPath of staleLockPaths) {
+      mkdirSync(lockPath)
+      utimesSync(lockPath, staleTimestamp, staleTimestamp)
+    }
+
+    const freshLockPath = `${getCacheFilePathForScope(cacheDir, {
+      ...notionScope,
+      namespace: "active-namespace"
+    })}.lock`
+    mkdirSync(freshLockPath)
+    const nonEmptyLockPath = `${getCacheFilePathForScope(cacheDir, {
+      ...notionScope,
+      namespace: "foreign-nonempty-namespace"
+    })}.lock`
+    mkdirSync(nonEmptyLockPath)
+    writeFileSync(join(nonEmptyLockPath, "foreign"), "preserved")
+    utimesSync(nonEmptyLockPath, staleTimestamp, staleTimestamp)
+    const unknownDirectory = join(cacheDir, `store-${"f".repeat(64)}.json.lock.unknown`)
+    mkdirSync(unknownDirectory)
+    const symlinkTarget = join(cacheDir, "outside-lock-target")
+    const symlinkLockPath = `${getCacheFilePathForScope(cacheDir, {
+      ...notionScope,
+      namespace: "foreign-symlink-namespace"
+    })}.lock`
+    if (process.platform !== "win32") {
+      writeFileSync(symlinkTarget, "outside")
+      symlinkSync(symlinkTarget, symlinkLockPath)
+    }
+
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    writeEntries(backend, notionScope, [["page", "page-1"]])
+    await backend.flush()
+
+    for (const lockPath of staleLockPaths) {
+      assert.equal(existsSync(lockPath), false)
+    }
+    assert.equal(existsSync(freshLockPath), true)
+    assert.equal(readFileSync(join(nonEmptyLockPath, "foreign"), "utf8"), "preserved")
+    assert.equal(lstatSync(unknownDirectory).isDirectory(), true)
+    if (process.platform !== "win32") {
+      assert.equal(lstatSync(symlinkLockPath).isSymbolicLink(), true)
+      assert.equal(readFileSync(symlinkTarget, "utf8"), "outside")
+    }
+    assert.deepEqual(backend.loadStore(notionScope), [["page", "page-1"]])
     assertCacheDirectoryQuota(cacheDir)
   })
 })
