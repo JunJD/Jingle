@@ -33,12 +33,54 @@ stable release.
 ## Rules
 
 - Keep `package.json` at the next public baseline version on `main`.
-- Cut releases from `main`.
+- Validate release candidates only through the `Desktop Release Candidate`
+  workflow on the public default branch. Enter an unpublished candidate tag
+  string and the full SHA currently published at `main`; the workflow refuses
+  stale or non-default-branch sources.
+- The candidate workflow is build-only. It creates no tag or GitHub Release,
+  uploads no workflow artifact, and publishes no packaged asset. A successful
+  run proves only that the exact public `main` SHA packaged on all three hosted
+  runners.
+- Do not push release tags from a local checkout. In particular, do not push or
+  reuse the retired local trial tag `v0.0.2-nightly.20260718.1`; the workflow
+  rejects it explicitly. Choose a new version.
 - Do not use the old `app-v*` tag family.
 - Do not create GitHub Releases by hand for unsupported tag names.
-- If a release fails after the tag is pushed, fix forward and push a new tag;
-  do not mutate a published stable tag.
+- A candidate tag string does not reserve a version. Recheck tag and release
+  absence inside the future protected release path before creating either.
 - Stable versions should move forward monotonically.
 - Nightly versions should include the calendar date of the build.
 
-The desktop release workflow enforces the supported tag formats.
+## Blocked Release Mutation
+
+This repository intentionally has no workflow that creates release tags or
+publishes release assets. Before adding that mutation path, repository
+administrators must provide all of these external controls:
+
+- an active tag ruleset targeting `refs/tags/v*`, with no exclusions, that
+  restricts creation, updates, and deletion
+- a protected release environment restricted to `main`, with required approval,
+  self-review disabled, and administrator bypass disabled
+- a dedicated release GitHub App actor whose short-lived token is available only
+  through that protected environment
+- a ruleset bypass granted only to that dedicated actor, never to the broad
+  GitHub Actions integration
+
+These controls are external GitHub state and are not configured by this
+repository. The public repository currently has no rulesets and no environments,
+so release mutation remains blocked.
+
+An administrator must separately verify that only a default-branch job approved
+through the protected environment can obtain the dedicated actor token and
+create a new tag. Direct human/API creation, tag updates, and tag deletion must
+be rejected. YAML self-checks and a broad GitHub Actions bypass are not proof of
+exclusive ownership.
+
+The build-only candidate workflow requires successful CI and CodeQL push runs
+for the exact public `main` SHA. It has no tag-push trigger and requests only
+read permissions.
+
+Release publication also remains blocked on macOS signing/notarization, Windows
+Authenticode, provenance/attestation, and the remaining #108 gates. Fresh-install
+and upgrade smoke tests remain tracked by #109. A future checksum manifest would
+prove asset integrity only, not publisher identity or provenance.

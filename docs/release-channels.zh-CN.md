@@ -30,11 +30,43 @@ Nightly 版是用于快速反馈的预览构建，可能包含未完成能力、
 ## 规则
 
 - `main` 上的 `package.json` 保持下一个公开基线版本。
-- 所有发布都从 `main` 切出。
+- 只能通过公开默认分支上的 `Desktop Release Candidate` workflow 验证发布候选。
+  运行时输入未发布的候选 tag 字符串和当前公开 `main` 的完整 SHA；workflow 会
+  拒绝过期提交和非默认分支来源。
+- 候选 workflow 只做构建：不创建 tag 或 GitHub Release，不上传 workflow
+  artifact，也不公开任何打包资产。成功 run 只证明精确的公开 `main` SHA 能在三种
+  hosted runner 上完成打包。
+- 不要从本地 checkout 推送 release tag。尤其不要推送或复用已废弃的本地试验 tag
+  `v0.0.2-nightly.20260718.1`；workflow 会明确拒绝它。必须选择新版本。
 - 不再使用旧的 `app-v*` tag 族。
 - 不要为不支持的 tag 名手动创建 GitHub Releases。
-- 如果 tag 推送后发布失败，修复后推送新 tag；不要改写已经发布的稳定版 tag。
+- 候选 tag 字符串不代表版本已被保留。未来受保护的发布路径在创建 tag 或 release
+  前必须重新检查二者都不存在。
 - 稳定版版本号单调递增。
 - Nightly 版版本号必须包含构建日期。
 
-桌面发布 workflow 会校验支持的 tag 格式。
+## 被阻断的发布写入
+
+当前仓库有意不提供创建 release tag 或公开发布资产的 workflow。新增这条写入路径
+前，仓库管理员必须先提供以下全部外部控制：
+
+- active tag ruleset 精确覆盖 `refs/tags/v*`，没有 exclusions，并限制 creation、
+  updates 和 deletion
+- 受保护的 release environment，只允许 `main`，要求审批、禁止自审，并禁止
+  administrator bypass
+- 专用 release GitHub App actor，其短期 token 只能由该受保护 environment 提供
+- ruleset bypass 只授予该专用 actor，禁止放行整个 GitHub Actions integration
+
+这些控制都属于 GitHub 外部状态，不能由仓库代码配置。公开仓库当前既没有 ruleset，
+也没有 environment，因此发布写入继续阻断。
+
+管理员必须另行实测：只有经过受保护 environment 审批的默认分支 job 能取得专用
+actor token 并创建新 tag；人类或 API 直接创建、更新、删除 tag 都会被拒绝。
+YAML 自检和 GitHub Actions integration 的宽泛 bypass 都不能证明独占 owner。
+
+build-only 候选 workflow 仍要求当前公开 `main` 的精确 SHA 已有成功的 CI 和
+CodeQL push run。它没有 tag-push trigger，并且只申请 read 权限。
+
+发布还继续受 macOS 签名/公证、Windows Authenticode、provenance/attestation 和
+#108 其余 gate 阻断；全新安装和升级 smoke 仍由 #109 跟踪。未来的 checksum 清单
+只能证明资产完整性，不能代表发布者身份或 provenance。

@@ -1,74 +1,158 @@
-name: Desktop Release
+name: Desktop Release Candidate
+run-name: Verify ${{ inputs.candidate_tag }} from ${{ inputs.expected_main_sha }}
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      candidate_tag:
+        description: Unpublished candidate tag (vX.Y.Z or vX.Y.Z-nightly.YYYYMMDD[.N])
+        required: true
+        type: string
+      expected_main_sha:
+        description: Full 40-character SHA currently published at main
+        required: true
+        type: string
 
 concurrency:
-  group: desktop-release-${{ github.ref }}
-  cancel-in-progress: true
+  group: desktop-release-candidate-${{ inputs.candidate_tag }}
+  cancel-in-progress: false
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
-  prepare-release:
-    name: Prepare GitHub Release
-    if: startsWith(github.ref, 'refs/tags/')
+  preflight:
+    name: Verify candidate source
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      actions: read
+      contents: read
     outputs:
-      channel: ${{ steps.release-tag.outputs.channel }}
-      version: ${{ steps.release-tag.outputs.version }}
+      candidate_tag: ${{ steps.candidate.outputs.candidate_tag }}
+      main_sha: ${{ steps.candidate.outputs.main_sha }}
+      version: ${{ steps.candidate.outputs.version }}
 
     steps:
-      - name: Validate release tag
-        id: release-tag
+      - name: Verify public main and prerequisite runs
+        id: candidate
         shell: bash
+        env:
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
-          tag="$GITHUB_REF_NAME"
-          if [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            channel="stable"
-            version="${BASH_REMATCH[1]}"
-            prerelease="false"
-          elif [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+-nightly\.[0-9]{8}(\.[0-9]+)?)$ ]]; then
-            channel="nightly"
-            version="${BASH_REMATCH[1]}"
-            prerelease="true"
-          else
-            echo "::error::Unsupported release tag '$tag'. Use vX.Y.Z for stable or vX.Y.Z-nightly.YYYYMMDD[.N] for nightly."
+          candidate_tag="$CANDIDATE_TAG"
+          expected_main_sha="$EXPECTED_MAIN_SHA"
+
+          if [[ "$candidate_tag" == "v0.0.2-nightly.20260718.1" ]]; then
+            echo "::error::$candidate_tag is a retired local trial tag and must never be published. Choose a new version."
             exit 1
           fi
 
-          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          if [[ "$candidate_tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            version="${BASH_REMATCH[1]}"
+          elif [[ "$candidate_tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+-nightly\.[0-9]{8}(\.[0-9]+)?)$ ]]; then
+            version="${BASH_REMATCH[1]}"
+          else
+            echo "::error::Unsupported candidate tag '$candidate_tag'. Use vX.Y.Z or vX.Y.Z-nightly.YYYYMMDD[.N]."
+            exit 1
+          fi
+
+          if [[ ! "$expected_main_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::expected_main_sha must be a full lowercase 40-character commit SHA."
+            exit 1
+          fi
+
+          repo_json="$(gh api "repos/$GH_REPO")"
+          default_branch="$(jq -r '.default_branch' <<< "$repo_json")"
+          if [[ "$default_branch" != "main" ]]; then
+            echo "::error::The public default branch must be main, got '$default_branch'."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_TYPE" != "branch" || "$GITHUB_REF_NAME" != "$default_branch" ]]; then
+            echo "::error::Run this workflow from the public default branch '$default_branch', not '$GITHUB_REF'."
+            exit 1
+          fi
+
+          main_sha="$(gh api "repos/$GH_REPO/git/ref/heads/$default_branch" --jq '.object.sha')"
+          for candidate in "$expected_main_sha" "$EVENT_SHA" "$WORKFLOW_SHA"; do
+            if [[ "$candidate" != "$main_sha" ]]; then
+              echo "::error::Candidate source mismatch. Public main is $main_sha; received $candidate."
+              exit 1
+            fi
+          done
+
+          existing_tag_count="$(
+            gh api "repos/$GH_REPO/git/matching-refs/tags/$candidate_tag" |
+              jq --arg ref "refs/tags/$candidate_tag" '[.[] | select(.ref == $ref)] | length'
+          )"
+          if [[ "$existing_tag_count" != "0" ]]; then
+            echo "::error::Tag $candidate_tag already exists. Choose a new candidate version."
+            exit 1
+          fi
+
+          repo_owner="${GH_REPO%%/*}"
+          repo_name="${GH_REPO#*/}"
+          release_id="$(
+            gh api graphql \
+              -f query='query($owner: String!, $name: String!, $tag: String!) {
+                repository(owner: $owner, name: $name) {
+                  release(tagName: $tag) { id }
+                }
+              }' \
+              -f owner="$repo_owner" \
+              -f name="$repo_name" \
+              -f tag="$candidate_tag" \
+              --jq '.data.repository.release.id // empty'
+          )"
+          if [[ -n "$release_id" ]]; then
+            echo "::error::Release $candidate_tag already exists. Choose a new candidate version."
+            exit 1
+          fi
+
+          require_successful_workflow() {
+            local workflow_file="$1"
+            local workflow_name="$2"
+            local runs
+            runs="$(
+              gh api -X GET "repos/$GH_REPO/actions/workflows/$workflow_file/runs" \
+                -f branch="$default_branch" \
+                -f event=push \
+                -f status=completed \
+                -f per_page=20
+            )"
+            if ! jq -e --arg sha "$main_sha" \
+              '.workflow_runs | any(.head_sha == $sha and .conclusion == "success")' \
+              <<< "$runs" >/dev/null; then
+              echo "::error::$workflow_name has no successful push run for public main $main_sha."
+              exit 1
+            fi
+          }
+
+          require_successful_workflow "ci.yml" "CI"
+          require_successful_workflow "codeql.yml" "CodeQL"
+
+          echo "candidate_tag=$candidate_tag" >> "$GITHUB_OUTPUT"
+          echo "main_sha=$main_sha" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
 
-      - name: Create draft release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "Release $GITHUB_REF_NAME already exists."
-            exit 0
-          fi
-
-          args=(--verify-tag --draft --title "Jingle $GITHUB_REF_NAME" --notes "")
-          if [[ "${{ steps.release-tag.outputs.prerelease }}" == "true" ]]; then
-            args+=(--prerelease)
-          fi
-
-          gh release create "$GITHUB_REF_NAME" "${args[@]}"
+          {
+            echo "### Build-only release candidate"
+            echo "- Default branch: \`$default_branch\`"
+            echo "- Commit: \`$main_sha\`"
+            echo "- Candidate tag string: \`$candidate_tag\`"
+            echo "- CI and CodeQL: successful"
+            echo "- This workflow does not create a tag or release and does not retain packaged assets."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   package:
-    name: Package ${{ matrix.name }}
-    if: startsWith(github.ref, 'refs/tags/')
+    name: Package ${{ matrix.name }} without publishing
     runs-on: ${{ matrix.runner }}
-    needs: prepare-release
+    needs: preflight
     permissions:
       contents: read
     strategy:
@@ -86,8 +170,12 @@ jobs:
             command: pnpm run dist:linux
 
     steps:
-      - name: Checkout repository
+      - name: Checkout verified public main
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.preflight.outputs.main_sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -111,11 +199,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Set package version from tag
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Set package version from candidate
         shell: bash
         run: |
-          npm version "${{ needs.prepare-release.outputs.version }}" --no-git-tag-version --allow-same-version
+          npm version "${{ needs.preflight.outputs.version }}" --no-git-tag-version --allow-same-version
 
       - name: Audit frontend package declarations
         run: pnpm run audit:frontend-packages
@@ -123,70 +210,35 @@ jobs:
       - name: Package desktop app
         run: ${{ matrix.command }}
 
-      - name: Upload packaged assets
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: release-assets-${{ matrix.name }}
-          path: |
-            dist/*.dmg
-            dist/*.exe
-            dist/*.AppImage
-            dist/*.blockmap
-            dist/latest*.yml
-          if-no-files-found: error
-          retention-days: 7
-          overwrite: true
-
-  # TODO(#108): Require macOS notarization, Windows Authenticode verification,
-  # and provenance checks here before treating a stable release as publishable.
-  publish-release:
-    name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: package
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Download packaged assets
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: release-assets-*
-          path: release-assets
-          merge-multiple: true
-
-      - name: Generate and verify checksums
-        shell: bash
-        run: |
-          cd release-assets
-          rm -f SHA256SUMS.txt
-          shopt -s nullglob
-          export LC_ALL=C
-          assets=(*)
-          if (( ${#assets[@]} == 0 )); then
-            echo "::error::No packaged assets were downloaded."
-            exit 1
-          fi
-          sha256sum "${assets[@]}" > SHA256SUMS.txt
-          sha256sum --check SHA256SUMS.txt
-
-      - name: Upload release assets
+      - name: Verify local package output
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
+          RUNNER_OS_NAME: ${{ runner.os }}
         run: |
           shopt -s nullglob
-          assets=(release-assets/*)
-          if (( ${#assets[@]} == 0 )); then
-            echo "::error::No packaged assets were downloaded."
+          case "$RUNNER_OS_NAME" in
+            macOS) packages=(dist/*.dmg) ;;
+            Windows) packages=(dist/*.exe) ;;
+            Linux) packages=(dist/*.AppImage) ;;
+            *)
+              echo "::error::Unsupported runner OS '$RUNNER_OS_NAME'."
+              exit 1
+              ;;
+          esac
+
+          if (( ${#packages[@]} == 0 )); then
+            echo "::error::No packaged application was produced for $RUNNER_OS_NAME."
             exit 1
           fi
-          gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
 
-      - name: Publish release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: gh release edit "$GITHUB_REF_NAME" --draft=false
+          {
+            echo "### $RUNNER_OS_NAME package verification"
+            for package in "${packages[@]}"; do
+              if [[ ! -s "$package" ]]; then
+                echo "::error::Packaged application '$package' is empty."
+                exit 1
+              fi
+              echo "- \`$(basename "$package")\`"
+            done
+            echo "- Build-only: no artifact was uploaded."
+          } >> "$GITHUB_STEP_SUMMARY"
