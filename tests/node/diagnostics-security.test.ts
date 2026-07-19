@@ -66,6 +66,7 @@ interface WindowsAclSnapshot {
   ownerSid: string
   protected: boolean
   rules: Array<{ inherited: boolean; sid: string; type: string }>
+  sddl: string
 }
 
 function readWindowsAcl(path: string): WindowsAclSnapshot {
@@ -88,6 +89,7 @@ $rules = @($acl.GetAccessRules($true, $true, [System.Security.Principal.Security
   ownerSid = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
   protected = $acl.AreAccessRulesProtected
   rules = $rules
+  sddl = $acl.Sddl
 } | ConvertTo-Json -Compress -Depth 4
 `
   const result = spawnSync(
@@ -97,6 +99,38 @@ $rules = @($acl.GetAccessRules($true, $true, [System.Security.Principal.Security
   )
   assert.equal(result.status, 0, result.stderr)
   return JSON.parse(result.stdout) as WindowsAclSnapshot
+}
+
+function assertWindowsPrivatePathsInFreshProcess(root: string, logFilePath: string): void {
+  const script = String.raw`
+const { join } = require("node:path")
+const {
+  assertPrivateRegularFileSync,
+  ensurePrivateDescendantDirectorySync,
+  ensurePrivateDirectorySync
+} = require("./src/main/diagnostics/private-files.ts")
+const root = process.env.JINGLE_TEST_PRIVATE_ROOT
+const logFilePath = process.env.JINGLE_TEST_PRIVATE_LOG_FILE
+if (!root || !logFilePath) {
+  throw new Error("Missing Windows private path test environment.")
+}
+ensurePrivateDirectorySync(root)
+ensurePrivateDescendantDirectorySync(root, join(root, "logs"))
+if (!assertPrivateRegularFileSync(logFilePath)) {
+  throw new Error("Diagnostics log file disappeared during cold-cache verification.")
+}
+`
+  const result = spawnSync(process.execPath, ["--import", "tsx", "-e", script], {
+    cwd: resolve("."),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      JINGLE_TEST_PRIVATE_LOG_FILE: logFilePath,
+      JINGLE_TEST_PRIVATE_ROOT: root
+    },
+    windowsHide: true
+  })
+  assert.equal(result.status, 0, result.stderr)
 }
 
 function assertSecretsAbsent(value: string): void {
@@ -257,11 +291,21 @@ test(
       logger.info("private Windows ACL")
       await logger.flush()
 
-      for (const securedPath of [root, join(root, "logs"), logger.getLogFilePath()]) {
+      const securedPaths = [root, join(root, "logs"), logger.getLogFilePath()]
+      const initialAcls = new Map(
+        securedPaths.map((securedPath) => [securedPath, readWindowsAcl(securedPath)])
+      )
+      assertWindowsPrivatePathsInFreshProcess(root, logger.getLogFilePath())
+      assertWindowsPrivatePathsInFreshProcess(root, logger.getLogFilePath())
+
+      for (const securedPath of securedPaths) {
         const acl = readWindowsAcl(securedPath)
+        const initialAcl = initialAcls.get(securedPath)
+        assert.ok(initialAcl)
         const allowedSids = new Set([acl.currentSid, "S-1-5-18", "S-1-5-32-544"])
         assert.equal(acl.protected, true)
         assert.equal(acl.ownerSid, acl.currentSid)
+        assert.equal(acl.sddl, initialAcl.sddl)
         assert.equal(
           acl.rules.some((rule) => rule.type === "Allow" && !allowedSids.has(rule.sid)),
           false

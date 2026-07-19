@@ -20,17 +20,81 @@ $accessType = [System.Security.AccessControl.AccessControlType]::Allow
 $rights = [System.Security.AccessControl.FileSystemRights]::FullControl
 $propagation = [System.Security.AccessControl.PropagationFlags]::None
 
+function Test-PrivateAcl {
+  param(
+    [Parameter(Mandatory = $true)]
+    [System.Security.AccessControl.FileSystemSecurity]$candidate,
+    [Parameter(Mandatory = $true)]
+    [string]$candidateKind
+  )
+
+  if (-not $candidate.AreAccessRulesProtected) {
+    return $false
+  }
+
+  $ownerSid = $candidate.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+  if ($ownerSid -ne $identity.User.Value) {
+    return $false
+  }
+
+  if ($candidateKind -eq 'directory') {
+    $expectedInheritance = [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+  } else {
+    $expectedInheritance = [System.Security.AccessControl.InheritanceFlags]::None
+  }
+
+  $rules = @($candidate.GetAccessRules(
+    $true,
+    $true,
+    [System.Security.Principal.SecurityIdentifier]
+  ))
+  if ($rules.Count -ne $allowedSidValues.Count) {
+    return $false
+  }
+
+  $seenSidValues = @{}
+  foreach ($rule in $rules) {
+    $sidValue = $rule.IdentityReference.Value
+    if (
+      $rule.IsInherited -or
+      $rule.AccessControlType -ne $accessType -or
+      $allowedSidValues -notcontains $sidValue -or
+      ($rule.FileSystemRights -band $rights) -ne $rights -or
+      $rule.InheritanceFlags -ne $expectedInheritance -or
+      $rule.PropagationFlags -ne $propagation -or
+      $seenSidValues.ContainsKey($sidValue)
+    ) {
+      return $false
+    }
+    $seenSidValues[$sidValue] = $true
+  }
+
+  foreach ($sidValue in $allowedSidValues) {
+    if (-not $seenSidValues.ContainsKey($sidValue)) {
+      return $false
+    }
+  }
+
+  return $true
+}
+
+$currentAcl = Get-Acl -LiteralPath $targetPath
+if (Test-PrivateAcl -candidate $currentAcl -candidateKind $pathKind) {
+  return
+}
+
 if ($pathKind -eq 'directory') {
   $acl = [System.Security.AccessControl.DirectorySecurity]::new()
   $inheritance = [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
-} elseif ($pathKind -eq 'file') {
+} else {
   $acl = [System.Security.AccessControl.FileSecurity]::new()
   $inheritance = [System.Security.AccessControl.InheritanceFlags]::None
-} else {
-  throw 'Invalid diagnostics path kind.'
 }
 
-$acl.SetOwner($identity.User)
+$currentOwnerSid = $currentAcl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+if ($currentOwnerSid -ne $identity.User.Value) {
+  $acl.SetOwner($identity.User)
+}
 $acl.SetAccessRuleProtection($true, $false)
 foreach ($sidValue in $allowedSidValues) {
   $sid = [System.Security.Principal.SecurityIdentifier]::new($sidValue)
@@ -43,38 +107,16 @@ foreach ($sidValue in $allowedSidValues) {
   )
   [void]$acl.AddAccessRule($rule)
 }
-Set-Acl -LiteralPath $targetPath -AclObject $acl
+
+if ($pathKind -eq 'directory') {
+  [System.IO.Directory]::SetAccessControl($targetPath, $acl)
+} else {
+  [System.IO.File]::SetAccessControl($targetPath, $acl)
+}
 
 $verified = Get-Acl -LiteralPath $targetPath
-if (-not $verified.AreAccessRulesProtected) {
-  throw 'Diagnostics ACL inheritance is not protected.'
-}
-$ownerSid = $verified.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
-if ($ownerSid -ne $identity.User.Value) {
-  throw 'Diagnostics ACL owner is not the current user.'
-}
-$verifiedRules = $verified.GetAccessRules(
-  $true,
-  $true,
-  [System.Security.Principal.SecurityIdentifier]
-)
-foreach ($rule in $verifiedRules) {
-  if (
-    $rule.AccessControlType -eq $accessType -and
-    $allowedSidValues -notcontains $rule.IdentityReference.Value
-  ) {
-    throw 'Diagnostics ACL grants access to an unexpected principal.'
-  }
-}
-foreach ($sidValue in $allowedSidValues) {
-  $hasFullControl = @($verifiedRules | Where-Object {
-    $_.AccessControlType -eq $accessType -and
-    $_.IdentityReference.Value -eq $sidValue -and
-    ($_.FileSystemRights -band $rights) -eq $rights
-  }).Count -gt 0
-  if (-not $hasFullControl) {
-    throw 'Diagnostics ACL is missing a required private principal.'
-  }
+if (-not (Test-PrivateAcl -candidate $verified -candidateKind $pathKind)) {
+  throw 'Diagnostics ACL did not match the private Windows contract after repair.'
 }
 `
 
