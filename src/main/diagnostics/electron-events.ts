@@ -42,6 +42,7 @@ function recordFatalMainProcessError(
   origin: string
 ): Promise<void> {
   captureElectronFailure(diagnosticsGraph, {
+    error,
     kind: "main-process-fatal",
     origin
   })
@@ -95,10 +96,11 @@ export function installProcessDiagnostics(options: ProcessDiagnosticsOptions = {
     })
   } else {
     process.on("unhandledRejection", (reason) => {
-      void recordFatalOnce("Main process unhandled rejection", reason, "unhandledRejection").catch(
+      const error = errorFromUnhandledRejection(reason)
+      void recordFatalOnce("Main process unhandled rejection", error, "unhandledRejection").catch(
         () => undefined
       )
-      throw errorFromUnhandledRejection(reason)
+      throw error
     })
   }
 

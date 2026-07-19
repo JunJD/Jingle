@@ -1,3 +1,4 @@
+import { types } from "node:util"
 import type { AppWindowKind, RendererWindowLoadFailure } from "../windows/load-renderer-window"
 import type {
   DiagnosticDimensionInput,
@@ -35,6 +36,7 @@ type ElectronFailureInput =
       reason: unknown
     }
   | {
+      error: unknown
       kind: "main-process-fatal"
       origin: unknown
     }
@@ -99,6 +101,17 @@ function normalizeMainProcessOrigin(value: unknown): string {
   return value === "uncaughtException" || value === "unhandledRejection" ? value : "unknown"
 }
 
+function readTrustedMainProcessError(value: unknown): Error | null {
+  if (!value || typeof value !== "object" || types.isProxy(value)) {
+    return null
+  }
+  try {
+    return types.isNativeError(value) ? value : null
+  } catch {
+    return null
+  }
+}
+
 function toPositiveIntegerRef(kind: string, value: unknown): DiagnosticResourceRef | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0
     ? { id: String(value), kind }
@@ -123,10 +136,22 @@ function captureMainProcessFailure(
   input: Extract<ElectronFailureInput, { kind: "main-process-fatal" }>
 ): DiagnosticEventRef {
   const origin = normalizeMainProcessOrigin(input.origin)
+  const error = readTrustedMainProcessError(input.error)
   return sink.capture({
     component: "electron",
     dimensionEntries: [{ key: "origin", value: origin }],
     eventCode: "process.fatal_error",
+    ...(error
+      ? {
+          evidence: [
+            {
+              contentType: "application/json",
+              kind: "error",
+              value: error
+            }
+          ]
+        }
+      : {}),
     fingerprint: `process.fatal_error:${origin}`,
     level: "error",
     operation: "observe-main-process",

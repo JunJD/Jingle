@@ -94,11 +94,12 @@ class CapturingDiagnosticSink implements DiagnosticGraphSink {
   }
 }
 
-test("Electron failure producers emit bounded causal facts without payload evidence", () => {
+test("Electron failure producers only attach evidence for trusted main errors", () => {
   const sink = new CapturingDiagnosticSink()
   const hostile = `${SECRET_VALUES.join(" ")} user-authored renderer content`
 
   captureElectronFailure(sink, {
+    error: new Error(hostile),
     kind: "main-process-fatal",
     origin: hostile
   })
@@ -134,8 +135,11 @@ test("Electron failure producers emit bounded causal facts without payload evide
     { key: "reason", value: "unknown" },
     { key: "exitCode", value: 137 }
   ])
-  for (const input of sink.inputs) {
-    assert.equal(input.evidence, undefined)
+  assert.equal(sink.inputs[0].evidence?.length, 1)
+  assert.equal(sink.inputs[0].evidence?.[0]?.kind, "error")
+  assert.equal(sink.inputs[1].evidence, undefined)
+  assert.equal(sink.inputs[2].evidence, undefined)
+  for (const input of sink.inputs.slice(1)) {
     assertSecretsAbsent(JSON.stringify(input))
     assert.equal(JSON.stringify(input).includes("user-authored renderer content"), false)
   }
@@ -151,12 +155,48 @@ test("Electron failure capture is fail-open when the diagnostic sink rejects inp
   assert.doesNotThrow(() => {
     assert.equal(
       captureElectronFailure(sink, {
+        error: new Error("fatal"),
         kind: "main-process-fatal",
         origin: "uncaughtException"
       }),
       undefined
     )
   })
+})
+
+test("Electron main failure evidence rejects non-errors and proxies without executing traps", () => {
+  const sink = new CapturingDiagnosticSink()
+  let accessorCalls = 0
+  const accessor = {}
+  Object.defineProperty(accessor, "message", {
+    get() {
+      accessorCalls += 1
+      throw new Error("accessor executed")
+    }
+  })
+  let proxyTrapCalls = 0
+  const proxy = new Proxy(new Error("proxy"), {
+    getPrototypeOf() {
+      proxyTrapCalls += 1
+      throw new Error("proxy trap executed")
+    }
+  })
+
+  captureElectronFailure(sink, {
+    error: accessor,
+    kind: "main-process-fatal",
+    origin: "uncaughtException"
+  })
+  captureElectronFailure(sink, {
+    error: proxy,
+    kind: "main-process-fatal",
+    origin: "unhandledRejection"
+  })
+
+  assert.equal(accessorCalls, 0)
+  assert.equal(proxyTrapCalls, 0)
+  assert.equal(sink.inputs[0].evidence, undefined)
+  assert.equal(sink.inputs[1].evidence, undefined)
 })
 
 test("fatal Electron process hooks share one diagnostic write", async () => {
@@ -244,6 +284,94 @@ test("Electron failures open causal diagnostic coverage with stable searchable r
       { id: "42", kind: "web-contents" }
     ])
     assert.equal(search.events[0].evidenceRefs.length, 0)
+  } finally {
+    rmSync(home, { force: true, recursive: true })
+  }
+})
+
+test("Electron main fatal evidence is bounded, redacted, and inspectable by blob reference", async () => {
+  const home = createTempDir("electron-main-fatal-evidence")
+  try {
+    const logDir = join(home, "logs")
+    const logger = new DiagnosticsLogger({ logDir, rootDir: home })
+    const graph = new DiagnosticsGraphRecorder({ logger, sessionId: "electron-main-fatal" })
+    let getterCalls = 0
+    const error = new AggregateError(
+      Array.from({ length: 32 }, (_, index) =>
+        index === 0
+          ? `${SECRET_VALUES[0]} /Users/alice/customer/private.txt`
+          : `diagnostic-detail-${index}:${"x".repeat(10_000)}`
+      ),
+      `${SECRET_VALUES[2]} /Users/alice/customer/private.txt`
+    )
+    Object.defineProperty(error, "code", {
+      get() {
+        getterCalls += 1
+        throw new Error("error code getter executed")
+      }
+    })
+
+    const eventRef = captureElectronFailure(graph, {
+      error,
+      kind: "main-process-fatal",
+      origin: "uncaughtException"
+    })
+    assert.ok(eventRef)
+    await graph.flush()
+    assert.equal(getterCalls, 0)
+
+    const journal = readFileSync(logger.getLogFilePath(), "utf8")
+    assertSecretsAbsent(journal)
+    const event = journal
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .find((record) => record["eventId"] === eventRef.eventId) as {
+      evidenceRefs: Array<{
+        blobId: string
+        capture: string
+        kind: string
+        originalSizeBytes: number
+        sizeBytes: number
+        truncated: boolean
+      }>
+    }
+    assert.equal(event.evidenceRefs.length, 1)
+    assert.equal(event.evidenceRefs[0].capture, "stored")
+    assert.equal(event.evidenceRefs[0].kind, "error")
+    assert.equal(event.evidenceRefs[0].truncated, true)
+    assert.equal(event.evidenceRefs[0].sizeBytes <= 64 * 1024, true)
+    assert.equal(event.evidenceRefs[0].originalSizeBytes > event.evidenceRefs[0].sizeBytes, true)
+
+    const showResult = spawnSync(
+      process.execPath,
+      [INSPECTOR, "--home", home, "show", eventRef.eventId],
+      { encoding: "utf8" }
+    )
+    assert.equal(showResult.status, 0, showResult.stderr)
+    const shown = JSON.parse(showResult.stdout) as {
+      event: { evidenceRefs: Array<{ blobId: string; kind: string; truncated: boolean }> }
+    }
+    assert.equal(shown.event.evidenceRefs[0].blobId, event.evidenceRefs[0].blobId)
+    assert.equal(shown.event.evidenceRefs[0].kind, "error")
+    assert.equal(shown.event.evidenceRefs[0].truncated, true)
+
+    const blobResult = spawnSync(
+      process.execPath,
+      [INSPECTOR, "--home", home, "blob", event.evidenceRefs[0].blobId, "--max-bytes", "16384"],
+      { encoding: "utf8" }
+    )
+    assert.equal(blobResult.status, 0, blobResult.stderr)
+    assertSecretsAbsent(`${blobResult.stdout}${blobResult.stderr}`)
+    const blob = JSON.parse(blobResult.stdout) as {
+      content: string
+      sourceBytes: number
+      verifiedSha256: boolean
+    }
+    assert.equal(blob.verifiedSha256, true)
+    assert.equal(blob.sourceBytes, event.evidenceRefs[0].sizeBytes)
+    assert.match(blob.content, /\[REDACTED\]/)
+    assert.match(blob.content, /\[REDACTED_PATH\]/)
   } finally {
     rmSync(home, { force: true, recursive: true })
   }
