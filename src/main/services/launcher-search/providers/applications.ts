@@ -1,6 +1,7 @@
 import { app, nativeImage, shell } from "electron"
 import PinyinMatch from "pinyin-match"
 import { execFile } from "node:child_process"
+import { createHash } from "node:crypto"
 import { promises as fs, watch, type Dirent, type FSWatcher } from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -12,6 +13,10 @@ import type {
   LauncherSearchResult
 } from "@shared/launcher-search"
 import type { LauncherSearchProvider, LauncherSearchProviderResponse } from "../types"
+import {
+  WindowsApplicationCatalogCacheRepository,
+  type WindowsApplicationCatalogCacheSnapshot
+} from "../windows-application-catalog-cache"
 import {
   isWindowsShortcutPath,
   resolveWindowsApplicationIconPathCandidates
@@ -61,6 +66,11 @@ interface WindowsPackagedApplicationRecord {
   subtitle: string
 }
 
+export interface WindowsApplicationInventoryRecord {
+  appUserModelId: string
+  displayName: string
+}
+
 type LauncherApplicationCatalogEntry =
   | {
       kind: "path"
@@ -73,8 +83,8 @@ type LauncherApplicationCatalogEntry =
 
 interface LauncherApplicationCatalogLoadResult {
   entries: LauncherApplicationCatalogEntry[]
+  windowsApplicationCatalogCacheSnapshot: WindowsApplicationCatalogCacheSnapshot | null
   windowsPackagedApplicationIdByPath: ReadonlyMap<string, string>
-  windowsPackagedApplicationsLoaded: boolean
   windowsSuppressedPathApplicationsByPath: ReadonlyMap<string, LauncherApplicationRecord>
 }
 
@@ -86,10 +96,13 @@ interface WindowsApplicationCatalogMergeResult {
 
 interface ApplicationsLauncherSearchProviderOptions {
   loadApplicationCatalog?: () => Promise<LauncherApplicationRecord[]>
-  loadWindowsPackagedApplications?: () => Promise<WindowsPackagedApplicationRecord[]>
+  loadWindowsApplicationEnrichment?: () => Promise<WindowsPackagedApplicationRecord[]>
+  loadWindowsApplicationInventory?: () => Promise<WindowsApplicationInventoryRecord[]>
   now?: () => number
   platform?: NodeJS.Platform
+  readWindowsApplicationCatalogCache?: () => WindowsApplicationCatalogCacheSnapshot | null
   resolveApplicationIconDataUrl?: (applicationPath: string) => Promise<string | undefined>
+  writeWindowsApplicationCatalogCache?: (snapshot: WindowsApplicationCatalogCacheSnapshot) => void
 }
 
 const MAX_SCAN_DEPTH = 3
@@ -112,29 +125,45 @@ const MAC_CHINESE_LOCALIZATION_DIRECTORIES = [
 ]
 const WINDOWS_START_MENU_FALLBACK_SUBTITLE = "开始菜单"
 const APPLICATION_INDEX_REFRESH_DEBOUNCE_MS = 750
-const WINDOWS_APPLICATION_CATALOG_TTL_MS = 30_000
+const WINDOWS_APPLICATION_INVENTORY_ATTEMPT_BACKOFF_MS = 5 * 60_000
+const WINDOWS_APPLICATION_ENRICHMENT_ATTEMPT_BACKOFF_MS = 5 * 60_000
+const WINDOWS_APPLICATION_ENRICHMENT_TTL_MS = 24 * 60 * 60_000
 const WINDOWS_PACKAGED_APPLICATION_SUBTITLE = "Microsoft Store"
+const WINDOWS_START_APPS_INVENTORY_SCRIPT = [
+  "$ErrorActionPreference = 'Stop'",
+  "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+  "$OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+  "$applications = @(Get-StartApps | Where-Object { $_.AppID -like '*!*' } | ForEach-Object {",
+  "  [PSCustomObject]@{ appUserModelId = [string]$_.AppID; displayName = [string]$_.Name }",
+  "})",
+  "ConvertTo-Json -Compress -InputObject $applications"
+].join("\n")
 const WINDOWS_START_APPS_SCRIPT = [
   "$ErrorActionPreference = 'Stop'",
   "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
   "$OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
   "$packagesByFamily = @{}",
   "Get-AppxPackage | ForEach-Object { if ($_.PackageFamilyName -and $_.InstallLocation) { $packagesByFamily[[string]$_.PackageFamilyName] = $_ } }",
+  "$manifestsByFamily = @{}",
   "$applications = @(Get-StartApps | Where-Object { $_.AppID -like '*!*' } | ForEach-Object {",
   "  $appUserModelId = [string]$_.AppID",
   "  $appIdParts = $appUserModelId.Split('!', 2)",
+  "  $packageFamily = $appIdParts[0]",
   "  $iconPath = $null",
-  "  $package = $packagesByFamily[$appIdParts[0]]",
+  "  $package = $packagesByFamily[$packageFamily]",
   "  if ($package) {",
-  "    try {",
-  "      $manifest = Get-AppxPackageManifest -Package $package",
+  "    if (-not $manifestsByFamily.ContainsKey($packageFamily)) {",
+  "      try { $manifestsByFamily[$packageFamily] = Get-AppxPackageManifest -Package $package } catch { $manifestsByFamily[$packageFamily] = $false }",
+  "    }",
+  "    $manifest = $manifestsByFamily[$packageFamily]",
+  "    if ($manifest) {",
   "      $application = @($manifest.Package.Applications.Application) | Where-Object { [string]$_.Id -eq $appIdParts[1] } | Select-Object -First 1",
   "      $logo = [string]$application.VisualElements.Square44x44Logo",
   "      if (-not $logo) { $logo = [string]$application.VisualElements.Square30x30Logo }",
   "      if (-not $logo) { $logo = [string]$application.VisualElements.Square150x150Logo }",
   "      if (-not $logo) { $logo = [string]$application.VisualElements.Logo }",
   "      if ($logo -and -not $logo.StartsWith('ms-resource:')) { $iconPath = Join-Path ([string]$package.InstallLocation) $logo }",
-  "    } catch {}",
+  "    }",
   "  }",
   "  [PSCustomObject]@{ appUserModelId = $appUserModelId; displayName = [string]$_.Name; iconPath = [string]$iconPath }",
   "})",
@@ -282,6 +311,57 @@ function getWindowsPackagedApplicationIdKey(value: string | undefined): string |
   return appUserModelId.toLowerCase()
 }
 
+function normalizeWindowsApplicationInventoryValue(value: string): string {
+  return value.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim()
+}
+
+export function createWindowsApplicationInventoryFingerprint(
+  inventory: readonly WindowsApplicationInventoryRecord[]
+): string {
+  const canonicalRecords = [
+    ...new Set(
+      inventory.flatMap((application) => {
+        const appUserModelId = getWindowsPackagedApplicationIdKey(application.appUserModelId)
+        const displayName = normalizeWindowsApplicationInventoryValue(application.displayName)
+        return appUserModelId && displayName ? [`${appUserModelId}\0${displayName}`] : []
+      })
+    )
+  ].toSorted()
+
+  return `sha256:${createHash("sha256").update(canonicalRecords.join("\n")).digest("hex")}`
+}
+
+function isWithinBackoff(now: number, lastAttemptAt: number | null, backoffMs: number): boolean {
+  return lastAttemptAt !== null && now >= lastAttemptAt && now - lastAttemptAt < backoffMs
+}
+
+function parseWindowsApplicationInventory(value: unknown): WindowsApplicationInventoryRecord[] {
+  if (!Array.isArray(value)) {
+    throw new Error("Windows Start Apps returned an invalid inventory payload")
+  }
+
+  const applicationsById = new Map<string, WindowsApplicationInventoryRecord>()
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      continue
+    }
+
+    const record = entry as Record<string, unknown>
+    const appUserModelId =
+      typeof record["appUserModelId"] === "string" ? record["appUserModelId"].trim() : ""
+    const displayName =
+      typeof record["displayName"] === "string" ? record["displayName"].trim() : ""
+    const appUserModelIdKey = getWindowsPackagedApplicationIdKey(appUserModelId)
+    if (!appUserModelIdKey || !displayName || isWindowsUninstallEntry(displayName)) {
+      continue
+    }
+
+    applicationsById.set(appUserModelIdKey, { appUserModelId, displayName })
+  }
+
+  return [...applicationsById.values()]
+}
+
 function parseWindowsPackagedApplications(value: unknown): WindowsPackagedApplicationRecord[] {
   if (!Array.isArray(value)) {
     throw new Error("Windows Start Apps returned an invalid catalog payload")
@@ -334,9 +414,27 @@ function parseWindowsPackagedApplications(value: unknown): WindowsPackagedApplic
 }
 
 async function loadWindowsPackagedApplications(): Promise<WindowsPackagedApplicationRecord[]> {
+  const serialized = await runWindowsStartAppsScript(WINDOWS_START_APPS_SCRIPT)
+  if (!serialized) {
+    return []
+  }
+
+  return parseWindowsPackagedApplications(JSON.parse(serialized) as unknown)
+}
+
+async function loadWindowsApplicationInventory(): Promise<WindowsApplicationInventoryRecord[]> {
+  const serialized = await runWindowsStartAppsScript(WINDOWS_START_APPS_INVENTORY_SCRIPT)
+  if (!serialized) {
+    return []
+  }
+
+  return parseWindowsApplicationInventory(JSON.parse(serialized) as unknown)
+}
+
+async function runWindowsStartAppsScript(script: string): Promise<string> {
   const { stdout } = await execFileAsync(
     getWindowsPowerShellPath(),
-    ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", WINDOWS_START_APPS_SCRIPT],
+    ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
     {
       encoding: "utf8",
       maxBuffer: 4 * 1024 * 1024,
@@ -344,12 +442,7 @@ async function loadWindowsPackagedApplications(): Promise<WindowsPackagedApplica
       windowsHide: true
     }
   )
-  const serialized = stdout.toString().trim()
-  if (!serialized) {
-    return []
-  }
-
-  return parseWindowsPackagedApplications(JSON.parse(serialized) as unknown)
+  return stdout.toString().trim()
 }
 
 function getApplicationPathLookupKey(applicationPath: string): string {
@@ -824,10 +917,7 @@ function createWindowsApplicationCatalogEntries(
     })
   )
   const windowsPackagedApplicationIdByPath = new Map<string, string>()
-  const windowsSuppressedPathApplicationsByPath = new Map<
-    string,
-    LauncherApplicationRecord
-  >()
+  const windowsSuppressedPathApplicationsByPath = new Map<string, LauncherApplicationRecord>()
 
   const pathEntries = createPathApplicationCatalogEntries(
     pathApplications.filter((application) => {
@@ -883,70 +973,16 @@ function getApplicationCatalogFingerprint(entries: LauncherApplicationCatalogEnt
   )
 }
 
-async function loadWindowsApplicationCatalog(
-  loadPathApplications: () => Promise<LauncherApplicationRecord[]> = loadWindowsApplications,
-  loadPackagedApplications: () => Promise<
-    WindowsPackagedApplicationRecord[]
-  > = loadWindowsPackagedApplications
-): Promise<LauncherApplicationCatalogLoadResult> {
-  const [pathApplications, packagedApplicationsResult] = await Promise.all([
-    loadPathApplications(),
-    loadPackagedApplications().then(
-      (applications) => ({ applications, status: "fulfilled" as const }),
-      (error: unknown) => ({ error, status: "rejected" as const })
-    )
-  ])
-  const entries = createPathApplicationCatalogEntries(pathApplications)
-
-  if (packagedApplicationsResult.status === "rejected") {
-    console.warn("[LauncherSearch] Windows packaged application discovery failed:", {
-      error:
-        packagedApplicationsResult.error instanceof Error
-          ? packagedApplicationsResult.error.message
-          : String(packagedApplicationsResult.error)
-    })
-    return {
-      entries,
-      windowsPackagedApplicationIdByPath: new Map(),
-      windowsPackagedApplicationsLoaded: false,
-      windowsSuppressedPathApplicationsByPath: new Map()
-    }
-  }
-
-  const mergedCatalog = createWindowsApplicationCatalogEntries(
-    pathApplications,
-    packagedApplicationsResult.applications
-  )
-  return {
-    entries: mergedCatalog.entries,
-    windowsPackagedApplicationIdByPath: mergedCatalog.windowsPackagedApplicationIdByPath,
-    windowsPackagedApplicationsLoaded: true,
-    windowsSuppressedPathApplicationsByPath:
-      mergedCatalog.windowsSuppressedPathApplicationsByPath
-  }
-}
-
 async function loadApplicationCatalog(
   platform: NodeJS.Platform = process.platform
-): Promise<LauncherApplicationCatalogLoadResult> {
+): Promise<LauncherApplicationRecord[]> {
   switch (platform) {
-    case "darwin": {
-      return {
-        entries: createPathApplicationCatalogEntries(await loadMacApplications()),
-        windowsPackagedApplicationIdByPath: new Map(),
-        windowsPackagedApplicationsLoaded: false,
-        windowsSuppressedPathApplicationsByPath: new Map()
-      }
-    }
+    case "darwin":
+      return loadMacApplications()
     case "win32":
-      return loadWindowsApplicationCatalog()
+      return loadWindowsApplications()
     default:
-      return {
-        entries: [],
-        windowsPackagedApplicationIdByPath: new Map(),
-        windowsPackagedApplicationsLoaded: false,
-        windowsSuppressedPathApplicationsByPath: new Map()
-      }
+      return []
   }
 }
 
@@ -1401,12 +1437,18 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
   private applicationCatalogRefreshPromise: Promise<boolean> | null = null
   private applicationDisplayNamePromiseCache = new Map<string, Promise<string | undefined>>()
   private applicationIconPromiseCache = new Map<string, Promise<string | undefined>>()
+  private windowsApplicationCatalogCacheRepository:
+    | WindowsApplicationCatalogCacheRepository
+    | undefined
+  private windowsApplicationCatalogCacheSnapshot: WindowsApplicationCatalogCacheSnapshot | null =
+    null
+  private windowsApplicationCatalogPendingCacheSnapshot: WindowsApplicationCatalogCacheSnapshot | null =
+    null
+  private windowsApplicationEnrichmentLastAttemptAt: number | null = null
+  private windowsApplicationInventoryLastAttemptAt: number | null = null
+  private windowsApplicationInventoryLastSuccessAt: number | null = null
   private windowsPackagedApplicationIdByPath = new Map<string, string>()
-  private windowsPackagedApplicationCatalogLoadedAt = 0
-  private windowsSuppressedPathApplicationsByPath = new Map<
-    string,
-    LauncherApplicationRecord
-  >()
+  private windowsSuppressedPathApplicationsByPath = new Map<string, LauncherApplicationRecord>()
 
   constructor(private readonly options: ApplicationsLauncherSearchProviderOptions = {}) {}
 
@@ -1419,8 +1461,8 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
     this.applicationCatalogPromise = null
     this.applicationDisplayNamePromiseCache.clear()
     this.applicationIconPromiseCache.clear()
+    this.windowsApplicationCatalogCacheSnapshot = null
     this.windowsPackagedApplicationIdByPath.clear()
-    this.windowsPackagedApplicationCatalogLoadedAt = 0
     this.windowsSuppressedPathApplicationsByPath.clear()
   }
 
@@ -1428,64 +1470,37 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
     if (this.getPlatform() !== "win32") {
       return false
     }
+    if (this.applicationCatalogRefreshPromise) {
+      return this.applicationCatalogRefreshPromise
+    }
 
     const currentCatalog = await this.getApplicationCatalog()
+    if (this.applicationCatalogRefreshPromise) {
+      return this.applicationCatalogRefreshPromise
+    }
+
+    const attemptAt = this.getCurrentTime()
     if (
-      this.getCurrentTime() - this.windowsPackagedApplicationCatalogLoadedAt <
-      WINDOWS_APPLICATION_CATALOG_TTL_MS
+      isWithinBackoff(
+        attemptAt,
+        this.windowsApplicationInventoryLastAttemptAt,
+        WINDOWS_APPLICATION_INVENTORY_ATTEMPT_BACKOFF_MS
+      )
     ) {
       return false
     }
 
-    if (!this.applicationCatalogRefreshPromise) {
-      const refreshGeneration = this.applicationCatalogGeneration
-      const refreshPromise = (async () => {
-        const packagedApplications = await this.loadWindowsPackagedApplications()
-        if (refreshGeneration !== this.applicationCatalogGeneration) {
-          return false
-        }
-
-        const pathApplicationsByPath = new Map(
-          currentCatalog
-            .filter((entry) => entry.kind === "path")
-            .map((entry) => [normalizeWindowsPath(entry.record.path), entry.record] as const)
-        )
-        for (const [applicationPath, application] of this
-          .windowsSuppressedPathApplicationsByPath) {
-          pathApplicationsByPath.set(applicationPath, application)
-        }
-        const mergedCatalog = createWindowsApplicationCatalogEntries(
-          [...pathApplicationsByPath.values()],
-          packagedApplications
-        )
-        const nextCatalog = mergedCatalog.entries
-        const changed =
-          getApplicationCatalogFingerprint(currentCatalog) !==
-          getApplicationCatalogFingerprint(nextCatalog)
-
-        this.windowsPackagedApplicationIdByPath =
-          mergedCatalog.windowsPackagedApplicationIdByPath
-        this.windowsPackagedApplicationCatalogLoadedAt = this.getCurrentTime()
-        this.windowsSuppressedPathApplicationsByPath =
-          mergedCatalog.windowsSuppressedPathApplicationsByPath
-        if (changed) {
-          this.applicationCatalogPromise = Promise.resolve(nextCatalog)
-          this.applicationDisplayNamePromiseCache.clear()
-          this.applicationIconPromiseCache.clear()
-        }
-
-        return changed
-      })()
-      this.applicationCatalogRefreshPromise = refreshPromise
-      const clearRefreshPromise = (): void => {
-        if (this.applicationCatalogRefreshPromise === refreshPromise) {
-          this.applicationCatalogRefreshPromise = null
-        }
+    const refreshGeneration = this.applicationCatalogGeneration
+    this.windowsApplicationInventoryLastAttemptAt = attemptAt
+    const refreshPromise = this.refreshWindowsApplicationCatalog(currentCatalog, refreshGeneration)
+    this.applicationCatalogRefreshPromise = refreshPromise
+    const clearRefreshPromise = (): void => {
+      if (this.applicationCatalogRefreshPromise === refreshPromise) {
+        this.applicationCatalogRefreshPromise = null
       }
-      void refreshPromise.then(clearRefreshPromise, clearRefreshPromise)
     }
-
-    return this.applicationCatalogRefreshPromise
+    void refreshPromise.then(clearRefreshPromise, clearRefreshPromise)
+    return refreshPromise
   }
 
   async search(request: LauncherSearchRequest): Promise<LauncherSearchProviderResponse> {
@@ -1610,29 +1625,65 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
   }
 
   private async loadApplicationCatalog(): Promise<LauncherApplicationCatalogLoadResult> {
-    if (this.options.loadApplicationCatalog) {
-      if (this.getPlatform() === "win32" && this.options.loadWindowsPackagedApplications) {
-        return loadWindowsApplicationCatalog(
-          this.options.loadApplicationCatalog,
-          this.options.loadWindowsPackagedApplications
-        )
-      }
-
+    const pathApplications = this.options.loadApplicationCatalog
+      ? await this.options.loadApplicationCatalog()
+      : await loadApplicationCatalog(this.getPlatform())
+    if (this.getPlatform() !== "win32") {
       return {
-        entries: createPathApplicationCatalogEntries(await this.options.loadApplicationCatalog()),
+        entries: createPathApplicationCatalogEntries(pathApplications),
+        windowsApplicationCatalogCacheSnapshot: null,
         windowsPackagedApplicationIdByPath: new Map(),
-        windowsPackagedApplicationsLoaded: false,
         windowsSuppressedPathApplicationsByPath: new Map()
       }
     }
 
-    return loadApplicationCatalog(this.getPlatform())
+    const cacheSnapshot = this.readWindowsApplicationCatalogCache()
+    if (!cacheSnapshot) {
+      return {
+        entries: createPathApplicationCatalogEntries(pathApplications),
+        windowsApplicationCatalogCacheSnapshot: null,
+        windowsPackagedApplicationIdByPath: new Map(),
+        windowsSuppressedPathApplicationsByPath: new Map()
+      }
+    }
+
+    let packagedApplications: WindowsPackagedApplicationRecord[]
+    try {
+      packagedApplications = parseWindowsPackagedApplications(cacheSnapshot.records)
+    } catch (error) {
+      console.warn("[LauncherSearch] Windows application catalog cache read failed:", {
+        error: error instanceof Error ? error.message : String(error)
+      })
+      return {
+        entries: createPathApplicationCatalogEntries(pathApplications),
+        windowsApplicationCatalogCacheSnapshot: null,
+        windowsPackagedApplicationIdByPath: new Map(),
+        windowsSuppressedPathApplicationsByPath: new Map()
+      }
+    }
+
+    const mergedCatalog = createWindowsApplicationCatalogEntries(
+      pathApplications,
+      packagedApplications
+    )
+    return {
+      entries: mergedCatalog.entries,
+      windowsApplicationCatalogCacheSnapshot: cacheSnapshot,
+      windowsPackagedApplicationIdByPath: mergedCatalog.windowsPackagedApplicationIdByPath,
+      windowsSuppressedPathApplicationsByPath: mergedCatalog.windowsSuppressedPathApplicationsByPath
+    }
   }
 
-  private loadWindowsPackagedApplications(): Promise<WindowsPackagedApplicationRecord[]> {
-    return this.options.loadWindowsPackagedApplications
-      ? this.options.loadWindowsPackagedApplications()
+  private loadWindowsApplicationEnrichment(): Promise<WindowsPackagedApplicationRecord[]> {
+    return this.options.loadWindowsApplicationEnrichment
+      ? this.options.loadWindowsApplicationEnrichment()
       : loadWindowsPackagedApplications()
+  }
+
+  private loadWindowsApplicationInventory(): Promise<WindowsApplicationInventoryRecord[]> {
+    return this.options.loadWindowsApplicationInventory
+      ? this.options.loadWindowsApplicationInventory()
+      : loadWindowsApplicationInventory()
   }
 
   private async getApplicationCatalog(): Promise<LauncherApplicationCatalogEntry[]> {
@@ -1644,12 +1695,8 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
         if (loadGeneration !== this.applicationCatalogGeneration) {
           return this.getApplicationCatalog()
         }
-        if (result.windowsPackagedApplicationsLoaded) {
-          this.windowsPackagedApplicationCatalogLoadedAt = this.getCurrentTime()
-        }
-        this.windowsPackagedApplicationIdByPath = new Map(
-          result.windowsPackagedApplicationIdByPath
-        )
+        this.windowsApplicationCatalogCacheSnapshot = result.windowsApplicationCatalogCacheSnapshot
+        this.windowsPackagedApplicationIdByPath = new Map(result.windowsPackagedApplicationIdByPath)
         this.windowsSuppressedPathApplicationsByPath = new Map(
           result.windowsSuppressedPathApplicationsByPath
         )
@@ -1667,6 +1714,145 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
     }
 
     return this.applicationCatalogPromise
+  }
+
+  private async refreshWindowsApplicationCatalog(
+    currentCatalog: LauncherApplicationCatalogEntry[],
+    refreshGeneration: number
+  ): Promise<boolean> {
+    const inventory = await this.loadWindowsApplicationInventory()
+    if (refreshGeneration !== this.applicationCatalogGeneration) {
+      return false
+    }
+
+    this.windowsApplicationInventoryLastSuccessAt = this.getCurrentTime()
+    const inventorySucceededAt = this.windowsApplicationInventoryLastSuccessAt
+    const inventoryFingerprint = createWindowsApplicationInventoryFingerprint(inventory)
+    const cacheSnapshot = this.windowsApplicationCatalogCacheSnapshot
+    const enrichmentRequired =
+      !cacheSnapshot ||
+      cacheSnapshot.inventoryFingerprint !== inventoryFingerprint ||
+      inventorySucceededAt - cacheSnapshot.enrichedAt >= WINDOWS_APPLICATION_ENRICHMENT_TTL_MS
+    if (!enrichmentRequired) {
+      this.flushWindowsApplicationCatalogPendingCacheSnapshot()
+      return false
+    }
+
+    const enrichmentAttemptAt = this.getCurrentTime()
+    if (
+      isWithinBackoff(
+        enrichmentAttemptAt,
+        this.windowsApplicationEnrichmentLastAttemptAt,
+        WINDOWS_APPLICATION_ENRICHMENT_ATTEMPT_BACKOFF_MS
+      )
+    ) {
+      return false
+    }
+
+    this.windowsApplicationEnrichmentLastAttemptAt = enrichmentAttemptAt
+    const packagedApplications = await this.loadWindowsApplicationEnrichment()
+    if (refreshGeneration !== this.applicationCatalogGeneration) {
+      return false
+    }
+
+    const mergedCatalog = createWindowsApplicationCatalogEntries(
+      this.collectWindowsPathApplications(currentCatalog),
+      packagedApplications
+    )
+    const nextCatalog = mergedCatalog.entries
+    const changed =
+      getApplicationCatalogFingerprint(currentCatalog) !==
+      getApplicationCatalogFingerprint(nextCatalog)
+    const nextSnapshot: WindowsApplicationCatalogCacheSnapshot = {
+      enrichedAt: this.getCurrentTime(),
+      inventoryFingerprint: createWindowsApplicationInventoryFingerprint(packagedApplications),
+      records: packagedApplications.map((application) => ({
+        appUserModelId: application.appUserModelId,
+        displayName: application.displayName,
+        ...(application.iconPath ? { iconPath: application.iconPath } : {})
+      }))
+    }
+
+    this.windowsApplicationCatalogCacheSnapshot = nextSnapshot
+    this.windowsPackagedApplicationIdByPath = mergedCatalog.windowsPackagedApplicationIdByPath
+    this.windowsSuppressedPathApplicationsByPath =
+      mergedCatalog.windowsSuppressedPathApplicationsByPath
+    this.applicationCatalogPromise = Promise.resolve(nextCatalog)
+    if (changed) {
+      this.applicationDisplayNamePromiseCache.clear()
+      this.applicationIconPromiseCache.clear()
+    }
+
+    this.windowsApplicationCatalogPendingCacheSnapshot = nextSnapshot
+    this.flushWindowsApplicationCatalogPendingCacheSnapshot()
+    return changed
+  }
+
+  private collectWindowsPathApplications(
+    currentCatalog: LauncherApplicationCatalogEntry[]
+  ): LauncherApplicationRecord[] {
+    const pathApplicationsByPath = new Map(
+      currentCatalog
+        .filter((entry) => entry.kind === "path")
+        .map((entry) => [normalizeWindowsPath(entry.record.path), entry.record] as const)
+    )
+    for (const [applicationPath, application] of this.windowsSuppressedPathApplicationsByPath) {
+      pathApplicationsByPath.set(applicationPath, application)
+    }
+    return [...pathApplicationsByPath.values()]
+  }
+
+  private readWindowsApplicationCatalogCache(): WindowsApplicationCatalogCacheSnapshot | null {
+    if (this.windowsApplicationCatalogPendingCacheSnapshot) {
+      return this.windowsApplicationCatalogPendingCacheSnapshot
+    }
+
+    try {
+      return this.options.readWindowsApplicationCatalogCache
+        ? this.options.readWindowsApplicationCatalogCache()
+        : this.getWindowsApplicationCatalogCacheRepository().read()
+    } catch (error) {
+      console.warn("[LauncherSearch] Windows application catalog cache read failed:", {
+        error: error instanceof Error ? error.message : String(error)
+      })
+      return null
+    }
+  }
+
+  private writeWindowsApplicationCatalogCache(
+    snapshot: WindowsApplicationCatalogCacheSnapshot
+  ): boolean {
+    try {
+      if (this.options.writeWindowsApplicationCatalogCache) {
+        this.options.writeWindowsApplicationCatalogCache(snapshot)
+      } else {
+        this.getWindowsApplicationCatalogCacheRepository().write(snapshot)
+      }
+      return true
+    } catch (error) {
+      console.warn("[LauncherSearch] Windows application catalog cache write failed:", {
+        error: error instanceof Error ? error.message : String(error)
+      })
+      return false
+    }
+  }
+
+  private flushWindowsApplicationCatalogPendingCacheSnapshot(): void {
+    const pendingSnapshot = this.windowsApplicationCatalogPendingCacheSnapshot
+    if (
+      pendingSnapshot &&
+      this.writeWindowsApplicationCatalogCache(pendingSnapshot) &&
+      this.windowsApplicationCatalogPendingCacheSnapshot === pendingSnapshot
+    ) {
+      this.windowsApplicationCatalogPendingCacheSnapshot = null
+    }
+  }
+
+  private getWindowsApplicationCatalogCacheRepository(): WindowsApplicationCatalogCacheRepository {
+    this.windowsApplicationCatalogCacheRepository ??= new WindowsApplicationCatalogCacheRepository({
+      platform: this.getPlatform()
+    })
+    return this.windowsApplicationCatalogCacheRepository
   }
 
   private async resolveApplicationIdentityIconDataUrl(
