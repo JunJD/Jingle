@@ -173,7 +173,7 @@ jobs:
       - name: Checkout verified public main
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
           ref: ${{ needs.preflight.outputs.main_sha }}
 
@@ -245,6 +245,9 @@ jobs:
 
       - name: Run installed first-launch smoke
         shell: bash
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p release-smoke-diagnostics
           printf 'runner_os=%s\nrunner_arch=%s\n' \
@@ -253,11 +256,13 @@ jobs:
           if [[ "${{ runner.os }}" == "Linux" ]]; then
             xvfb-run --auto-servernum -- pnpm run release:smoke:installed -- \
               --current-dir dist \
-              --diagnostics-dir release-smoke-diagnostics
+              --diagnostics-dir release-smoke-diagnostics \
+              --upgrade-baseline v0.0.1
           else
             pnpm run release:smoke:installed -- \
               --current-dir dist \
-              --diagnostics-dir release-smoke-diagnostics
+              --diagnostics-dir release-smoke-diagnostics \
+              --upgrade-baseline v0.0.1
           fi
 
       - name: Upload installed smoke diagnostics

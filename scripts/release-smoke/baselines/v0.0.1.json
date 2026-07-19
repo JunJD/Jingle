@@ -3,6 +3,8 @@
   "tag": "v0.0.1",
   "tagObject": "01fdb3ab2b1100e11c00925d4a72ab058d4fb746",
   "sourceCommit": "12bc226bcc506dc412f114cee68f7d1692364962",
+  "repository": "JunJD/Jingle",
+  "windowKind": "launcher",
   "prismaVersion": "6.18.0",
   "assets": {
     "darwin-arm64": {

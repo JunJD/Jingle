@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
+import { createHash } from "node:crypto"
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -15,19 +16,35 @@ interface UpgradeBaselineModule {
     repositoryRoot: string
     workspace: string
   }): Promise<{
-    baseline: { migrations: unknown[]; sourceCommit: string; tagObject: string }
+    baseline: { migrations: unknown[]; repository: string; sourceCommit: string; tagObject: string }
     databasePath: string
     sourceRoot: string
   }>
   readUpgradeBaseline(): {
     assets: Record<string, { name: string; sha256: string; size: number }>
     migrations: unknown[]
+    repository: string
+    tag: string
+    windowKind: "launcher"
   }
+  selectReleaseAssetMetadata(
+    baseline: {
+      assets: Record<string, { name: string; sha256: string; size: number }>
+      tag: string
+    },
+    release: unknown,
+    platform: string,
+    arch: string
+  ): { apiUrl: string; name: string; sha256: string; size: number }
   selectUpgradeAsset(
     baseline: { assets: Record<string, unknown> },
     platform: string,
     arch: string
   ): unknown
+  verifyDownloadedUpgradeAsset(
+    path: string,
+    asset: { name: string; sha256: string; size: number }
+  ): string
 }
 
 const moduleUrl = pathToFileURL(
@@ -41,6 +58,8 @@ test("pins the reviewed v0.0.1 assets and rejects an unreviewed architecture", a
   const baseline = baselineModule.readUpgradeBaseline()
 
   assert.deepEqual(Object.keys(baseline.assets).sort(), ["darwin-arm64", "linux-x64", "win32-x64"])
+  assert.equal(baseline.repository, "JunJD/Jingle")
+  assert.equal(baseline.windowKind, "launcher")
   assert.equal(
     baselineModule.selectUpgradeAsset(baseline, "darwin", "arm64"),
     baseline.assets["darwin-arm64"]
@@ -49,6 +68,87 @@ test("pins the reviewed v0.0.1 assets and rejects an unreviewed architecture", a
     () => baselineModule.selectUpgradeAsset(baseline, "darwin", "x64"),
     /no reviewed asset/
   )
+})
+
+test("binds the public release asset API response to the reviewed name, size, and digest", async () => {
+  const baselineModule = await baselineModulePromise
+  const baseline = baselineModule.readUpgradeBaseline()
+  const expected = baseline.assets["linux-x64"]
+  const release = {
+    assets: [
+      {
+        digest: `sha256:${expected.sha256}`,
+        name: expected.name,
+        size: expected.size,
+        url: "https://api.github.com/repos/JunJD/Jingle/releases/assets/123456"
+      }
+    ],
+    draft: false,
+    prerelease: false,
+    tag_name: baseline.tag
+  }
+
+  assert.deepEqual(baselineModule.selectReleaseAssetMetadata(baseline, release, "linux", "x64"), {
+    ...expected,
+    apiUrl: release.assets[0].url
+  })
+  assert.throws(
+    () =>
+      baselineModule.selectReleaseAssetMetadata(
+        baseline,
+        {
+          ...release,
+          assets: [{ ...release.assets[0], digest: `sha256:${"0".repeat(64)}` }]
+        },
+        "linux",
+        "x64"
+      ),
+    /does not match/
+  )
+  assert.throws(
+    () =>
+      baselineModule.selectReleaseAssetMetadata(
+        baseline,
+        { ...release, assets: [...release.assets, release.assets[0]] },
+        "linux",
+        "x64"
+      ),
+    /exactly one asset/
+  )
+  assert.throws(
+    () => baselineModule.selectReleaseAssetMetadata(baseline, release, "linux", "arm64"),
+    /no reviewed asset/
+  )
+})
+
+test("verifies downloaded upgrade bytes against the reviewed size and digest", async () => {
+  const baselineModule = await baselineModulePromise
+  const workspace = mkdtempSync(join(tmpdir(), "jingle-v001-upgrade-asset-"))
+  const path = join(workspace, "reviewed.bin")
+  try {
+    const bytes = Buffer.from("reviewed v0.0.1 release bytes")
+    writeFileSync(path, bytes)
+    const asset = {
+      name: "reviewed.bin",
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      size: bytes.length
+    }
+    assert.equal(baselineModule.verifyDownloadedUpgradeAsset(path, asset), path)
+    assert.throws(
+      () => baselineModule.verifyDownloadedUpgradeAsset(path, { ...asset, size: asset.size + 1 }),
+      /failed size or digest verification/
+    )
+    assert.throws(
+      () =>
+        baselineModule.verifyDownloadedUpgradeAsset(path, {
+          ...asset,
+          sha256: "0".repeat(64)
+        }),
+      /failed size or digest verification/
+    )
+  } finally {
+    rmSync(workspace, { force: true, recursive: true })
+  }
 })
 
 test("materializes the exact tag migrations into an isolated empty database", async () => {

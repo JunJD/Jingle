@@ -6,6 +6,11 @@ import { pathToFileURL } from "node:url"
 import test from "node:test"
 
 interface InstalledSmokeModule {
+  assertUpgradeSentinelThread(
+    thread: unknown,
+    sentinel: { threadId?: string | null; title: string; token: string },
+    owner: string
+  ): unknown
   createInstallerInvocation(
     platform: string,
     artifactPath: string,
@@ -110,6 +115,55 @@ test("times out and reaps a child process without blocking exit delivery", async
   assert.ok(Date.now() - startedAt < 5_000)
 })
 
+test("fails closed when any persisted upgrade sentinel fact drifts", async () => {
+  const smokeModule = await smokeModulePromise
+  const sentinel = { threadId: "thread-old", title: "upgrade sentinel", token: "token-old" }
+  const thread = {
+    metadata: {
+      releaseSmokeUpgradeSentinel: {
+        schemaVersion: 1,
+        sourceVersion: "0.0.1",
+        token: sentinel.token
+      }
+    },
+    threadId: sentinel.threadId,
+    title: sentinel.title
+  }
+
+  assert.equal(smokeModule.assertUpgradeSentinelThread(thread, sentinel, "test"), thread)
+  assert.throws(
+    () =>
+      smokeModule.assertUpgradeSentinelThread(
+        { ...thread, threadId: "thread-new" },
+        sentinel,
+        "test"
+      ),
+    /invalid upgrade sentinel/
+  )
+  assert.throws(
+    () => smokeModule.assertUpgradeSentinelThread({ ...thread, title: "other" }, sentinel, "test"),
+    /invalid upgrade sentinel/
+  )
+  assert.throws(
+    () =>
+      smokeModule.assertUpgradeSentinelThread(
+        {
+          ...thread,
+          metadata: {
+            releaseSmokeUpgradeSentinel: {
+              schemaVersion: 1,
+              sourceVersion: "0.0.1",
+              token: "other"
+            }
+          }
+        },
+        sentinel,
+        "test"
+      ),
+    /invalid upgrade sentinel/
+  )
+})
+
 test("release candidate workflow uses the installed smoke owner without uploading packages", () => {
   const workflow = readFileSync(".github/workflows/desktop-release.yml", "utf8")
   const smokeStep = workflow.indexOf("- name: Run installed first-launch smoke")
@@ -118,6 +172,9 @@ test("release candidate workflow uses the installed smoke owner without uploadin
   assert.ok(smokeStep >= 0 && diagnosticsStep > smokeStep)
   assert.match(workflow, /pnpm run release:smoke:installed/)
   assert.match(workflow, /xvfb-run --auto-servernum/)
+  assert.match(workflow, /fetch-depth: 0/)
+  assert.match(workflow, /GITHUB_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/)
+  assert.match(workflow, /--upgrade-baseline v0\.0\.1/)
   assert.match(workflow, /if: failure\(\)[\s\S]*?path: release-smoke-diagnostics/)
   assert.doesNotMatch(workflow, /path: [^\n]*(?:\.dmg|\.exe|\.AppImage)/)
 
@@ -125,4 +182,20 @@ test("release candidate workflow uses the installed smoke owner without uploadin
   assert.match(smokeSource, /chromiumSandbox: true/)
   assert.match(smokeSource, /`--user-data-dir=\$\{userDataPath\}`/)
   assert.match(smokeSource, /delete env\.JINGLE_BDD/)
+  assert.match(smokeSource, /delete process\.env\.GITHUB_TOKEN/)
+  assert.match(smokeSource, /token: upgradeReleaseToken/)
+  assert.match(smokeSource, /window\.api\.threads\.create/)
+  assert.match(smokeSource, /workspacePath: sentinelRequest\.workspacePath/)
+  assert.match(smokeSource, /workspacePath: join\(upgradeWorkspace, "sentinel-workspace"\)/)
+  assert.match(smokeSource, /window\.api\.threads\.get/)
+  assert.match(smokeSource, /window\.api\.threads\.list/)
+  assert.match(smokeSource, /window\.api\.threads\.getAgentThreadData/)
+  assert.match(smokeSource, /expectedWindowKind: baseline\.windowKind/)
+  assert.match(smokeSource, /expectedWindowKind: "main"/)
+  assert.doesNotMatch(smokeSource, /resolveMainWindow/)
+  assert.match(smokeSource, /upgrade-previous-ipc-sentinel/)
+  assert.match(smokeSource, /upgrade-current-ipc-verification/)
+  assert.match(smokeSource, /verifyUpgradeDatabase\(upgradeHome, sentinel\)/)
+  assert.match(smokeSource, /FROM thread_workspace_bindings WHERE thread_id = \?/)
+  assert.match(smokeSource, /expectedVersion: "0\.0\.1"/)
 })

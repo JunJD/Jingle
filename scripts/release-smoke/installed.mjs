@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn, spawnSync } from "node:child_process"
+import { createHash, randomUUID } from "node:crypto"
 import {
   appendFileSync,
   chmodSync,
@@ -9,6 +10,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
   statSync,
@@ -19,23 +21,58 @@ import { basename, join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import { PrismaClient } from "@prisma/client"
 import { _electron as electron } from "playwright"
+import {
+  downloadUpgradeAsset,
+  prepareUpgradeBaseline,
+  readUpgradeBaseline
+} from "./upgrade-baseline.mjs"
 
 const APP_BOOT_TIMEOUT_MS = 90_000
 const PROCESS_TIMEOUT_MS = 120_000
+const currentPackageVersion = JSON.parse(readFileSync(resolve("package.json"), "utf8")).version
 const packageSuffixByPlatform = {
   darwin: ".dmg",
   linux: ".AppImage",
   win32: ".exe"
 }
-const requiredMigrationNames = readdirSync(resolve("prisma/migrations"), {
-  withFileTypes: true
-})
+const requiredMigrations = readdirSync(resolve("prisma/migrations"), { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
-  .map((entry) => entry.name)
-  .sort((left, right) => left.localeCompare(right))
+  .map((entry) => ({
+    checksum: createHash("sha256")
+      .update(readFileSync(resolve("prisma/migrations", entry.name, "migration.sql")))
+      .digest("hex"),
+    name: entry.name
+  }))
+  .sort((left, right) => left.name.localeCompare(right.name))
 
 function fail(message) {
   throw new Error(`Installed release smoke: ${message}`)
+}
+
+export function assertUpgradeSentinelThread(thread, sentinel, owner) {
+  const marker =
+    thread && typeof thread === "object" && thread.metadata && typeof thread.metadata === "object"
+      ? thread.metadata.releaseSmokeUpgradeSentinel
+      : null
+  if (
+    !thread ||
+    typeof thread !== "object" ||
+    typeof thread.threadId !== "string" ||
+    thread.threadId.length === 0 ||
+    (sentinel.threadId !== undefined &&
+      sentinel.threadId !== null &&
+      thread.threadId !== sentinel.threadId) ||
+    thread.title !== sentinel.title ||
+    !marker ||
+    typeof marker !== "object" ||
+    Object.keys(marker).sort().join(",") !== "schemaVersion,sourceVersion,token" ||
+    marker.schemaVersion !== 1 ||
+    marker.sourceVersion !== "0.0.1" ||
+    marker.token !== sentinel.token
+  ) {
+    fail(`${owner} returned an invalid upgrade sentinel: ${JSON.stringify(thread)}`)
+  }
+  return thread
 }
 
 function readArgument(name, fallback = null) {
@@ -349,6 +386,88 @@ async function installArtifact(invocation, workspace, logPath) {
   return installLinux(invocation, workspace, logPath)
 }
 
+async function cleanupInstalledArtifact(input) {
+  const { installRoot, installed, installationCompleted, logPath, workspace } = input
+  const errors = []
+  if (process.platform === "win32" && existsSync(installRoot)) {
+    try {
+      const uninstallers = collectFiles(
+        installRoot,
+        (path) => basename(path).toLowerCase().startsWith("uninstall") && path.endsWith(".exe")
+      )
+      if (uninstallers.length === 1) {
+        await runProcess(uninstallers[0], ["/S", `_?=${installRoot}`], {
+          cwd: workspace,
+          logPath,
+          windowsVerbatimArguments: true
+        })
+        if (installed?.executablePath && existsSync(installed.executablePath)) {
+          fail("NSIS uninstall left the installed Jingle executable in place")
+        }
+        const remainingPayloadFiles = collectFiles(
+          installRoot,
+          (path) => statSync(path).isFile() && resolve(path) !== resolve(uninstallers[0])
+        )
+        if (remainingPayloadFiles.length > 0) {
+          fail(`NSIS uninstall left ${remainingPayloadFiles.length} installed payload files`)
+        }
+      } else if (installationCompleted) {
+        fail(`expected exactly one NSIS uninstaller, found ${uninstallers.length}`)
+      } else if (uninstallers.length > 1) {
+        fail(`expected at most one NSIS uninstaller, found ${uninstallers.length}`)
+      }
+    } catch (error) {
+      errors.push(error)
+    }
+  }
+  try {
+    rmSync(installRoot, { force: true, recursive: true })
+  } catch (error) {
+    errors.push(error)
+  }
+  if (errors.length === 1) throw errors[0]
+  if (errors.length > 1) {
+    throw new AggregateError(errors, "Installed payload cleanup failed")
+  }
+}
+
+async function withInstalledArtifact(input, operation) {
+  let installed = null
+  let installationCompleted = false
+  let result
+  let primaryError = null
+  try {
+    const invocation = createInstallerInvocation(
+      process.platform,
+      input.artifactPath,
+      input.installRoot
+    )
+    installed = await installArtifact(invocation, input.workspace, input.logPath)
+    installationCompleted = true
+    result = await operation(installed)
+  } catch (error) {
+    primaryError = error
+  }
+  let cleanupError = null
+  try {
+    await cleanupInstalledArtifact({
+      installRoot: input.installRoot,
+      installed,
+      installationCompleted,
+      logPath: input.logPath,
+      workspace: input.workspace
+    })
+  } catch (error) {
+    cleanupError = error
+  }
+  if (primaryError && cleanupError) {
+    throw new AggregateError([primaryError, cleanupError], "Installed operation and cleanup failed")
+  }
+  if (primaryError) throw primaryError
+  if (cleanupError) throw cleanupError
+  return result
+}
+
 function createLaunchEnvironment(jingleHome) {
   const env = {
     ...process.env,
@@ -364,18 +483,18 @@ function createLaunchEnvironment(jingleHome) {
   return env
 }
 
-async function resolveMainWindow(application) {
+async function resolveAppWindow(application, expectedWindowKind) {
   const deadline = Date.now() + APP_BOOT_TIMEOUT_MS
   while (Date.now() < deadline) {
     for (const page of application.windows()) {
       const kind = await page
         .evaluate(() => document.body?.dataset.window ?? null)
         .catch(() => null)
-      if (kind === "main") return page
+      if (kind === expectedWindowKind) return page
     }
     await application.waitForEvent("window", { timeout: 250 }).catch(() => null)
   }
-  fail("Main window did not become interactive before the deadline")
+  fail(`${expectedWindowKind} window did not become interactive before the deadline`)
 }
 
 async function closeApplication(application) {
@@ -412,7 +531,10 @@ async function closeApplication(application) {
   if (inspectionError) throw inspectionError
 }
 
-async function launchAndProbe(executablePath, jingleHome, logPath) {
+async function launchAndProbe(executablePath, jingleHome, logPath, options = {}) {
+  if (options.expectedWindowKind !== "main" && options.expectedWindowKind !== "launcher") {
+    fail("launch probe requires an exact expected window kind")
+  }
   const userDataPath = join(jingleHome, "electron-user-data")
   const application = await electron.launch({
     args: [`--user-data-dir=${userDataPath}`],
@@ -435,22 +557,75 @@ async function launchAndProbe(executablePath, jingleHome, logPath) {
       version: app.getVersion()
     }))
     if (!identity.isPackaged) fail("installed executable reported app.isPackaged=false")
-    const page = await resolveMainWindow(application)
-    const probe = await page.evaluate(async () => {
+    if (options.expectedVersion && identity.version !== options.expectedVersion) {
+      fail(
+        `installed executable reported version ${identity.version}, expected ${options.expectedVersion}`
+      )
+    }
+    const page = await resolveAppWindow(application, options.expectedWindowKind)
+    const probe = await page.evaluate(async (sentinelRequest) => {
       const [theme, threads] = await Promise.all([
         window.api.settings.getAppThemeSettings(),
         window.api.threads.list()
       ])
+      let sentinelThread = null
+      if (sentinelRequest?.mode === "create") {
+        const created = await window.api.threads.create({
+          metadata: {
+            releaseSmokeUpgradeSentinel: {
+              schemaVersion: 1,
+              sourceVersion: "0.0.1",
+              token: sentinelRequest.token
+            },
+            title: sentinelRequest.title
+          },
+          workspaceKind: "projectless",
+          workspacePath: sentinelRequest.workspacePath
+        })
+        sentinelThread = {
+          metadata: created.metadata ?? null,
+          threadId: created.thread_id,
+          title: created.title ?? null
+        }
+      } else if (sentinelRequest?.mode === "verify") {
+        const [persisted, refreshedThreads, hydrated] = await Promise.all([
+          window.api.threads.get(sentinelRequest.threadId),
+          window.api.threads.list(),
+          window.api.threads.getAgentThreadData(sentinelRequest.threadId)
+        ])
+        if (
+          !persisted ||
+          !refreshedThreads.some((thread) => thread.thread_id === persisted.thread_id) ||
+          hydrated.thread.thread_id !== persisted.thread_id
+        ) {
+          throw new Error(
+            "release upgrade sentinel is not visible through the current thread IPC projections"
+          )
+        }
+        sentinelThread = {
+          metadata: persisted.metadata ?? null,
+          threadId: persisted.thread_id,
+          title: persisted.title ?? null
+        }
+      }
       return {
         platform: window.electron.process.platform,
         rendererReady: (document.getElementById("root")?.childElementCount ?? 0) > 0,
+        sentinelThread,
         themeAvailable: typeof theme === "object" && theme !== null,
         threadCount: threads.length,
         windowKind: document.body?.dataset.window ?? null
       }
-    })
-    if (!probe.rendererReady || !probe.themeAvailable || probe.windowKind !== "main") {
+    }, options.sentinelRequest ?? null)
+    if (
+      !probe.rendererReady ||
+      !probe.themeAvailable ||
+      probe.windowKind !== options.expectedWindowKind
+    ) {
       fail(`preload IPC probe returned an invalid projection: ${JSON.stringify(probe)}`)
+    }
+    if (options.sentinelRequest) {
+      assertUpgradeSentinelThread(probe.sentinelThread, options.sentinelRequest, "sentinel IPC")
     }
     return { ...identity, ...probe }
   } finally {
@@ -470,11 +645,14 @@ async function verifyFreshDatabase(jingleHome) {
       fail(`fresh database integrity check failed: ${JSON.stringify(integrityRows)}`)
     }
     const migrationRows = await prisma.$queryRawUnsafe(
-      "SELECT migration_name, finished_at, rolled_back_at FROM _prisma_migrations ORDER BY migration_name"
+      "SELECT migration_name, checksum, finished_at, rolled_back_at FROM _prisma_migrations ORDER BY migration_name"
     )
-    const appliedNames = migrationRows.map((row) => row.migration_name)
-    if (JSON.stringify(appliedNames) !== JSON.stringify(requiredMigrationNames)) {
-      fail("fresh database migration set does not match the packaged source manifest")
+    const appliedMigrations = migrationRows.map((row) => ({
+      checksum: row.checksum,
+      name: row.migration_name
+    }))
+    if (JSON.stringify(appliedMigrations) !== JSON.stringify(requiredMigrations)) {
+      fail("fresh database migration ledger does not match the packaged source manifest")
     }
     if (migrationRows.some((row) => !row.finished_at || row.rolled_back_at)) {
       fail("fresh database contains an incomplete or rolled-back migration")
@@ -485,6 +663,59 @@ async function verifyFreshDatabase(jingleHome) {
     const tableNames = new Set(tableRows.map((row) => row.name))
     for (const tableName of ["threads", "messages", "runs", "checkpoints", "thread_workflows"]) {
       if (!tableNames.has(tableName)) fail(`fresh database is missing table '${tableName}'`)
+    }
+  } finally {
+    await prisma.$disconnect()
+  }
+}
+
+async function verifyUpgradeDatabase(jingleHome, sentinel) {
+  const databasePath = join(jingleHome, "jingle.sqlite")
+  const prisma = new PrismaClient({
+    datasources: { db: { url: `file:${databasePath.replaceAll("\\", "/")}` } }
+  })
+  try {
+    const integrityRows = await prisma.$queryRawUnsafe("PRAGMA integrity_check")
+    if (integrityRows.length !== 1 || Object.values(integrityRows[0])[0] !== "ok") {
+      fail(`upgrade database integrity check failed: ${JSON.stringify(integrityRows)}`)
+    }
+    const migrationRows = await prisma.$queryRawUnsafe(
+      "SELECT migration_name, checksum, finished_at, rolled_back_at FROM _prisma_migrations ORDER BY migration_name"
+    )
+    const appliedMigrations = migrationRows.map((row) => ({
+      checksum: row.checksum,
+      name: row.migration_name
+    }))
+    if (JSON.stringify(appliedMigrations) !== JSON.stringify(requiredMigrations)) {
+      fail("upgrade database migration ledger does not match the packaged source manifest")
+    }
+    if (migrationRows.some((row) => !row.finished_at || row.rolled_back_at)) {
+      fail("upgrade database contains an incomplete or rolled-back migration")
+    }
+    const threadRows = await prisma.$queryRawUnsafe(
+      "SELECT thread_id, title, metadata FROM threads WHERE thread_id = ?",
+      sentinel.threadId
+    )
+    if (threadRows.length !== 1) fail("upgrade sentinel is missing from the database")
+    const row = threadRows[0]
+    const metadata = typeof row.metadata === "string" ? JSON.parse(row.metadata) : null
+    assertUpgradeSentinelThread(
+      { metadata, threadId: row.thread_id, title: row.title },
+      sentinel,
+      "upgrade database"
+    )
+    const bindingRows = await prisma.$queryRawUnsafe(
+      "SELECT workspace_kind, workspace_path, project_id, workspace_key FROM thread_workspace_bindings WHERE thread_id = ?",
+      sentinel.threadId
+    )
+    if (
+      bindingRows.length !== 1 ||
+      bindingRows[0].workspace_kind !== "projectless" ||
+      bindingRows[0].workspace_path !== sentinel.workspacePath ||
+      bindingRows[0].project_id !== null ||
+      bindingRows[0].workspace_key !== null
+    ) {
+      fail("upgrade sentinel workspace binding differs from the old artifact IPC request")
     }
   } finally {
     await prisma.$disconnect()
@@ -513,88 +744,166 @@ function describeError(error) {
 }
 
 async function run() {
+  const upgradeReleaseRepository = process.env.GITHUB_REPOSITORY
+  const upgradeReleaseToken = process.env.GITHUB_TOKEN
+  delete process.env.GITHUB_TOKEN
+  delete process.env.GH_TOKEN
   const currentDir = resolve(readArgument("--current-dir", "dist"))
   const diagnosticsRoot = resolve(readArgument("--diagnostics-dir", "release-smoke-diagnostics"))
+  const requestedBaselineTag = readArgument("--upgrade-baseline", "v0.0.1")
   const artifactPath = selectInstallerArtifact(currentDir)
   const workspace = mkdtempSync(join(tmpdir(), "jingle-installed-release-smoke-"))
-  const installRoot = join(workspace, "installed")
-  const jingleHome = join(workspace, "jingle-home")
+  const freshInstallRoot = join(workspace, "fresh-installed")
+  const freshHome = join(workspace, "fresh-home")
+  const upgradeWorkspace = join(workspace, "upgrade")
+  const upgradeInstallRoot = join(upgradeWorkspace, "installed")
+  const upgradeHome = join(upgradeWorkspace, "jingle-home")
   const commandLog = join(workspace, "commands.log")
   const appLog = join(workspace, "application.log")
   const manifest = {
     arch: process.arch,
     artifact: basename(artifactPath),
-    phase: "install",
+    phase: "fresh-install",
     platform: process.platform
   }
+  let diagnosticHome = freshHome
   rmSync(diagnosticsRoot, { force: true, recursive: true })
-  mkdirSync(workspace, { recursive: true })
+  mkdirSync(upgradeWorkspace, { recursive: true })
   writeFileSync(commandLog, "")
   writeFileSync(appLog, "")
 
   let primaryError = null
-  let installationCompleted = false
-  let installedExecutablePath = null
   try {
-    const invocation = createInstallerInvocation(process.platform, artifactPath, installRoot)
-    const installed = await installArtifact(invocation, workspace, commandLog)
-    installationCompleted = true
-    installedExecutablePath = installed.executablePath
-    manifest.phase = "packaged-runtime-audit"
-    await runProcess(
-      process.execPath,
-      [resolve("scripts/audit-packaged-runtime.mjs"), installed.appRoot],
-      { cwd: process.cwd(), logPath: commandLog }
+    const freshProbe = await withInstalledArtifact(
+      {
+        artifactPath,
+        installRoot: freshInstallRoot,
+        logPath: commandLog,
+        workspace
+      },
+      async (installed) => {
+        manifest.phase = "fresh-packaged-runtime-audit"
+        await runProcess(
+          process.execPath,
+          [resolve("scripts/audit-packaged-runtime.mjs"), installed.appRoot],
+          { cwd: process.cwd(), logPath: commandLog }
+        )
+        manifest.phase = "fresh-first-launch"
+        const probe = await launchAndProbe(installed.executablePath, freshHome, appLog, {
+          expectedVersion: currentPackageVersion,
+          expectedWindowKind: "main"
+        })
+        manifest.phase = "fresh-database-verification"
+        await verifyFreshDatabase(freshHome)
+        return probe
+      }
     )
-    manifest.phase = "first-launch"
-    const probe = await launchAndProbe(installed.executablePath, jingleHome, appLog)
-    manifest.phase = "database-verification"
-    await verifyFreshDatabase(jingleHome)
+
+    diagnosticHome = upgradeHome
+    manifest.phase = "upgrade-baseline"
+    const baseline = readUpgradeBaseline()
+    if (requestedBaselineTag !== baseline.tag) {
+      fail(`upgrade baseline ${requestedBaselineTag} is not the reviewed ${baseline.tag}`)
+    }
+    await prepareUpgradeBaseline({
+      dependencyRoot: process.cwd(),
+      jingleHome: upgradeHome,
+      repositoryRoot: process.cwd(),
+      workspace: upgradeWorkspace
+    })
+    const previousArtifactRoot = join(upgradeWorkspace, "previous-artifact")
+    mkdirSync(previousArtifactRoot)
+    manifest.phase = "upgrade-previous-artifact-download"
+    const previousArtifact = await downloadUpgradeAsset({
+      arch: process.arch,
+      baseline,
+      outputRoot: previousArtifactRoot,
+      platform: process.platform,
+      repository: upgradeReleaseRepository,
+      token: upgradeReleaseToken
+    })
+    manifest.previousArtifact = previousArtifact.asset.name
+    manifest.previousArtifactSha256 = previousArtifact.asset.sha256
+    manifest.previousTag = baseline.tag
+
+    const sentinel = {
+      threadId: null,
+      title: "Jingle v0.0.1 upgrade sentinel",
+      token: randomUUID(),
+      workspacePath: join(upgradeWorkspace, "sentinel-workspace")
+    }
+    mkdirSync(sentinel.workspacePath)
+    manifest.phase = "upgrade-previous-install"
+    appendFileSync(appLog, `[upgrade previous ${baseline.tag}]\n`)
+    const previousProbe = await withInstalledArtifact(
+      {
+        artifactPath: previousArtifact.path,
+        installRoot: upgradeInstallRoot,
+        logPath: commandLog,
+        workspace: upgradeWorkspace
+      },
+      async (installed) => {
+        manifest.phase = "upgrade-previous-ipc-sentinel"
+        return launchAndProbe(installed.executablePath, upgradeHome, appLog, {
+          expectedVersion: "0.0.1",
+          expectedWindowKind: baseline.windowKind,
+          sentinelRequest: {
+            mode: "create",
+            title: sentinel.title,
+            token: sentinel.token,
+            workspacePath: sentinel.workspacePath
+          }
+        })
+      }
+    )
+    sentinel.threadId = previousProbe.sentinelThread?.threadId ?? null
+    if (!sentinel.threadId) fail("old artifact did not return a sentinel thread id")
+
+    manifest.phase = "upgrade-current-install"
+    appendFileSync(appLog, `[upgrade current ${currentPackageVersion}]\n`)
+    const currentProbe = await withInstalledArtifact(
+      {
+        artifactPath,
+        installRoot: upgradeInstallRoot,
+        logPath: commandLog,
+        workspace: upgradeWorkspace
+      },
+      async (installed) => {
+        manifest.phase = "upgrade-current-packaged-runtime-audit"
+        await runProcess(
+          process.execPath,
+          [resolve("scripts/audit-packaged-runtime.mjs"), installed.appRoot],
+          { cwd: process.cwd(), logPath: commandLog }
+        )
+        manifest.phase = "upgrade-current-ipc-verification"
+        return launchAndProbe(installed.executablePath, upgradeHome, appLog, {
+          expectedVersion: currentPackageVersion,
+          expectedWindowKind: "main",
+          sentinelRequest: {
+            mode: "verify",
+            threadId: sentinel.threadId,
+            title: sentinel.title,
+            token: sentinel.token
+          }
+        })
+      }
+    )
+    manifest.phase = "upgrade-current-database-verification"
+    await verifyUpgradeDatabase(upgradeHome, sentinel)
     manifest.phase = "complete"
-    console.log(`installed release smoke passed: ${JSON.stringify(probe)}`)
+    console.log(
+      `installed release smoke passed: ${JSON.stringify({ currentProbe, freshProbe, previousProbe })}`
+    )
   } catch (error) {
     primaryError = error
   }
 
-  const cleanupErrors = []
-  if (process.platform === "win32" && existsSync(installRoot)) {
-    try {
-      const uninstallers = collectFiles(
-        installRoot,
-        (path) => basename(path).toLowerCase().startsWith("uninstall") && path.endsWith(".exe")
-      )
-      if (uninstallers.length === 1) {
-        await runProcess(uninstallers[0], ["/S", `_?=${installRoot}`], {
-          cwd: workspace,
-          logPath: commandLog,
-          windowsVerbatimArguments: true
-        })
-        if (installedExecutablePath && existsSync(installedExecutablePath)) {
-          fail("NSIS uninstall left the installed Jingle executable in place")
-        }
-        const remainingPayloadFiles = collectFiles(
-          installRoot,
-          (path) => statSync(path).isFile() && resolve(path) !== resolve(uninstallers[0])
-        )
-        if (remainingPayloadFiles.length > 0) {
-          fail(`NSIS uninstall left ${remainingPayloadFiles.length} installed payload files`)
-        }
-      } else if (installationCompleted) {
-        fail(`expected exactly one NSIS uninstaller, found ${uninstallers.length}`)
-      } else if (uninstallers.length > 1) {
-        fail(`expected at most one NSIS uninstaller, found ${uninstallers.length}`)
-      }
-    } catch (error) {
-      cleanupErrors.push(error)
-    }
-  }
-
-  if (primaryError || cleanupErrors.length > 0) {
+  if (primaryError) {
     manifest.phase = `failed:${manifest.phase}`
-    const errors = [primaryError, ...cleanupErrors].filter(Boolean)
+    const errors = [primaryError]
     manifest.errors = errors.flatMap((error) => describeError(error))
     try {
-      preserveDiagnostics(jingleHome, diagnosticsRoot, manifest)
+      preserveDiagnostics(diagnosticHome, diagnosticsRoot, manifest)
       copyFileSync(commandLog, join(diagnosticsRoot, "commands.log"))
       copyFileSync(appLog, join(diagnosticsRoot, "application.log"))
     } catch (error) {
@@ -605,7 +914,7 @@ async function run() {
     } catch (error) {
       errors.push(error)
     }
-    if (errors.length === 1) throw errors[0]
+    if (errors.length === 1) throw primaryError
     throw new AggregateError(errors, "Installed release smoke failed with cleanup errors")
   }
 

@@ -1,18 +1,22 @@
 import { spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import {
+  createWriteStream,
   existsSync,
   lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
   realpathSync,
+  rmSync,
   statSync,
   symlinkSync,
   writeFileSync
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
+import { Readable, Transform } from "node:stream"
+import { pipeline } from "node:stream/promises"
 import { fileURLToPath } from "node:url"
 import { PrismaClient } from "@prisma/client"
 
@@ -51,7 +55,17 @@ export function readUpgradeBaseline(path = baselinePath) {
   const parsed = JSON.parse(readFileSync(path, "utf8"))
   assertExactKeys(
     parsed,
-    ["assets", "migrations", "prismaVersion", "sourceCommit", "tag", "tagObject", "version"],
+    [
+      "assets",
+      "migrations",
+      "prismaVersion",
+      "repository",
+      "sourceCommit",
+      "tag",
+      "tagObject",
+      "version",
+      "windowKind"
+    ],
     "manifest"
   )
   if (parsed.version !== 1 || parsed.tag !== "v0.0.1") {
@@ -59,6 +73,12 @@ export function readUpgradeBaseline(path = baselinePath) {
   }
   assertGitObject(parsed.tagObject, "tagObject")
   assertGitObject(parsed.sourceCommit, "sourceCommit")
+  if (parsed.repository !== "JunJD/Jingle") {
+    fail("repository must be the reviewed public Jingle repository")
+  }
+  if (parsed.windowKind !== "launcher") {
+    fail("v0.0.1 must use its reviewed Launcher window topology")
+  }
   if (typeof parsed.prismaVersion !== "string" || parsed.prismaVersion.length === 0) {
     fail("prismaVersion is required")
   }
@@ -100,6 +120,118 @@ export function selectUpgradeAsset(baseline, platform = process.platform, arch =
   const asset = baseline.assets[key]
   if (!asset) fail(`v0.0.1 has no reviewed asset for ${key}`)
   return asset
+}
+
+export function selectReleaseAssetMetadata(baseline, release, platform, arch) {
+  if (
+    !release ||
+    typeof release !== "object" ||
+    release.tag_name !== baseline.tag ||
+    release.draft !== false ||
+    release.prerelease !== false ||
+    !Array.isArray(release.assets)
+  ) {
+    fail(`GitHub release metadata for ${baseline.tag} is invalid`)
+  }
+  const expected = selectUpgradeAsset(baseline, platform, arch)
+  const matches = release.assets.filter((asset) => asset?.name === expected.name)
+  if (matches.length !== 1) {
+    fail(`GitHub release must contain exactly one asset named ${expected.name}`)
+  }
+  const asset = matches[0]
+  if (
+    asset.size !== expected.size ||
+    asset.digest !== `sha256:${expected.sha256}` ||
+    typeof asset.url !== "string" ||
+    !/^https:\/\/api\.github\.com\/repos\/JunJD\/Jingle\/releases\/assets\/[0-9]+$/.test(asset.url)
+  ) {
+    fail(`GitHub release asset ${expected.name} does not match the baseline manifest`)
+  }
+  return { ...expected, apiUrl: asset.url }
+}
+
+export function verifyDownloadedUpgradeAsset(path, asset) {
+  if (!existsSync(path) || !statSync(path).isFile()) {
+    fail(`downloaded asset is missing: ${asset.name}`)
+  }
+  const size = statSync(path).size
+  const sha256 = digestFile(path)
+  if (size !== asset.size || sha256 !== asset.sha256) {
+    fail(`downloaded asset ${asset.name} failed size or digest verification`)
+  }
+  return path
+}
+
+export async function downloadUpgradeAsset(input) {
+  const baseline = input.baseline ?? readUpgradeBaseline(input.baselinePath)
+  const repository = input.repository ?? process.env.GITHUB_REPOSITORY
+  const token = input.token ?? process.env.GITHUB_TOKEN
+  if (repository !== baseline.repository) {
+    fail(`GitHub repository ${String(repository)} does not match ${baseline.repository}`)
+  }
+  if (typeof token !== "string" || token.length === 0) {
+    fail("GITHUB_TOKEN is required to download the reviewed release asset")
+  }
+  const headers = {
+    Accept: "application/vnd.github+json",
+    Authorization: `Bearer ${token}`,
+    "User-Agent": "Jingle-release-upgrade-smoke",
+    "X-GitHub-Api-Version": "2022-11-28"
+  }
+  const releaseResponse = await fetch(
+    `https://api.github.com/repos/${baseline.repository}/releases/tags/${baseline.tag}`,
+    { headers, signal: AbortSignal.timeout(120_000) }
+  )
+  if (!releaseResponse.ok) {
+    fail(`GitHub release metadata request failed with status ${releaseResponse.status}`)
+  }
+  const release = await releaseResponse.json()
+  const asset = selectReleaseAssetMetadata(
+    baseline,
+    release,
+    input.platform ?? process.platform,
+    input.arch ?? process.arch
+  )
+  const outputRoot = resolve(input.outputRoot)
+  if (!lstatSync(outputRoot).isDirectory()) {
+    fail("upgrade asset output root must be an existing directory")
+  }
+  const outputPath = join(outputRoot, asset.name)
+  if (pathEntryExists(outputPath)) {
+    fail(`upgrade asset output already exists: ${asset.name}`)
+  }
+  const assetResponse = await fetch(asset.apiUrl, {
+    headers: { ...headers, Accept: "application/octet-stream" },
+    redirect: "follow",
+    signal: AbortSignal.timeout(300_000)
+  })
+  if (!assetResponse.ok || !assetResponse.body) {
+    fail(`GitHub release asset request failed with status ${assetResponse.status}`)
+  }
+  const hash = createHash("sha256")
+  let size = 0
+  const verifier = new Transform({
+    transform(chunk, _encoding, callback) {
+      hash.update(chunk)
+      size += chunk.length
+      callback(null, chunk)
+    }
+  })
+  try {
+    await pipeline(
+      Readable.fromWeb(assetResponse.body),
+      verifier,
+      createWriteStream(outputPath, { flags: "wx", mode: 0o600 })
+    )
+    const sha256 = hash.digest("hex")
+    if (size !== asset.size || sha256 !== asset.sha256) {
+      fail(`downloaded asset ${asset.name} failed size or digest verification`)
+    }
+    return { asset, path: outputPath }
+  } catch (error) {
+    rmSync(outputPath, { force: true })
+    throw error
+  }
 }
 
 function runCommand(command, args, options = {}) {
