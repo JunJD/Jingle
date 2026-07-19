@@ -61,6 +61,18 @@ export function createFatalDiagnosticSingleFlight(
   }
 }
 
+export function exitAfterFatalErrorPresentation(
+  present: () => void,
+  exit: (code: number) => void
+): void {
+  try {
+    present()
+  } catch {
+    // Native error presentation is best effort and cannot own process termination.
+  }
+  exit(1)
+}
+
 function normalizeExitCode(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) ? value : undefined
 }

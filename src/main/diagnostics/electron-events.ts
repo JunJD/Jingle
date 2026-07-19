@@ -3,7 +3,11 @@ import type {
   AppWindowKind,
   RendererWindowLoadFailureObserver
 } from "../windows/load-renderer-window"
-import { captureElectronFailure, createFatalDiagnosticSingleFlight } from "./electron-failure"
+import {
+  captureElectronFailure,
+  createFatalDiagnosticSingleFlight,
+  exitAfterFatalErrorPresentation
+} from "./electron-failure"
 import { diagnosticsGraph, diagnosticsLogger } from "./instance"
 import {
   errorFromUnhandledRejection,
@@ -57,11 +61,14 @@ async function quitAfterFatalMainProcessError(
   diagnosticWrite: Promise<void>
 ): Promise<void> {
   await waitForFatalDiagnostic(diagnosticWrite)
-  dialog.showErrorBox(
-    "Jingle encountered an unrecoverable error",
-    formatFatalMainProcessError(error, diagnosticsLogger.getLogFilePath())
+  exitAfterFatalErrorPresentation(
+    () =>
+      dialog.showErrorBox(
+        "Jingle encountered an unrecoverable error",
+        formatFatalMainProcessError(error, diagnosticsLogger.getLogFilePath())
+      ),
+    (code) => app.exit(code)
   )
-  app.exit(1)
 }
 
 export function installProcessDiagnostics(options: ProcessDiagnosticsOptions = {}): void {

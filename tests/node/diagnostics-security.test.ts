@@ -17,7 +17,8 @@ import test from "node:test"
 import { DiagnosticsGraphRecorder } from "../../src/main/diagnostics/graph"
 import {
   captureElectronFailure,
-  createFatalDiagnosticSingleFlight
+  createFatalDiagnosticSingleFlight,
+  exitAfterFatalErrorPresentation
 } from "../../src/main/diagnostics/electron-failure"
 import { APPEND_DIAGNOSTIC_GRAPH_EVENT, DiagnosticsLogger } from "../../src/main/diagnostics/logger"
 import type {
@@ -179,6 +180,21 @@ test("fatal Electron process hooks share one diagnostic write", async () => {
   await Promise.all([monitorWrite, handlerWrite])
   assert.equal(recordOnce("late", new Error("late"), "unhandledRejection"), monitorWrite)
   assert.equal(calls.length, 1)
+})
+
+test("fatal Electron process exit does not depend on native error presentation", () => {
+  const exitCodes: number[] = []
+
+  assert.doesNotThrow(() => {
+    exitAfterFatalErrorPresentation(
+      () => {
+        throw new Error(`${SECRET_VALUES.join(" ")} native presentation unavailable`)
+      },
+      (code) => exitCodes.push(code)
+    )
+  })
+
+  assert.deepEqual(exitCodes, [1])
 })
 
 test("Electron failures open causal diagnostic coverage with stable searchable refs", async () => {
