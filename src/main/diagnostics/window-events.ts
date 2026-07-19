@@ -2,10 +2,11 @@ import type { BrowserWindow, Event, WebContentsConsoleMessageEventParams } from 
 import type {
   AppWindowKind,
   RendererWindowLoadFailure,
-  RendererWindowLoadFailureObserver
+  RendererWindowLoadFailureObserver,
+  RendererWindowRecoveryEvent
 } from "../windows/load-renderer-window"
 import type { DiagnosticsLogFields } from "./logger"
-import { captureElectronFailure } from "./electron-failure"
+import { captureElectronFailure, captureElectronRendererRecovery } from "./electron-failure"
 import { serializeProcessError } from "./process-errors"
 import type { DiagnosticGraphSink } from "./schema"
 
@@ -120,12 +121,14 @@ export function attachWindowDiagnosticsWithLogger(
     })
   })
 
-  return (failure) => {
+  const observeFailure: RendererWindowLoadFailureObserver = (failure) => {
     try {
       logger.error(getFailureMessage(failure), getFailureFields(identity, windowKind, failure))
-    } finally {
-      if (graph) {
-        captureElectronFailure(graph, {
+    } catch {
+      console.error("[window] Failed to write renderer window failure log.")
+    }
+    return graph
+      ? captureElectronFailure(graph, {
           ...(failure.phase === "load" && failure.errorCode !== undefined
             ? { errorCode: failure.errorCode }
             : {}),
@@ -141,7 +144,37 @@ export function attachWindowDiagnosticsWithLogger(
           windowId: identity.windowId,
           windowKind
         })
-      }
-    }
+      : undefined
   }
+
+  observeFailure.onRecoveryEvent = (event: RendererWindowRecoveryEvent) => {
+    const fields = {
+      attempt: event.attempt,
+      ...(event.kind === "exhausted" ? { terminalReason: event.terminalReason } : {}),
+      windowKind,
+      ...identity
+    }
+    try {
+      logger[event.kind === "succeeded" ? "info" : event.kind === "started" ? "warn" : "error"](
+        event.kind === "started"
+          ? "Renderer recovery started"
+          : event.kind === "succeeded"
+            ? "Renderer recovery succeeded"
+            : "Renderer recovery exhausted",
+        fields
+      )
+    } catch {
+      console.error("[window] Failed to write renderer window recovery log.")
+    }
+    return graph
+      ? captureElectronRendererRecovery(graph, {
+          event,
+          webContentsId: identity.webContentsId,
+          windowId: identity.windowId,
+          windowKind
+        })
+      : undefined
+  }
+
+  return observeFailure
 }

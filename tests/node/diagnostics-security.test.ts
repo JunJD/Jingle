@@ -17,6 +17,7 @@ import test from "node:test"
 import { DiagnosticsGraphRecorder } from "../../src/main/diagnostics/graph"
 import {
   captureElectronFailure,
+  captureElectronRendererRecovery,
   createFatalDiagnosticSingleFlight,
   exitAfterFatalErrorPresentation
 } from "../../src/main/diagnostics/electron-failure"
@@ -142,6 +143,57 @@ test("Electron failure producers only attach evidence for trusted main errors", 
   for (const input of sink.inputs.slice(1)) {
     assertSecretsAbsent(JSON.stringify(input))
     assert.equal(JSON.stringify(input).includes("user-authored renderer content"), false)
+  }
+})
+
+test("Electron renderer recovery events keep main-owned identity and causal refs without evidence", () => {
+  const sink = new CapturingDiagnosticSink()
+  const parent = Object.freeze({ eventId: "diag:test:parent", sequence: 7, sessionId: "test" })
+
+  const started = captureElectronRendererRecovery(sink, {
+    event: { attempt: 1, kind: "started", parentEvents: [parent] },
+    webContentsId: 42,
+    windowId: 7,
+    windowKind: "main"
+  })
+  const succeeded = captureElectronRendererRecovery(sink, {
+    event: { attempt: 1, kind: "succeeded", parentEvents: started ? [started] : [] },
+    webContentsId: 42,
+    windowId: 7,
+    windowKind: "main"
+  })
+  captureElectronRendererRecovery(sink, {
+    event: {
+      attempt: 1,
+      kind: "exhausted",
+      parentEvents: succeeded ? [succeeded] : [],
+      terminalReason: "recovery-exhausted"
+    },
+    webContentsId: 42,
+    windowId: 7,
+    windowKind: "main"
+  })
+
+  assert.deepEqual(
+    sink.inputs.map(({ eventCode }) => eventCode),
+    [
+      "electron.renderer_recovery_started",
+      "electron.renderer_recovery_succeeded",
+      "electron.renderer_recovery_exhausted"
+    ]
+  )
+  assert.deepEqual(sink.inputs[0].parentEvents, [parent])
+  assert.deepEqual(sink.inputs[0].refs, [
+    { id: "7", kind: "window" },
+    { id: "42", kind: "web-contents" }
+  ])
+  assert.deepEqual(sink.inputs[2].dimensionEntries, [
+    { key: "attempt", value: 1 },
+    { key: "terminalReason", value: "recovery-exhausted" },
+    { key: "windowKind", value: "main" }
+  ])
+  for (const input of sink.inputs) {
+    assert.equal(input.evidence, undefined)
   }
 })
 

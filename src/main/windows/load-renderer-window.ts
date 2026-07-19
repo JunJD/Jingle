@@ -3,6 +3,7 @@ import { join } from "path"
 import { IPC_NETWORK_WINDOW_KIND, type IpcNetworkWindowKind } from "@jingle/devtools-network"
 import { APP_THEME_RENDERER_QUERY_KEY, serializeJingleThemeV1 } from "@shared/app-theme"
 import type { DurableWindowKind } from "@shared/durable-window"
+import type { DiagnosticEventRef } from "../diagnostics/schema"
 import { getAppThemeSettings } from "../preferences"
 
 export type AppWindowKind =
@@ -34,7 +35,32 @@ export type RendererWindowLoadFailure =
       phase: "renderer-process"
     }
 
-export type RendererWindowLoadFailureObserver = (failure: RendererWindowLoadFailure) => void
+export type RendererWindowRecoveryTerminalReason = Extract<
+  RendererWindowRecoveryDecision,
+  { kind: "terminal" }
+>["reason"]
+
+export type RendererWindowRecoveryEvent =
+  | {
+      attempt: number
+      kind: "started" | "succeeded"
+      parentEvents: readonly DiagnosticEventRef[]
+    }
+  | {
+      attempt: number
+      kind: "exhausted"
+      parentEvents: readonly DiagnosticEventRef[]
+      terminalReason: RendererWindowRecoveryTerminalReason
+    }
+
+export type RendererWindowRecoveryEventObserver = (
+  event: RendererWindowRecoveryEvent
+) => DiagnosticEventRef | undefined | void
+
+export interface RendererWindowLoadFailureObserver {
+  (failure: RendererWindowLoadFailure): DiagnosticEventRef | undefined | void
+  onRecoveryEvent?: RendererWindowRecoveryEventObserver
+}
 export type RendererWindowQuery = Readonly<Record<string, string>>
 export type RendererWindowQuerySource =
   | RendererWindowQuery
@@ -141,14 +167,24 @@ export function startRendererWindowLoad(
 ): void {
   let loadGeneration = 0
   let recoveryAttemptCount = 0
+  let recoveryTimelineEvent: DiagnosticEventRef | undefined
   let state: "active" | "closed" | "recovering" | "terminal" = "active"
   const { onFailure, onTerminalFailure, query: querySource } = options
 
-  const observeFailure = (failure: RendererWindowLoadFailure): void => {
+  const observeFailure = (failure: RendererWindowLoadFailure): DiagnosticEventRef | undefined => {
     try {
-      onFailure(failure)
+      return onFailure(failure) ?? undefined
     } catch {
       console.error("[window] Failed to observe renderer window failure.")
+      return undefined
+    }
+  }
+
+  const observeRecoveryEvent = (event: RendererWindowRecoveryEvent): void => {
+    try {
+      recoveryTimelineEvent = onFailure.onRecoveryEvent?.(event) ?? recoveryTimelineEvent
+    } catch {
+      console.error("[window] Failed to observe renderer window recovery event.")
     }
   }
 
@@ -189,6 +225,13 @@ export function startRendererWindowLoad(
           if (generation !== loadGeneration || state === "closed" || state === "terminal") {
             return
           }
+          if (state === "recovering") {
+            observeRecoveryEvent({
+              attempt: recoveryAttemptCount,
+              kind: "succeeded",
+              parentEvents: recoveryTimelineEvent ? [recoveryTimelineEvent] : []
+            })
+          }
           state = "active"
         })
         .catch((error: unknown) => {
@@ -216,14 +259,29 @@ export function startRendererWindowLoad(
     }
 
     const decision = resolveRendererWindowRecoveryDecision({ failure, recoveryAttemptCount })
-    if (decision.kind === "recover" || decision.reportFailure) {
-      observeFailure(failure)
-    }
+    const failureEvent =
+      decision.kind === "recover" || decision.reportFailure ? observeFailure(failure) : undefined
     if (decision.kind === "recover") {
       recoveryAttemptCount = decision.attempt
+      observeRecoveryEvent({
+        attempt: decision.attempt,
+        kind: "started",
+        parentEvents: failureEvent ? [failureEvent] : []
+      })
       state = "recovering"
       beginLoad(true)
       return
+    }
+    if (decision.reason === "recovery-exhausted" || decision.reason === "recovery-failed") {
+      const parentEvents = [recoveryTimelineEvent, failureEvent].filter(
+        (event): event is DiagnosticEventRef => event !== undefined
+      )
+      observeRecoveryEvent({
+        attempt: recoveryAttemptCount,
+        kind: "exhausted",
+        parentEvents,
+        terminalReason: decision.reason
+      })
     }
     terminateFailedWindow(failure)
   }

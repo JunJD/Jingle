@@ -367,8 +367,22 @@ describe("renderer window load lifecycle", () => {
     assert.deepEqual(logger.errorMessages, ["Renderer process gone"])
     assert.deepEqual(
       graph.inputs.map(({ eventCode }) => eventCode),
-      ["electron.renderer_process_gone"]
+      [
+        "electron.renderer_process_gone",
+        "electron.renderer_recovery_started",
+        "electron.renderer_recovery_succeeded"
+      ]
     )
+    assert.deepEqual(graph.inputs[1].parentEvents, [
+      { eventId: "event-1", sequence: 1, sessionId: "test" }
+    ])
+    assert.deepEqual(graph.inputs[2].parentEvents, [
+      { eventId: "event-2", sequence: 2, sessionId: "test" }
+    ])
+    assert.deepEqual(graph.inputs[2].refs, [
+      { id: String(window.id), kind: "window" },
+      { id: String(window.webContents.id), kind: "web-contents" }
+    ])
   })
 
   it("reads the latest Main binding for every recovered renderer bootstrap", async () => {
@@ -435,7 +449,11 @@ describe("renderer window load lifecycle", () => {
     const window = new FakeBrowserWindow()
     const order: string[] = []
     window.once("closed", () => order.push("closed"))
-    const logger = startLoad(window, { onTerminalFailure: () => order.push("failure") })
+    const graph = new FakeDiagnosticGraph()
+    const logger = startLoad(window, {
+      graph,
+      onTerminalFailure: () => order.push("failure")
+    })
 
     window.webContents.emit("render-process-gone", {}, {
       exitCode: 9,
@@ -451,7 +469,95 @@ describe("renderer window load lifecycle", () => {
     assert.equal(window.loadFileCount, 1)
     assert.equal(window.destroyCount, 1)
     assert.deepEqual(order, ["failure", "closed"])
-    assert.deepEqual(logger.errorMessages, ["Renderer process gone", "Renderer process gone"])
+    assert.deepEqual(logger.errorMessages, [
+      "Renderer process gone",
+      "Renderer process gone",
+      "Renderer recovery exhausted"
+    ])
+    assert.deepEqual(
+      graph.inputs.map(({ eventCode }) => eventCode),
+      [
+        "electron.renderer_process_gone",
+        "electron.renderer_recovery_started",
+        "electron.renderer_process_gone",
+        "electron.renderer_recovery_exhausted"
+      ]
+    )
+    assert.deepEqual(graph.inputs[3].dimensionEntries, [
+      { key: "attempt", value: 1 },
+      { key: "terminalReason", value: "recovery-exhausted" },
+      { key: "windowKind", value: "settings" }
+    ])
+    assert.deepEqual(graph.inputs[3].parentEvents, [
+      { eventId: "event-2", sequence: 2, sessionId: "test" },
+      { eventId: "event-3", sequence: 3, sessionId: "test" }
+    ])
+  })
+
+  it("links a crash after successful recovery through the succeeded event", async () => {
+    const window = new FakeBrowserWindow()
+    window.loadFileResults = [Promise.resolve(), Promise.resolve()]
+    const graph = new FakeDiagnosticGraph()
+    startLoad(window, { graph })
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    window.webContents.emit("render-process-gone", {}, {
+      exitCode: 9,
+      reason: "crashed"
+    } satisfies RenderProcessGoneDetails)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    assert.equal(window.destroyCount, 0)
+
+    window.webContents.emit("render-process-gone", {}, {
+      exitCode: 9,
+      reason: "crashed"
+    } satisfies RenderProcessGoneDetails)
+
+    assert.equal(window.destroyCount, 1)
+    assert.deepEqual(
+      graph.inputs.map(({ eventCode }) => eventCode),
+      [
+        "electron.renderer_process_gone",
+        "electron.renderer_recovery_started",
+        "electron.renderer_recovery_succeeded",
+        "electron.renderer_process_gone",
+        "electron.renderer_recovery_exhausted"
+      ]
+    )
+    assert.deepEqual(graph.inputs[4].parentEvents, [
+      { eventId: "event-3", sequence: 3, sessionId: "test" },
+      { eventId: "event-4", sequence: 4, sessionId: "test" }
+    ])
+  })
+
+  it("does not classify a clean exit after successful recovery as exhausted", async () => {
+    const window = new FakeBrowserWindow()
+    window.loadFileResults = [Promise.resolve(), Promise.resolve()]
+    const graph = new FakeDiagnosticGraph()
+    const logger = startLoad(window, { graph })
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    window.webContents.emit("render-process-gone", {}, {
+      exitCode: 9,
+      reason: "crashed"
+    } satisfies RenderProcessGoneDetails)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    window.webContents.emit("render-process-gone", {}, {
+      exitCode: 0,
+      reason: "clean-exit"
+    } satisfies RenderProcessGoneDetails)
+
+    assert.equal(window.destroyCount, 1)
+    assert.deepEqual(logger.errorMessages, ["Renderer process gone"])
+    assert.deepEqual(
+      graph.inputs.map(({ eventCode }) => eventCode),
+      [
+        "electron.renderer_process_gone",
+        "electron.renderer_recovery_started",
+        "electron.renderer_recovery_succeeded"
+      ]
+    )
   })
 
   it("terminates OOM and integrity failures without attempting recovery", () => {
@@ -492,20 +598,39 @@ describe("renderer window load lifecycle", () => {
 
     assert.equal(window.loadFileCount, 2)
     assert.equal(window.destroyCount, 1)
-    assert.deepEqual(logger.errorMessages, ["Renderer process gone", "Renderer load failed"])
     assert.deepEqual(
       graph.inputs.map(({ eventCode }) => eventCode),
-      ["electron.renderer_process_gone", "electron.renderer_load_failed"]
+      [
+        "electron.renderer_process_gone",
+        "electron.renderer_recovery_started",
+        "electron.renderer_load_failed",
+        "electron.renderer_recovery_exhausted"
+      ]
     )
+    assert.deepEqual(graph.inputs[3].dimensionEntries, [
+      { key: "attempt", value: 1 },
+      { key: "terminalReason", value: "recovery-failed" },
+      { key: "windowKind", value: "settings" }
+    ])
+    assert.deepEqual(graph.inputs[3].parentEvents, [
+      { eventId: "event-2", sequence: 2, sessionId: "test" },
+      { eventId: "event-3", sequence: 3, sessionId: "test" }
+    ])
+    assert.deepEqual(logger.errorMessages, [
+      "Renderer process gone",
+      "Renderer load failed",
+      "Renderer recovery exhausted"
+    ])
   })
 
   it("keeps cleanup exact-once when the diagnostics observer throws", () => {
     const window = new FakeBrowserWindow()
+    const graph = new FakeDiagnosticGraph()
     const logger = new FakeDiagnosticsLogger()
     logger.error = () => {
       throw new Error("diagnostics unavailable")
     }
-    startLoad(window, { logger })
+    startLoad(window, { graph, logger })
 
     const fallbackErrors: unknown[][] = []
     const originalConsoleError = console.error
@@ -519,6 +644,10 @@ describe("renderer window load lifecycle", () => {
     }
     assert.equal(window.destroyCount, 1)
     assert.equal(fallbackErrors.length, 1)
+    assert.deepEqual(
+      graph.inputs.map(({ eventCode }) => eventCode),
+      ["electron.preload_failed"]
+    )
   })
 
   it("closes a clean renderer exit without reporting a failure", () => {

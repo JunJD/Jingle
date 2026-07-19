@@ -1,5 +1,9 @@
 import { types } from "node:util"
-import type { AppWindowKind, RendererWindowLoadFailure } from "../windows/load-renderer-window"
+import type {
+  AppWindowKind,
+  RendererWindowLoadFailure,
+  RendererWindowRecoveryEvent
+} from "../windows/load-renderer-window"
 import type {
   DiagnosticDimensionInput,
   DiagnosticEventRef,
@@ -16,6 +20,12 @@ const PROCESS_GONE_REASONS = new Set([
   "launch-failed",
   "memory-eviction",
   "oom"
+])
+const RENDERER_RECOVERY_TERMINAL_REASONS = new Set([
+  "clean-exit",
+  "non-recoverable",
+  "recovery-exhausted",
+  "recovery-failed"
 ])
 const WINDOW_KINDS = new Set(["ipc-network", "launcher", "main", "settings", "thread-window"])
 const CHILD_PROCESS_TYPES = new Map([
@@ -53,6 +63,13 @@ type ElectronFailureInput =
 
 type FatalDiagnosticRecorder = (message: string, error: unknown, origin: string) => Promise<void>
 
+interface ElectronRendererRecoveryInput {
+  event: RendererWindowRecoveryEvent
+  webContentsId: unknown
+  windowId: unknown
+  windowKind: AppWindowKind | unknown
+}
+
 export function createFatalDiagnosticSingleFlight(
   record: FatalDiagnosticRecorder
 ): FatalDiagnosticRecorder {
@@ -77,6 +94,16 @@ export function exitAfterFatalErrorPresentation(
 
 function normalizeExitCode(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) ? value : undefined
+}
+
+function normalizeRecoveryAttempt(value: unknown): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : 0
+}
+
+function normalizeRecoveryTerminalReason(value: unknown): string {
+  return typeof value === "string" && RENDERER_RECOVERY_TERMINAL_REASONS.has(value)
+    ? value
+    : "unknown"
 }
 
 function normalizeProcessGoneReason(value: unknown): string {
@@ -251,6 +278,78 @@ function captureRendererWindowFailure(
           ? "Electron renderer failed to load"
           : "Electron renderer failed"
   })
+}
+
+export function captureElectronRendererRecovery(
+  sink: DiagnosticGraphSink,
+  input: ElectronRendererRecoveryInput
+): DiagnosticEventRef | undefined {
+  try {
+    const { event } = input
+    const windowKind = normalizeWindowKind(input.windowKind)
+    const refs = compactRefs([
+      toPositiveIntegerRef("window", input.windowId),
+      toPositiveIntegerRef("web-contents", input.webContentsId)
+    ])
+    const common = {
+      component: "electron",
+      parentEvents: event.parentEvents,
+      refs
+    } as const
+
+    switch (event.kind) {
+      case "started":
+        return sink.capture({
+          ...common,
+          dimensionEntries: [
+            { key: "attempt", value: normalizeRecoveryAttempt(event.attempt) },
+            { key: "windowKind", value: windowKind }
+          ],
+          eventCode: "electron.renderer_recovery_started",
+          fingerprint: `electron.renderer_recovery_started:${windowKind}`,
+          level: "warn",
+          operation: "recover-renderer",
+          recoverable: true,
+          stateImpact: "window_recovery_started",
+          summary: "Electron renderer recovery started"
+        })
+      case "succeeded":
+        return sink.capture({
+          ...common,
+          dimensionEntries: [
+            { key: "attempt", value: normalizeRecoveryAttempt(event.attempt) },
+            { key: "windowKind", value: windowKind }
+          ],
+          eventCode: "electron.renderer_recovery_succeeded",
+          fingerprint: `electron.renderer_recovery_succeeded:${windowKind}`,
+          level: "info",
+          operation: "recover-renderer",
+          recoverable: true,
+          stateImpact: "window_recovered",
+          summary: "Electron renderer recovery succeeded"
+        })
+      case "exhausted": {
+        const terminalReason = normalizeRecoveryTerminalReason(event.terminalReason)
+        return sink.capture({
+          ...common,
+          dimensionEntries: [
+            { key: "attempt", value: normalizeRecoveryAttempt(event.attempt) },
+            { key: "terminalReason", value: terminalReason },
+            { key: "windowKind", value: windowKind }
+          ],
+          eventCode: "electron.renderer_recovery_exhausted",
+          fingerprint: `electron.renderer_recovery_exhausted:${windowKind}:${terminalReason}`,
+          level: "error",
+          operation: "recover-renderer",
+          recoverable: false,
+          stateImpact: "window_terminated",
+          summary: "Electron renderer recovery was exhausted"
+        })
+      }
+    }
+  } catch {
+    return undefined
+  }
 }
 
 export function captureElectronFailure(
