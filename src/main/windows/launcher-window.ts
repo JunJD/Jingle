@@ -338,7 +338,7 @@ export function showLauncherWindow(launcherWindow: BrowserWindow): void {
 
   claimWindowActivation()
   launcherWindow.show()
-  if (process.platform === "darwin") {
+  if (process.platform === "darwin" || process.platform === "win32") {
     launcherWindow.focus()
     launcherWindow.moveTop()
   }
