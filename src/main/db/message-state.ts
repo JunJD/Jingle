@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "crypto"
 import type { SerializerProtocol } from "@langchain/langgraph-checkpoint"
-import type { PrismaClient } from "@prisma/client"
+import { Prisma, type PrismaClient } from "@prisma/client"
 import { readJingleLangGraphSerializedMessage } from "@jingle/langchain-agent-harness/transitional"
 import type { ContentBlock } from "@shared/app-types"
 import {
@@ -123,6 +123,18 @@ type MessageSearchQueryRow = {
   thread_updated_at: bigint | number
   tool_call_id: string | null
   tool_calls: string | null
+}
+
+type CanonicalMainMessageEventRow = {
+  createdAt: bigint | number
+  eventId: string
+  messageId: string | null
+  payload: string
+  position: bigint | number
+  runId: string | null
+  runThreadId: string | null
+  seq: number
+  type: string
 }
 
 function stableStringify(value: unknown): string {
@@ -820,6 +832,97 @@ export async function listProjectedThreadMessages(
     tool_call_id: row.toolCallId,
     tool_calls: row.toolCalls
   }))
+}
+
+export async function listCanonicalMainThreadMessages(
+  threadId: string,
+  tx: TransactionClient = getPrismaClient()
+): Promise<MessageProjectionRow[]> {
+  const latest = await tx.messageStateVersion.findFirst({
+    orderBy: [{ throughSeq: "desc" }, { createdAt: "desc" }, { version: "desc" }],
+    select: { throughSeq: true },
+    where: { checkpointNs: "", threadId }
+  })
+  if (!latest || latest.throughSeq <= 0) return []
+
+  const events = await tx.$queryRaw<CanonicalMainMessageEventRow[]>(Prisma.sql`
+    WITH "ranked_message_events" AS (
+      SELECT
+        "message_events"."created_at" AS "createdAt",
+        "message_events"."event_id" AS "eventId",
+        "message_events"."message_id" AS "messageId",
+        "message_events"."payload",
+        "message_events"."run_id" AS "runId",
+        "runs"."thread_id" AS "runThreadId",
+        "message_events"."seq",
+        "message_events"."type",
+        ROW_NUMBER() OVER (
+          PARTITION BY "message_events"."message_id"
+          ORDER BY "message_events"."seq" DESC
+        ) AS "position"
+      FROM "message_events"
+      LEFT JOIN "runs" ON "runs"."run_id" = "message_events"."run_id"
+      WHERE "message_events"."thread_id" = ${threadId}
+        AND "message_events"."checkpoint_ns" = ''
+        AND "message_events"."seq" <= ${latest.throughSeq}
+    )
+    SELECT
+      "createdAt",
+      "eventId",
+      "messageId",
+      "payload",
+      "position",
+      "runId",
+      "runThreadId",
+      "seq",
+      "type"
+    FROM "ranked_message_events"
+    ORDER BY "seq" ASC
+  `)
+
+  const rows: Array<MessageProjectionRow & { eventSeq: number }> = []
+  for (const event of events) {
+    if (typeof event.messageId !== "string") {
+      throw new Error(`[MessageState] Message event "${event.eventId}" has no message identity.`)
+    }
+    if (event.runId !== null && event.runThreadId !== threadId) {
+      throw new Error(
+        `[MessageState] Message event "${event.eventId}" has conflicting run ownership.`
+      )
+    }
+    if (event.type === "message.remove") continue
+    if (event.type !== "message.upsert") {
+      throw new Error(`[MessageState] Unsupported message event type "${event.type}".`)
+    }
+    const item = parseMessageStateEventItem(event)
+    if (item.messageId !== event.messageId) {
+      throw new Error(`[MessageState] Message event "${event.eventId}" has conflicting identities.`)
+    }
+    if (Number(event.position) !== 1) continue
+    rows.push({
+      content: item.content,
+      created_at: Number(BigInt(event.createdAt) + BigInt(item.order)),
+      eventSeq: event.seq,
+      kind: item.kind,
+      message_id: item.messageId,
+      metadata: item.metadata,
+      name: item.name,
+      raw_message: stableStringify({
+        encoding: item.rawMessageEncoding,
+        type: item.rawMessageType,
+        value: item.rawMessageValue
+      }),
+      role: item.role,
+      run_id: event.runId,
+      seq: item.order,
+      thread_id: threadId,
+      tool_call_id: item.toolCallId,
+      tool_calls: item.toolCalls
+    })
+  }
+  return rows
+    .sort((left, right) => left.seq - right.seq || left.eventSeq - right.eventSeq)
+    .map(({ eventSeq: _eventSeq, ...row }) => row)
 }
 
 function mapMessageSearchQueryRow(row: MessageSearchQueryRow): MessageSearchMatchRow {
