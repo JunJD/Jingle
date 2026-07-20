@@ -106,6 +106,7 @@ import { configureQuicklinksLauncherSearchProvider } from "./services/launcher-s
 import { registerWorkspaceIpcHandlers, registerWorkspaceModule } from "./workspace/module"
 import { nativeExtensionManifests } from "@extensions/index"
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
+import { DurableWindowLifecycleService } from "./durable-window/lifecycle"
 
 export interface MainCompositionContext {
   consumePendingSettingsNavigation: () => SettingsWindowNavigationPayload | null
@@ -148,6 +149,14 @@ export class MainCompositionRoot {
           error: serializeProcessError(error)
         })
       })
+  }
+
+  supportingWindowOpened(window: object): void {
+    this.dependencyContainer.resolve(DurableWindowLifecycleService).supportingWindowOpened(window)
+  }
+
+  supportingWindowClosed(window: object): void {
+    this.dependencyContainer.resolve(DurableWindowLifecycleService).supportingWindowClosed(window)
   }
 
   registerIpcHandlers(): void {

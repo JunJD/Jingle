@@ -125,7 +125,15 @@ protocol.registerSchemesAsPrivileged([
 function getOrCreateLauncherWindow(): BrowserWindow {
   if (!launcherWindow || launcherWindow.isDestroyed()) {
     launcherWindow = createLauncherWindow()
+    const createdWindow = launcherWindow
+    createdWindow.on("show", () => {
+      mainCompositionRoot?.supportingWindowOpened(createdWindow)
+    })
+    createdWindow.on("hide", () => {
+      mainCompositionRoot?.supportingWindowClosed(createdWindow)
+    })
     launcherWindow.on("closed", () => {
+      mainCompositionRoot?.supportingWindowClosed(createdWindow)
       launcherWindow = null
     })
   }
@@ -138,12 +146,20 @@ function getOrCreateSettingsWindow(): BrowserWindow {
     settingsRendererReady = false
     settingsWindow = createSettingsWindow()
     const createdWindow = settingsWindow
+    mainCompositionRoot?.supportingWindowOpened(createdWindow)
+    createdWindow.on("show", () => {
+      mainCompositionRoot?.supportingWindowOpened(createdWindow)
+    })
+    createdWindow.on("hide", () => {
+      mainCompositionRoot?.supportingWindowClosed(createdWindow)
+    })
     createdWindow.webContents.on("did-start-loading", () => {
       if (settingsWindow === createdWindow) {
         settingsRendererReady = false
       }
     })
     settingsWindow.on("closed", () => {
+      mainCompositionRoot?.supportingWindowClosed(createdWindow)
       if (settingsWindow === createdWindow) {
         settingsWindow = null
         pendingSettingsNavigation = null
