@@ -1,10 +1,31 @@
 import { execFileSync } from "node:child_process"
-import { existsSync, lstatSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs"
+import {
+  closeSync,
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  openSync,
+  readSync,
+  readdirSync,
+  rmSync,
+  statSync
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, join, resolve, sep } from "node:path"
+import { fileURLToPath } from "node:url"
 
 const root = resolve(process.argv[2] ?? "dist")
 const forbiddenMacLinkPrefixes = ["/opt/homebrew/", "/usr/local/opt/"]
+const machOMagicHexValues = new Set([
+  "cafebabe",
+  "cafebabf",
+  "cefaedfe",
+  "cffaedfe",
+  "bebafeca",
+  "bfbafeca",
+  "feedface",
+  "feedfacf"
+])
 const requiredExternalPackages = ["@prisma/client", "just-bash"]
 const requiredPrismaMigrationNames = readdirSync(resolve("prisma/migrations"), {
   withFileTypes: true
@@ -176,6 +197,17 @@ function findNativeFiles(resourcesPath) {
   }).sort()
 }
 
+function isMachOFile(path) {
+  const file = openSync(path, "r")
+  const header = Buffer.alloc(4)
+  try {
+    const bytesRead = readSync(file, header, 0, header.length, 0)
+    return bytesRead === header.length && machOMagicHexValues.has(header.toString("hex"))
+  } finally {
+    closeSync(file)
+  }
+}
+
 function otoolLinkedLibraries(path) {
   const output = execFileSync("otool", ["-L", path], { encoding: "utf-8" })
   return output
@@ -185,15 +217,25 @@ function otoolLinkedLibraries(path) {
     .filter(Boolean)
 }
 
-function assertMacNativeLinks({ resourcesPath }) {
-  if (process.platform !== "darwin") {
+export function assertMacNativeLinks(
+  { resourcesPath },
+  { platform = process.platform, readLinkedLibraries = otoolLinkedLibraries } = {}
+) {
+  if (platform !== "darwin") {
     return
   }
 
   const offenders = []
 
   for (const filePath of findNativeFiles(resourcesPath)) {
-    const linkedLibraries = otoolLinkedLibraries(filePath)
+    if (!isMachOFile(filePath)) {
+      if (filePath.endsWith(".node")) {
+        throw new Error(`Packaged native addon is not a Mach-O file: ${filePath}`)
+      }
+      continue
+    }
+
+    const linkedLibraries = readLinkedLibraries(filePath)
     for (const libraryPath of linkedLibraries) {
       if (forbiddenMacLinkPrefixes.some((prefix) => libraryPath.startsWith(prefix))) {
         offenders.push({ filePath, libraryPath })
@@ -406,14 +448,20 @@ try {
   }
 }
 
-const packagedApps = findPackagedApps()
-if (packagedApps.length === 0) {
-  throw new Error(`No packaged app with resources/app.asar found under ${root}`)
+function runPackagedRuntimeAudit() {
+  const packagedApps = findPackagedApps()
+  if (packagedApps.length === 0) {
+    throw new Error(`No packaged app with resources/app.asar found under ${root}`)
+  }
+
+  for (const packagedApp of packagedApps) {
+    assertForbiddenRuntimeNotPackaged(packagedApp)
+    assertMacNativeLinks(packagedApp)
+    runPackagedRuntimeSmoke(packagedApp)
+    console.log(`packaged runtime audit passed: ${packagedApp.appPath}`)
+  }
 }
 
-for (const packagedApp of packagedApps) {
-  assertForbiddenRuntimeNotPackaged(packagedApp)
-  assertMacNativeLinks(packagedApp)
-  runPackagedRuntimeSmoke(packagedApp)
-  console.log(`packaged runtime audit passed: ${packagedApp.appPath}`)
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  runPackagedRuntimeAudit()
 }
