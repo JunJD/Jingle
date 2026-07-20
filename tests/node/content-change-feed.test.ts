@@ -205,6 +205,30 @@ test("content change codecs reject unknown and malformed wire data", () => {
     false
   )
   assert.equal(
+    assistantContentPartsResultSchema.safeParse({
+      issue: { code: "retry-exhausted", reason: "persistence-unavailable" },
+      status: "exhausted"
+    }).success,
+    true
+  )
+  assert.equal(
+    assistantContentPartsResultSchema.safeParse({
+      issue: { code: "terminal-failure", reason: "unexpected" },
+      status: "parked"
+    }).success,
+    true
+  )
+  assert.equal(
+    assistantContentProjectionChangedEventSchema.safeParse({
+      kind: "issue",
+      revision: "job:2:3",
+      runId: "run-1",
+      status: "exhausted",
+      threadId: "thread-bound"
+    }).success,
+    true
+  )
+  assert.equal(
     contentAnnotationChangedEventSchema.safeParse({
       annotation: annotation(),
       unexpected: true

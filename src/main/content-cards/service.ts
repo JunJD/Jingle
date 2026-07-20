@@ -1,6 +1,8 @@
 import {
   assistantContentProjectionBlockedReasonSchema,
+  assistantContentProjectionRetryableFailureCodeSchema,
   assistantContentProjectionJobStatusSchema,
+  assistantContentProjectionTerminalFailureCodeSchema,
   assistantContentPartIdentitySchema,
   assistantContentProjectionFingerprint,
   type AssistantContentPart,
@@ -30,12 +32,14 @@ interface ProjectionJobSnapshot {
     reason: AssistantContentProjectionBlockedReason
     sourceRevision: string
   }>
+  failureCode: string | null
   status: ReturnType<typeof assistantContentProjectionJobStatusSchema.parse>
 }
 
 function parseProjectionJobSnapshot(
   job: {
     blockedInputs: Array<{ messageId: string; reason: string; sourceRevision: string }>
+    failureCode: string | null
     status: string
   } | null
 ): ProjectionJobSnapshot | null {
@@ -45,6 +49,7 @@ function parseProjectionJobSnapshot(
       ...input,
       reason: assistantContentProjectionBlockedReasonSchema.parse(input.reason)
     })),
+    failureCode: job.failureCode,
     status: assistantContentProjectionJobStatusSchema.parse(job.status)
   }
 }
@@ -131,6 +136,7 @@ export class ContentCardsService {
                     orderBy: { messageId: "asc" },
                     select: { messageId: true, reason: true, sourceRevision: true }
                   },
+                  failureCode: true,
                   status: true
                 }
               }
@@ -189,7 +195,37 @@ export class ContentCardsService {
       return { projection: inspection.projection, status: "ready" }
     }
     if (inspection.job?.status === "failed") {
-      return { issue: { code: "retryable-failure" }, status: "failed" }
+      return {
+        issue: {
+          code: "retryable-failure",
+          reason: assistantContentProjectionRetryableFailureCodeSchema.parse(
+            inspection.job.failureCode
+          )
+        },
+        status: "failed"
+      }
+    }
+    if (inspection.job?.status === "exhausted") {
+      return {
+        issue: {
+          code: "retry-exhausted",
+          reason: assistantContentProjectionRetryableFailureCodeSchema.parse(
+            inspection.job.failureCode
+          )
+        },
+        status: "exhausted"
+      }
+    }
+    if (inspection.job?.status === "parked") {
+      return {
+        issue: {
+          code: "terminal-failure",
+          reason: assistantContentProjectionTerminalFailureCodeSchema.parse(
+            inspection.job.failureCode
+          )
+        },
+        status: "parked"
+      }
     }
     if (inspection.job?.status === "blocked") {
       if (!inspection.runId) {

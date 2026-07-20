@@ -75,7 +75,9 @@ export interface AppCopy {
     pendingRunModelRecoveryTitle: string
     contentCardSourceInvalidJson: string
     contentCardSourceNoncanonical: string
+    contentCardSyncRetryExhausted: string
     contentCardSyncRetryableFailure: string
+    contentCardSyncTerminalFailure: string
     contentCardSyncTransportFailure: string
     messageContentUnavailable: string
     messageReplayAttachmentUnavailable: string
@@ -479,7 +481,9 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       pendingRunModelRecoveryTitle: "补齐历史运行配置",
       contentCardSourceInvalidJson: "内容卡片无法生成：保存的回答内容已损坏",
       contentCardSourceNoncanonical: "内容卡片无法生成：保存的回答格式不受支持",
+      contentCardSyncRetryExhausted: "内容卡片同步多次失败，自动重试已停止",
       contentCardSyncRetryableFailure: "内容卡片同步失败，系统将自动重试",
+      contentCardSyncTerminalFailure: "内容卡片同步遇到终态错误，已停止自动重试",
       contentCardSyncTransportFailure: "内容卡片暂时无法同步",
       messageContentUnavailable: "这条消息包含无法显示的内容。",
       messageReplayAttachmentUnavailable: "这条消息包含当前无法重新提交的附件。",
@@ -919,8 +923,12 @@ export const appCopy: Record<AppLocale, AppCopy> = {
         "Content cards cannot be generated because the saved response is corrupted.",
       contentCardSourceNoncanonical:
         "Content cards cannot be generated because the saved response format is unsupported.",
+      contentCardSyncRetryExhausted:
+        "Content card synchronization failed repeatedly and automatic retries have stopped.",
       contentCardSyncRetryableFailure:
         "Content card synchronization failed and will retry automatically.",
+      contentCardSyncTerminalFailure:
+        "Content card synchronization reached a terminal error and automatic retries have stopped.",
       contentCardSyncTransportFailure: "Content cards are temporarily unavailable.",
       messageContentUnavailable: "This message contains content that cannot be displayed.",
       messageReplayAttachmentUnavailable:

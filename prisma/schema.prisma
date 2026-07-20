@@ -254,13 +254,16 @@ model AssistantContentProjectionJob {
   generation    Int     @default(1)
   status        String  @default("pending")
   attemptCount  Int     @default(0) @map("attempt_count")
+  failureCode   String? @map("failure_code")
   lastError     String? @map("last_error")
+  nextAttemptAt BigInt? @map("next_attempt_at")
   createdAt     BigInt  @map("created_at")
   updatedAt     BigInt  @map("updated_at")
   run           Run     @relation(fields: [runId], references: [runId], onDelete: Cascade)
   blockedInputs AssistantContentProjectionBlockedInput[]
 
   @@index([status, runId], map: "idx_assistant_content_projection_jobs_status_run_id")
+  @@index([status, nextAttemptAt, runId], map: "idx_assistant_content_projection_jobs_retry_due")
   @@map("assistant_content_projection_jobs")
 }
 

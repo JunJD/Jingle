@@ -78,7 +78,9 @@ const REQUIRED_TABLE_COLUMNS = {
     "generation",
     "status",
     "attempt_count",
+    "failure_code",
     "last_error",
+    "next_attempt_at",
     "created_at",
     "updated_at"
   ],

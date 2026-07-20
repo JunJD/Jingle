@@ -26,13 +26,15 @@ import { useContentWindowHydration } from "./ContentWindowHydrationContext"
 
 type DurableContentSyncIssue = Extract<
   AssistantContentPartsResult,
-  { status: "blocked" | "failed" }
+  { status: "blocked" | "exhausted" | "failed" | "parked" }
 >["issue"]
 type ContentSyncIssue = DurableContentSyncIssue | { code: "transport-failure" }
 
 function syncIssueMessage(issue: ContentSyncIssue, copy: AppCopy["chat"]): string {
   if (issue.code === "transport-failure") return copy.contentCardSyncTransportFailure
   if (issue.code === "retryable-failure") return copy.contentCardSyncRetryableFailure
+  if (issue.code === "retry-exhausted") return copy.contentCardSyncRetryExhausted
+  if (issue.code === "terminal-failure") return copy.contentCardSyncTerminalFailure
   return issue.reason === "invalid-json"
     ? copy.contentCardSourceInvalidJson
     : copy.contentCardSourceNoncanonical
@@ -226,7 +228,12 @@ export function AssistantContentCards(props: {
         }
       },
       onSuccess: (result) => {
-        if (result.status === "blocked" || result.status === "failed") {
+        if (
+          result.status === "blocked" ||
+          result.status === "exhausted" ||
+          result.status === "failed" ||
+          result.status === "parked"
+        ) {
           setLoadedProjection(null)
           cardRegistration?.updateProjectionFingerprint(null)
           setSyncIssue({ issue: result.issue, messageId: message.id, threadId })

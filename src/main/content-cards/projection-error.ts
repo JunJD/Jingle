@@ -1,7 +1,30 @@
 import { createHash } from "node:crypto"
+import { Prisma } from "@prisma/client"
 import { sanitizeDiagnosticText } from "../diagnostics/redaction"
 
 export const ASSISTANT_CONTENT_PROJECTION_ERROR_MAX_LENGTH = 512
+
+export const ASSISTANT_CONTENT_PROJECTION_MAX_ATTEMPTS = 4
+
+export type ProjectionFailure =
+  | {
+      code: "execution-interrupted" | "persistence-unavailable"
+      kind: "retryable"
+    }
+  | {
+      code: "projection-contract-invalid" | "unexpected"
+      kind: "terminal"
+    }
+
+export class AssistantContentProjectionFailureError extends Error {
+  constructor(
+    readonly failure: ProjectionFailure,
+    readonly failureCause: unknown
+  ) {
+    super(`Assistant content projection failed with ${failure.code}.`)
+    this.name = "AssistantContentProjectionFailureError"
+  }
+}
 
 export class AssistantContentProjectionInputError extends Error {
   readonly code = "ASSISTANT_CONTENT_PROJECTION_INPUT_INVALID"
@@ -45,6 +68,36 @@ export function isAssistantContentProjectionInputError(
   error: unknown
 ): error is AssistantContentProjectionInputError {
   return error instanceof AssistantContentProjectionInputError
+}
+
+export function asAssistantContentProjectionPersistenceFailure(error: unknown): unknown {
+  if (
+    error instanceof Prisma.PrismaClientInitializationError ||
+    error instanceof Prisma.PrismaClientKnownRequestError ||
+    error instanceof Prisma.PrismaClientRustPanicError ||
+    error instanceof Prisma.PrismaClientUnknownRequestError
+  ) {
+    return new AssistantContentProjectionFailureError(
+      { code: "persistence-unavailable", kind: "retryable" },
+      error
+    )
+  }
+  if (error instanceof Prisma.PrismaClientValidationError) {
+    return new AssistantContentProjectionFailureError(
+      { code: "projection-contract-invalid", kind: "terminal" },
+      error
+    )
+  }
+  return error
+}
+
+export function classifyAssistantContentProjectionFailure(error: unknown): ProjectionFailure {
+  if (error instanceof AssistantContentProjectionFailureError) return error.failure
+  return { code: "unexpected", kind: "terminal" }
+}
+
+export function assistantContentProjectionFailureCause(error: unknown): unknown {
+  return error instanceof AssistantContentProjectionFailureError ? error.failureCause : error
 }
 
 export function summarizeAssistantContentProjectionError(error: unknown): string {

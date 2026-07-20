@@ -71,8 +71,20 @@ export const assistantContentProjectionJobStatusSchema = z.enum([
   "pending",
   "running",
   "failed",
+  "exhausted",
+  "parked",
   "blocked",
   "completed"
+])
+
+export const assistantContentProjectionRetryableFailureCodeSchema = z.enum([
+  "execution-interrupted",
+  "persistence-unavailable"
+])
+
+export const assistantContentProjectionTerminalFailureCodeSchema = z.enum([
+  "projection-contract-invalid",
+  "unexpected"
 ])
 
 export const assistantContentProjectionBlockedReasonSchema = z.enum([
@@ -98,7 +110,7 @@ export const assistantContentProjectionChangedEventSchema = z.discriminatedUnion
       kind: z.literal("issue"),
       revision: assistantContentProjectionJobRevisionSchema,
       runId: z.string().min(1),
-      status: z.enum(["blocked", "failed"]),
+      status: z.enum(["blocked", "exhausted", "failed", "parked"]),
       threadId: z.string().min(1)
     })
     .strict()
@@ -137,8 +149,35 @@ export const assistantContentPartsResultSchema = z.discriminatedUnion("status", 
     .strict(),
   z
     .object({
-      issue: z.object({ code: z.literal("retryable-failure") }).strict(),
+      issue: z
+        .object({
+          code: z.literal("retryable-failure"),
+          reason: assistantContentProjectionRetryableFailureCodeSchema
+        })
+        .strict(),
       status: z.literal("failed")
+    })
+    .strict(),
+  z
+    .object({
+      issue: z
+        .object({
+          code: z.literal("retry-exhausted"),
+          reason: assistantContentProjectionRetryableFailureCodeSchema
+        })
+        .strict(),
+      status: z.literal("exhausted")
+    })
+    .strict(),
+  z
+    .object({
+      issue: z
+        .object({
+          code: z.literal("terminal-failure"),
+          reason: assistantContentProjectionTerminalFailureCodeSchema
+        })
+        .strict(),
+      status: z.literal("parked")
     })
     .strict()
 ])

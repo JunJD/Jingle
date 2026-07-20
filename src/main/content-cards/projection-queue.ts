@@ -15,6 +15,11 @@ import {
   assistantContentProjectionJobRevision
 } from "@shared/assistant-content-part"
 import { assistantContentProjectionEvents } from "./events"
+import {
+  asAssistantContentProjectionPersistenceFailure,
+  assistantContentProjectionFailureCause,
+  classifyAssistantContentProjectionFailure
+} from "./projection-error"
 
 interface AssistantContentProjectionJob {
   runId: string
@@ -30,10 +35,14 @@ type ProjectionPersistenceRequest =
     }
   | { messageId: string; mode: "resume-blocked-message"; runId: string }
 
-const BASE_RETRY_DELAY_MS = 1_000
-const MAX_RETRY_DELAY_MS = 30_000
+const PERSISTENCE_RETRY_DELAY_MS = 1_000
+const MAX_RECOVERY_RETRY_DELAY_MS = 30_000
+const MAX_TIMER_DELAY_MS = 2_147_483_647
 const persistenceTasks = new Set<Promise<void>>()
-const retryTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const persistenceRetryTimers = new Map<string, ReturnType<typeof setTimeout>>()
+let durableRetryDeadline: bigint | null = null
+let durableRetryTimer: ReturnType<typeof setTimeout> | null = null
+let durableRetryWakePending = false
 let lifecycleStarted = false
 let recoveryAttemptCount = 0
 let recoveryAbortController: AbortController | null = null
@@ -52,6 +61,7 @@ interface ProjectionIssue {
     | "assistant_content_projection.input_blocked"
     | "assistant_content_projection.recovery_failed"
   operation: string
+  recoverable?: boolean
   runId?: string
   summary: string
 }
@@ -91,7 +101,7 @@ async function publishChangedProjections(input: {
 
 async function publishProjectionIssueStatus(input: {
   claim: NonNullable<Awaited<ReturnType<typeof claimAssistantContentProjection>>>
-  status: "blocked" | "failed"
+  status: "blocked" | "exhausted" | "failed" | "parked"
 }): Promise<void> {
   try {
     assistantContentProjectionEvents.publish(
@@ -125,7 +135,7 @@ async function recordProjectionIssue(issue: ProjectionIssue): Promise<void> {
       fingerprint: issue.eventCode,
       level: "warn",
       operation: issue.operation,
-      recoverable: true,
+      recoverable: issue.recoverable ?? true,
       refs: issue.runId ? [{ id: issue.runId, kind: "agent-run" }] : [],
       stateImpact: "content-cards-stale",
       summary: issue.summary
@@ -135,35 +145,94 @@ async function recordProjectionIssue(issue: ProjectionIssue): Promise<void> {
   }
 }
 
-function clearRetry(runId: string): void {
-  const timer = retryTimers.get(runId)
+function clearPersistenceRetry(runId: string): void {
+  const timer = persistenceRetryTimers.get(runId)
   if (!timer) return
   clearTimeout(timer)
-  retryTimers.delete(runId)
+  persistenceRetryTimers.delete(runId)
 }
 
-function scheduleRetry(job: AssistantContentProjectionJob, attemptCount = 1): void {
-  if (shuttingDown || retryTimers.has(job.runId)) return
-  const delayMs = Math.min(
-    MAX_RETRY_DELAY_MS,
-    BASE_RETRY_DELAY_MS * 2 ** Math.max(0, attemptCount - 1)
-  )
-  const timer = setTimeout(() => {
-    retryTimers.delete(job.runId)
-    assistantContentProjectionQueue.enqueue(job)
+function scheduleDurableRetry(nextAttemptAt: bigint): void {
+  if (shuttingDown || (durableRetryDeadline !== null && durableRetryDeadline <= nextAttemptAt))
+    return
+  if (durableRetryTimer) clearTimeout(durableRetryTimer)
+  durableRetryDeadline = nextAttemptAt
+  const remainingMs = nextAttemptAt - BigInt(Date.now())
+  const delayMs = Math.max(0, Math.min(MAX_TIMER_DELAY_MS, Number(remainingMs)))
+  durableRetryTimer = setTimeout(() => {
+    durableRetryDeadline = null
+    durableRetryTimer = null
+    if (!recoveryTask) {
+      void runRecovery()
+      return
+    }
+    if (durableRetryWakePending) return
+    durableRetryWakePending = true
+    void recoveryTask.finally(() => {
+      if (!durableRetryWakePending) return
+      durableRetryWakePending = false
+      if (!shuttingDown && !recoveryTimer) void runRecovery()
+    })
   }, delayMs)
-  timer.unref?.()
-  retryTimers.set(job.runId, timer)
+  durableRetryTimer.unref?.()
 }
 
 function schedulePersistenceRetry(input: ProjectionPersistenceRequest): void {
-  if (shuttingDown || retryTimers.has(input.runId)) return
+  if (shuttingDown || persistenceRetryTimers.has(input.runId)) return
   const timer = setTimeout(() => {
-    retryTimers.delete(input.runId)
+    persistenceRetryTimers.delete(input.runId)
     void trackPersistence(persistAndWake(input))
-  }, BASE_RETRY_DELAY_MS)
+  }, PERSISTENCE_RETRY_DELAY_MS)
   timer.unref?.()
-  retryTimers.set(input.runId, timer)
+  persistenceRetryTimers.set(input.runId, timer)
+}
+
+interface PersistProjectionFailureInput {
+  claim: NonNullable<Awaited<ReturnType<typeof claimAssistantContentProjection>>>
+  error: unknown
+  job: AssistantContentProjectionJob
+}
+
+function scheduleFailurePersistenceRetry(input: PersistProjectionFailureInput): void {
+  if (shuttingDown || persistenceRetryTimers.has(input.job.runId)) return
+  const timer = setTimeout(() => {
+    persistenceRetryTimers.delete(input.job.runId)
+    void trackPersistence(persistProjectionFailure(input))
+  }, PERSISTENCE_RETRY_DELAY_MS)
+  timer.unref?.()
+  persistenceRetryTimers.set(input.job.runId, timer)
+}
+
+async function persistProjectionFailure(input: PersistProjectionFailureInput): Promise<void> {
+  try {
+    let settlement: Awaited<ReturnType<typeof failAssistantContentProjection>>
+    try {
+      settlement = await failAssistantContentProjection(input.claim, input.error)
+    } catch (error) {
+      throw asAssistantContentProjectionPersistenceFailure(error)
+    }
+    if (!settlement) {
+      assistantContentProjectionQueue.enqueue(input.job)
+      return
+    }
+    clearPersistenceRetry(input.job.runId)
+    await publishProjectionIssueStatus({ claim: input.claim, status: settlement.status })
+    if (settlement.status === "failed" && settlement.nextAttemptAt !== null) {
+      scheduleDurableRetry(settlement.nextAttemptAt)
+    }
+  } catch (error) {
+    const failureError = asAssistantContentProjectionPersistenceFailure(error)
+    const failure = classifyAssistantContentProjectionFailure(failureError)
+    await recordProjectionIssue({
+      error: assistantContentProjectionFailureCause(failureError),
+      eventCode: "assistant_content_projection.failure_persistence_failed",
+      operation: "persist-projection-failure",
+      recoverable: failure.kind === "retryable",
+      runId: input.job.runId,
+      summary: "Assistant content projection failure state could not be persisted"
+    })
+    if (failure.kind === "retryable") scheduleFailurePersistenceRetry(input)
+  }
 }
 
 const assistantContentProjectionQueue = createProjectionQueue<AssistantContentProjectionJob>({
@@ -174,12 +243,21 @@ const assistantContentProjectionQueue = createProjectionQueue<AssistantContentPr
   run: async (job) => {
     let claim: Awaited<ReturnType<typeof claimAssistantContentProjection>> = null
     try {
-      claim = await claimAssistantContentProjection(job.runId)
+      try {
+        claim = await claimAssistantContentProjection(job.runId)
+      } catch (error) {
+        throw asAssistantContentProjectionPersistenceFailure(error)
+      }
       if (!claim) return
-      const finalized = await finalizeAssistantContentPartsForRun({
-        runId: claim.runId,
-        threadId: claim.threadId
-      })
+      let finalized: Awaited<ReturnType<typeof finalizeAssistantContentPartsForRun>>
+      try {
+        finalized = await finalizeAssistantContentPartsForRun({
+          runId: claim.runId,
+          threadId: claim.threadId
+        })
+      } catch (error) {
+        throw asAssistantContentProjectionPersistenceFailure(error)
+      }
       // Finalization is committed here. Its invalidation must not depend on a job-generation CAS.
       await publishChangedProjections({
         changedProjections: finalized.changedProjections,
@@ -197,12 +275,17 @@ const assistantContentProjectionQueue = createProjectionQueue<AssistantContentPr
       }
       if (finalized.blockedInputs.length > 0) {
         const blocked = finalized.blockedInputs[0]!
-        const persisted = await blockAssistantContentProjection(claim, finalized.blockedInputs)
+        let persisted: boolean
+        try {
+          persisted = await blockAssistantContentProjection(claim, finalized.blockedInputs)
+        } catch (error) {
+          throw asAssistantContentProjectionPersistenceFailure(error)
+        }
         if (!persisted) {
           assistantContentProjectionQueue.enqueue(job)
           return
         }
-        clearRetry(job.runId)
+        clearPersistenceRetry(job.runId)
         await publishProjectionIssueStatus({ claim, status: "blocked" })
         await recordProjectionIssue({
           error: blocked.error,
@@ -213,36 +296,36 @@ const assistantContentProjectionQueue = createProjectionQueue<AssistantContentPr
         })
         return
       }
-      const completed = await completeAssistantContentProjection(claim)
+      let completed: boolean
+      try {
+        completed = await completeAssistantContentProjection(claim)
+      } catch (error) {
+        throw asAssistantContentProjectionPersistenceFailure(error)
+      }
       if (completed) {
-        clearRetry(job.runId)
+        clearPersistenceRetry(job.runId)
       } else assistantContentProjectionQueue.enqueue(job)
     } catch (error) {
+      const failureError = asAssistantContentProjectionPersistenceFailure(error)
+      const failure = classifyAssistantContentProjectionFailure(failureError)
       await recordProjectionIssue({
-        error,
+        error: assistantContentProjectionFailureCause(failureError),
         eventCode: "assistant_content_projection.execution_failed",
         operation: "project-assistant-content",
+        recoverable: failure.kind === "retryable",
         runId: job.runId,
-        summary: "Assistant content projection failed and remains retryable"
+        summary:
+          failure.kind === "retryable"
+            ? "Assistant content projection failed with a bounded retryable error"
+            : "Assistant content projection failed with a terminal error"
       })
       if (!claim) {
-        schedulePersistenceRetry({ allowBlockedRetry: false, mode: "ensure", runId: job.runId })
+        if (failure.kind === "retryable") {
+          schedulePersistenceRetry({ allowBlockedRetry: false, mode: "ensure", runId: job.runId })
+        }
         return
       }
-      try {
-        const persisted = await failAssistantContentProjection(claim, error)
-        if (persisted) await publishProjectionIssueStatus({ claim, status: "failed" })
-        scheduleRetry(job, claim.attemptCount)
-      } catch (persistenceError) {
-        await recordProjectionIssue({
-          error: persistenceError,
-          eventCode: "assistant_content_projection.failure_persistence_failed",
-          operation: "persist-projection-failure",
-          runId: job.runId,
-          summary: "Assistant content projection failure state could not be persisted"
-        })
-        schedulePersistenceRetry({ mode: "dirty", runId: job.runId })
-      }
+      await persistProjectionFailure({ claim, error: failureError, job })
     }
   },
   stateKey: "assistant-content-parts"
@@ -265,17 +348,20 @@ async function persistAndWake(input: ProjectionPersistenceRequest): Promise<void
       )
     }
     if (!scheduled) return
-    clearRetry(input.runId)
+    clearPersistenceRetry(input.runId)
     assistantContentProjectionQueue.enqueue({ runId: input.runId })
   } catch (error) {
+    const failureError = asAssistantContentProjectionPersistenceFailure(error)
+    const failure = classifyAssistantContentProjectionFailure(failureError)
     await recordProjectionIssue({
-      error,
+      error: assistantContentProjectionFailureCause(failureError),
       eventCode: "assistant_content_projection.dirty_persistence_failed",
       operation: "persist-projection-dirty-state",
+      recoverable: failure.kind === "retryable",
       runId: input.runId,
       summary: "Assistant content projection dirty state could not be persisted"
     })
-    schedulePersistenceRetry(input)
+    if (failure.kind === "retryable") schedulePersistenceRetry(input)
   }
 }
 
@@ -319,8 +405,8 @@ export async function resumeAssistantContentProjectionForRepairedSource(
 function scheduleRecoveryRetry(): void {
   if (shuttingDown || recoveryTimer) return
   const delayMs = Math.min(
-    MAX_RETRY_DELAY_MS,
-    BASE_RETRY_DELAY_MS * 2 ** Math.max(0, recoveryAttemptCount - 1)
+    MAX_RECOVERY_RETRY_DELAY_MS,
+    PERSISTENCE_RETRY_DELAY_MS * 2 ** Math.max(0, recoveryAttemptCount - 1)
   )
   recoveryTimer = setTimeout(() => {
     recoveryTimer = null
@@ -340,6 +426,7 @@ function runRecovery(): Promise<void> {
           for (const runId of runIds) assistantContentProjectionQueue.enqueue({ runId })
           await assistantContentProjectionQueue.flush()
         },
+        onDeferred: scheduleDurableRetry,
         signal: abortController.signal
       })
       recoveryAttemptCount = 0
@@ -373,8 +460,12 @@ export async function flushAssistantContentProjection(): Promise<void> {
   recoveryAbortController?.abort()
   if (recoveryTimer) clearTimeout(recoveryTimer)
   recoveryTimer = null
-  for (const timer of retryTimers.values()) clearTimeout(timer)
-  retryTimers.clear()
+  if (durableRetryTimer) clearTimeout(durableRetryTimer)
+  durableRetryDeadline = null
+  durableRetryTimer = null
+  durableRetryWakePending = false
+  for (const timer of persistenceRetryTimers.values()) clearTimeout(timer)
+  persistenceRetryTimers.clear()
   await Promise.allSettled([...(recoveryTask ? [recoveryTask] : []), ...persistenceTasks])
   await assistantContentProjectionQueue.flush()
 }

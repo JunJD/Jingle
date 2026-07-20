@@ -25,7 +25,11 @@ import {
   recoverAssistantContentProjectionJobs
 } from "../../src/main/db/assistant-content-projection-jobs"
 import { ContentCardsService } from "../../src/main/content-cards/service"
-import { ASSISTANT_CONTENT_PROJECTION_ERROR_MAX_LENGTH } from "../../src/main/content-cards/projection-error"
+import {
+  ASSISTANT_CONTENT_PROJECTION_ERROR_MAX_LENGTH,
+  ASSISTANT_CONTENT_PROJECTION_MAX_ATTEMPTS,
+  AssistantContentProjectionFailureError
+} from "../../src/main/content-cards/projection-error"
 import { assistantContentProjectionEvents } from "../../src/main/content-cards/events"
 import { createContentCardId } from "../../src/shared/content-card"
 import { assistantContentProjectionFingerprint } from "../../src/shared/assistant-content-part"
@@ -240,7 +244,10 @@ test("transient projection writes remain durable and retry without changing the 
       messageId: "assistant-message-failure",
       threadId: "thread-content-projection-failure"
     }),
-    { issue: { code: "retryable-failure" }, status: "failed" }
+    {
+      issue: { code: "retryable-failure", reason: "persistence-unavailable" },
+      status: "failed"
+    }
   )
   await delay(100)
   assert.equal(
@@ -434,15 +441,17 @@ test("recovery invalidates a live claim before accepting new dirtiness", async (
   assert.equal(await markAssistantContentProjectionDirty(staleClaim.runId), true)
   assert.equal(await completeAssistantContentProjection(staleClaim), false)
 
-  const pending = await readAssistantContentProjectionJob(staleClaim.runId)
-  assert.equal(pending?.generation, staleClaim.generation + 1)
-  assert.equal(pending?.status, "pending")
+  const interrupted = await readAssistantContentProjectionJob(staleClaim.runId)
+  assert.equal(interrupted?.attemptCount, staleClaim.attemptCount)
+  assert.equal(interrupted?.failureCode, "execution-interrupted")
+  assert.equal(interrupted?.generation, staleClaim.generation + 1)
+  assert.equal(interrupted?.status, "failed")
   const currentClaim = await claimAssistantContentProjection(staleClaim.runId)
   assert.ok(currentClaim)
   assert.equal(await completeAssistantContentProjection(currentClaim), true)
 })
 
-test("projection failure summaries are bounded and redact secrets and local paths", async () => {
+test("unknown projection failures park terminally with bounded redacted diagnostics", async () => {
   const { createRun, createThread, getPrismaClient, persistMessageStateVersion } = await loadDb()
   await createThread("thread-content-projection-redaction")
   await createRun("run-content-projection-redaction", "thread-content-projection-redaction", {
@@ -468,13 +477,86 @@ test("projection failure summaries are bounded and redact secrets and local path
   )
   const failed = await readAssistantContentProjectionJob("run-content-projection-redaction")
   const failureSummary = failed?.lastError ?? ""
-  assert.equal(failed?.status, "failed")
+  assert.equal(failed?.failureCode, "unexpected")
+  assert.equal(failed?.nextAttemptAt, null)
+  assert.equal(failed?.status, "parked")
   assert.ok(failureSummary.length <= ASSISTANT_CONTENT_PROJECTION_ERROR_MAX_LENGTH)
   assert.doesNotMatch(failureSummary, /very-secret|\/Users\/example/)
   assert.match(failureSummary, /REDACTED/)
   await getPrismaClient().assistantContentProjectionJob.delete({
     where: { runId: "run-content-projection-redaction" }
   })
+})
+
+test("retryable projection failures exhaust the durable attempt budget without restart reset", async () => {
+  const { createRun, createThread, getPrismaClient, persistMessageStateVersion } = await loadDb()
+  const runId = "run-content-projection-retry-budget"
+  const threadId = "thread-content-projection-retry-budget"
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "success" })
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-retry-budget",
+    checkpointNs: "",
+    messages: [{ ...assistantItem("raw-retry-budget", null), messageId: "assistant-retry-budget" }],
+    runId,
+    threadId,
+    version: "1"
+  })
+  assert.equal(await markAssistantContentProjectionDirty(runId), true)
+
+  for (let attempt = 1; attempt <= ASSISTANT_CONTENT_PROJECTION_MAX_ATTEMPTS; attempt += 1) {
+    const claim = await claimAssistantContentProjection(runId)
+    assert.ok(claim)
+    assert.equal(claim.attemptCount, attempt)
+    const settlement = await failAssistantContentProjection(
+      claim,
+      new AssistantContentProjectionFailureError(
+        { code: "persistence-unavailable", kind: "retryable" },
+        new Error("temporary projection store failure")
+      )
+    )
+    assert.ok(settlement)
+    assert.equal(
+      settlement.status,
+      attempt === ASSISTANT_CONTENT_PROJECTION_MAX_ATTEMPTS ? "exhausted" : "failed"
+    )
+    if (attempt < ASSISTANT_CONTENT_PROJECTION_MAX_ATTEMPTS) {
+      assert.ok(settlement.nextAttemptAt)
+      await getPrismaClient().assistantContentProjectionJob.update({
+        data: { nextAttemptAt: 0n },
+        where: { runId }
+      })
+    }
+  }
+
+  const exhausted = await readAssistantContentProjectionJob(runId)
+  assert.equal(exhausted?.attemptCount, ASSISTANT_CONTENT_PROJECTION_MAX_ATTEMPTS)
+  assert.equal(exhausted?.failureCode, "persistence-unavailable")
+  assert.equal(exhausted?.nextAttemptAt, null)
+  assert.equal(exhausted?.status, "exhausted")
+  assert.deepEqual(
+    await new ContentCardsService().getAssistantParts({
+      messageId: "assistant-retry-budget",
+      threadId
+    }),
+    {
+      issue: { code: "retry-exhausted", reason: "persistence-unavailable" },
+      status: "exhausted"
+    }
+  )
+
+  const recovered: string[] = []
+  await recoverAssistantContentProjectionJobs({
+    onBatch: (runIds) => {
+      recovered.push(...runIds)
+    }
+  })
+  assert.equal(recovered.includes(runId), false)
+  assert.equal((await readAssistantContentProjectionJob(runId))?.status, "exhausted")
+  assert.equal(
+    (await readAssistantContentProjectionJob(runId))?.attemptCount,
+    ASSISTANT_CONTENT_PROJECTION_MAX_ATTEMPTS
+  )
 })
 
 test("cancelled runs remain eligible for terminal assistant content projection", async () => {
@@ -806,6 +888,55 @@ test("recovery aborts after the current bounded dispatch batch", async () => {
     completedJob.attemptCount + 1
   )
   await getPrismaClient().thread.delete({ where: { threadId } })
+})
+
+test("recovery collapses ten thousand deferred jobs into one earliest retry deadline", async () => {
+  const { createThread, getPrismaClient } = await loadDb()
+  const prisma = getPrismaClient()
+  const threadId = "thread-content-projection-deferred-recovery"
+  const timestamp = BigInt(Date.now())
+  const firstDeadline = timestamp + 60_000n
+  await createThread(threadId)
+  await prisma.$executeRaw`
+    WITH RECURSIVE "sequence"("value") AS (
+      SELECT 0
+      UNION ALL
+      SELECT "value" + 1 FROM "sequence" WHERE "value" < 9999
+    )
+    INSERT INTO "runs" ("run_id", "thread_id", "created_at", "updated_at", "status")
+    SELECT printf('run-content-projection-deferred-%05d', "value"), ${threadId},
+           ${timestamp}, ${timestamp}, 'success'
+    FROM "sequence"
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "assistant_content_projection_jobs" (
+      "run_id", "generation", "status", "attempt_count", "failure_code", "last_error",
+      "next_attempt_at", "created_at", "updated_at"
+    )
+    SELECT "run_id", 1, 'failed', 1, 'execution-interrupted', 'interrupted',
+           ${firstDeadline} + CAST(substr("run_id", -5) AS INTEGER), ${timestamp}, ${timestamp}
+    FROM "runs"
+    WHERE "thread_id" = ${threadId}
+  `
+
+  const deferredDeadlines: bigint[] = []
+  let dueBatchCount = 0
+  await recoverAssistantContentProjectionJobs({
+    onBatch: () => {
+      dueBatchCount += 1
+    },
+    onDeferred: (nextAttemptAt) => {
+      deferredDeadlines.push(nextAttemptAt)
+    }
+  })
+
+  assert.equal(dueBatchCount, 0)
+  assert.deepEqual(deferredDeadlines, [firstDeadline])
+  assert.equal(
+    await prisma.assistantContentProjectionJob.count({ where: { run: { threadId } } }),
+    10_000
+  )
+  await prisma.thread.delete({ where: { threadId } })
 })
 
 test("a malformed assistant message blocks once while valid siblings remain repairable", async () => {

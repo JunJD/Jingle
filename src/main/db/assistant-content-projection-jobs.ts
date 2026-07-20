@@ -1,10 +1,14 @@
 import { Prisma } from "@prisma/client"
 import {
+  ASSISTANT_CONTENT_PROJECTION_MAX_ATTEMPTS,
+  assistantContentProjectionFailureCause,
   assistantContentProjectionSourceRevision,
+  classifyAssistantContentProjectionFailure,
   isAssistantContentProjectionDecodeError,
   isAssistantContentProjectionInputError,
   summarizeAssistantContentProjectionError,
-  type AssistantContentProjectionBlockedInput
+  type AssistantContentProjectionBlockedInput,
+  type ProjectionFailure
 } from "../content-cards/projection-error"
 import { ASSISTANT_CONTENT_PROJECTION_TERMINAL_RUN_STATUSES } from "../content-cards/projection-status"
 import {
@@ -22,10 +26,19 @@ export interface AssistantContentProjectionClaim {
 
 export interface AssistantContentProjectionRecoveryOptions {
   onBatch: (runIds: readonly string[]) => Promise<void> | void
+  onDeferred?: (nextAttemptAt: bigint) => Promise<void> | void
   signal?: AbortSignal
 }
 
+export interface AssistantContentProjectionFailureSettlement {
+  failure: ProjectionFailure
+  nextAttemptAt: bigint | null
+  status: "exhausted" | "failed" | "parked"
+}
+
 export const ASSISTANT_CONTENT_PROJECTION_RECOVERY_BATCH_SIZE = 100
+export const ASSISTANT_CONTENT_PROJECTION_BASE_RETRY_DELAY_MS = 1_000
+export const ASSISTANT_CONTENT_PROJECTION_MAX_RETRY_DELAY_MS = 30_000
 
 function now(): bigint {
   return BigInt(Date.now())
@@ -33,13 +46,21 @@ function now(): bigint {
 
 const terminalRunStatuses = Prisma.join(ASSISTANT_CONTENT_PROJECTION_TERMINAL_RUN_STATUSES)
 
+export function assistantContentProjectionRetryDelayMs(attemptCount: number): number {
+  return Math.min(
+    ASSISTANT_CONTENT_PROJECTION_MAX_RETRY_DELAY_MS,
+    ASSISTANT_CONTENT_PROJECTION_BASE_RETRY_DELAY_MS * 2 ** Math.max(0, attemptCount - 1)
+  )
+}
+
 export async function markAssistantContentProjectionDirty(runId: string): Promise<boolean> {
   const timestamp = now()
   const changed = await getPrismaClient().$executeRaw`
     INSERT INTO "assistant_content_projection_jobs" (
-      "run_id", "generation", "status", "attempt_count", "last_error", "created_at", "updated_at"
+      "run_id", "generation", "status", "attempt_count", "failure_code", "last_error",
+      "next_attempt_at", "created_at", "updated_at"
     )
-    SELECT "run_id", 1, 'pending', 0, NULL, ${timestamp}, ${timestamp}
+    SELECT "run_id", 1, 'pending', 0, NULL, NULL, NULL, ${timestamp}, ${timestamp}
     FROM "runs"
     WHERE "run_id" = ${runId}
       AND "status" IN (${terminalRunStatuses})
@@ -54,11 +75,39 @@ export async function markAssistantContentProjectionDirty(runId: string): Promis
         THEN "assistant_content_projection_jobs"."generation" + 1
         ELSE "assistant_content_projection_jobs"."generation"
       END,
-      "status" = 'pending',
-      "last_error" = NULL,
+      "status" = CASE
+        WHEN "assistant_content_projection_jobs"."status" IN ('failed', 'exhausted', 'parked', 'blocked')
+        THEN "assistant_content_projection_jobs"."status"
+        ELSE 'pending'
+      END,
+      "failure_code" = CASE
+        WHEN "assistant_content_projection_jobs"."status" IN ('failed', 'exhausted', 'parked', 'blocked')
+        THEN "assistant_content_projection_jobs"."failure_code"
+        ELSE NULL
+      END,
+      "last_error" = CASE
+        WHEN "assistant_content_projection_jobs"."status" IN ('failed', 'exhausted', 'parked', 'blocked')
+        THEN "assistant_content_projection_jobs"."last_error"
+        ELSE NULL
+      END,
+      "next_attempt_at" = CASE
+        WHEN "assistant_content_projection_jobs"."status" = 'failed'
+        THEN "assistant_content_projection_jobs"."next_attempt_at"
+        ELSE NULL
+      END,
       "updated_at" = ${timestamp}
   `
-  return changed === 1
+  if (changed !== 1) return false
+  const job = await getPrismaClient().assistantContentProjectionJob.findUnique({
+    select: { nextAttemptAt: true, status: true },
+    where: { runId }
+  })
+  return Boolean(
+    job &&
+    (job.status === "pending" ||
+      job.status === "running" ||
+      (job.status === "failed" && job.nextAttemptAt !== null && job.nextAttemptAt <= timestamp))
+  )
 }
 
 export async function ensureAssistantContentProjectionPending(
@@ -71,9 +120,10 @@ export async function ensureAssistantContentProjectionPending(
   const timestamp = now()
   const changed = await getPrismaClient().$executeRaw`
     INSERT INTO "assistant_content_projection_jobs" (
-      "run_id", "generation", "status", "attempt_count", "last_error", "created_at", "updated_at"
+      "run_id", "generation", "status", "attempt_count", "failure_code", "last_error",
+      "next_attempt_at", "created_at", "updated_at"
     )
-    SELECT "run_id", 1, 'pending', 0, NULL, ${timestamp}, ${timestamp}
+    SELECT "run_id", 1, 'pending', 0, NULL, NULL, NULL, ${timestamp}, ${timestamp}
     FROM "runs"
     WHERE "run_id" = ${runId}
       AND "status" IN (${terminalRunStatuses})
@@ -93,7 +143,9 @@ export async function ensureAssistantContentProjectionPending(
         ELSE "generation"
       END,
       "status" = 'pending',
+      "failure_code" = NULL,
       "last_error" = NULL,
+      "next_attempt_at" = NULL,
       "updated_at" = ${timestamp}
     WHERE "run_id" = ${runId}
       AND "status" IN ('completed', 'running')
@@ -102,7 +154,9 @@ export async function ensureAssistantContentProjectionPending(
   if (options.allowBlockedRetry) {
     const unblocked = await getPrismaClient().assistantContentProjectionJob.updateMany({
       data: {
+        failureCode: null,
         lastError: null,
+        nextAttemptAt: null,
         status: "pending",
         updatedAt: timestamp
       },
@@ -112,7 +166,8 @@ export async function ensureAssistantContentProjectionPending(
   } else if (options.blockedSource) {
     const unblocked = await getPrismaClient().$executeRaw`
       UPDATE "assistant_content_projection_jobs"
-      SET "status" = 'pending', "last_error" = NULL, "updated_at" = ${timestamp}
+      SET "status" = 'pending', "failure_code" = NULL, "last_error" = NULL,
+          "next_attempt_at" = NULL, "updated_at" = ${timestamp}
       WHERE "run_id" = ${runId}
         AND "status" = 'blocked'
         AND NOT EXISTS (
@@ -130,7 +185,11 @@ export async function ensureAssistantContentProjectionPending(
   })
   return Boolean(
     existing &&
-    ["failed", "pending", "running"].includes(existing.status) &&
+    (existing.status === "pending" ||
+      existing.status === "running" ||
+      (existing.status === "failed" &&
+        existing.nextAttemptAt !== null &&
+        existing.nextAttemptAt <= timestamp)) &&
     ASSISTANT_CONTENT_PROJECTION_TERMINAL_RUN_STATUSES.some(
       (status) => status === existing.run.status
     )
@@ -141,6 +200,7 @@ export async function claimAssistantContentProjection(
   runId: string
 ): Promise<AssistantContentProjectionClaim | null> {
   return getPrismaClient().$transaction(async (transaction) => {
+    const timestamp = now()
     const job = await transaction.assistantContentProjectionJob.findUnique({
       include: { run: { select: { status: true, threadId: true } } },
       where: { runId }
@@ -156,10 +216,17 @@ export async function claimAssistantContentProjection(
     const claimed = await transaction.assistantContentProjectionJob.updateMany({
       data: {
         attemptCount: { increment: 1 },
+        failureCode: null,
+        lastError: null,
+        nextAttemptAt: null,
         status: "running",
-        updatedAt: now()
+        updatedAt: timestamp
       },
-      where: { generation: job.generation, runId, status: { in: ["pending", "failed"] } }
+      where: {
+        generation: job.generation,
+        OR: [{ status: "pending" }, { nextAttemptAt: { lte: timestamp }, status: "failed" }],
+        runId
+      }
     })
     if (claimed.count !== 1) return null
     return {
@@ -176,7 +243,13 @@ export async function completeAssistantContentProjection(
 ): Promise<boolean> {
   return getPrismaClient().$transaction(async (transaction) => {
     const result = await transaction.assistantContentProjectionJob.updateMany({
-      data: { lastError: null, status: "completed", updatedAt: now() },
+      data: {
+        failureCode: null,
+        lastError: null,
+        nextAttemptAt: null,
+        status: "completed",
+        updatedAt: now()
+      },
       where: { generation: claim.generation, runId: claim.runId, status: "running" }
     })
     if (result.count !== 1) return false
@@ -190,13 +263,33 @@ export async function completeAssistantContentProjection(
 export async function failAssistantContentProjection(
   claim: AssistantContentProjectionClaim,
   error: unknown
-): Promise<boolean> {
-  const message = summarizeAssistantContentProjectionError(error)
+): Promise<AssistantContentProjectionFailureSettlement | null> {
+  const failure = classifyAssistantContentProjectionFailure(error)
+  const timestamp = now()
+  const status =
+    failure.kind === "terminal"
+      ? "parked"
+      : claim.attemptCount >= ASSISTANT_CONTENT_PROJECTION_MAX_ATTEMPTS
+        ? "exhausted"
+        : "failed"
+  const nextAttemptAt =
+    status === "failed"
+      ? timestamp + BigInt(assistantContentProjectionRetryDelayMs(claim.attemptCount))
+      : null
+  const message = summarizeAssistantContentProjectionError(
+    assistantContentProjectionFailureCause(error)
+  )
   const result = await getPrismaClient().assistantContentProjectionJob.updateMany({
-    data: { lastError: message, status: "failed", updatedAt: now() },
-    where: { generation: claim.generation, runId: claim.runId }
+    data: {
+      failureCode: failure.code,
+      lastError: message,
+      nextAttemptAt,
+      status,
+      updatedAt: timestamp
+    },
+    where: { generation: claim.generation, runId: claim.runId, status: "running" }
   })
-  return result.count === 1
+  return result.count === 1 ? { failure, nextAttemptAt, status } : null
 }
 
 export async function blockAssistantContentProjection(
@@ -209,8 +302,14 @@ export async function blockAssistantContentProjection(
   const timestamp = now()
   return getPrismaClient().$transaction(async (transaction) => {
     const result = await transaction.assistantContentProjectionJob.updateMany({
-      data: { lastError: message, status: "blocked", updatedAt: timestamp },
-      where: { generation: claim.generation, runId: claim.runId }
+      data: {
+        failureCode: null,
+        lastError: message,
+        nextAttemptAt: null,
+        status: "blocked",
+        updatedAt: timestamp
+      },
+      where: { generation: claim.generation, runId: claim.runId, status: "running" }
     })
     if (result.count !== 1) return false
     await transaction.assistantContentProjectionBlockedInput.deleteMany({
@@ -235,7 +334,8 @@ export async function resumeAssistantContentProjectionForRepairedMessage(
   const timestamp = now()
   const changed = await getPrismaClient().$executeRaw`
     UPDATE "assistant_content_projection_jobs"
-    SET "status" = 'pending', "last_error" = NULL, "updated_at" = ${timestamp}
+    SET "status" = 'pending', "failure_code" = NULL, "last_error" = NULL,
+        "next_attempt_at" = NULL, "updated_at" = ${timestamp}
     WHERE "run_id" = ${runId}
       AND "status" = 'blocked'
       AND EXISTS (
@@ -252,9 +352,10 @@ async function insertMissingAssistantContentProjectionJobs(signal?: AbortSignal)
   const timestamp = now()
   await getPrismaClient().$executeRaw`
     INSERT INTO "assistant_content_projection_jobs" (
-      "run_id", "generation", "status", "attempt_count", "last_error", "created_at", "updated_at"
+      "run_id", "generation", "status", "attempt_count", "failure_code", "last_error",
+      "next_attempt_at", "created_at", "updated_at"
     )
-    SELECT "runs"."run_id", 1, 'pending', 0, NULL, ${timestamp}, ${timestamp}
+    SELECT "runs"."run_id", 1, 'pending', 0, NULL, NULL, NULL, ${timestamp}, ${timestamp}
     FROM "runs"
     LEFT JOIN "assistant_content_projection_jobs"
       ON "assistant_content_projection_jobs"."run_id" = "runs"."run_id"
@@ -364,7 +465,13 @@ async function recoverChangedBlockedAssistantContentProjectionJobs(
       if (needsProjection === null) return
       if (needsProjection) {
         await prisma.assistantContentProjectionJob.updateMany({
-          data: { lastError: null, status: "pending", updatedAt: now() },
+          data: {
+            failureCode: null,
+            lastError: null,
+            nextAttemptAt: null,
+            status: "pending",
+            updatedAt: now()
+          },
           where: { runId: job.runId, status: "blocked" }
         })
       }
@@ -380,19 +487,28 @@ async function dispatchAssistantContentProjectionJobs(
   let cursorRunId = ""
   while (true) {
     if (options.signal?.aborted) return
+    const timestamp = now()
     const jobs = await prisma.assistantContentProjectionJob.findMany({
       orderBy: { runId: "asc" },
       select: { runId: true },
       take: ASSISTANT_CONTENT_PROJECTION_RECOVERY_BATCH_SIZE,
       where: {
         runId: { gt: cursorRunId },
-        status: { in: ["pending", "failed"] }
+        OR: [{ status: "pending" }, { nextAttemptAt: { lte: timestamp }, status: "failed" }]
       }
     })
-    if (jobs.length === 0) return
+    if (jobs.length === 0) break
     await options.onBatch(jobs.map((job) => job.runId))
     if (options.signal?.aborted) return
     cursorRunId = jobs.at(-1)!.runId
+  }
+  const deferred = await prisma.assistantContentProjectionJob.findFirst({
+    orderBy: [{ nextAttemptAt: "asc" }, { runId: "asc" }],
+    select: { nextAttemptAt: true },
+    where: { nextAttemptAt: { gt: now() }, status: "failed" }
+  })
+  if (deferred?.nextAttemptAt !== null && deferred?.nextAttemptAt !== undefined) {
+    await options.onDeferred?.(deferred.nextAttemptAt)
   }
 }
 
@@ -401,14 +517,26 @@ export async function recoverAssistantContentProjectionJobs(
 ): Promise<void> {
   if (options.signal?.aborted) return
   const prisma = getPrismaClient()
-  await prisma.assistantContentProjectionJob.updateMany({
-    data: {
-      generation: { increment: 1 },
-      status: "pending",
-      updatedAt: now()
-    },
-    where: { status: "running" }
-  })
+  const timestamp = now()
+  await prisma.$executeRaw`
+    UPDATE "assistant_content_projection_jobs"
+    SET
+      "generation" = "generation" + 1,
+      "status" = CASE
+        WHEN "attempt_count" >= ${ASSISTANT_CONTENT_PROJECTION_MAX_ATTEMPTS}
+        THEN 'exhausted'
+        ELSE 'failed'
+      END,
+      "failure_code" = 'execution-interrupted',
+      "last_error" = 'Assistant content projection execution was interrupted before settlement.',
+      "next_attempt_at" = CASE
+        WHEN "attempt_count" >= ${ASSISTANT_CONTENT_PROJECTION_MAX_ATTEMPTS}
+        THEN NULL
+        ELSE ${timestamp}
+      END,
+      "updated_at" = ${timestamp}
+    WHERE "status" = 'running'
+  `
   await insertMissingAssistantContentProjectionJobs(options.signal)
   if (options.signal?.aborted) return
   await recoverChangedBlockedAssistantContentProjectionJobs(options.signal)

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict"
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { mkdtemp, readdir, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { DatabaseSync } from "node:sqlite"
 import test from "node:test"
 
 const repoRoot = process.cwd()
@@ -55,6 +56,23 @@ test("first launch applies packaged Prisma migrations to a fresh database", asyn
     packagedMigrationNames,
     "every packaged migration must be recorded as applied"
   )
+  const projectionJobColumns = await getPrismaClient().$queryRawUnsafe<Array<{ name: string }>>(
+    `PRAGMA table_info("assistant_content_projection_jobs")`
+  )
+  assert.deepEqual(
+    projectionJobColumns.map((column) => column.name),
+    [
+      "run_id",
+      "generation",
+      "status",
+      "attempt_count",
+      "last_error",
+      "created_at",
+      "updated_at",
+      "failure_code",
+      "next_attempt_at"
+    ]
+  )
 
   const completedRows = await getPrismaClient().$queryRawUnsafe<Array<{ count: number }>>(
     `SELECT COUNT(*) AS count FROM "_prisma_migrations" WHERE "finished_at" IS NULL OR "rolled_back_at" IS NOT NULL`
@@ -83,6 +101,13 @@ test("first launch applies packaged Prisma migrations to a fresh database", asyn
   assert.deepEqual(
     blockedInputColumns.map((column) => column.name),
     ["run_id", "message_id", "source_revision", "reason"]
+  )
+  const retryIndexColumns = await getPrismaClient().$queryRawUnsafe<Array<{ name: string }>>(
+    `PRAGMA index_info("idx_assistant_content_projection_jobs_retry_due")`
+  )
+  assert.deepEqual(
+    retryIndexColumns.map((column) => column.name),
+    ["status", "next_attempt_at", "run_id"]
   )
   const projectionJobIndexColumns = await getPrismaClient().$queryRawUnsafe<
     Array<{ name: string }>
@@ -113,4 +138,53 @@ test("restart after auto-migration is idempotent", async () => {
   const { getPrismaClient } = await import("../../src/main/db/client")
   const threadCount = await getPrismaClient().thread.count()
   assert.equal(typeof threadCount, "number")
+})
+
+test("retry migration parks legacy untyped failures instead of granting a retry lease", () => {
+  const database = new DatabaseSync(":memory:")
+  try {
+    database.exec(`
+      CREATE TABLE "assistant_content_projection_jobs" (
+        "run_id" TEXT NOT NULL PRIMARY KEY,
+        "generation" INTEGER NOT NULL DEFAULT 1,
+        "status" TEXT NOT NULL DEFAULT 'pending',
+        "attempt_count" INTEGER NOT NULL DEFAULT 0,
+        "last_error" TEXT,
+        "created_at" BIGINT NOT NULL,
+        "updated_at" BIGINT NOT NULL
+      );
+      INSERT INTO "assistant_content_projection_jobs"
+        ("run_id", "status", "attempt_count", "last_error", "created_at", "updated_at")
+      VALUES ('run-legacy-failure', 'failed', 2, 'legacy untyped failure', 1, 1);
+    `)
+    database.exec(
+      readFileSync(
+        join(
+          repoRoot,
+          "prisma/migrations/20260717090000_add_assistant_content_projection_retry_state/migration.sql"
+        ),
+        "utf8"
+      )
+    )
+    const migrated = database
+      .prepare(
+        `SELECT status, failure_code AS failureCode, next_attempt_at AS nextAttemptAt
+         FROM assistant_content_projection_jobs WHERE run_id = ?`
+      )
+      .get("run-legacy-failure") as {
+      failureCode: string | null
+      nextAttemptAt: number | null
+      status: string
+    }
+    assert.deepEqual(
+      { ...migrated },
+      {
+        failureCode: "unexpected",
+        nextAttemptAt: null,
+        status: "parked"
+      }
+    )
+  } finally {
+    database.close()
+  }
 })
