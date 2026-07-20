@@ -17,7 +17,7 @@ import {
   writeFileSync
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { basename, join, resolve } from "node:path"
+import { basename, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import { PrismaClient } from "@prisma/client"
 import { _electron as electron } from "playwright"
@@ -139,6 +139,43 @@ export function createInstallerInvocation(platform, artifactPath, installRoot) {
     }
   }
   fail(`unsupported platform '${platform}'`)
+}
+
+export function createUpgradeInstallMode(platform = process.platform) {
+  if (!packageSuffixByPlatform[platform]) fail(`unsupported platform '${platform}'`)
+  return platform === "win32" ? "nsis-in-place" : "data-only-reinstall"
+}
+
+export function createWindowsPayloadInventory(root) {
+  const resolvedRoot = resolve(root)
+  const files = collectFiles(resolvedRoot, (path) => statSync(path).isFile()).sort()
+  const uninstallers = files.filter(
+    (path) => basename(path).toLowerCase().startsWith("uninstall") && path.endsWith(".exe")
+  )
+  if (uninstallers.length !== 1) {
+    fail(`expected exactly one Windows uninstaller, found ${uninstallers.length}`)
+  }
+  return {
+    payload: files
+      .filter((path) => path !== uninstallers[0])
+      .map((path) => ({
+        path: relative(resolvedRoot, path).replaceAll("\\", "/"),
+        sha256: createHash("sha256").update(readFileSync(path)).digest("hex"),
+        size: statSync(path).size
+      })),
+    uninstaller: {
+      path: relative(resolvedRoot, uninstallers[0]).replaceAll("\\", "/"),
+      sha256: createHash("sha256").update(readFileSync(uninstallers[0])).digest("hex"),
+      size: statSync(uninstallers[0]).size
+    }
+  }
+}
+
+export function assertWindowsPayloadMatchesFreshInstall(expected, actual) {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    fail("Windows in-place upgrade payload differs from a fresh current installation")
+  }
+  return actual
 }
 
 export function selectMountedMacApp(mountPath) {
@@ -468,6 +505,60 @@ async function withInstalledArtifact(input, operation) {
   return result
 }
 
+export async function withWindowsInPlaceUpgrade(input, operations = {}) {
+  const createInvocation = operations.createInvocation ?? createInstallerInvocation
+  const install = operations.install ?? installArtifact
+  const cleanup = operations.cleanup ?? cleanupInstalledArtifact
+  let installed = null
+  let installationCompleted = false
+  let result
+  let primaryError = null
+  try {
+    const previousInvocation = createInvocation(
+      "win32",
+      input.previousArtifactPath,
+      input.installRoot
+    )
+    installed = await install(previousInvocation, input.workspace, input.logPath)
+    installationCompleted = true
+    const previousResult = await input.runPrevious(installed)
+
+    await input.beforeCurrent()
+    const currentInvocation = createInvocation(
+      "win32",
+      input.currentArtifactPath,
+      input.installRoot
+    )
+    installed = await install(currentInvocation, input.workspace, input.logPath)
+    const currentResult = await input.runCurrent(installed, previousResult)
+    result = { currentResult, previousResult }
+  } catch (error) {
+    primaryError = error
+  }
+
+  let cleanupError = null
+  try {
+    await cleanup({
+      installRoot: input.installRoot,
+      installed,
+      installationCompleted,
+      logPath: input.logPath,
+      workspace: input.workspace
+    })
+  } catch (error) {
+    cleanupError = error
+  }
+  if (primaryError && cleanupError) {
+    throw new AggregateError(
+      [primaryError, cleanupError],
+      "Windows in-place upgrade and cleanup failed"
+    )
+  }
+  if (primaryError) throw primaryError
+  if (cleanupError) throw cleanupError
+  return result
+}
+
 function createLaunchEnvironment(jingleHome) {
   const env = {
     ...process.env,
@@ -760,13 +851,16 @@ async function run() {
   const upgradeHome = join(upgradeWorkspace, "jingle-home")
   const commandLog = join(workspace, "commands.log")
   const appLog = join(workspace, "application.log")
+  const upgradeMode = createUpgradeInstallMode(process.platform)
   const manifest = {
     arch: process.arch,
     artifact: basename(artifactPath),
     phase: "fresh-install",
-    platform: process.platform
+    platform: process.platform,
+    upgradeMode
   }
   let diagnosticHome = freshHome
+  let freshWindowsPayloadInventory = null
   rmSync(diagnosticsRoot, { force: true, recursive: true })
   mkdirSync(upgradeWorkspace, { recursive: true })
   writeFileSync(commandLog, "")
@@ -795,6 +889,9 @@ async function run() {
         })
         manifest.phase = "fresh-database-verification"
         await verifyFreshDatabase(freshHome)
+        if (upgradeMode === "nsis-in-place") {
+          freshWindowsPayloadInventory = createWindowsPayloadInventory(installed.appRoot)
+        }
         return probe
       }
     )
@@ -833,66 +930,106 @@ async function run() {
       workspacePath: join(upgradeWorkspace, "sentinel-workspace")
     }
     mkdirSync(sentinel.workspacePath)
+    const runPrevious = async (installed) => {
+      manifest.phase = "upgrade-previous-ipc-sentinel"
+      const probe = await launchAndProbe(installed.executablePath, upgradeHome, appLog, {
+        expectedVersion: "0.0.1",
+        expectedWindowKind: baseline.windowKind,
+        sentinelRequest: {
+          mode: "create",
+          title: sentinel.title,
+          token: sentinel.token,
+          workspacePath: sentinel.workspacePath
+        }
+      })
+      if (!probe.sentinelThread?.threadId) fail("old artifact did not return a sentinel thread id")
+      return probe
+    }
+    const runCurrent = async (installed, previousProbe) => {
+      sentinel.threadId = previousProbe.sentinelThread.threadId
+      if (upgradeMode === "nsis-in-place") {
+        if (!freshWindowsPayloadInventory) {
+          fail("fresh Windows installation payload inventory is unavailable")
+        }
+        assertWindowsPayloadMatchesFreshInstall(
+          freshWindowsPayloadInventory,
+          createWindowsPayloadInventory(installed.appRoot)
+        )
+      }
+      manifest.phase = "upgrade-current-packaged-runtime-audit"
+      await runProcess(
+        process.execPath,
+        [resolve("scripts/audit-packaged-runtime.mjs"), installed.appRoot],
+        { cwd: process.cwd(), logPath: commandLog }
+      )
+      manifest.phase = "upgrade-current-ipc-verification"
+      const probe = await launchAndProbe(installed.executablePath, upgradeHome, appLog, {
+        expectedVersion: currentPackageVersion,
+        expectedWindowKind: "main",
+        sentinelRequest: {
+          mode: "verify",
+          threadId: sentinel.threadId,
+          title: sentinel.title,
+          token: sentinel.token
+        }
+      })
+      if (upgradeMode === "nsis-in-place") {
+        manifest.phase = "upgrade-current-database-verification"
+        await verifyUpgradeDatabase(upgradeHome, sentinel)
+      }
+      return probe
+    }
+
     manifest.phase = "upgrade-previous-install"
     appendFileSync(appLog, `[upgrade previous ${baseline.tag}]\n`)
-    const previousProbe = await withInstalledArtifact(
-      {
-        artifactPath: previousArtifact.path,
+    let previousProbe
+    let currentProbe
+    if (upgradeMode === "nsis-in-place") {
+      const result = await withWindowsInPlaceUpgrade({
+        beforeCurrent: async () => {
+          manifest.phase = "upgrade-current-install"
+          appendFileSync(appLog, `[upgrade current ${currentPackageVersion}]\n`)
+        },
+        currentArtifactPath: artifactPath,
         installRoot: upgradeInstallRoot,
         logPath: commandLog,
+        previousArtifactPath: previousArtifact.path,
+        runCurrent,
+        runPrevious,
         workspace: upgradeWorkspace
-      },
-      async (installed) => {
-        manifest.phase = "upgrade-previous-ipc-sentinel"
-        return launchAndProbe(installed.executablePath, upgradeHome, appLog, {
-          expectedVersion: "0.0.1",
-          expectedWindowKind: baseline.windowKind,
-          sentinelRequest: {
-            mode: "create",
-            title: sentinel.title,
-            token: sentinel.token,
-            workspacePath: sentinel.workspacePath
-          }
-        })
-      }
-    )
-    sentinel.threadId = previousProbe.sentinelThread?.threadId ?? null
-    if (!sentinel.threadId) fail("old artifact did not return a sentinel thread id")
-
-    manifest.phase = "upgrade-current-install"
-    appendFileSync(appLog, `[upgrade current ${currentPackageVersion}]\n`)
-    const currentProbe = await withInstalledArtifact(
-      {
-        artifactPath,
-        installRoot: upgradeInstallRoot,
-        logPath: commandLog,
-        workspace: upgradeWorkspace
-      },
-      async (installed) => {
-        manifest.phase = "upgrade-current-packaged-runtime-audit"
-        await runProcess(
-          process.execPath,
-          [resolve("scripts/audit-packaged-runtime.mjs"), installed.appRoot],
-          { cwd: process.cwd(), logPath: commandLog }
-        )
-        manifest.phase = "upgrade-current-ipc-verification"
-        return launchAndProbe(installed.executablePath, upgradeHome, appLog, {
-          expectedVersion: currentPackageVersion,
-          expectedWindowKind: "main",
-          sentinelRequest: {
-            mode: "verify",
-            threadId: sentinel.threadId,
-            title: sentinel.title,
-            token: sentinel.token
-          }
-        })
-      }
-    )
-    manifest.phase = "upgrade-current-database-verification"
-    await verifyUpgradeDatabase(upgradeHome, sentinel)
+      })
+      previousProbe = result.previousResult
+      currentProbe = result.currentResult
+    } else {
+      previousProbe = await withInstalledArtifact(
+        {
+          artifactPath: previousArtifact.path,
+          installRoot: upgradeInstallRoot,
+          logPath: commandLog,
+          workspace: upgradeWorkspace
+        },
+        runPrevious
+      )
+      sentinel.threadId = previousProbe.sentinelThread.threadId
+      manifest.phase = "upgrade-current-install"
+      appendFileSync(appLog, `[upgrade current ${currentPackageVersion}]\n`)
+      currentProbe = await withInstalledArtifact(
+        {
+          artifactPath,
+          installRoot: upgradeInstallRoot,
+          logPath: commandLog,
+          workspace: upgradeWorkspace
+        },
+        (installed) => runCurrent(installed, previousProbe)
+      )
+    }
+    if (upgradeMode !== "nsis-in-place") {
+      manifest.phase = "upgrade-current-database-verification"
+      await verifyUpgradeDatabase(upgradeHome, sentinel)
+    }
     manifest.phase = "complete"
     console.log(
-      `installed release smoke passed: ${JSON.stringify({ currentProbe, freshProbe, previousProbe })}`
+      `installed release smoke passed: ${JSON.stringify({ currentProbe, freshProbe, previousProbe, upgradeMode })}`
     )
   } catch (error) {
     primaryError = error

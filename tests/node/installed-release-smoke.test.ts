@@ -1,11 +1,12 @@
 import assert from "node:assert/strict"
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import test from "node:test"
 
 interface InstalledSmokeModule {
+  assertWindowsPayloadMatchesFreshInstall(expected: unknown, actual: unknown): unknown
   assertUpgradeSentinelThread(
     thread: unknown,
     sentinel: { threadId?: string | null; title: string; token: string },
@@ -16,11 +17,37 @@ interface InstalledSmokeModule {
     artifactPath: string,
     installRoot: string
   ): Record<string, unknown>
+  createUpgradeInstallMode(platform: string): "data-only-reinstall" | "nsis-in-place"
+  createWindowsPayloadInventory(root: string): {
+    payload: Array<{ path: string; sha256: string; size: number }>
+    uninstaller: { path: string; sha256: string; size: number }
+  }
   runProcess(
     command: string,
     args: string[],
     options: { cwd: string; logPath: string; timeoutMs: number }
   ): Promise<void>
+  withWindowsInPlaceUpgrade(
+    input: {
+      beforeCurrent(): Promise<void>
+      currentArtifactPath: string
+      installRoot: string
+      logPath: string
+      previousArtifactPath: string
+      runCurrent(installed: Record<string, unknown>, previousResult: unknown): Promise<unknown>
+      runPrevious(installed: Record<string, unknown>): Promise<unknown>
+      workspace: string
+    },
+    operations: {
+      cleanup(input: Record<string, unknown>): Promise<void>
+      createInvocation(platform: string, artifactPath: string, installRoot: string): unknown
+      install(
+        invocation: unknown,
+        workspace: string,
+        logPath: string
+      ): Promise<Record<string, unknown>>
+    }
+  ): Promise<{ currentResult: unknown; previousResult: unknown }>
   selectMountedMacApp(mountPath: string): string
   selectInstallerArtifact(root: string, platform: string): string
 }
@@ -97,6 +124,169 @@ test("builds fail-closed platform install plans", async () => {
     /invalid character/
   )
   assert.throws(() => smokeModule.createInstallerInvocation("freebsd", "a", "b"), /unsupported/)
+  assert.equal(smokeModule.createUpgradeInstallMode("win32"), "nsis-in-place")
+  assert.equal(smokeModule.createUpgradeInstallMode("darwin"), "data-only-reinstall")
+  assert.equal(smokeModule.createUpgradeInstallMode("linux"), "data-only-reinstall")
+  assert.throws(() => smokeModule.createUpgradeInstallMode("freebsd"), /unsupported/)
+})
+
+test("rejects stale or ambiguous payload after a Windows in-place upgrade", async () => {
+  const smokeModule = await smokeModulePromise
+  const root = mkdtempSync(join(tmpdir(), "jingle-installed-smoke-windows-payload-"))
+  const freshRoot = join(root, "fresh")
+  const upgradedRoot = join(root, "upgraded")
+  try {
+    for (const installRoot of [freshRoot, upgradedRoot]) {
+      mkdirSync(join(installRoot, "resources"), { recursive: true })
+      writeFileSync(join(installRoot, "Jingle.exe"), "current executable")
+      writeFileSync(join(installRoot, "resources", "app.asar"), "current asar")
+      writeFileSync(join(installRoot, "Uninstall Jingle.exe"), "current uninstaller")
+    }
+    const fresh = smokeModule.createWindowsPayloadInventory(freshRoot)
+    const upgraded = smokeModule.createWindowsPayloadInventory(upgradedRoot)
+    assert.deepEqual(
+      fresh.payload.map((entry) => entry.path),
+      ["Jingle.exe", "resources/app.asar"]
+    )
+    assert.equal(fresh.uninstaller.path, "Uninstall Jingle.exe")
+    assert.equal(smokeModule.assertWindowsPayloadMatchesFreshInstall(fresh, upgraded), upgraded)
+
+    writeFileSync(join(upgradedRoot, "old-version-only.dll"), "stale payload")
+    assert.throws(
+      () =>
+        smokeModule.assertWindowsPayloadMatchesFreshInstall(
+          fresh,
+          smokeModule.createWindowsPayloadInventory(upgradedRoot)
+        ),
+      /differs from a fresh current installation/
+    )
+    rmSync(join(upgradedRoot, "old-version-only.dll"))
+    writeFileSync(join(upgradedRoot, "resources", "app.asar"), "old asar")
+    assert.throws(
+      () =>
+        smokeModule.assertWindowsPayloadMatchesFreshInstall(
+          fresh,
+          smokeModule.createWindowsPayloadInventory(upgradedRoot)
+        ),
+      /differs from a fresh current installation/
+    )
+    writeFileSync(join(upgradedRoot, "resources", "app.asar"), "current asar")
+    writeFileSync(join(upgradedRoot, "Uninstall Jingle.exe"), "old uninstaller")
+    assert.throws(
+      () =>
+        smokeModule.assertWindowsPayloadMatchesFreshInstall(
+          fresh,
+          smokeModule.createWindowsPayloadInventory(upgradedRoot)
+        ),
+      /differs from a fresh current installation/
+    )
+    writeFileSync(join(upgradedRoot, "Uninstall old Jingle.exe"), "stale uninstaller")
+    assert.throws(
+      () => smokeModule.createWindowsPayloadInventory(upgradedRoot),
+      /exactly one Windows uninstaller/
+    )
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test("keeps the previous NSIS installation until current verification completes", async () => {
+  const smokeModule = await smokeModulePromise
+  const events: string[] = []
+  const result = await smokeModule.withWindowsInPlaceUpgrade(
+    {
+      beforeCurrent: async () => {
+        events.push("before-current")
+      },
+      currentArtifactPath: "current.exe",
+      installRoot: "C:\\Jingle",
+      logPath: "commands.log",
+      previousArtifactPath: "previous.exe",
+      runCurrent: async (installed, previousResult) => {
+        events.push("verify-current-payload")
+        events.push(
+          `verify-current-version-ipc:${String(installed.version)}:${String(previousResult)}`
+        )
+        events.push("verify-current-db")
+        return "current-result"
+      },
+      runPrevious: async (installed) => {
+        events.push(`verify-previous:${String(installed.version)}`)
+        return "previous-result"
+      },
+      workspace: "workspace"
+    },
+    {
+      cleanup: async (input) => {
+        events.push(`cleanup:${String((input.installed as { version: string }).version)}`)
+      },
+      createInvocation: (_platform, artifactPath, installRoot) => ({ artifactPath, installRoot }),
+      install: async (invocation) => {
+        const { artifactPath, installRoot } = invocation as {
+          artifactPath: string
+          installRoot: string
+        }
+        events.push(`install:${artifactPath}:${installRoot}`)
+        return { version: artifactPath === "previous.exe" ? "previous" : "current" }
+      }
+    }
+  )
+
+  assert.deepEqual(result, {
+    currentResult: "current-result",
+    previousResult: "previous-result"
+  })
+  assert.deepEqual(events, [
+    "install:previous.exe:C:\\Jingle",
+    "verify-previous:previous",
+    "before-current",
+    "install:current.exe:C:\\Jingle",
+    "verify-current-payload",
+    "verify-current-version-ipc:current:previous-result",
+    "verify-current-db",
+    "cleanup:current"
+  ])
+})
+
+test("reports both Windows upgrade verification and final cleanup failures", async () => {
+  const smokeModule = await smokeModulePromise
+  await assert.rejects(
+    smokeModule.withWindowsInPlaceUpgrade(
+      {
+        beforeCurrent: async () => {},
+        currentArtifactPath: "current.exe",
+        installRoot: "C:\\Jingle",
+        logPath: "commands.log",
+        previousArtifactPath: "previous.exe",
+        runCurrent: async () => {
+          throw new Error("current verification failed")
+        },
+        runPrevious: async () => "previous-result",
+        workspace: "workspace"
+      },
+      {
+        cleanup: async () => {
+          throw new Error("cleanup failed")
+        },
+        createInvocation: (_platform, artifactPath, installRoot) => ({ artifactPath, installRoot }),
+        install: async (invocation) => ({
+          version:
+            (invocation as { artifactPath: string }).artifactPath === "previous.exe"
+              ? "previous"
+              : "current"
+        })
+      }
+    ),
+    (error) => {
+      assert.ok(error instanceof AggregateError)
+      assert.match(error.message, /Windows in-place upgrade and cleanup failed/)
+      assert.deepEqual(
+        error.errors.map((nestedError) => (nestedError as Error).message),
+        ["current verification failed", "cleanup failed"]
+      )
+      return true
+    }
+  )
 })
 
 test("times out and reaps a child process without blocking exit delivery", async () => {
@@ -195,7 +385,31 @@ test("release candidate workflow uses the installed smoke owner without uploadin
   assert.doesNotMatch(smokeSource, /resolveMainWindow/)
   assert.match(smokeSource, /upgrade-previous-ipc-sentinel/)
   assert.match(smokeSource, /upgrade-current-ipc-verification/)
+  assert.match(smokeSource, /upgradeMode === "nsis-in-place"/)
+  assert.match(smokeSource, /withWindowsInPlaceUpgrade/)
+  assert.match(smokeSource, /createWindowsPayloadInventory/)
+  assert.match(smokeSource, /data-only-reinstall/)
   assert.match(smokeSource, /verifyUpgradeDatabase\(upgradeHome, sentinel\)/)
   assert.match(smokeSource, /FROM thread_workspace_bindings WHERE thread_id = \?/)
   assert.match(smokeSource, /expectedVersion: "0\.0\.1"/)
+
+  const freshInventory = smokeSource.indexOf(
+    "freshWindowsPayloadInventory = createWindowsPayloadInventory(installed.appRoot)"
+  )
+  const currentOperation = smokeSource.indexOf("const runCurrent = async")
+  const upgradedInventory = smokeSource.indexOf(
+    "assertWindowsPayloadMatchesFreshInstall(",
+    currentOperation
+  )
+  const databaseVerification = smokeSource.indexOf(
+    "await verifyUpgradeDatabase(upgradeHome, sentinel)",
+    currentOperation
+  )
+  const windowsUpgrade = smokeSource.indexOf(
+    "const result = await withWindowsInPlaceUpgrade",
+    currentOperation
+  )
+  assert.ok(freshInventory >= 0 && freshInventory < currentOperation)
+  assert.ok(upgradedInventory > currentOperation && upgradedInventory < windowsUpgrade)
+  assert.ok(databaseVerification > currentOperation && databaseVerification < windowsUpgrade)
 })
