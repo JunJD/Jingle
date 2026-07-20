@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { sameComputerUseWindowIdentity } from "./authorization"
+import { COMPUTER_USE_NATIVE_RESPONSE_LIMITS } from "./contract"
 import type {
   ComputerUseElement,
   ComputerUseForcedReanchorReason,
@@ -18,6 +19,8 @@ export interface ComputerUseObservationProjectionPolicy {
   fullByteLimit?: number
   minimumStableRefCoverage?: number
   queryByteLimit?: number
+  retainedObservationByteLimit?: number
+  singleObservationByteLimit?: number
 }
 
 export interface ComputerUseRefMatch {
@@ -63,9 +66,13 @@ const DEFAULT_FOLDED_ELEMENT_LIMIT = 80
 const DEFAULT_FULL_BYTE_LIMIT = 48 * 1024
 const DEFAULT_MINIMUM_STABLE_REF_COVERAGE = 0.5
 const DEFAULT_QUERY_BYTE_LIMIT = 48 * 1024
+const DEFAULT_RETAINED_OBSERVATION_BYTE_LIMIT = 64 * 1024 * 1024
+const DEFAULT_SINGLE_OBSERVATION_BYTE_LIMIT = 32 * 1024 * 1024
 const MAXIMUM_DIFF_CHANGE_LIMIT = 256
 const MAXIMUM_FOLDED_ELEMENT_LIMIT = 100
 const MAXIMUM_MODEL_PROJECTION_BYTE_LIMIT = 64 * 1024
+const MAXIMUM_RETAINED_OBSERVATION_BYTE_LIMIT = 256 * 1024 * 1024
+const MAXIMUM_SINGLE_OBSERVATION_BYTE_LIMIT = 64 * 1024 * 1024
 const MINIMUM_MODEL_PROJECTION_BYTE_LIMIT = 4 * 1024
 const MODEL_FIELD_JSON_BYTE_LIMIT = 1_024
 const MAX_QUERY_LIMIT = 100
@@ -75,20 +82,6 @@ const identityReasons = new Set<ComputerUseIdentityReason>([
   "stable_ref_overlap"
 ])
 const defaultIdFactory: ComputerUseStateIdFactory = { createStateId: randomUUID }
-const defaultRefMatcher: ComputerUseRefMatcher = {
-  match: ({ base, successor }) => {
-    const baseRefs = new Set(base.elements.map((element) => element.ref))
-    const stableRefs = successor.elements
-      .filter((element) => baseRefs.has(element.ref))
-      .map((element) => element.ref)
-    const smallerStateSize = Math.min(base.elements.length, successor.elements.length)
-    return {
-      confidence: smallerStateSize === 0 ? 1 : stableRefs.length / smallerStateSize,
-      reason: "stable_ref_overlap",
-      stableRefs
-    }
-  }
-}
 const defaultDiffProjector: ComputerUseDiffProjector = {
   project: ({ base, stableRefs, successor }) => deriveDiff(base, successor, stableRefs)
 }
@@ -102,6 +95,7 @@ export class ComputerUseStateUnavailableError extends Error {
 
 export class ComputerUseObservationStore {
   private readonly issuedStateIds = new Set<string>()
+  private readonly recordByteLengths = new Map<string, number>()
   private readonly records = new Map<string, ComputerUseObservation>()
   private readonly diffByteLimit: number
   private readonly diffChangeLimit: number
@@ -111,7 +105,10 @@ export class ComputerUseObservationStore {
   private readonly idFactory: ComputerUseStateIdFactory
   private readonly minimumStableRefCoverage: number
   private readonly queryByteLimit: number
-  private readonly refMatcher: ComputerUseRefMatcher
+  private readonly refMatcher: ComputerUseRefMatcher | undefined
+  private readonly retainedObservationByteLimit: number
+  private retainedObservationBytes = 0
+  private readonly singleObservationByteLimit: number
 
   constructor(
     private readonly limit = 128,
@@ -154,11 +151,31 @@ export class ComputerUseObservationStore {
       policy.queryByteLimit ?? DEFAULT_QUERY_BYTE_LIMIT,
       "queryByteLimit"
     )
-    this.refMatcher = dependencies.refMatcher ?? defaultRefMatcher
+    this.refMatcher = dependencies.refMatcher
+    this.retainedObservationByteLimit = boundedPositiveInteger(
+      policy.retainedObservationByteLimit ?? DEFAULT_RETAINED_OBSERVATION_BYTE_LIMIT,
+      "retainedObservationByteLimit",
+      MAXIMUM_RETAINED_OBSERVATION_BYTE_LIMIT
+    )
+    this.singleObservationByteLimit = boundedPositiveInteger(
+      policy.singleObservationByteLimit ?? DEFAULT_SINGLE_OBSERVATION_BYTE_LIMIT,
+      "singleObservationByteLimit",
+      MAXIMUM_SINGLE_OBSERVATION_BYTE_LIMIT
+    )
+    if (this.singleObservationByteLimit > this.retainedObservationByteLimit) {
+      throw new Error(
+        "Computer-use singleObservationByteLimit must not exceed retainedObservationByteLimit."
+      )
+    }
     positiveInteger(limit, "stateLimit")
   }
 
   create(input: Omit<ComputerUseObservation, "stateId">): ComputerUseObservation {
+    if (input.elements.length > COMPUTER_USE_NATIVE_RESPONSE_LIMITS.elements) {
+      throw new Error(
+        `Computer-use observation must not exceed ${COMPUTER_USE_NATIVE_RESPONSE_LIMITS.elements} elements.`
+      )
+    }
     const refs = new Set<string>()
     for (const [offset, element] of input.elements.entries()) {
       if (!element.ref || refs.has(element.ref)) {
@@ -174,12 +191,39 @@ export class ComputerUseObservationStore {
       throw new Error(`Computer-use state id ${stateId} is already owned by another observation.`)
     }
     this.issuedStateIds.add(stateId)
-    const observation = deepFreeze({ ...structuredClone(input), stateId })
+    const observation = deepFreeze({
+      application: { id: input.application.id, name: input.application.name },
+      capturedAt: input.capturedAt,
+      elements: input.elements.map(exactComputerUseElement),
+      epoch: input.epoch,
+      resourceKey: input.resourceKey,
+      stateId,
+      window: {
+        generation: input.window.generation,
+        nativeId: input.window.nativeId,
+        pid: input.window.pid,
+        platform: input.window.platform
+      }
+    })
+    const observationBytes = canonicalObservationRetentionByteLength(observation)
+    if (observationBytes > this.singleObservationByteLimit) {
+      throw new Error(
+        `Computer-use observation exceeds the ${this.singleObservationByteLimit}-byte single-state retention limit.`
+      )
+    }
     this.records.set(observation.stateId, observation)
-    while (this.records.size > this.limit) {
+    this.recordByteLengths.set(observation.stateId, observationBytes)
+    this.retainedObservationBytes += observationBytes
+    while (
+      this.records.size > this.limit ||
+      this.retainedObservationBytes > this.retainedObservationByteLimit
+    ) {
       const oldest = this.records.keys().next().value as string | undefined
       if (!oldest) break
+      const evictedBytes = this.recordByteLengths.get(oldest) ?? 0
       this.records.delete(oldest)
+      this.recordByteLengths.delete(oldest)
+      this.retainedObservationBytes -= evictedBytes
     }
     return observation
   }
@@ -204,6 +248,7 @@ export class ComputerUseObservationStore {
     if (!sameObservationRoot(base, successor)) {
       return this.full(successor, "root_replacement")
     }
+    if (!this.refMatcher) return this.full(successor, "low_identity_confidence")
 
     const match = validateRefMatch(this.refMatcher.match({ base, successor }), base, successor)
     if (Math.min(base.elements.length, successor.elements.length) > 0) {
@@ -281,7 +326,9 @@ export class ComputerUseObservationStore {
   }
 
   clear(): void {
+    this.recordByteLengths.clear()
     this.records.clear()
+    this.retainedObservationBytes = 0
   }
 
   private full(
@@ -323,7 +370,7 @@ function createDiff(
   match: ComputerUseRefMatch
 ): ComputerUseObservationDiff {
   return deepFreeze({
-    added: changes.added.map(exactModelElement),
+    added: changes.added.map(exactComputerUseElement),
     baseStateId: base.stateId,
     capturedAt: successor.capturedAt,
     identityConfidence: match.confidence,
@@ -332,7 +379,7 @@ function createDiff(
     removed: [...changes.removed],
     successorEpoch: successor.epoch,
     successorStateId: successor.stateId,
-    updated: changes.updated.map(exactModelElement)
+    updated: changes.updated.map(exactComputerUseElement)
   })
 }
 
@@ -503,7 +550,7 @@ function queryResult(
   )
 }
 
-function exactModelElement(element: ComputerUseElement): ComputerUseElement {
+function exactComputerUseElement(element: ComputerUseElement): ComputerUseElement {
   const projected: ComputerUseElement = {
     actions: [...element.actions],
     index: element.index,
@@ -521,7 +568,7 @@ function boundedModelElement(element: ComputerUseElement): {
   element: ComputerUseElement
   truncatedFields: number
 } {
-  const projected = exactModelElement(element)
+  const projected = exactComputerUseElement(element)
   let truncatedFields = 0
   for (const field of ["role", "description", "identifier", "title", "value"] as const) {
     const value = projected[field]
@@ -598,6 +645,32 @@ function boundedJsonString(value: string): { truncated: boolean; value: string }
 
 function jsonByteLength(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength
+}
+
+function canonicalObservationRetentionByteLength(observation: ComputerUseObservation): number {
+  return jsonByteLength([
+    [observation.application.id, observation.application.name],
+    observation.capturedAt,
+    observation.elements.map((element) => [
+      [...element.actions],
+      element.description ?? null,
+      element.identifier ?? null,
+      element.index,
+      element.ref,
+      element.role,
+      element.title ?? null,
+      element.value ?? null
+    ]),
+    observation.epoch,
+    observation.resourceKey,
+    observation.stateId,
+    [
+      observation.window.generation,
+      observation.window.nativeId,
+      observation.window.pid,
+      observation.window.platform
+    ]
+  ])
 }
 
 function positiveInteger(value: number, field: string): number {

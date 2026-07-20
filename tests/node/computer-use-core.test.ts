@@ -63,6 +63,27 @@ function resolvedVoid(): Promise<void> {
   return Promise.resolve()
 }
 
+const confirmedStableRefMatcher = {
+  match: ({
+    base,
+    successor
+  }: {
+    base: ComputerUseObservation
+    successor: ComputerUseObservation
+  }) => {
+    const baseRefs = new Set(base.elements.map((element) => element.ref))
+    const stableRefs = successor.elements
+      .filter((element) => baseRefs.has(element.ref))
+      .map((element) => element.ref)
+    const smallerStateSize = Math.min(base.elements.length, successor.elements.length)
+    return {
+      confidence: smallerStateSize === 0 ? 1 : stableRefs.length / smallerStateSize,
+      reason: "stable_ref_overlap" as const,
+      stableRefs
+    }
+  }
+}
+
 function actionLedgerPort(
   input: {
     attempts?: Map<string, ComputerUseActionAttempt>
@@ -504,7 +525,11 @@ test("observation store keeps immutable bounded states", () => {
 })
 
 test("model observation starts folded, then derives a trustworthy state-owned diff", () => {
-  const store = new ComputerUseObservationStore(8, { foldedElementLimit: 2 })
+  const store = new ComputerUseObservationStore(
+    8,
+    { foldedElementLimit: 2 },
+    { refMatcher: confirmedStableRefMatcher }
+  )
   const base = store.create({
     ...observationInput(),
     elements: [
@@ -633,7 +658,7 @@ test("observation projection re-anchors at every unsafe incremental boundary", (
       }))
     })
 
-  const store = new ComputerUseObservationStore(8)
+  const store = new ComputerUseObservationStore(8, {}, { refMatcher: confirmedStableRefMatcher })
   const base = createState(store, 0, ["a", "b", "c", "d"])
   const replacement = createState(store, 1, ["w", "x", "y", "z"])
   const rootProjection = store.project({
@@ -686,7 +711,11 @@ test("observation projection re-anchors at every unsafe incremental boundary", (
   })
   assert.equal(evictedProjection.kind === "full" ? evictedProjection.reason : null, "state_evicted")
 
-  const budgetStore = new ComputerUseObservationStore(8, { diffChangeLimit: 1 })
+  const budgetStore = new ComputerUseObservationStore(
+    8,
+    { diffChangeLimit: 1 },
+    { refMatcher: confirmedStableRefMatcher }
+  )
   const budgetBase = createState(budgetStore, 0, ["stable", "removed"])
   const budgetSuccessor = createState(budgetStore, 1, ["stable", "added"])
   const overBudget = budgetStore.project({
@@ -695,7 +724,11 @@ test("observation projection re-anchors at every unsafe incremental boundary", (
   })
   assert.equal(overBudget.kind === "full" ? overBudget.reason : null, "diff_over_budget")
 
-  const byteBudgetStore = new ComputerUseObservationStore(8, { diffByteLimit: 1 })
+  const byteBudgetStore = new ComputerUseObservationStore(
+    8,
+    { diffByteLimit: 1 },
+    { refMatcher: confirmedStableRefMatcher }
+  )
   const byteBase = createState(byteBudgetStore, 0, ["stable"])
   const byteSuccessor = createState(byteBudgetStore, 1, ["stable"])
   const byteOverBudget = byteBudgetStore.project({
@@ -731,12 +764,16 @@ test("observation store rejects noncanonical indexes and missing query states", 
 
 test("model observations are exact-shaped and byte-bounded", () => {
   const huge = "x".repeat(COMPUTER_USE_NATIVE_RESPONSE_LIMITS.text)
-  const store = new ComputerUseObservationStore(8, {
-    diffByteLimit: 1,
-    foldedElementLimit: 80,
-    fullByteLimit: 8 * 1024,
-    queryByteLimit: 8 * 1024
-  })
+  const store = new ComputerUseObservationStore(
+    8,
+    {
+      diffByteLimit: 1,
+      foldedElementLimit: 80,
+      fullByteLimit: 8 * 1024,
+      queryByteLimit: 8 * 1024
+    },
+    { refMatcher: confirmedStableRefMatcher }
+  )
   const elements = Array.from(
     { length: 80 },
     (_, index) =>
@@ -794,6 +831,17 @@ test("model observations are exact-shaped and byte-bounded", () => {
   assert.equal(JSON.stringify(full).includes("nativeWindow"), false)
   assert.equal(JSON.stringify(full).includes("resourceKey"), false)
   assert.equal(JSON.stringify(full).includes('"pid"'), false)
+  const stored = store.get(base.stateId)!
+  assert.deepEqual(Object.keys(stored.application).sort(), ["id", "name"])
+  assert.deepEqual(Object.keys(stored.elements[0]!).sort(), [
+    "actions",
+    "description",
+    "index",
+    "ref",
+    "role",
+    "title",
+    "value"
+  ])
 
   const expanded = store.expand({ limit: 80, stateId: base.stateId })
   assert.equal(Buffer.byteLength(JSON.stringify(expanded)) <= 8_192, true)
@@ -860,7 +908,8 @@ test("observation plug points cannot overstate confidence or contradict canonica
       diffProjector: {
         project: () => ({ added: [], removed: [], updated: [] })
       },
-      idFactory: { createStateId: () => `contradictory-${id++}` }
+      idFactory: { createStateId: () => `contradictory-${id++}` },
+      refMatcher: confirmedStableRefMatcher
     }
   )
   const contradictoryBase = contradictoryStore.create({
@@ -929,7 +978,8 @@ test("observation plug points cannot overstate confidence or contradict canonica
             )
         })
       },
-      idFactory: { createStateId: () => `injected-${injectedId++}` }
+      idFactory: { createStateId: () => `injected-${injectedId++}` },
+      refMatcher: confirmedStableRefMatcher
     }
   )
   const injectedBase = injectedProjectionStore.create({

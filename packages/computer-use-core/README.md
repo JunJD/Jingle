@@ -6,11 +6,15 @@ only layer allowed to translate this contract into agent tools.
 
 ## Invariants
 
-- Observations are immutable, bounded, and identified by `stateId`.
+- Observations are immutable, identified by `stateId`, and retained under count, single-state byte,
+  and cumulative byte budgets. Byte accounting uses one fixed-order canonical encoding rather than
+  object property order; an oversized state fails closed.
 - Semantic refs may remain stable across confidently matched observations, but every
   action and query is owned by one explicit `stateId`.
 - A repeated ref is the same element only when the ref matcher explicitly confirms it.
   Any unconfirmed overlap forces a folded full re-anchor and can never appear as an update.
+- Omitting a ref matcher is fail-closed: equal ref strings alone are not identity evidence and
+  cannot produce an incremental diff.
 - Every live desktop resource has a monotonically increasing epoch.
 - Mutations advance the epoch before native dispatch, so uncertain execution invalidates
   the base state.
