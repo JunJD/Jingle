@@ -2,9 +2,19 @@ import assert from "node:assert/strict"
 import { EventEmitter } from "node:events"
 import { describe, it } from "node:test"
 import type { IpcMain, IpcMainInvokeEvent, WebContents } from "electron"
+import {
+  MAIN_WINDOW_THREAD_BINDING_CHANGED_CHANNEL,
+  MAIN_WINDOW_THREAD_BINDING_GET_CHANNEL
+} from "../../src/shared/durable-window"
 import { DurableWindowController } from "../../src/main/main-window/controller"
 import { PrimaryMainWindowService } from "../../src/main/main-window/service"
-import { registerWindowIdentity } from "../../src/main/windows/window-identity"
+import {
+  getDurableWindowCallerLease,
+  getWindowIdentity,
+  registerDurableWindowIdentity,
+  registerWindowIdentity,
+  setDurableWindowIdentityThread
+} from "../../src/main/windows/window-identity"
 import {
   DurableWindowRestoreGate,
   DurableWindowRestorePolicy
@@ -25,10 +35,17 @@ class FakeWindow extends EventEmitter {
   sent: unknown[] = []
   webContents = {
     isDestroyed: () => false,
-    send: (_channel: string, value: unknown) => this.sent.push(value)
+    send: (channel: string, value: unknown) => this.sent.push({ channel, value })
   }
   focus(): void {
     this.focusCount += 1
+  }
+  destroy(): void {
+    if (this.destroyed) return
+    this.destroyed = true
+    const emitWebContents = (this.webContents as { emit?: (event: string) => void }).emit
+    emitWebContents?.call(this.webContents, "destroyed")
+    this.emit("closed")
   }
   isDestroyed(): boolean {
     return this.destroyed
@@ -47,10 +64,101 @@ class FakeWindow extends EventEmitter {
   }
 }
 
+class DeferredCloseWindow extends FakeWindow {
+  override destroy(): void {
+    if (this.destroyed) return
+    this.destroyed = true
+    const emitWebContents = (this.webContents as { emit?: (event: string) => void }).emit
+    emitWebContents?.call(this.webContents, "destroyed")
+  }
+  finishClose(): void {
+    this.emit("closed")
+  }
+}
+
 describe("PrimaryMainWindowService", () => {
   it("reuses one window and rebinds it to the requested thread", () => {
     const windows: FakeWindow[] = []
     const bindings: string[] = []
+    let windowThreadId: string | null = null
+    let state = { version: 1 as const, lastActiveThreadId: null as string | null }
+    const service = new PrimaryMainWindowService(
+      {
+        createMainWindow: (threadId) => {
+          const window = new FakeWindow()
+          windowThreadId = threadId
+          windows.push(window)
+          return window as never
+        },
+        getSessionState: () => state,
+        getWindowBinding: () => ({ kind: "main", threadId: windowThreadId }),
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        repairSessionThreadBinding: () => ({ repaired: false, state }),
+        setSessionState: (next) => (state = next),
+        setWindowThread: (_window, threadId) => {
+          windowThreadId = threadId
+          bindings.push(threadId)
+        }
+      },
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) }),
+      new DurableWindowRestoreGate()
+    )
+
+    service.open({ threadId: "thread-a" })
+    const initial = service.getSenderThreadBinding(windows[0]!.webContents as never)
+    const unchanged = service.bindSenderThread(windows[0]!.webContents as never, "thread-a")
+    service.open({ threadId: "thread-b" })
+
+    assert.equal(windows.length, 1)
+    assert.deepEqual(initial, { revision: 1, threadId: "thread-a" })
+    assert.deepEqual(unchanged, initial)
+    assert.deepEqual(bindings, ["thread-b"])
+    assert.equal(state.lastActiveThreadId, "thread-b")
+    assert.deepEqual(windows[0]?.sent, [
+      {
+        channel: MAIN_WINDOW_THREAD_BINDING_CHANGED_CHANNEL,
+        value: { revision: 2, threadId: "thread-b" }
+      }
+    ])
+  })
+
+  it("only accepts thread binding from the singleton sender", () => {
+    let state = { version: 1 as const, lastActiveThreadId: null as string | null }
+    let windowThreadId: string | null = null
+    const window = new FakeWindow()
+    const service = new PrimaryMainWindowService(
+      {
+        createMainWindow: (threadId) => {
+          windowThreadId = threadId
+          return window as never
+        },
+        getSessionState: () => state,
+        getWindowBinding: () => ({ kind: "main", threadId: windowThreadId }),
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        repairSessionThreadBinding: () => ({ repaired: false, state }),
+        setSessionState: (next) => (state = next),
+        setWindowThread: (_window, threadId) => {
+          windowThreadId = threadId
+        }
+      },
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) }),
+      new DurableWindowRestoreGate()
+    )
+    service.open()
+    assert.throws(() => service.bindSenderThread({} as never, "thread-a"), /registered Main window/)
+    const snapshot = service.bindSenderThread(window.webContents as never, "thread-a")
+    assert.equal(state.lastActiveThreadId, "thread-a")
+    assert.deepEqual(snapshot, { revision: 2, threadId: "thread-a" })
+  })
+
+  it("advances the binding revision when a new Main window incarnation is created", () => {
+    const windows: FakeWindow[] = []
     let state = { version: 1 as const, lastActiveThreadId: null as string | null }
     const service = new PrimaryMainWindowService(
       {
@@ -60,35 +168,7 @@ describe("PrimaryMainWindowService", () => {
           return window as never
         },
         getSessionState: () => state,
-        onWindowClosed: () => {},
-        onWindowOpened: () => {},
-        recordRestoreFailure: () => {},
-        recordRestoreRepair: () => {},
-        repairSessionThreadBinding: () => ({ repaired: false, state }),
-        setSessionState: (next) => (state = next),
-        setWindowThread: (_window, threadId) => bindings.push(threadId)
-      },
-      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) }),
-      new DurableWindowRestoreGate()
-    )
-
-    service.open({ threadId: "thread-a" })
-    service.bindSenderThread(windows[0]!.webContents as never, "thread-a")
-    service.open({ threadId: "thread-b" })
-
-    assert.equal(windows.length, 1)
-    assert.deepEqual(bindings, ["thread-b"])
-    assert.equal(state.lastActiveThreadId, "thread-b")
-    assert.deepEqual(windows[0]?.sent, [{ threadId: "thread-b" }])
-  })
-
-  it("only accepts thread binding from the singleton sender", () => {
-    let state = { version: 1 as const, lastActiveThreadId: null as string | null }
-    const window = new FakeWindow()
-    const service = new PrimaryMainWindowService(
-      {
-        createMainWindow: () => window as never,
-        getSessionState: () => state,
+        getWindowBinding: () => ({ kind: "main", threadId: state.lastActiveThreadId }),
         onWindowClosed: () => {},
         onWindowOpened: () => {},
         recordRestoreFailure: () => {},
@@ -100,10 +180,384 @@ describe("PrimaryMainWindowService", () => {
       new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) }),
       new DurableWindowRestoreGate()
     )
-    service.open()
-    assert.throws(() => service.bindSenderThread({} as never, "thread-a"), /registered Main window/)
-    service.bindSenderThread(window.webContents as never, "thread-a")
+
+    service.open({ threadId: "thread-a" })
+    assert.deepEqual(service.getSenderThreadBinding(windows[0]!.webContents as never), {
+      revision: 1,
+      threadId: "thread-a"
+    })
+    windows[0]!.emit("closed")
+    service.open({ threadId: "thread-a" })
+    assert.deepEqual(service.getSenderThreadBinding(windows[1]!.webContents as never), {
+      revision: 2,
+      threadId: "thread-a"
+    })
+  })
+
+  it("publishes the authoritative binding when session persistence rejects a rebind", () => {
+    const window = new FakeWindow()
+    const bindings: string[] = []
+    let windowThreadId: string | null = null
+    let rejectSessionWrite = false
+    let state = { version: 1 as const, lastActiveThreadId: null as string | null }
+    const service = new PrimaryMainWindowService(
+      {
+        createMainWindow: (threadId) => {
+          windowThreadId = threadId
+          return window as never
+        },
+        getSessionState: () => state,
+        getWindowBinding: () => ({ kind: "main", threadId: windowThreadId }),
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        repairSessionThreadBinding: () => ({ repaired: false, state }),
+        setSessionState: (next) => {
+          if (rejectSessionWrite) throw new Error("session write failed")
+          state = next
+          return state
+        },
+        setWindowThread: (_window, threadId) => {
+          windowThreadId = threadId
+          bindings.push(threadId)
+        }
+      },
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) }),
+      new DurableWindowRestoreGate()
+    )
+
+    service.open({ threadId: "thread-a" })
+    rejectSessionWrite = true
+    assert.throws(
+      () => service.bindSenderThread(window.webContents as never, "thread-b"),
+      /session write failed/
+    )
+    assert.deepEqual(service.getSenderThreadBinding(window.webContents as never), {
+      revision: 2,
+      threadId: "thread-b"
+    })
     assert.equal(state.lastActiveThreadId, "thread-a")
+    assert.deepEqual(bindings, ["thread-b"])
+    assert.deepEqual(window.sent, [
+      {
+        channel: MAIN_WINDOW_THREAD_BINDING_CHANGED_CHANNEL,
+        value: { revision: 2, threadId: "thread-b" }
+      }
+    ])
+
+    rejectSessionWrite = false
+    assert.deepEqual(service.bindSenderThread(window.webContents as never, "thread-b"), {
+      revision: 2,
+      threadId: "thread-b"
+    })
+    assert.equal(state.lastActiveThreadId, "thread-b")
+  })
+
+  it("keeps the previous binding when the window identity rejects before mutation", () => {
+    const window = new FakeWindow()
+    let rejectIdentityWrite = false
+    let state = { version: 1 as const, lastActiveThreadId: null as string | null }
+    let windowThreadId: string | null = null
+    const service = new PrimaryMainWindowService(
+      {
+        createMainWindow: (threadId) => {
+          windowThreadId = threadId
+          return window as never
+        },
+        getSessionState: () => state,
+        getWindowBinding: () => ({ kind: "main", threadId: windowThreadId }),
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        repairSessionThreadBinding: () => ({ repaired: false, state }),
+        setSessionState: (next) => (state = next),
+        setWindowThread: (_window, threadId) => {
+          if (rejectIdentityWrite) throw new Error("identity write failed")
+          windowThreadId = threadId
+        }
+      },
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) }),
+      new DurableWindowRestoreGate()
+    )
+
+    service.open({ threadId: "thread-a" })
+    rejectIdentityWrite = true
+    assert.throws(
+      () => service.bindSenderThread(window.webContents as never, "thread-b"),
+      /identity write failed/
+    )
+    assert.deepEqual(service.getSenderThreadBinding(window.webContents as never), {
+      revision: 1,
+      threadId: "thread-a"
+    })
+    assert.equal(state.lastActiveThreadId, "thread-a")
+    assert.deepEqual(window.sent, [])
+  })
+
+  it("adopts a nested authoritative identity when it supersedes a rebind", () => {
+    const window = new FakeWindow()
+    const webContents = Object.assign(new EventEmitter(), {
+      isDestroyed: () => window.destroyed,
+      send: (channel: string, value: unknown) => window.sent.push({ channel, value })
+    })
+    ;(window as unknown as { webContents: typeof webContents }).webContents = webContents
+    let state = { version: 1 as const, lastActiveThreadId: null as string | null }
+    const service = new PrimaryMainWindowService(
+      {
+        createMainWindow: (threadId) => {
+          registerDurableWindowIdentity(webContents as never, {
+            kind: "main",
+            threadId,
+            windowId: "primary-main"
+          })
+          return window as never
+        },
+        getSessionState: () => state,
+        getWindowBinding: () => {
+          const identity = getWindowIdentity(webContents as never)
+          return identity?.kind === "main"
+            ? { kind: "main", threadId: identity.threadId }
+            : { kind: "replaced" }
+        },
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        repairSessionThreadBinding: () => ({ repaired: false, state }),
+        setSessionState: (next) => (state = next),
+        setWindowThread: (_window, threadId) =>
+          setDurableWindowIdentityThread(webContents as never, threadId)
+      },
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) }),
+      new DurableWindowRestoreGate()
+    )
+
+    service.open({ threadId: "thread-a" })
+    const originalLease = getDurableWindowCallerLease(webContents as never)
+    assert.ok(originalLease)
+    originalLease.signal.addEventListener(
+      "abort",
+      () => setDurableWindowIdentityThread(webContents as never, "thread-c"),
+      { once: true }
+    )
+
+    assert.throws(
+      () => service.bindSenderThread(webContents as never, "thread-b"),
+      /changed during revocation/
+    )
+    assert.deepEqual(service.getSenderThreadBinding(webContents as never), {
+      revision: 2,
+      threadId: "thread-c"
+    })
+    assert.equal(state.lastActiveThreadId, "thread-c")
+    const identity = getWindowIdentity(webContents as never)
+    assert.equal(identity?.kind, "main")
+    assert.equal(identity?.kind === "main" ? identity.threadId : null, "thread-c")
+    assert.equal(getDurableWindowCallerLease(webContents as never)?.threadId, "thread-c")
+    assert.deepEqual(window.sent, [
+      {
+        channel: MAIN_WINDOW_THREAD_BINDING_CHANGED_CHANNEL,
+        value: { revision: 2, threadId: "thread-c" }
+      }
+    ])
+  })
+
+  it("closes Main when a nested durable identity replaces its window kind", () => {
+    const window = new FakeWindow()
+    const webContents = Object.assign(new EventEmitter(), {
+      isDestroyed: () => window.destroyed,
+      send: (channel: string, value: unknown) => window.sent.push({ channel, value })
+    })
+    ;(window as unknown as { webContents: typeof webContents }).webContents = webContents
+    let closeCount = 0
+    let state = { version: 1 as const, lastActiveThreadId: null as string | null }
+    const service = new PrimaryMainWindowService(
+      {
+        createMainWindow: (threadId) => {
+          registerDurableWindowIdentity(webContents as never, {
+            kind: "main",
+            threadId,
+            windowId: "primary-main"
+          })
+          return window as never
+        },
+        getSessionState: () => state,
+        getWindowBinding: () => {
+          const identity = getWindowIdentity(webContents as never)
+          return identity?.kind === "main"
+            ? { kind: "main", threadId: identity.threadId }
+            : { kind: "replaced" }
+        },
+        onWindowClosed: () => {
+          closeCount += 1
+        },
+        onWindowOpened: () => {},
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        repairSessionThreadBinding: () => ({ repaired: false, state }),
+        setSessionState: (next) => (state = next),
+        setWindowThread: (_window, threadId) =>
+          setDurableWindowIdentityThread(webContents as never, threadId)
+      },
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) }),
+      new DurableWindowRestoreGate()
+    )
+
+    service.open({ threadId: "thread-a" })
+    const originalLease = getDurableWindowCallerLease(webContents as never)
+    assert.ok(originalLease)
+    originalLease.signal.addEventListener(
+      "abort",
+      () =>
+        registerDurableWindowIdentity(webContents as never, {
+          kind: "thread-window",
+          threadId: "thread-c",
+          windowId: "window-c"
+        }),
+      { once: true }
+    )
+
+    assert.throws(
+      () => service.bindSenderThread(webContents as never, "thread-b"),
+      /changed during revocation/
+    )
+    assert.equal(window.destroyed, true)
+    assert.equal(closeCount, 1)
+    assert.equal(state.lastActiveThreadId, "thread-a")
+    assert.equal(getWindowIdentity(webContents as never), null)
+    assert.equal(getDurableWindowCallerLease(webContents as never), null)
+    assert.throws(
+      () => service.getSenderThreadBinding(webContents as never),
+      /registered Main window/
+    )
+    assert.deepEqual(window.sent, [])
+  })
+
+  it("does not let a delayed closed event clear a newer Main incarnation", () => {
+    const windows: FakeWindow[] = []
+    const webContents: EventEmitter[] = []
+    let closeCount = 0
+    let openCount = 0
+    let state = { version: 1 as const, lastActiveThreadId: null as string | null }
+    const service = new PrimaryMainWindowService(
+      {
+        createMainWindow: (threadId) => {
+          const window = windows.length === 0 ? new DeferredCloseWindow() : new FakeWindow()
+          const contents = Object.assign(new EventEmitter(), {
+            isDestroyed: () => window.destroyed,
+            send: (channel: string, value: unknown) => window.sent.push({ channel, value })
+          })
+          ;(window as unknown as { webContents: typeof contents }).webContents = contents
+          registerDurableWindowIdentity(contents as never, {
+            kind: "main",
+            threadId,
+            windowId: "primary-main"
+          })
+          windows.push(window)
+          webContents.push(contents)
+          return window as never
+        },
+        getSessionState: () => state,
+        getWindowBinding: (window) => {
+          const identity = getWindowIdentity(window.webContents)
+          return identity?.kind === "main"
+            ? { kind: "main", threadId: identity.threadId }
+            : { kind: "replaced" }
+        },
+        onWindowClosed: () => {
+          closeCount += 1
+        },
+        onWindowOpened: () => {
+          openCount += 1
+        },
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        repairSessionThreadBinding: () => ({ repaired: false, state }),
+        setSessionState: (next) => (state = next),
+        setWindowThread: (window, threadId) =>
+          setDurableWindowIdentityThread(window.webContents, threadId)
+      },
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) }),
+      new DurableWindowRestoreGate()
+    )
+
+    service.open({ threadId: "thread-a" })
+    const firstContents = webContents[0]
+    assert.ok(firstContents)
+    const originalLease = getDurableWindowCallerLease(firstContents as never)
+    assert.ok(originalLease)
+    originalLease.signal.addEventListener(
+      "abort",
+      () =>
+        registerDurableWindowIdentity(firstContents as never, {
+          kind: "thread-window",
+          threadId: "thread-c",
+          windowId: "window-c"
+        }),
+      { once: true }
+    )
+    assert.throws(
+      () => service.bindSenderThread(firstContents as never, "thread-b"),
+      /changed during revocation/
+    )
+
+    service.open({ threadId: "thread-d" })
+    const secondContents = webContents[1]
+    assert.ok(secondContents)
+    assert.equal(service.isSender(secondContents as never), true)
+    ;(windows[0] as DeferredCloseWindow).finishClose()
+
+    assert.equal(openCount, 2)
+    assert.equal(closeCount, 1)
+    assert.equal(service.isSender(secondContents as never), true)
+    assert.deepEqual(service.getSenderThreadBinding(secondContents as never), {
+      revision: 2,
+      threadId: "thread-d"
+    })
+    assert.equal(state.lastActiveThreadId, "thread-d")
+  })
+
+  it("rejects exhausted revisions before changing session or window identity", () => {
+    const window = new FakeWindow()
+    const mutations: string[] = []
+    let state = { version: 1 as const, lastActiveThreadId: null as string | null }
+    const service = new PrimaryMainWindowService(
+      {
+        createMainWindow: () => window as never,
+        getSessionState: () => state,
+        getWindowBinding: () => ({ kind: "main", threadId: state.lastActiveThreadId }),
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        repairSessionThreadBinding: () => ({ repaired: false, state }),
+        setSessionState: (next) => {
+          mutations.push(`session:${String(next.lastActiveThreadId)}`)
+          state = next
+          return state
+        },
+        setWindowThread: (_window, threadId) => mutations.push(`identity:${threadId}`)
+      },
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) }),
+      new DurableWindowRestoreGate()
+    )
+
+    service.open({ threadId: "thread-a" })
+    mutations.length = 0
+    ;(service as unknown as { bindingRevision: number }).bindingRevision = Number.MAX_SAFE_INTEGER
+    assert.throws(
+      () => service.bindSenderThread(window.webContents as never, "thread-b"),
+      /revision space is exhausted/
+    )
+    assert.deepEqual(service.getSenderThreadBinding(window.webContents as never), {
+      revision: Number.MAX_SAFE_INTEGER,
+      threadId: "thread-a"
+    })
+    assert.equal(state.lastActiveThreadId, "thread-a")
+    assert.deepEqual(mutations, [])
+    assert.deepEqual(window.sent, [])
   })
 
   it("restores an active persisted Main binding after thread lookup", async () => {
@@ -116,6 +570,7 @@ describe("PrimaryMainWindowService", () => {
           return new FakeWindow() as never
         },
         getSessionState: () => state,
+        getWindowBinding: () => ({ kind: "main", threadId: state.lastActiveThreadId }),
         onWindowClosed: () => {},
         onWindowOpened: () => {},
         recordRestoreFailure: () => {},
@@ -145,6 +600,7 @@ describe("PrimaryMainWindowService", () => {
           return new FakeWindow() as never
         },
         getSessionState: () => state,
+        getWindowBinding: () => ({ kind: "main", threadId: state.lastActiveThreadId }),
         onWindowClosed: () => {},
         onWindowOpened: () => {},
         recordRestoreFailure: () => {},
@@ -187,6 +643,7 @@ describe("PrimaryMainWindowService", () => {
           return new FakeWindow() as never
         },
         getSessionState: () => state,
+        getWindowBinding: () => ({ kind: "main", threadId: state.lastActiveThreadId }),
         onWindowClosed: () => {},
         onWindowOpened: () => {},
         recordRestoreFailure: () => {},
@@ -246,4 +703,87 @@ it("durable-window open IPC admits only registered Launcher and durable main fra
   await assert.rejects(invoke("settings"), /Only the Launcher or a durable window/)
   await assert.rejects(invoke("launcher", false), /Only the Launcher or a durable window/)
   assert.equal(openCount, 2)
+})
+
+it("durable-window binding snapshot belongs only to the registered Main main frame", async () => {
+  const mainFrame = {}
+  const mainSender = { isDestroyed: () => false, mainFrame } as unknown as WebContents
+  const otherMainFrame = {}
+  const otherMainSender = {
+    isDestroyed: () => false,
+    mainFrame: otherMainFrame
+  } as unknown as WebContents
+  const threadFrame = {}
+  const threadSender = {
+    isDestroyed: () => false,
+    mainFrame: threadFrame
+  } as unknown as WebContents
+  registerWindowIdentity(mainSender, {
+    kind: "main",
+    threadId: "thread-a",
+    windowId: "primary-main"
+  })
+  registerWindowIdentity(otherMainSender, {
+    kind: "main",
+    threadId: "thread-other",
+    windowId: "other-main"
+  })
+  registerWindowIdentity(threadSender, {
+    kind: "thread-window",
+    threadId: "thread-a",
+    windowId: "thread-window-a"
+  })
+  const snapshot = { revision: 4, threadId: "thread-a" } as const
+  const controller = new DurableWindowController(
+    {
+      bindSenderThread: () => snapshot,
+      getSenderThreadBinding: () => snapshot,
+      isSender: (sender: WebContents) => sender === mainSender,
+      open: () => {}
+    } as never,
+    {
+      bindSenderThread: () => {},
+      isSender: (sender: WebContents) => sender === threadSender,
+      openNew: () => ({ ok: true, windowId: "thread-window-a" })
+    } as never
+  )
+  const ipcMain = new FakeIpcMain()
+  controller.register(ipcMain as unknown as IpcMain)
+  const getBinding = ipcMain.handlers.get(MAIN_WINDOW_THREAD_BINDING_GET_CHANNEL)
+  const setThread = ipcMain.handlers.get("durable-window:setThread")
+  assert.ok(getBinding)
+  assert.ok(setThread)
+
+  assert.deepEqual(
+    await getBinding({ sender: mainSender, senderFrame: mainFrame } as IpcMainInvokeEvent),
+    snapshot
+  )
+  assert.deepEqual(
+    await setThread({ sender: mainSender, senderFrame: mainFrame } as IpcMainInvokeEvent, {
+      threadId: "thread-a"
+    }),
+    snapshot
+  )
+  assert.equal(
+    await setThread({ sender: threadSender, senderFrame: threadFrame } as IpcMainInvokeEvent, {
+      threadId: "thread-a"
+    }),
+    null
+  )
+  await assert.rejects(
+    Promise.resolve(
+      getBinding({ sender: otherMainSender, senderFrame: otherMainFrame } as IpcMainInvokeEvent)
+    ),
+    /registered Main window/
+  )
+  await assert.rejects(
+    Promise.resolve(
+      getBinding({ sender: threadSender, senderFrame: threadFrame } as IpcMainInvokeEvent)
+    ),
+    /registered Main window/
+  )
+  await assert.rejects(
+    Promise.resolve(getBinding({ sender: mainSender, senderFrame: {} } as IpcMainInvokeEvent)),
+    /registered Main window/
+  )
 })

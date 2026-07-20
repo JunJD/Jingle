@@ -4,6 +4,7 @@ import type {
   PinThreadWindowParams,
   SetDurableWindowThreadParams
 } from "@shared/durable-window"
+import { MAIN_WINDOW_THREAD_BINDING_GET_CHANNEL } from "@shared/durable-window"
 import { registerIpcHandle } from "../ipc/handle"
 import { PrimaryMainWindowService } from "./service"
 import { ThreadWindowService } from "../thread-window/service"
@@ -37,6 +38,17 @@ export class DurableWindowController {
     private readonly threadWindows: ThreadWindowService
   ) {}
   register(ipcMain: IpcMain): void {
+    registerIpcHandle(ipcMain, MAIN_WINDOW_THREAD_BINDING_GET_CHANNEL, (event) => {
+      const identity = getWindowIdentity(event.sender)
+      if (
+        event.senderFrame !== event.sender.mainFrame ||
+        identity?.kind !== "main" ||
+        !this.primaryMain.isSender(event.sender)
+      ) {
+        throw new Error("Only the registered Main window can read its thread binding.")
+      }
+      return this.primaryMain.getSenderThreadBinding(event.sender)
+    })
     registerIpcHandle(
       ipcMain,
       "durable-window:openPrimary",
@@ -77,12 +89,11 @@ export class DurableWindowController {
         const parsed = parseRequiredThreadParams(params)
         const identity = getWindowIdentity(event.sender)
         if (identity?.kind === "main" && this.primaryMain.isSender(event.sender)) {
-          this.primaryMain.bindSenderThread(event.sender, parsed.threadId)
-          return
+          return this.primaryMain.bindSenderThread(event.sender, parsed.threadId)
         }
         if (identity?.kind === "thread-window" && this.threadWindows.isSender(event.sender)) {
           this.threadWindows.bindSenderThread(event.sender, parsed.threadId)
-          return
+          return null
         }
         throw new Error("Only a registered durable window can update its thread binding.")
       }

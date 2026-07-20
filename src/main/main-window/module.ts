@@ -9,7 +9,7 @@ import {
 } from "../preferences"
 import { diagnosticsLogger } from "../diagnostics/instance"
 import { serializeProcessError } from "../diagnostics/process-errors"
-import { setDurableWindowIdentityThread } from "../windows/window-identity"
+import { getWindowIdentity, setDurableWindowIdentityThread } from "../windows/window-identity"
 import { DurableWindowController } from "./controller"
 import { PrimaryMainWindowService, type PrimaryMainWindowRuntime } from "./service"
 import { ThreadWindowService, type ThreadWindowRuntime } from "../thread-window/service"
@@ -47,6 +47,12 @@ export function registerMainWindowModule(
         {
           ...owner,
           getSessionState: getMainWindowSessionState,
+          getWindowBinding: (window) => {
+            const identity = getWindowIdentity(window.webContents)
+            return identity?.kind === "main"
+              ? { kind: "main", threadId: identity.threadId }
+              : { kind: "replaced" }
+          },
           onWindowClosed: () => lifecycle.windowClosed(),
           onWindowOpened: () => lifecycle.windowOpened(),
           recordRestoreFailure: (error) =>
