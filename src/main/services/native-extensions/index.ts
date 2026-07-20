@@ -1,5 +1,6 @@
 import {
   type InstalledNativeExtensionSettingsSchema,
+  type NativeExtensionInstallDiagnostic,
   type NativeExtensionInvokeRequest,
   type NativeExtensionLauncherCatalogProjection,
   type NativeExtensionPackageManifest,
@@ -13,6 +14,7 @@ import {
 import { DEFAULT_APP_LOCALE, resolveLocalizedText } from "@shared/i18n"
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
 import { getDefaultExtensionRegistryService } from "../../extensions/registry/default-registry"
+import { toNativeExtensionInstallDiagnostics } from "../../extensions/registry/diagnostics"
 import { loadExtensionMainDefinition } from "../../extensions/registry/main-loader"
 import {
   ExtensionMainDefinitionRegistry,
@@ -136,6 +138,10 @@ export function listNativeExtensionSettingsSchemas(): InstalledNativeExtensionSe
   return nativeExtensionDefinitions.map((definition) =>
     toInstalledNativeExtensionSettingsSchema(definition.manifest)
   )
+}
+
+export function listNativeExtensionInstallDiagnostics(): NativeExtensionInstallDiagnostic[] {
+  return toNativeExtensionInstallDiagnostics(nativeExtensionRegistry.listFailedInstalledPackages())
 }
 
 export function listNativeExtensionManifests(

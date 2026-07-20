@@ -1,4 +1,4 @@
-import type { IpcMain } from "electron"
+import type { IpcMain, IpcMainInvokeEvent } from "electron"
 import type {
   NativeExtensionConnectionSecretUpdateRequest,
   NativeExtensionInvokeIpcResponse,
@@ -7,6 +7,7 @@ import type {
 } from "@shared/native-extensions"
 import { buildIpcErrorPayload } from "../ipc/error"
 import { registerIpcHandle } from "../ipc/handle"
+import { getWindowIdentity } from "../windows/window-identity"
 import { NativeExtensionsService } from "./service"
 
 export class NativeExtensionsController {
@@ -15,6 +16,11 @@ export class NativeExtensionsController {
   register(ipcMain: IpcMain): void {
     registerIpcHandle(ipcMain, "nativeExtensions:listSettingsSchemas", () => {
       return this.nativeExtensionsService.listSettingsSchemas()
+    })
+
+    registerIpcHandle(ipcMain, "nativeExtensions:listInstallDiagnostics", (event) => {
+      this.assertSettingsSender(event)
+      return this.nativeExtensionsService.listInstallDiagnostics()
     })
 
     registerIpcHandle(ipcMain, "nativeExtensions:listLauncherCatalog", () => {
@@ -105,5 +111,14 @@ export class NativeExtensionsController {
         }
       }
     )
+  }
+
+  private assertSettingsSender(event: IpcMainInvokeEvent): void {
+    if (
+      getWindowIdentity(event.sender)?.kind !== "settings" ||
+      event.senderFrame !== event.sender.mainFrame
+    ) {
+      throw new Error("Extension install diagnostics are available only to the Settings window.")
+    }
   }
 }

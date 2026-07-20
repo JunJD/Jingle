@@ -2,6 +2,7 @@ import { BrowserWindow } from "electron"
 import type {
   NativeExtensionOAuthCallbackResult,
   NativeExtensionConnectionSecretUpdateRequest,
+  NativeExtensionInstallDiagnostic,
   NativeExtensionOAuthStartRequest,
   NativeExtensionOAuthStartResponse,
   NativeExtensionLauncherCatalogProjection,
@@ -29,6 +30,7 @@ import {
 import {
   invokeNativeExtension,
   invokeNativeExtensionWithContext,
+  listNativeExtensionInstallDiagnostics,
   listNativeExtensionLauncherCatalog,
   listNativeExtensionSettingsSchemas,
   listNativeExtensionSourceMentions
@@ -69,6 +71,10 @@ export class NativeExtensionsService {
 
   listSettingsSchemas(): InstalledNativeExtensionSettingsSchema[] {
     return listNativeExtensionSettingsSchemas()
+  }
+
+  listInstallDiagnostics(): NativeExtensionInstallDiagnostic[] {
+    return listNativeExtensionInstallDiagnostics()
   }
 
   listLauncherCatalog(): NativeExtensionLauncherCatalogProjection[] {

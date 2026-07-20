@@ -322,6 +322,32 @@ export interface InstalledNativeExtensionSettingsSchema {
   title: LocalizedTextValue
 }
 
+export type NativeExtensionInstallDiagnosticCode =
+  | "asset_path_invalid"
+  | "descriptor_invalid"
+  | "descriptor_missing"
+  | "main_invalid"
+  | "main_missing"
+  | "manifest_invalid"
+  | "manifest_missing"
+  | "runtime_artifact_revision_invalid"
+  | "runtime_invalid"
+  | "runtime_metadata_invalid"
+  | "runtime_metadata_missing"
+  | "runtime_missing"
+
+export interface NativeExtensionInstallDiagnosticError {
+  code: NativeExtensionInstallDiagnosticCode
+  message: string
+}
+
+export interface NativeExtensionInstallDiagnostic {
+  errors: NativeExtensionInstallDiagnosticError[]
+  extensionName: string
+  status: "error"
+  version: string | null
+}
+
 export interface NativeExtensionPreferencesState {
   connectionSecrets: Record<string, Record<string, string>>
   extensionPreferences: Record<string, Record<string, unknown>>

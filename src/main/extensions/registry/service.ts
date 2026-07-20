@@ -5,6 +5,7 @@ import type {
   ExtensionPackageDescriptor,
   ExtensionProvider,
   ExtensionRegistryService,
+  FailedExtensionPackageDescriptor,
   LoadedExtensionPackageDescriptor
 } from "./types"
 
@@ -16,15 +17,21 @@ export async function createExtensionRegistryService(
 }
 
 export function createStaticExtensionRegistryService(
-  packages: ExtensionPackageDescriptor[]
+  packages: ExtensionPackageDescriptor[],
+  failedInstalledPackages: FailedExtensionPackageDescriptor[] = packages.filter(
+    isFailedInstalledPackage
+  )
 ): ExtensionRegistryService {
-  return new StaticExtensionRegistryService(packages)
+  return new StaticExtensionRegistryService(packages, failedInstalledPackages)
 }
 
 class StaticExtensionRegistryService implements ExtensionRegistryService {
   private readonly packagesById: Map<string, ExtensionPackageDescriptor>
 
-  constructor(private readonly packages: ExtensionPackageDescriptor[]) {
+  constructor(
+    private readonly packages: ExtensionPackageDescriptor[],
+    private readonly failedInstalledPackages: FailedExtensionPackageDescriptor[]
+  ) {
     this.packagesById = new Map(
       packages.map((extensionPackage) => [extensionPackage.id, extensionPackage])
     )
@@ -35,6 +42,10 @@ class StaticExtensionRegistryService implements ExtensionRegistryService {
 
   listPackages(): ExtensionPackageDescriptor[] {
     return [...this.packages]
+  }
+
+  listFailedInstalledPackages(): FailedExtensionPackageDescriptor[] {
+    return [...this.failedInstalledPackages]
   }
 
   listLoadedPackages(): LoadedExtensionPackageDescriptor[] {
@@ -93,4 +104,10 @@ function isLoadedPackage(
   extensionPackage: ExtensionPackageDescriptor
 ): extensionPackage is LoadedExtensionPackageDescriptor {
   return extensionPackage.status === "loaded"
+}
+
+function isFailedInstalledPackage(
+  extensionPackage: ExtensionPackageDescriptor
+): extensionPackage is FailedExtensionPackageDescriptor {
+  return extensionPackage.source === "installed" && extensionPackage.status === "error"
 }

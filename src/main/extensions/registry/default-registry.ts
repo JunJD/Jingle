@@ -8,7 +8,11 @@ import { getJingleHomeDir } from "../../storage"
 import { BuiltInExtensionProvider } from "./built-in-provider"
 import { InstalledExtensionProvider } from "./installed-provider"
 import { createStaticExtensionRegistryService } from "./service"
-import type { ExtensionPackageDescriptor, ExtensionRegistryService } from "./types"
+import type {
+  ExtensionPackageDescriptor,
+  ExtensionRegistryService,
+  FailedExtensionPackageDescriptor
+} from "./types"
 
 let defaultExtensionRegistryService: ExtensionRegistryService | null = null
 
@@ -23,7 +27,8 @@ export function getUserInstalledExtensionsRoot(): string {
 }
 
 export function createDefaultExtensionRegistryService(): ExtensionRegistryService {
-  const installedOwnerPackages = selectInstalledOwnerPackages(listInstalledExtensionPackages())
+  const installedPackages = listInstalledExtensionPackages()
+  const installedOwnerPackages = selectInstalledOwnerPackages(installedPackages)
   const installedPackageIds = new Set<string>()
   for (const extensionPackage of installedOwnerPackages) {
     if (extensionPackage.status === "loaded" && extensionPackage.enabled) {
@@ -51,7 +56,13 @@ export function createDefaultExtensionRegistryService(): ExtensionRegistryServic
     )
   ]
 
-  return createStaticExtensionRegistryService(packages)
+  return createStaticExtensionRegistryService(
+    packages,
+    installedPackages.filter(
+      (extensionPackage): extensionPackage is FailedExtensionPackageDescriptor =>
+        extensionPackage.source === "installed" && extensionPackage.status === "error"
+    )
+  )
 }
 
 function listInstalledExtensionPackages(): ExtensionPackageDescriptor[] {
@@ -74,10 +85,7 @@ function selectInstalledOwnerPackages(
   const packagesById = new Map<string, ExtensionPackageDescriptor>()
   for (const extensionPackage of packages) {
     const currentPackage = packagesById.get(extensionPackage.id)
-    if (
-      !currentPackage ||
-      shouldReplaceInstalledOwnerPackage(extensionPackage, currentPackage)
-    ) {
+    if (!currentPackage || shouldReplaceInstalledOwnerPackage(extensionPackage, currentPackage)) {
       packagesById.set(extensionPackage.id, extensionPackage)
     }
   }

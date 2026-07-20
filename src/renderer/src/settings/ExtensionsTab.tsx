@@ -1,10 +1,11 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react"
-import { Link, Search, Settings2 } from "lucide-react"
+import { AlertTriangle, Link, Search, Settings2 } from "lucide-react"
 import type { ModelConfig } from "@shared/app-types"
 import { resolveLocalizedText, type AppLocale, type LocalizedTextValue } from "@shared/i18n"
 import type {
   InstalledNativeExtensionSettingsSchema,
   NativeExtensionConnectionManifest,
+  NativeExtensionInstallDiagnostic,
   NativeExtensionPreferenceSchema,
   NativeExtensionResolvedConnection
 } from "@shared/native-extensions"
@@ -645,6 +646,9 @@ export function ExtensionsTab(props: {
   const copy = getSettingsCopy(locale)
   const [models, setModels] = useState<ModelConfig[]>([])
   const [schemas, setSchemas] = useState<InstalledNativeExtensionSettingsSchema[]>([])
+  const [installDiagnostics, setInstallDiagnostics] = useState<NativeExtensionInstallDiagnostic[]>(
+    []
+  )
   const [extensionRecords, setExtensionRecords] = useState<Record<string, Record<string, unknown>>>(
     {}
   )
@@ -671,12 +675,16 @@ export function ExtensionsTab(props: {
 
   const loadSchemas = useEffectEvent(
     async (targetExtensionName: string | null, signal: AbortSignal): Promise<void> => {
-      const nextSchemas = await window.api.nativeExtensions.listSettingsSchemas()
+      const [nextSchemas, nextInstallDiagnostics] = await Promise.all([
+        window.api.nativeExtensions.listSettingsSchemas(),
+        window.api.nativeExtensions.listInstallDiagnostics()
+      ])
       if (signal.aborted) {
         return
       }
       const sortedSchemas = sortExtensionSettingsSchemas(nextSchemas, locale)
       setSchemas(sortedSchemas)
+      setInstallDiagnostics(nextInstallDiagnostics)
       setSelectedExtName((current) => {
         return getSelectedExtensionNameAfterLoad({
           currentExtensionName: current,
@@ -778,6 +786,22 @@ export function ExtensionsTab(props: {
       )
     })
   }, [locale, schemas, search])
+
+  const filteredInstallDiagnostics = useMemo(() => {
+    const normalizedQuery = search.trim().toLowerCase()
+    if (!normalizedQuery) return installDiagnostics
+
+    return installDiagnostics.filter((diagnostic) => {
+      const haystack = [
+        diagnostic.extensionName,
+        diagnostic.version ?? "",
+        ...diagnostic.errors.flatMap((error) => [error.code, error.message])
+      ]
+        .join(" ")
+        .toLowerCase()
+      return haystack.includes(normalizedQuery)
+    })
+  }, [installDiagnostics, search])
 
   const selectedSchema =
     filteredSchemas.find((schema) => schema.extName === selectedExtName) ??
@@ -1003,7 +1027,48 @@ export function ExtensionsTab(props: {
         </div>
 
         <div className="min-h-0 flex-1 space-y-[var(--jingle-space-2)] overflow-y-auto pr-[var(--jingle-space-1)]">
-          {filteredSchemas.length === 0 ? (
+          {filteredInstallDiagnostics.length > 0 ? (
+            <div className="space-y-[var(--jingle-space-2)] border-b border-border/70 pb-[var(--jingle-space-3)]">
+              <div className="flex items-start gap-[var(--jingle-gap-sm)]">
+                <AlertTriangle className="mt-0.5 h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)] shrink-0 text-destructive" />
+                <div className="min-w-0">
+                  <div className="[font-size:var(--jingle-font-label)] font-semibold text-foreground">
+                    {copy.extensions.installDiagnosticsTitle}
+                  </div>
+                  <div className="[font-size:var(--jingle-font-caption)] leading-[var(--jingle-line-body)] text-muted-foreground">
+                    {copy.extensions.installDiagnosticsDescription}
+                  </div>
+                </div>
+              </div>
+              {filteredInstallDiagnostics.map((diagnostic, index) => (
+                <div
+                  className="border-l-2 border-destructive/50 pl-[var(--jingle-space-3)]"
+                  key={`${diagnostic.extensionName}:${diagnostic.version ?? "unknown"}:${index}`}
+                >
+                  <div className="truncate [font-size:var(--jingle-font-label)] font-semibold text-foreground">
+                    {diagnostic.extensionName}
+                  </div>
+                  {diagnostic.version ? (
+                    <div className="[font-size:var(--jingle-font-caption)] text-muted-foreground">
+                      {copy.extensions.installDiagnosticVersion(diagnostic.version)}
+                    </div>
+                  ) : null}
+                  <ul className="mt-[var(--jingle-space-1)] space-y-[var(--jingle-space-1)]">
+                    {diagnostic.errors.map((error) => (
+                      <li
+                        className="[font-size:var(--jingle-font-caption)] leading-[var(--jingle-line-body)] text-muted-foreground"
+                        key={error.code}
+                      >
+                        <span className="font-mono text-foreground">{error.code}</span>
+                        <span>{` · ${error.message}`}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {filteredSchemas.length === 0 && filteredInstallDiagnostics.length === 0 ? (
             <div
               className={`${settingsInsetCardClassName} border-dashed [font-size:var(--jingle-font-body)] text-muted-foreground`}
             >

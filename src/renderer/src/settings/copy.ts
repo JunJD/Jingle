@@ -157,6 +157,9 @@ interface SettingsCopy {
     title: string
     rootsDescription: string
     installedTitle: string
+    installDiagnosticsDescription: string
+    installDiagnosticsTitle: string
+    installDiagnosticVersion: (version: string) => string
     empty: string
     mode: string
     noPreferences: string
@@ -388,6 +391,9 @@ const zhCN: SettingsCopy = {
     title: "Extensions",
     rootsDescription: "管理金果内置 extension 的偏好和命令设置。",
     installedTitle: "搜索 Extensions",
+    installDiagnosticsDescription: "这些安装包未被加载；健康的内置 extension 仍可继续使用。",
+    installDiagnosticsTitle: "安装诊断",
+    installDiagnosticVersion: (version) => `版本 ${version}`,
     empty: "还没有扫描到 extension。",
     mode: "模式",
     noPreferences: "没有可配置项。"
@@ -628,6 +634,10 @@ const enUS: SettingsCopy = {
     title: "Extensions",
     rootsDescription: "Manage preferences and commands for built-in Jingle extensions.",
     installedTitle: "Search Extensions",
+    installDiagnosticsDescription:
+      "These packages were not loaded. Healthy built-in extensions remain available.",
+    installDiagnosticsTitle: "Install Diagnostics",
+    installDiagnosticVersion: (version) => `Version ${version}`,
     empty: "No extensions were discovered yet.",
     mode: "Mode",
     noPreferences: "No configurable preferences."

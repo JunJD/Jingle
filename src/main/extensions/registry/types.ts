@@ -1,4 +1,5 @@
 import type {
+  NativeExtensionInstallDiagnosticCode,
   NativeExtensionMainDefinition,
   NativeExtensionPackageManifest
 } from "@shared/native-extensions"
@@ -11,19 +12,7 @@ import type { InstalledExtensionRuntimeArtifactRevision } from "./descriptor-sch
 export type ExtensionPackageSource = "built-in" | "installed"
 export type ExtensionPackageTrustLevel = "trusted" | "untrusted"
 
-export type ExtensionPackageErrorCode =
-  | "asset_path_invalid"
-  | "descriptor_invalid"
-  | "descriptor_missing"
-  | "main_invalid"
-  | "main_missing"
-  | "manifest_invalid"
-  | "manifest_missing"
-  | "runtime_artifact_revision_invalid"
-  | "runtime_invalid"
-  | "runtime_metadata_invalid"
-  | "runtime_metadata_missing"
-  | "runtime_missing"
+export type ExtensionPackageErrorCode = NativeExtensionInstallDiagnosticCode
 
 export interface ExtensionPackageError {
   code: ExtensionPackageErrorCode
@@ -117,6 +106,7 @@ export interface ExtensionRegistryService {
   getPackage(extensionName: string): ExtensionPackageDescriptor | null
   getRuntimePackageRef(extensionName: string): ExtensionRuntimeRef | null
   listEnabledPackages(platform: string): LoadedExtensionPackageDescriptor[]
+  listFailedInstalledPackages(): FailedExtensionPackageDescriptor[]
   listLoadedPackages(): LoadedExtensionPackageDescriptor[]
   listManifests(platform: string): NativeExtensionPackageManifest[]
   listPackages(): ExtensionPackageDescriptor[]

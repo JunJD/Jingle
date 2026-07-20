@@ -25,6 +25,14 @@ test("default extension registry keeps built-in owner when same-id installed pac
     assert.equal(todoListPackages.length, 1)
     assert.equal(todoListPackages[0]?.source, "built-in")
     assert.equal(registry.getLoadedPackage("todo-list")?.source, "built-in")
+    assert.deepEqual(
+      registry.listFailedInstalledPackages().map((extensionPackage) => ({
+        codes: extensionPackage.errors.map((error) => error.code),
+        id: extensionPackage.id,
+        version: extensionPackage.version
+      })),
+      [{ codes: ["descriptor_missing"], id: "todo-list", version: null }]
+    )
   } finally {
     if (previousJingleHome === undefined) {
       delete process.env.JINGLE_HOME

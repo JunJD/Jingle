@@ -2,6 +2,7 @@ import type {
   NativeExtensionConnectionSecretUpdateRequest,
   NativeExtensionInvokeIpcResponse,
   InstalledNativeExtensionSettingsSchema,
+  NativeExtensionInstallDiagnostic,
   NativeExtensionInvokeRequest,
   NativeExtensionLauncherCatalogProjection,
   NativeExtensionOAuthStartRequest,
@@ -14,6 +15,9 @@ import { invokeIpc, ipcRenderer } from "../ipc"
 import { JingleIpcClientError } from "../ipc-errors"
 
 export const nativeExtensionsApi = {
+  listInstallDiagnostics: (): Promise<NativeExtensionInstallDiagnostic[]> => {
+    return invokeIpc("nativeExtensions:listInstallDiagnostics")
+  },
   listSettingsSchemas: (): Promise<InstalledNativeExtensionSettingsSchema[]> => {
     return invokeIpc("nativeExtensions:listSettingsSchemas")
   },
