@@ -8,6 +8,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -20,6 +21,7 @@ import { basename, join, resolve } from "node:path"
 import test from "node:test"
 import { promisify } from "node:util"
 import {
+  activateExtensionRuntimeCacheWriterLease,
   createFileExtensionRuntimeCacheBackend,
   EXTENSION_RUNTIME_CACHE_MAX_ACTIVE_FILE_BYTES,
   EXTENSION_RUNTIME_CACHE_MAX_CORRUPT_FILE_BYTES,
@@ -27,6 +29,8 @@ import {
   EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES,
   EXTENSION_RUNTIME_CACHE_MAX_FILE_SET_BYTES,
   EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE,
+  releaseExtensionRuntimeCacheRetention,
+  revokeExtensionRuntimeCacheWrites,
   type RuntimeCacheDirectoryWatch,
   writeRuntimeCacheBufferFully,
   writeRuntimeCacheBufferFullySync
@@ -54,6 +58,9 @@ const notionSecondaryScope = createScope("notifications")
 const execFileAsync = promisify(execFile)
 const cacheCorruptionRecoveryDiagnostic =
   "[jingle:extension-runtime] Extension runtime cache corruption was recovered."
+const CACHE_RETENTION_TEMP_PATTERN =
+  /^retention-lease-[a-f0-9]{64}\.json\.[0-9]+\.[0-9a-f-]{36}\.tmp$/
+const CACHE_WRITER_TEMP_PATTERN = /^writer-lease-[a-f0-9]{64}\.json\.[0-9]+\.[0-9a-f-]{36}\.tmp$/
 
 test("cache evidence write helpers drain short writes and reject no progress", async () => {
   const input = Buffer.from("bounded-evidence")
@@ -1047,10 +1054,12 @@ test("live cache subscriptions reread exact durable snapshots across backend ins
       entries: readonly (readonly [string, string])[]
       revision: number
     }> = []
-    const unsubscribe = secondBackend.subscribeStore(notionScope, (snapshot) => {
+    const subscription = secondBackend.subscribeStore(notionScope, (snapshot) => {
       snapshots.push(structuredClone(snapshot))
     })
     const cacheFileName = basename(getCacheFilePathForScope(cacheDir, notionScope))
+
+    await subscription.ready
 
     assert.deepEqual(snapshots, [{ entries: [], revision: 0 }])
     assert.equal(watchHub.activeWatcherCount, 1)
@@ -1062,7 +1071,7 @@ test("live cache subscriptions reread exact durable snapshots across backend ins
     assert.equal(snapshots.length, 1)
 
     watchHub.emit(cacheFileName)
-    await settleCacheChangeFeed()
+    await waitForCacheCondition(() => snapshots.at(-1)?.entries[0]?.[1] === "external-1")
     assert.deepEqual(snapshots.at(-1)?.entries, [["page", "external-1"]])
 
     writeEntries(firstBackend, notionScope, [["page", "external-2"]])
@@ -1070,7 +1079,7 @@ test("live cache subscriptions reread exact durable snapshots across backend ins
     writeEntries(secondBackend, notionScope, [["page", "local-after-external"]])
     watchHub.emit(cacheFileName)
     await secondBackend.flush()
-    await settleCacheChangeFeed()
+    await waitForCacheCondition(() => snapshots.at(-1)?.entries[0]?.[1] === "local-after-external")
     assert.deepEqual(snapshots.at(-1)?.entries, [["page", "local-after-external"]])
 
     watchHub.emit(cacheFileName)
@@ -1084,17 +1093,17 @@ test("live cache subscriptions reread exact durable snapshots across backend ins
     writeEntries(firstBackend, notionScope, [["page", "null-filename-wake"]])
     await firstBackend.flush()
     watchHub.emit(null)
-    await settleCacheChangeFeed()
+    await waitForCacheCondition(() => snapshots.at(-1)?.entries[0]?.[1] === "null-filename-wake")
     assert.deepEqual(snapshots.at(-1)?.entries, [["page", "null-filename-wake"]])
 
     firstBackend.mutateStore(notionScope, { kind: "clear" })
     await firstBackend.flush()
     watchHub.emit(cacheFileName)
-    await settleCacheChangeFeed()
+    await waitForCacheCondition(() => snapshots.at(-1)?.entries.length === 0)
     assert.deepEqual(snapshots.at(-1)?.entries, [])
 
     const snapshotCountBeforeCancel = snapshots.length
-    unsubscribe()
+    subscription.unsubscribe()
     assert.equal(watchHub.activeWatcherCount, 0)
     writeEntries(firstBackend, notionScope, [["page", "after-cancel"]])
     await firstBackend.flush()
@@ -1107,6 +1116,234 @@ test("live cache subscriptions reread exact durable snapshots across backend ins
   })
 })
 
+test("cache subscription admission performs no synchronous watcher or retention write", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const lease = {
+      sessionId: "async-subscription",
+      token: "1".repeat(64)
+    }
+    activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
+    const watchHub = new FakeRuntimeCacheWatchHub()
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      watchDirectory: watchHub.watch,
+      writerLease: lease
+    })
+
+    const cancelled = backend.subscribeStore(notionScope, () => undefined)
+    cancelled.unsubscribe()
+    assert.equal(watchHub.activeWatcherCount, 0)
+    assert.deepEqual(listRetentionRecords(cacheDir), [])
+    await cancelled.ready
+    assert.deepEqual(listRetentionRecords(cacheDir), [])
+
+    const cancelledDuringAdmission = backend.subscribeStore(notionScope, () => undefined)
+    await Promise.resolve()
+    cancelledDuringAdmission.unsubscribe()
+    await cancelledDuringAdmission.ready
+    assert.equal(watchHub.activeWatcherCount, 0)
+    assert.equal(listRetentionRecords(cacheDir).length, 1)
+
+    const admitted = backend.subscribeStore(notionScope, () => undefined)
+    assert.equal(watchHub.activeWatcherCount, 0)
+    assert.equal(listRetentionRecords(cacheDir).length, 1)
+
+    await admitted.ready
+
+    assert.equal(watchHub.activeWatcherCount, 1)
+    assert.equal(listRetentionRecords(cacheDir).length, 1)
+    admitted.unsubscribe()
+    assert.equal(watchHub.activeWatcherCount, 0)
+    await backend.close()
+  })
+})
+
+test("cache quota rejects a retention record stored at a forged address", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const lease = { sessionId: "retention-address", token: "4".repeat(64) }
+    activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: lease })
+    const subscription = backend.subscribeStore(notionScope, () => undefined)
+    await subscription.ready
+    subscription.unsubscribe()
+    const retentionName = listRetentionRecords(cacheDir)[0]
+    assert.ok(retentionName)
+    const forgedName = `retention-lease-${"f".repeat(64)}.json`
+    assert.notEqual(forgedName, retentionName)
+    renameSync(join(cacheDir, retentionName), join(cacheDir, forgedName))
+
+    const forgedScope = { ...notionScope, namespace: "forged-retention-address" }
+    writeEntries(backend, forgedScope, [["page", "must-not-persist"]])
+    await assert.rejects(backend.flush(), /Extension runtime cache persistence failed/)
+    assert.equal(existsSync(getCacheFilePathForScope(cacheDir, forgedScope)), false)
+  })
+})
+
+test("cache quota bounds retention records and removes lock-protected orphan temps", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    const tempPrefix = `retention-lease-${"a".repeat(64)}.json.${process.pid}.`
+    const writerTempPrefix = `writer-lease-${"b".repeat(64)}.json.${process.pid}.`
+    for (let index = 0; index < 3; index++) {
+      writeFileSync(
+        join(
+          cacheDir,
+          `${tempPrefix}00000000-0000-0000-0000-${index.toString(16).padStart(12, "0")}.tmp`
+        ),
+        "orphan"
+      )
+      writeFileSync(
+        join(
+          cacheDir,
+          `${writerTempPrefix}00000000-0000-0000-0000-${index.toString(16).padStart(12, "0")}.tmp`
+        ),
+        "orphan"
+      )
+    }
+    writeEntries(backend, notionScope, [["page", "after-temp-cleanup"]])
+    await backend.flush()
+    assert.equal(
+      readdirSync(cacheDir).some((name) => name.startsWith(tempPrefix)),
+      false
+    )
+    assert.equal(
+      readdirSync(cacheDir).some((name) => name.startsWith(writerTempPrefix)),
+      false
+    )
+    await backend.close()
+  })
+
+  await withCacheDirectory(async (cacheDir) => {
+    for (let index = 0; index < EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES * 2 + 1; index++) {
+      writeFileSync(
+        join(cacheDir, `retention-lease-${index.toString(16).padStart(64, "0")}.json`),
+        ""
+      )
+    }
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir)
+    writeEntries(backend, notionScope, [["page", "must-not-persist"]])
+    await assert.rejects(backend.flush(), /Extension runtime cache persistence failed/)
+    assert.equal(existsSync(getCacheFilePathForScope(cacheDir, notionScope)), false)
+  })
+})
+
+test("cache control records permit one atomic temp at the full physical budget", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const leases = Array.from(
+      { length: EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES * 2 },
+      (_, index) => ({
+        sessionId: `full-budget-${index}`,
+        token: index.toString(16).padStart(64, "0")
+      })
+    )
+    for (const [index, lease] of leases.entries()) {
+      const namespaceDigest = createHash("sha256").update(`retained-${index}`).digest("hex")
+      writeFileSync(
+        getRetentionRecordPath(cacheDir, lease),
+        `${JSON.stringify({ namespaceDigests: [namespaceDigest], ...lease, version: 1 })}\n`
+      )
+      activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
+    }
+    const currentLease = leases[0]!
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      watchDirectory: () => ({ close: () => undefined }),
+      writerLease: currentLease
+    })
+
+    const subscription = backend.subscribeStore(notionScope, () => undefined)
+    await subscription.ready
+
+    assert.equal(listRetentionRecords(cacheDir).length, leases.length)
+    assert.equal(listWriterLeases(cacheDir).length, leases.length)
+    assert.equal(
+      readdirSync(cacheDir).some(
+        (name) => CACHE_RETENTION_TEMP_PATTERN.test(name) || CACHE_WRITER_TEMP_PATTERN.test(name)
+      ),
+      false
+    )
+    const currentRecord = JSON.parse(
+      readFileSync(getRetentionRecordPath(cacheDir, currentLease), "utf8")
+    ) as { namespaceDigests: string[] }
+    assert.equal(currentRecord.namespaceDigests.length, 2)
+    subscription.unsubscribe()
+    await backend.close()
+  })
+})
+
+test("cache control budget rejects an extra writer without leaving a temp", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const leases = Array.from(
+      { length: EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES * 2 },
+      (_, index) => ({
+        sessionId: `writer-budget-${index}`,
+        token: index.toString(16).padStart(64, "0")
+      })
+    )
+    for (const lease of leases) {
+      activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
+    }
+
+    assert.throws(
+      () =>
+        activateExtensionRuntimeCacheWriterLease(cacheDir, {
+          sessionId: "writer-budget-overflow",
+          token: "f".repeat(64)
+        }),
+      /control records exceeded their budget/
+    )
+    assert.equal(listWriterLeases(cacheDir).length, leases.length)
+    assert.equal(
+      readdirSync(cacheDir).some((name) => CACHE_WRITER_TEMP_PATTERN.test(name)),
+      false
+    )
+  })
+})
+
+test("exact namespace retention survives unsubscribe and write revocation until process exit", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const scopes = Array.from(
+      { length: EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES + 2 },
+      (_, index) => ({
+        ...notionScope,
+        namespace: `retention-${index}`
+      })
+    ).sort((left, right) =>
+      Buffer.compare(
+        Buffer.from(basename(getCacheFilePathForScope(cacheDir, left))),
+        Buffer.from(basename(getCacheFilePathForScope(cacheDir, right)))
+      )
+    )
+    const pinnedScope = scopes[0]!
+    const pinnedPath = getCacheFilePathForScope(cacheDir, pinnedScope)
+    const emptyEnvelope = `${JSON.stringify({ mutationSequence: 0, stores: {}, version: 1 })}\n`
+    for (const scope of scopes.slice(0, EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES)) {
+      writeFileSync(getCacheFilePathForScope(cacheDir, scope), emptyEnvelope)
+    }
+
+    const readerLease = { sessionId: "retained-reader", token: "2".repeat(64) }
+    activateExtensionRuntimeCacheWriterLease(cacheDir, readerLease)
+    const reader = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: readerLease })
+    const subscription = reader.subscribeStore(pinnedScope, () => undefined)
+    await subscription.ready
+    subscription.unsubscribe()
+    revokeExtensionRuntimeCacheWrites(cacheDir, readerLease)
+
+    const writerLease = { sessionId: "current-writer", token: "3".repeat(64) }
+    activateExtensionRuntimeCacheWriterLease(cacheDir, writerLease)
+    const writer = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease })
+    writeEntries(writer, scopes.at(-2)!, [["page", "while-pinned"]])
+    await writer.flush()
+    assert.equal(existsSync(pinnedPath), true)
+
+    await releaseExtensionRuntimeCacheRetention(cacheDir, readerLease)
+    writeEntries(writer, scopes.at(-1)!, [["page", "after-exit"]])
+    await writer.flush()
+    assert.equal(existsSync(pinnedPath), false)
+
+    await reader.close()
+    await writer.close()
+  })
+})
+
 test("cache change feed failure is bounded, terminal, and cancels its watcher", async () => {
   await withCacheDirectory(async (cacheDir) => {
     const watchHub = new FakeRuntimeCacheWatchHub()
@@ -1115,7 +1352,8 @@ test("cache change feed failure is bounded, terminal, and cancels its watcher", 
     })
     const failures: Error[] = []
     backend.onFailure((error) => failures.push(error))
-    backend.subscribeStore(notionScope, () => undefined)
+    const subscription = backend.subscribeStore(notionScope, () => undefined)
+    await subscription.ready
 
     watchHub.fail(new Error("raw watcher path and payload"))
 
@@ -1137,15 +1375,17 @@ test("cache change feed bounds active aggregate files behind one watcher", async
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir, {
       watchDirectory: watchHub.watch
     })
-    const unsubscribers: Array<() => void> = []
+    const subscriptions: ReturnType<RuntimeCacheBackend["subscribeStore"]>[] = []
     for (let index = 0; index < EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES; index++) {
-      unsubscribers.push(
+      subscriptions.push(
         backend.subscribeStore(
           { ...notionScope, namespace: `bounded-live-namespace-${index}` },
           () => undefined
         )
       )
     }
+
+    await Promise.all(subscriptions.map((subscription) => subscription.ready))
 
     assert.equal(watchHub.activeWatcherCount, 1)
     assert.throws(
@@ -1157,8 +1397,8 @@ test("cache change feed bounds active aggregate files behind one watcher", async
       /change feed file limit exceeded/
     )
 
-    for (const unsubscribe of unsubscribers) {
-      unsubscribe()
+    for (const subscription of subscriptions) {
+      subscription.unsubscribe()
     }
     assert.equal(watchHub.activeWatcherCount, 0)
     await backend.close()
@@ -1177,16 +1417,17 @@ test("cache subscription does not replace an accepted local write with an older 
     }> = []
 
     writeEntries(backend, notionScope, [["page", "accepted-local-write"]])
-    const unsubscribe = backend.subscribeStore(notionScope, (snapshot) => {
+    const subscription = backend.subscribeStore(notionScope, (snapshot) => {
       snapshots.push(structuredClone(snapshot))
     })
 
     assert.deepEqual(snapshots, [])
     await backend.flush()
+    await subscription.ready
     await settleCacheChangeFeed()
     assert.deepEqual(snapshots, [{ entries: [["page", "accepted-local-write"]], revision: 0 }])
 
-    unsubscribe()
+    subscription.unsubscribe()
     assert.equal(watchHub.activeWatcherCount, 0)
     await backend.close()
   })
@@ -1210,16 +1451,19 @@ test("throwing snapshot listeners do not poison persistence or block other liste
     let unsubscribeThrowing: () => void = () => undefined
     let unsubscribeReceiving: () => void = () => undefined
     try {
-      unsubscribeThrowing = reader.subscribeStore(notionScope, () => {
+      const throwingSubscription = reader.subscribeStore(notionScope, () => {
         throw new Error("consumer callback failure")
       })
-      unsubscribeReceiving = reader.subscribeStore(notionScope, (snapshot) => {
+      const receivingSubscription = reader.subscribeStore(notionScope, (snapshot) => {
         received.push(structuredClone(snapshot.entries))
       })
+      unsubscribeThrowing = throwingSubscription.unsubscribe
+      unsubscribeReceiving = receivingSubscription.unsubscribe
+      await Promise.all([throwingSubscription.ready, receivingSubscription.ready])
       writeEntries(writer, notionScope, [["page", "still-delivered"]])
       await writer.flush()
       watchHub.emit(basename(getCacheFilePathForScope(cacheDir, notionScope)))
-      await settleCacheChangeFeed()
+      await waitForCacheCondition(() => received.at(-1)?.[0]?.[1] === "still-delivered")
       await reader.flush()
     } finally {
       unsubscribeReceiving()
@@ -1254,35 +1498,40 @@ test("reentrant cache subscriptions preserve each registration revision order", 
     const reentrantRevisions: number[] = []
     let armReentrantSubscribe = false
     let unsubscribeReentrant: () => void = () => undefined
-    const unsubscribeFirst = reader.subscribeStore(notionScope, (snapshot) => {
+    const admissionPromises: Promise<void>[] = []
+    const firstSubscription = reader.subscribeStore(notionScope, (snapshot) => {
       firstRevisions.push(snapshot.revision)
       if (armReentrantSubscribe) {
         armReentrantSubscribe = false
-        unsubscribeReentrant = reader.subscribeStore(notionScope, (nestedSnapshot) => {
+        const reentrantSubscription = reader.subscribeStore(notionScope, (nestedSnapshot) => {
           reentrantRevisions.push(nestedSnapshot.revision)
         })
+        admissionPromises.push(reentrantSubscription.ready)
+        unsubscribeReentrant = reentrantSubscription.unsubscribe
       }
     })
-    const unsubscribeSecond = reader.subscribeStore(notionScope, (snapshot) => {
+    const secondSubscription = reader.subscribeStore(notionScope, (snapshot) => {
       secondRevisions.push(snapshot.revision)
     })
+    await Promise.all([firstSubscription.ready, secondSubscription.ready])
     armReentrantSubscribe = true
 
     writeEntries(writer, notionScope, [["page", "revision-order"]])
     await writer.flush()
     watchHub.emit(basename(getCacheFilePathForScope(cacheDir, notionScope)))
-    await settleCacheChangeFeed()
+    await waitForCacheCondition(() => admissionPromises.length === 1)
+    await Promise.all(admissionPromises)
 
     assert.deepEqual(firstRevisions, [0, 1, 2, 3])
-    assert.deepEqual(secondRevisions, [1, 2, 3])
+    assert.deepEqual(secondRevisions, [0, 1, 2, 3])
     assert.deepEqual(reentrantRevisions, [3])
     assertStrictlyIncreasing(firstRevisions)
     assertStrictlyIncreasing(secondRevisions)
     assertStrictlyIncreasing(reentrantRevisions)
 
     unsubscribeReentrant()
-    unsubscribeSecond()
-    unsubscribeFirst()
+    secondSubscription.unsubscribe()
+    firstSubscription.unsubscribe()
     await writer.close()
     await reader.close()
   })
@@ -1319,9 +1568,10 @@ test("duplicate cache keys recover through the durable corruption owner", async 
     const originalConsoleError = console.error
     console.error = (...args) => diagnostics.push(args.map(String).join(" "))
     try {
-      recoveringBackend.subscribeStore(notionScope, (snapshot) => {
+      const subscription = recoveringBackend.subscribeStore(notionScope, (snapshot) => {
         snapshots.push(structuredClone(snapshot.entries))
       })
+      await subscription.ready
     } finally {
       console.error = originalConsoleError
     }
@@ -1374,6 +1624,16 @@ async function settleCacheChangeFeed(): Promise<void> {
   await new Promise<void>((resolve) => setImmediate(resolve))
 }
 
+async function waitForCacheCondition(condition: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if (condition()) {
+      return
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 5))
+  }
+  assert.fail("Timed out waiting for the cache change feed")
+}
+
 function assertStrictlyIncreasing(revisions: readonly number[]): void {
   for (let index = 1; index < revisions.length; index++) {
     assert.ok(revisions[index]! > revisions[index - 1]!)
@@ -1411,9 +1671,17 @@ async function withCacheDirectory(callback: (cacheDir: string) => Promise<void>)
 }
 
 function getCacheFilePath(cacheDir: string): string {
-  const cacheFile = readdirSync(cacheDir).find((name) => name.endsWith(".json"))
+  const cacheFile = readdirSync(cacheDir).find((name) => /^store-[a-f0-9]{64}\.json$/.test(name))
   assert.ok(cacheFile)
   return join(cacheDir, cacheFile)
+}
+
+function listRetentionRecords(cacheDir: string): string[] {
+  return readdirSync(cacheDir).filter((name) => /^retention-lease-[a-f0-9]{64}\.json$/.test(name))
+}
+
+function listWriterLeases(cacheDir: string): string[] {
+  return readdirSync(cacheDir).filter((name) => /^writer-lease-[a-f0-9]{64}\.json$/.test(name))
 }
 
 function getCacheFilePathForScope(
@@ -1423,6 +1691,16 @@ function getCacheFilePathForScope(
   const address = JSON.stringify([scope.extensionName, scope.namespace])
   const digest = createHash("sha256").update(address).digest("hex")
   return join(cacheDir, `store-${digest}.json`)
+}
+
+function getRetentionRecordPath(
+  cacheDir: string,
+  lease: { sessionId: string; token: string }
+): string {
+  const digest = createHash("sha256")
+    .update(JSON.stringify([lease.sessionId, lease.token]))
+    .digest("hex")
+  return join(cacheDir, `retention-lease-${digest}.json`)
 }
 
 function listRegularCacheArtifacts(cacheDir: string): string[] {

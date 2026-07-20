@@ -33,8 +33,8 @@ class FakeRuntimeCacheBackend implements RuntimeCacheBackend {
     }
   }
 
-  subscribeStore(): () => void {
-    return () => undefined
+  subscribeStore() {
+    return { ready: Promise.resolve(), unsubscribe: () => undefined }
   }
 
   reportFailure(): void {

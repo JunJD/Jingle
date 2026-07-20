@@ -32,6 +32,7 @@ import {
   type RuntimeCacheBackendMutation,
   type RuntimeCacheBackendSnapshot,
   type RuntimeCacheBackendSnapshotListener,
+  type RuntimeCacheBackendSubscription,
   type RuntimeCacheBackendScope,
   type RuntimeCacheEntry
 } from "@jingle/extension-api/host-runtime"
@@ -91,6 +92,13 @@ interface RuntimeCacheFileSubscriptionState {
   stores: Map<string, RuntimeCacheStoreSubscriptionState>
 }
 
+interface RuntimeCacheRetentionRecord {
+  namespaceDigests: string[]
+  sessionId: string
+  token: string
+  version: typeof CACHE_RETENTION_RECORD_VERSION
+}
+
 export const EXTENSION_RUNTIME_CACHE_DIR_ENV = "JINGLE_EXTENSION_RUNTIME_CACHE_DIR"
 export const EXTENSION_RUNTIME_CACHE_WRITER_LEASE_ENV =
   "JINGLE_EXTENSION_RUNTIME_CACHE_WRITER_LEASE"
@@ -127,6 +135,25 @@ const CACHE_WRITER_LEASE_TEMPORARY_FILE_PATTERN =
   /^writer-lease-[a-f0-9]{64}\.json\.[0-9]+\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/
 const CACHE_WRITER_LEASE_FILE_VERSION = 1
 const CACHE_WRITER_LEASE_MAX_FILE_BYTES = 512
+const CACHE_RETENTION_RECORD_VERSION = 1
+const CACHE_RETENTION_RECORD_MAX_FILE_BYTES = 4 * 1024
+const CACHE_RETENTION_RECORD_MAX_NAMESPACES = EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES
+const CACHE_CONTROL_MAX_WRITER_FINAL_FILES = EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES * 2
+const CACHE_CONTROL_MAX_RETENTION_FINAL_FILES = EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES * 2
+const CACHE_CONTROL_MAX_FINAL_FILES =
+  CACHE_CONTROL_MAX_WRITER_FINAL_FILES + CACHE_CONTROL_MAX_RETENTION_FINAL_FILES
+const CACHE_CONTROL_MAX_FINAL_BYTES =
+  CACHE_CONTROL_MAX_WRITER_FINAL_FILES * CACHE_WRITER_LEASE_MAX_FILE_BYTES +
+  CACHE_CONTROL_MAX_RETENTION_FINAL_FILES * CACHE_RETENTION_RECORD_MAX_FILE_BYTES
+// Directory operations are serialized, so at most one atomic-replacement temp may coexist with
+// the bounded final set.
+const CACHE_CONTROL_MAX_PHYSICAL_FILES = CACHE_CONTROL_MAX_FINAL_FILES + 1
+const CACHE_CONTROL_MAX_PHYSICAL_BYTES =
+  CACHE_CONTROL_MAX_FINAL_BYTES + CACHE_RETENTION_RECORD_MAX_FILE_BYTES
+const CACHE_RETENTION_RECORD_FILE_PATTERN = /^retention-lease-[a-f0-9]{64}\.json$/
+const CACHE_RETENTION_RECORD_TEMPORARY_FILE_PATTERN =
+  /^retention-lease-[a-f0-9]{64}\.json\.[0-9]+\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/
+const CACHE_NAMESPACE_DIGEST_PATTERN = /^[a-f0-9]{64}$/
 const CACHE_CHANGE_FEED_MAX_FILES = EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES
 const CACHE_CHANGE_FEED_MAX_STORES_PER_FILE = EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE
 
@@ -152,7 +179,9 @@ export function resetExtensionRuntimeCacheWriterLeases(cacheDir: string): void {
     for (const name of readdirSync(cacheDir)) {
       if (
         !CACHE_WRITER_LEASE_FILE_PATTERN.test(name) &&
-        !CACHE_WRITER_LEASE_TEMPORARY_FILE_PATTERN.test(name)
+        !CACHE_WRITER_LEASE_TEMPORARY_FILE_PATTERN.test(name) &&
+        !CACHE_RETENTION_RECORD_FILE_PATTERN.test(name) &&
+        !CACHE_RETENTION_RECORD_TEMPORARY_FILE_PATTERN.test(name)
       ) {
         continue
       }
@@ -171,11 +200,21 @@ export function activateExtensionRuntimeCacheWriterLease(
   const lease = normalizeExtensionRuntimeCacheWriterLease(receivedLease)
   mkdirSync(cacheDir, { recursive: true })
   withCacheDirectoryLockSync(cacheDir, () => {
-    writeCacheWriterLeaseAtomicallySync(getCacheWriterLeasePath(cacheDir, lease), lease)
+    removeOrphanCacheControlTemporaryFilesSync(cacheDir)
+    const leasePath = getCacheWriterLeasePath(cacheDir, lease)
+    const serialized = serializeCacheWriterLease(lease)
+    const current = readRegularCacheArtifactSizeSync(leasePath)
+    assertCacheControlRecordReservation(
+      measureCacheControlDirectorySync(cacheDir),
+      "writer",
+      current,
+      Buffer.byteLength(serialized)
+    )
+    writeCacheWriterLeaseAtomicallySync(leasePath, serialized)
   })
 }
 
-export function revokeExtensionRuntimeCacheWriterLease(
+export function revokeExtensionRuntimeCacheWrites(
   cacheDir: string,
   receivedLease: ExtensionRuntimeCacheWriterLease
 ): void {
@@ -193,6 +232,41 @@ export function revokeExtensionRuntimeCacheWriterLease(
   })
 }
 
+export async function releaseExtensionRuntimeCacheRetention(
+  cacheDir: string,
+  receivedLease: ExtensionRuntimeCacheWriterLease
+): Promise<void> {
+  const lease = normalizeExtensionRuntimeCacheWriterLease(receivedLease)
+  if (!existsSync(cacheDir)) {
+    return
+  }
+  let directoryCompromisedError: Error | null = null
+  const releaseDirectory = await acquireCacheLock(cacheDir, DEFAULT_LOCK_OPTIONS, (error) => {
+    directoryCompromisedError = error
+  })
+  try {
+    assertLockIsOwned(directoryCompromisedError)
+    let changed = false
+    const writerLeasePath = getCacheWriterLeasePath(cacheDir, lease)
+    if (isActiveCacheWriterLease(writerLeasePath, lease)) {
+      await unlink(writerLeasePath)
+      await syncDirectory(cacheDir)
+    }
+    const retentionPath = getCacheRetentionRecordPath(cacheDir, lease)
+    const retention = await readCacheRetentionRecordAsync(retentionPath)
+    if (retention && retention.sessionId === lease.sessionId && retention.token === lease.token) {
+      await unlink(retentionPath)
+      changed = true
+    }
+    if (changed) {
+      await syncDirectory(cacheDir)
+    }
+    assertLockIsOwned(directoryCompromisedError)
+  } finally {
+    await releaseDirectory()
+  }
+}
+
 export function createFileExtensionRuntimeCacheBackend(
   cacheDir: string,
   options: RuntimeCacheFileBackendOptions = {}
@@ -203,10 +277,11 @@ export function createFileExtensionRuntimeCacheBackend(
   let failureReported = false
   let acceptingWrites = true
   let writeQueue = Promise.resolve()
-  let pendingWriteCount = 0
+  const admissionPromises = new Set<Promise<void>>()
   const subscribedFiles = new Map<string, RuntimeCacheFileSubscriptionState>()
   const pendingRefreshPaths = new Set<string>()
   let directoryWatcher: RuntimeCacheDirectoryWatcher | null = null
+  let directoryWatcherAdmission: Promise<void> | null = null
   let refreshLoop: Promise<void> | null = null
 
   const closeDirectoryWatcher = (): void => {
@@ -264,12 +339,12 @@ export function createFileExtensionRuntimeCacheBackend(
     } while (pendingWrites !== writeQueue)
   }
 
-  const refreshSubscribedFile = (cacheFilePath: string): void => {
+  const refreshSubscribedFile = async (cacheFilePath: string): Promise<void> => {
     const fileState = subscribedFiles.get(cacheFilePath)
     if (!fileState) {
       return
     }
-    const result = readCacheFileWithRecoverySync(
+    const result = await readCacheFileWithRecovery(
       cacheDir,
       cacheFilePath,
       options.lock ?? DEFAULT_LOCK_OPTIONS,
@@ -293,7 +368,7 @@ export function createFileExtensionRuntimeCacheBackend(
         const refreshPaths = Array.from(pendingRefreshPaths)
         pendingRefreshPaths.clear()
         for (const cacheFilePath of refreshPaths) {
-          refreshSubscribedFile(cacheFilePath)
+          await refreshSubscribedFile(cacheFilePath)
         }
       }
     } catch (error) {
@@ -314,29 +389,37 @@ export function createFileExtensionRuntimeCacheBackend(
     refreshLoop ??= runRefreshLoop()
   }
 
-  const ensureDirectoryWatcher = (): void => {
+  const ensureDirectoryWatcher = async (): Promise<void> => {
     if (directoryWatcher) {
       return
     }
-    mkdirSync(cacheDir, { recursive: true })
-    directoryWatcher = (options.watchDirectory ?? watchRuntimeCacheDirectory)(cacheDir, {
-      onChange: (fileName) => {
-        if (fileName === null) {
-          for (const cacheFilePath of subscribedFiles.keys()) {
-            scheduleRefresh(cacheFilePath)
-          }
-          return
-        }
-        for (const cacheFilePath of subscribedFiles.keys()) {
-          if (basename(cacheFilePath) === fileName) {
-            scheduleRefresh(cacheFilePath)
-          }
-        }
-      },
-      onError: (error) => {
-        recordFailure(error)
+    directoryWatcherAdmission ??= (async () => {
+      await mkdir(cacheDir, { recursive: true })
+      if (!acceptingWrites || failure || directoryWatcher || subscribedFiles.size === 0) {
+        return
       }
+      directoryWatcher = (options.watchDirectory ?? watchRuntimeCacheDirectory)(cacheDir, {
+        onChange: (fileName) => {
+          if (fileName === null) {
+            for (const cacheFilePath of subscribedFiles.keys()) {
+              scheduleRefresh(cacheFilePath)
+            }
+            return
+          }
+          for (const cacheFilePath of subscribedFiles.keys()) {
+            if (basename(cacheFilePath) === fileName) {
+              scheduleRefresh(cacheFilePath)
+            }
+          }
+        },
+        onError: (error) => {
+          recordFailure(error)
+        }
+      })
+    })().finally(() => {
+      directoryWatcherAdmission = null
     })
+    await directoryWatcherAdmission
   }
 
   return {
@@ -344,6 +427,9 @@ export function createFileExtensionRuntimeCacheBackend(
       acceptingWrites = false
       closeDirectoryWatcher()
       subscribedFiles.clear()
+      await Promise.allSettled(Array.from(admissionPromises))
+      await directoryWatcherAdmission?.catch(() => undefined)
+      await refreshLoop
       await drainWrites()
     },
     flush: drainWrites,
@@ -375,7 +461,6 @@ export function createFileExtensionRuntimeCacheBackend(
       const cacheFilePath = getStoreFilePath(cacheDir, scope)
       const storeKey = encodeRuntimeCacheBackendScopeKey(scope)
       const mutationSnapshot = cloneMutation(mutation)
-      pendingWriteCount++
       writeQueue = writeQueue
         .then(async () => {
           if (failure) {
@@ -394,9 +479,6 @@ export function createFileExtensionRuntimeCacheBackend(
         .catch((error: unknown) => {
           throw recordFailure(error)
         })
-        .finally(() => {
-          pendingWriteCount--
-        })
       void writeQueue.catch(() => undefined)
     },
     onFailure(listener) {
@@ -409,7 +491,7 @@ export function createFileExtensionRuntimeCacheBackend(
         failureListeners.delete(listener)
       }
     },
-    subscribeStore(scope, listener) {
+    subscribeStore(scope, listener): RuntimeCacheBackendSubscription {
       if (!acceptingWrites) {
         throw failure ?? recordCloseViolation()
       }
@@ -446,24 +528,7 @@ export function createFileExtensionRuntimeCacheBackend(
       }
       storeState.listeners.add(registration)
 
-      try {
-        ensureDirectoryWatcher()
-        if (pendingWriteCount === 0) {
-          refreshSubscribedFile(cacheFilePath)
-        } else {
-          scheduleRefresh(cacheFilePath)
-        }
-      } catch (error) {
-        registration.active = false
-        storeState.listeners.delete(registration)
-        removeEmptyStoreSubscription(subscribedFiles, cacheFilePath, storeKey)
-        if (subscribedFiles.size === 0) {
-          closeDirectoryWatcher()
-        }
-        throw toCachePersistenceError(error)
-      }
-
-      return () => {
+      const unsubscribe = (): void => {
         const currentFileState = subscribedFiles.get(cacheFilePath)
         const currentStoreState = currentFileState?.stores.get(storeKey)
         registration.active = false
@@ -473,6 +538,40 @@ export function createFileExtensionRuntimeCacheBackend(
           closeDirectoryWatcher()
         }
       }
+      const ready = Promise.resolve()
+        .then(async () => {
+          if (!registration.active || !acceptingWrites || failure) {
+            return
+          }
+          await admitCacheRetention(
+            cacheDir,
+            scope,
+            options.lock ?? DEFAULT_LOCK_OPTIONS,
+            options.writerLease
+          )
+          if (!registration.active || !acceptingWrites || failure) {
+            return
+          }
+          await ensureDirectoryWatcher()
+          if (!registration.active || !acceptingWrites || failure) {
+            return
+          }
+          await waitForStableWrites()
+          if (!registration.active || !acceptingWrites || failure) {
+            return
+          }
+          await refreshSubscribedFile(cacheFilePath)
+        })
+        .catch((error: unknown) => {
+          unsubscribe()
+          throw recordFailure(error)
+        })
+        .finally(() => {
+          admissionPromises.delete(ready)
+        })
+      admissionPromises.add(ready)
+      void ready.catch(() => undefined)
+      return { ready, unsubscribe }
     }
   }
 }
@@ -672,6 +771,131 @@ async function updateCacheFile(
 
   if (recoveredCorruption) {
     reportRecovery()
+  }
+}
+
+async function admitCacheRetention(
+  cacheDir: string,
+  scope: RuntimeCacheBackendScope,
+  lockOptions: NonNullable<RuntimeCacheFileBackendOptions["lock"]>,
+  writerLease: ExtensionRuntimeCacheWriterLease | undefined
+): Promise<void> {
+  if (!writerLease) {
+    return
+  }
+  await mkdir(cacheDir, { recursive: true })
+  let directoryCompromisedError: Error | null = null
+  const releaseDirectory = await acquireCacheLock(cacheDir, lockOptions, (error) => {
+    directoryCompromisedError = error
+  })
+  try {
+    assertLockIsOwned(directoryCompromisedError)
+    assertActiveCacheWriterLease(cacheDir, writerLease)
+    await removeOrphanCacheControlTemporaryFiles(cacheDir)
+    const retentionPath = getCacheRetentionRecordPath(cacheDir, writerLease)
+    const current = await readCacheRetentionRecordAsync(retentionPath)
+    if (
+      current &&
+      (current.sessionId !== writerLease.sessionId || current.token !== writerLease.token)
+    ) {
+      throw new ExtensionRuntimeCacheWriterLeaseError()
+    }
+    const namespaceDigest = getCacheNamespaceDigest(scope)
+    const namespaceDigests = Array.from(
+      new Set([...(current?.namespaceDigests ?? []), namespaceDigest])
+    ).sort(compareStoreKeys)
+    if (namespaceDigests.length > CACHE_RETENTION_RECORD_MAX_NAMESPACES) {
+      throw new RangeError("Extension runtime cache retention namespace limit exceeded.")
+    }
+    if (current?.namespaceDigests.includes(namespaceDigest)) {
+      return
+    }
+    await convergeCacheDirectoryQuota(
+      cacheDir,
+      createRetainedCacheArtifactPaths(cacheDir, namespaceDigests)
+    )
+    assertLockIsOwned(directoryCompromisedError)
+    const next: RuntimeCacheRetentionRecord = {
+      namespaceDigests,
+      sessionId: writerLease.sessionId,
+      token: writerLease.token,
+      version: CACHE_RETENTION_RECORD_VERSION
+    }
+    const serialized = serializeCacheRetentionRecord(next)
+    const retentionBudget = await measureCacheControlDirectory(cacheDir)
+    const currentSize = current ? (await assertRegularCacheArtifact(retentionPath)).size : 0
+    const serializedBytes = Buffer.byteLength(serialized)
+    assertCacheControlRecordReservation(
+      retentionBudget,
+      "retention",
+      { bytes: currentSize, exists: current !== null },
+      serializedBytes
+    )
+    await writeCacheFileAtomically(retentionPath, serialized)
+    assertLockIsOwned(directoryCompromisedError)
+  } finally {
+    await releaseDirectory()
+  }
+}
+
+async function readCacheFileWithRecovery(
+  cacheDir: string,
+  cacheFilePath: string,
+  lockOptions: NonNullable<RuntimeCacheFileBackendOptions["lock"]>,
+  writerLease: ExtensionRuntimeCacheWriterLease | undefined
+): Promise<{
+  cacheFile: RuntimeCacheFileShape
+  corruption: ExtensionRuntimeCacheCorruptionError | null
+}> {
+  await mkdir(cacheDir, { recursive: true })
+  let directoryCompromisedError: Error | null = null
+  let fileCompromisedError: Error | null = null
+  const releaseDirectory = await acquireCacheLock(cacheDir, lockOptions, (error) => {
+    directoryCompromisedError = error
+  })
+  let releaseFile: (() => Promise<void>) | null = null
+  try {
+    assertLockIsOwned(directoryCompromisedError)
+    releaseFile = await acquireCacheLock(cacheFilePath, lockOptions, (error) => {
+      fileCompromisedError = error
+    })
+    assertLockIsOwned(directoryCompromisedError)
+    assertLockIsOwned(fileCompromisedError)
+    const result = await readCacheFileForUpdate(cacheFilePath)
+    if (!result.corruption) {
+      return result
+    }
+
+    assertActiveCacheWriterLease(cacheDir, writerLease)
+    const protectedPaths = new Set([cacheFilePath, `${cacheFilePath}.corrupt`])
+    await convergeCacheDirectoryQuota(cacheDir, protectedPaths)
+    const recoveredFile = retainCacheFile(result.corruption.recoveredFile, null)
+    await reserveCacheArtifactReplacement(
+      cacheDir,
+      cacheFilePath,
+      `${cacheFilePath}.corrupt`,
+      EXTENSION_RUNTIME_CACHE_MAX_CORRUPT_FILE_BYTES,
+      protectedPaths
+    )
+    assertLockIsOwned(directoryCompromisedError)
+    assertLockIsOwned(fileCompromisedError)
+    await quarantineCacheFile(cacheFilePath, EXTENSION_RUNTIME_CACHE_MAX_CORRUPT_FILE_BYTES)
+    const serializedCacheFile = serializeCacheFile(recoveredFile)
+    await convergeCacheDirectoryQuota(cacheDir, protectedPaths, {
+      bytes: Buffer.byteLength(serializedCacheFile),
+      files: 1
+    })
+    await writeCacheFileAtomically(cacheFilePath, serializedCacheFile)
+    await convergeCacheDirectoryQuota(cacheDir, protectedPaths)
+    assertLockIsOwned(directoryCompromisedError)
+    assertLockIsOwned(fileCompromisedError)
+    return { cacheFile: recoveredFile, corruption: result.corruption }
+  } finally {
+    try {
+      await releaseFile?.()
+    } finally {
+      await releaseDirectory()
+    }
   }
 }
 
@@ -916,20 +1140,321 @@ function getCacheWriterLeasePath(
   return join(cacheDir, `writer-lease-${digest}.json`)
 }
 
-function writeCacheWriterLeaseAtomicallySync(
-  leasePath: string,
+function getCacheRetentionRecordPath(
+  cacheDir: string,
   lease: ExtensionRuntimeCacheWriterLease
-): void {
-  const cacheDir = dirname(leasePath)
-  const temporaryPath = `${leasePath}.${process.pid}.${randomUUID()}.tmp`
-  const serialized = `${JSON.stringify({
+): string {
+  const address = JSON.stringify([lease.sessionId, lease.token])
+  const digest = createHash("sha256").update(address).digest("hex")
+  return join(cacheDir, `retention-lease-${digest}.json`)
+}
+
+function readCacheRetentionRecord(path: string): RuntimeCacheRetentionRecord | null {
+  try {
+    const status = assertRegularCacheArtifactSync(path)
+    if (status.size > CACHE_RETENTION_RECORD_MAX_FILE_BYTES) {
+      throw new RangeError("Extension runtime cache retention record is too large.")
+    }
+    return parseCacheRetentionRecord(readFileSync(path, "utf8"))
+  } catch (error) {
+    if (isNodeErrorWithCode(error, "ENOENT")) {
+      return null
+    }
+    throw error
+  }
+}
+
+async function readCacheRetentionRecordAsync(
+  path: string
+): Promise<RuntimeCacheRetentionRecord | null> {
+  try {
+    const status = await assertRegularCacheArtifact(path)
+    if (status.size > CACHE_RETENTION_RECORD_MAX_FILE_BYTES) {
+      throw new RangeError("Extension runtime cache retention record is too large.")
+    }
+    return parseCacheRetentionRecord(await readFile(path, "utf8"))
+  } catch (error) {
+    if (isNodeErrorWithCode(error, "ENOENT")) {
+      return null
+    }
+    throw error
+  }
+}
+
+function parseCacheRetentionRecord(raw: string): RuntimeCacheRetentionRecord {
+  const parsed = JSON.parse(raw) as unknown
+  if (
+    !isRecord(parsed) ||
+    Object.keys(parsed).length !== 4 ||
+    parsed.version !== CACHE_RETENTION_RECORD_VERSION ||
+    !Array.isArray(parsed.namespaceDigests) ||
+    parsed.namespaceDigests.length > CACHE_RETENTION_RECORD_MAX_NAMESPACES ||
+    !parsed.namespaceDigests.every(
+      (digest): digest is string =>
+        typeof digest === "string" && CACHE_NAMESPACE_DIGEST_PATTERN.test(digest)
+    )
+  ) {
+    throw new TypeError("Extension runtime cache retention record is invalid.")
+  }
+  const lease = normalizeExtensionRuntimeCacheWriterLease({
+    sessionId: parsed.sessionId,
+    token: parsed.token
+  })
+  const namespaceDigests = [...parsed.namespaceDigests]
+  if (
+    new Set(namespaceDigests).size !== namespaceDigests.length ||
+    namespaceDigests.some(
+      (digest, index) => index > 0 && compareStoreKeys(namespaceDigests[index - 1]!, digest) >= 0
+    )
+  ) {
+    throw new TypeError("Extension runtime cache retention record is not canonical.")
+  }
+  return {
+    namespaceDigests,
     sessionId: lease.sessionId,
     token: lease.token,
-    version: CACHE_WRITER_LEASE_FILE_VERSION
-  })}\n`
-  if (Buffer.byteLength(serialized) > CACHE_WRITER_LEASE_MAX_FILE_BYTES) {
-    throw new ExtensionRuntimeCacheWriterLeaseError()
+    version: CACHE_RETENTION_RECORD_VERSION
   }
+}
+
+function serializeCacheRetentionRecord(record: RuntimeCacheRetentionRecord): string {
+  const serialized = `${JSON.stringify(record)}\n`
+  if (Buffer.byteLength(serialized) > CACHE_RETENTION_RECORD_MAX_FILE_BYTES) {
+    throw new RangeError("Extension runtime cache retention record is too large.")
+  }
+  return serialized
+}
+
+async function readRetainedCacheArtifactPaths(cacheDir: string): Promise<Set<string>> {
+  await measureCacheControlDirectory(cacheDir)
+  const paths = new Set<string>()
+  for (const name of await readdir(cacheDir)) {
+    if (!CACHE_RETENTION_RECORD_FILE_PATTERN.test(name)) {
+      continue
+    }
+    const record = await readCacheRetentionRecordAsync(join(cacheDir, name))
+    if (record) {
+      assertCacheRetentionRecordAddress(cacheDir, name, record)
+      for (const path of createRetainedCacheArtifactPaths(cacheDir, record.namespaceDigests)) {
+        paths.add(path)
+      }
+    }
+  }
+  return paths
+}
+
+function readRetainedCacheArtifactPathsSync(cacheDir: string): Set<string> {
+  measureCacheControlDirectorySync(cacheDir)
+  const paths = new Set<string>()
+  for (const name of readdirSync(cacheDir)) {
+    if (!CACHE_RETENTION_RECORD_FILE_PATTERN.test(name)) {
+      continue
+    }
+    const record = readCacheRetentionRecord(join(cacheDir, name))
+    if (record) {
+      assertCacheRetentionRecordAddress(cacheDir, name, record)
+      for (const path of createRetainedCacheArtifactPaths(cacheDir, record.namespaceDigests)) {
+        paths.add(path)
+      }
+    }
+  }
+  return paths
+}
+
+interface RuntimeCacheControlDirectoryBudget {
+  bytes: number
+  files: number
+  retentionFinalBytes: number
+  retentionFinalFiles: number
+  writerFinalBytes: number
+  writerFinalFiles: number
+}
+
+async function measureCacheControlDirectory(
+  cacheDir: string
+): Promise<RuntimeCacheControlDirectoryBudget> {
+  const budget = createEmptyCacheControlDirectoryBudget()
+  for (const name of await readdir(cacheDir)) {
+    const artifact = classifyCacheControlArtifact(name)
+    if (!artifact) {
+      continue
+    }
+    const status = await assertRegularCacheArtifact(join(cacheDir, name))
+    measureCacheControlArtifact(budget, artifact, status.size)
+  }
+  return budget
+}
+
+function measureCacheControlDirectorySync(cacheDir: string): RuntimeCacheControlDirectoryBudget {
+  const budget = createEmptyCacheControlDirectoryBudget()
+  for (const name of readdirSync(cacheDir)) {
+    const artifact = classifyCacheControlArtifact(name)
+    if (!artifact) {
+      continue
+    }
+    const status = assertRegularCacheArtifactSync(join(cacheDir, name))
+    measureCacheControlArtifact(budget, artifact, status.size)
+  }
+  return budget
+}
+
+function createEmptyCacheControlDirectoryBudget(): RuntimeCacheControlDirectoryBudget {
+  return {
+    bytes: 0,
+    files: 0,
+    retentionFinalBytes: 0,
+    retentionFinalFiles: 0,
+    writerFinalBytes: 0,
+    writerFinalFiles: 0
+  }
+}
+
+function classifyCacheControlArtifact(
+  name: string
+): { final: boolean; kind: "retention" | "writer" } | null {
+  if (CACHE_RETENTION_RECORD_FILE_PATTERN.test(name)) {
+    return { final: true, kind: "retention" }
+  }
+  if (CACHE_RETENTION_RECORD_TEMPORARY_FILE_PATTERN.test(name)) {
+    return { final: false, kind: "retention" }
+  }
+  if (CACHE_WRITER_LEASE_FILE_PATTERN.test(name)) {
+    return { final: true, kind: "writer" }
+  }
+  if (CACHE_WRITER_LEASE_TEMPORARY_FILE_PATTERN.test(name)) {
+    return { final: false, kind: "writer" }
+  }
+  return null
+}
+
+function measureCacheControlArtifact(
+  budget: RuntimeCacheControlDirectoryBudget,
+  artifact: { final: boolean; kind: "retention" | "writer" },
+  bytes: number
+): void {
+  const maxBytes =
+    artifact.kind === "retention"
+      ? CACHE_RETENTION_RECORD_MAX_FILE_BYTES
+      : CACHE_WRITER_LEASE_MAX_FILE_BYTES
+  if (bytes > maxBytes) {
+    throw new RangeError("Extension runtime cache control record is too large.")
+  }
+  budget.bytes += bytes
+  budget.files++
+  if (artifact.final && artifact.kind === "retention") {
+    budget.retentionFinalBytes += bytes
+    budget.retentionFinalFiles++
+  } else if (artifact.final) {
+    budget.writerFinalBytes += bytes
+    budget.writerFinalFiles++
+  }
+  assertCacheControlDirectoryBudget(budget)
+}
+
+function assertCacheControlRecordReservation(
+  budget: RuntimeCacheControlDirectoryBudget,
+  kind: "retention" | "writer",
+  current: { bytes: number; exists: boolean },
+  nextBytes: number
+): void {
+  const nextBudget = { ...budget }
+  nextBudget.files++
+  nextBudget.bytes += nextBytes
+  if (kind === "retention") {
+    nextBudget.retentionFinalFiles += current.exists ? 0 : 1
+    nextBudget.retentionFinalBytes += nextBytes - current.bytes
+  } else {
+    nextBudget.writerFinalFiles += current.exists ? 0 : 1
+    nextBudget.writerFinalBytes += nextBytes - current.bytes
+  }
+  assertCacheControlDirectoryBudget(nextBudget)
+}
+
+function assertCacheControlDirectoryBudget(budget: RuntimeCacheControlDirectoryBudget): void {
+  const finalFiles = budget.retentionFinalFiles + budget.writerFinalFiles
+  const finalBytes = budget.retentionFinalBytes + budget.writerFinalBytes
+  if (
+    !Number.isSafeInteger(budget.files) ||
+    !Number.isSafeInteger(budget.bytes) ||
+    !Number.isSafeInteger(budget.retentionFinalFiles) ||
+    !Number.isSafeInteger(budget.retentionFinalBytes) ||
+    !Number.isSafeInteger(budget.writerFinalFiles) ||
+    !Number.isSafeInteger(budget.writerFinalBytes) ||
+    !Number.isSafeInteger(finalFiles) ||
+    !Number.isSafeInteger(finalBytes) ||
+    budget.retentionFinalFiles > CACHE_CONTROL_MAX_RETENTION_FINAL_FILES ||
+    budget.writerFinalFiles > CACHE_CONTROL_MAX_WRITER_FINAL_FILES ||
+    finalFiles > CACHE_CONTROL_MAX_FINAL_FILES ||
+    finalBytes > CACHE_CONTROL_MAX_FINAL_BYTES ||
+    budget.bytes > CACHE_CONTROL_MAX_PHYSICAL_BYTES ||
+    budget.files > CACHE_CONTROL_MAX_PHYSICAL_FILES ||
+    budget.retentionFinalFiles < 0 ||
+    budget.retentionFinalBytes < 0 ||
+    budget.writerFinalFiles < 0 ||
+    budget.writerFinalBytes < 0 ||
+    finalFiles < 0 ||
+    finalBytes < 0
+  ) {
+    throw new RangeError("Extension runtime cache control records exceeded their budget.")
+  }
+}
+
+async function removeOrphanCacheControlTemporaryFiles(cacheDir: string): Promise<void> {
+  let changed = false
+  for (const name of await readdir(cacheDir)) {
+    if (
+      CACHE_RETENTION_RECORD_TEMPORARY_FILE_PATTERN.test(name) ||
+      CACHE_WRITER_LEASE_TEMPORARY_FILE_PATTERN.test(name)
+    ) {
+      changed = (await removeRecognizedRegularFile(join(cacheDir, name))) || changed
+    }
+  }
+  if (changed) {
+    await syncDirectory(cacheDir)
+  }
+}
+
+function removeOrphanCacheControlTemporaryFilesSync(cacheDir: string): void {
+  let changed = false
+  for (const name of readdirSync(cacheDir)) {
+    if (
+      CACHE_RETENTION_RECORD_TEMPORARY_FILE_PATTERN.test(name) ||
+      CACHE_WRITER_LEASE_TEMPORARY_FILE_PATTERN.test(name)
+    ) {
+      changed = removeRecognizedRegularFileSync(join(cacheDir, name)) || changed
+    }
+  }
+  if (changed) {
+    syncDirectorySync(cacheDir)
+  }
+}
+
+function assertCacheRetentionRecordAddress(
+  cacheDir: string,
+  name: string,
+  record: RuntimeCacheRetentionRecord
+): void {
+  if (getCacheRetentionRecordPath(cacheDir, record) !== join(cacheDir, name)) {
+    throw new TypeError("Extension runtime cache retention record address is invalid.")
+  }
+}
+
+function createRetainedCacheArtifactPaths(
+  cacheDir: string,
+  namespaceDigests: readonly string[]
+): Set<string> {
+  const paths = new Set<string>()
+  for (const digest of namespaceDigests) {
+    const activePath = join(cacheDir, `store-${digest}.json`)
+    paths.add(activePath)
+    paths.add(`${activePath}.corrupt`)
+  }
+  return paths
+}
+
+function writeCacheWriterLeaseAtomicallySync(leasePath: string, serialized: string): void {
+  const cacheDir = dirname(leasePath)
+  const temporaryPath = `${leasePath}.${process.pid}.${randomUUID()}.tmp`
   let temporaryFile: number | null = null
   try {
     assertRegularCacheArtifactOrMissingSync(leasePath)
@@ -953,6 +1478,29 @@ function writeCacheWriterLeaseAtomicallySync(
     } catch {
       // Best-effort cleanup cannot replace the original coordination result.
     }
+  }
+}
+
+function serializeCacheWriterLease(lease: ExtensionRuntimeCacheWriterLease): string {
+  const serialized = `${JSON.stringify({
+    sessionId: lease.sessionId,
+    token: lease.token,
+    version: CACHE_WRITER_LEASE_FILE_VERSION
+  })}\n`
+  if (Buffer.byteLength(serialized) > CACHE_WRITER_LEASE_MAX_FILE_BYTES) {
+    throw new ExtensionRuntimeCacheWriterLeaseError()
+  }
+  return serialized
+}
+
+function readRegularCacheArtifactSizeSync(path: string): { bytes: number; exists: boolean } {
+  try {
+    return { bytes: assertRegularCacheArtifactSync(path).size, exists: true }
+  } catch (error) {
+    if (isNodeErrorWithCode(error, "ENOENT")) {
+      return { bytes: 0, exists: false }
+    }
+    throw error
   }
 }
 
@@ -1006,17 +1554,22 @@ async function convergeCacheDirectoryQuota(
   reservation: RuntimeCacheDirectoryReservation = { bytes: 0, files: 0 }
 ): Promise<void> {
   assertCacheDirectoryReservation(reservation)
+  await removeOrphanCacheControlTemporaryFiles(cacheDir)
+  const effectiveProtectedPaths = new Set([
+    ...protectedPaths,
+    ...(await readRetainedCacheArtifactPaths(cacheDir))
+  ])
   let artifacts = await scanCacheDirectoryArtifacts(cacheDir)
   let changed = false
   for (const artifact of artifacts) {
-    if (artifact.kind === "temporary" && !protectedPaths.has(artifact.path)) {
+    if (artifact.kind === "temporary" && !effectiveProtectedPaths.has(artifact.path)) {
       changed = (await removeRecognizedRegularFile(artifact.path)) || changed
     }
   }
   artifacts = await scanCacheDirectoryArtifacts(cacheDir)
-  assertProtectedCacheBudget(artifacts, protectedPaths, reservation)
+  assertProtectedCacheBudget(artifacts, effectiveProtectedPaths, reservation)
 
-  const candidates = createCacheArtifactEvictionCandidates(artifacts, protectedPaths)
+  const candidates = createCacheArtifactEvictionCandidates(artifacts, effectiveProtectedPaths)
   let totals = measureCacheDirectoryArtifacts(artifacts)
   while (exceedsCacheDirectoryQuota(totals, reservation)) {
     const candidate = candidates.shift()
@@ -1039,17 +1592,22 @@ function convergeCacheDirectoryQuotaSync(
   reservation: RuntimeCacheDirectoryReservation = { bytes: 0, files: 0 }
 ): void {
   assertCacheDirectoryReservation(reservation)
+  removeOrphanCacheControlTemporaryFilesSync(cacheDir)
+  const effectiveProtectedPaths = new Set([
+    ...protectedPaths,
+    ...readRetainedCacheArtifactPathsSync(cacheDir)
+  ])
   let artifacts = scanCacheDirectoryArtifactsSync(cacheDir)
   let changed = false
   for (const artifact of artifacts) {
-    if (artifact.kind === "temporary" && !protectedPaths.has(artifact.path)) {
+    if (artifact.kind === "temporary" && !effectiveProtectedPaths.has(artifact.path)) {
       changed = removeRecognizedRegularFileSync(artifact.path) || changed
     }
   }
   artifacts = scanCacheDirectoryArtifactsSync(cacheDir)
-  assertProtectedCacheBudget(artifacts, protectedPaths, reservation)
+  assertProtectedCacheBudget(artifacts, effectiveProtectedPaths, reservation)
 
-  const candidates = createCacheArtifactEvictionCandidates(artifacts, protectedPaths)
+  const candidates = createCacheArtifactEvictionCandidates(artifacts, effectiveProtectedPaths)
   let totals = measureCacheDirectoryArtifacts(artifacts)
   while (exceedsCacheDirectoryQuota(totals, reservation)) {
     const candidate = candidates.shift()
@@ -1795,7 +2353,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function getStoreFilePath(cacheDir: string, scope: RuntimeCacheBackendScope): string {
+  return join(cacheDir, `store-${getCacheNamespaceDigest(scope)}.json`)
+}
+
+function getCacheNamespaceDigest(scope: RuntimeCacheBackendScope): string {
   const address = JSON.stringify([scope.extensionName, scope.namespace])
-  const digest = createHash("sha256").update(address).digest("hex")
-  return join(cacheDir, `store-${digest}.json`)
+  return createHash("sha256").update(address).digest("hex")
 }

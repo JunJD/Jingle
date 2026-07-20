@@ -38,6 +38,7 @@ export type {
   RuntimeCacheBackendMutation,
   RuntimeCacheBackendSnapshot,
   RuntimeCacheBackendSnapshotListener,
+  RuntimeCacheBackendSubscription,
   RuntimeCacheBackendScope,
   RuntimeCacheEntry
 } from "./extension-runtime/sdk/storage"

@@ -115,7 +115,7 @@ test("promise cache binding consumes the complete SDK scope without render-path 
   const context = createSdkContext("scope-owner")
 
   try {
-    await runWithExtensionRuntimeSdk(context, () => {
+    await runWithExtensionRuntimeSdk(context, async () => {
       const identity = createPromiseCacheIdentity(loadScopedValue, ["page-1"])
       const binding = createPromiseCacheBinding(identity)
 
@@ -124,6 +124,7 @@ test("promise cache binding consumes the complete SDK scope without render-path 
       assert.deepEqual(memoryBackend.loadedScopes, [])
 
       const unsubscribe = binding.subscribe(() => undefined)
+      await flushPromises()
       assert.deepEqual(memoryBackend.loadedScopes, [
         {
           commandName: "scope-owner",
@@ -189,6 +190,7 @@ test("useCachedPromise reads the durable snapshot only after render commits", as
     }
 
     renderer.render(withRuntimeProvider(context, createElement(Surface)))
+    await flushPromises()
     await renderer.flushSnapshots()
 
     assert.equal(loadCount, 1)
@@ -266,7 +268,7 @@ test("promise cache reports typed encoding and corrupt-entry recovery failures",
   })
   const uninstallCorruptBackend = installExtensionRuntimeCacheBackend(corruptBackend.backend)
   try {
-    await runWithExtensionRuntimeSdk(createSdkContext("corrupt-read"), () => {
+    await runWithExtensionRuntimeSdk(createSdkContext("corrupt-read"), async () => {
       const failures: PromiseCacheFailure[] = []
       const binding = createPromiseCacheBinding(corruptIdentity, {
         onFailure: (failure) => failures.push(failure)
@@ -275,6 +277,7 @@ test("promise cache reports typed encoding and corrupt-entry recovery failures",
       assert.equal(corruptBackend.mutationCount, 0)
 
       const unsubscribe = binding.subscribe(() => undefined)
+      await flushPromises()
       assert.deepEqual(binding.getSnapshot(), { kind: "miss" })
       assert.equal(corruptBackend.mutationCount, 1)
       assert.deepEqual(
@@ -342,6 +345,7 @@ test("useCachedPromise renders stale data immediately and commits background rev
       })
     }
     renderer.render(withRuntimeProvider(context, createElement(Surface)))
+    await flushPromises()
     await renderer.flushSnapshots()
     assert.equal(getDetailMarkdown(renderer), "stale:loading")
 
@@ -602,7 +606,20 @@ function createMemoryBackend(
       )
     },
     onFailure: () => () => undefined,
-    subscribeStore: () => () => undefined
+    subscribeStore(scope, listener) {
+      let active = true
+      const ready = Promise.resolve().then(() => {
+        if (active) {
+          listener({ entries: backend.loadStore(scope), revision: 0 })
+        }
+      })
+      return {
+        ready,
+        unsubscribe: () => {
+          active = false
+        }
+      }
+    }
   }
   return {
     backend,

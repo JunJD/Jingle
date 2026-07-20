@@ -8,7 +8,10 @@ import {
   ExtensionRuntimeManager,
   type ExtensionRuntimeHostCapabilities
 } from "../../src/main/services/extension-runtime/runtime-manager"
-import type { ExtensionRuntimeCacheLeaseCoordinator } from "../../src/main/services/extension-runtime/cache-lease-coordinator"
+import {
+  ExtensionRuntimeCacheLeaseCoordinatorError,
+  type ExtensionRuntimeCacheLeaseCoordinator
+} from "../../src/main/services/extension-runtime/cache-lease-coordinator"
 import { ExtensionRuntimeMenuBarService } from "../../src/main/services/extension-runtime/menu-bar-service"
 import type { NativeMenuBarService } from "../../src/main/native-menu-bar/service"
 import type { NativeMenuBarState } from "../../src/shared/native-menu-bar"
@@ -149,7 +152,10 @@ class FakeCacheLeaseCoordinator implements ExtensionRuntimeCacheLeaseCoordinator
   activateCalls: ExtensionRuntimeCacheWriterLease[] = []
   disposed = false
   events: string[] = []
+  failReleaseRetention = false
   failRevoke = false
+  releaseRetentionGate: Promise<void> | null = null
+  releaseRetentionCalls: ExtensionRuntimeCacheWriterLease[] = []
   revokeCalls: ExtensionRuntimeCacheWriterLease[] = []
   private readonly activeTokens = new Set<string>()
   private tokenIndex = 0
@@ -165,11 +171,21 @@ class FakeCacheLeaseCoordinator implements ExtensionRuntimeCacheLeaseCoordinator
     return lease
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
     this.disposed = true
   }
 
-  revoke(lease: ExtensionRuntimeCacheWriterLease): void {
+  async releaseRetention(lease: ExtensionRuntimeCacheWriterLease): Promise<void> {
+    this.events.push(`release-retention:${lease.sessionId}`)
+    this.releaseRetentionCalls.push(lease)
+    await this.releaseRetentionGate
+    if (this.failReleaseRetention) {
+      throw new Error("cache retention state unavailable")
+    }
+    this.activeTokens.delete(lease.token)
+  }
+
+  revokeWrites(lease: ExtensionRuntimeCacheWriterLease): void {
     this.events.push(`revoke:${lease.sessionId}`)
     if (this.failRevoke) {
       throw new Error("cache lease state unavailable")
@@ -1335,6 +1351,15 @@ test("runtime manager starts and stops a foreground utility session", async () =
   })
   assert.equal(launcher.processes[0]?.killed, true)
   assert.equal(manager.getForegroundSession(), null)
+  assert.equal(cacheLeaseCoordinator.releaseRetentionCalls.length, 0)
+
+  launcher.processes[0]?.emitExit(0)
+  await flushPromises()
+
+  assert.equal(
+    cacheLeaseCoordinator.releaseRetentionCalls[0],
+    cacheLeaseCoordinator.activateCalls[0]
+  )
 })
 
 test("runtime manager retains a stopping session until the utility confirms its cache flush", async () => {
@@ -1563,7 +1588,7 @@ test("runtime manager reports utility exit before graceful stop acknowledgement"
   assert.equal(manager.getLastError()?.error.code, "runtime_stop_ack_missing")
 })
 
-test("runtime manager dispose waits for cache flush acknowledgement before releasing sessions", async () => {
+test("runtime manager dispose waits for cache flush and physical process exit", async () => {
   const stoppedSessions: string[] = []
   const { cacheLeaseCoordinator, launcher, manager } = createManager({
     autoAcknowledgeStops: false
@@ -1588,6 +1613,14 @@ test("runtime manager dispose waits for cache flush acknowledgement before relea
     sessionId: "session-1",
     type: "stopped"
   })
+  await flushPromises()
+
+  assert.equal(disposed, false)
+  assert.equal(process.killed, true)
+  assert.deepEqual(stoppedSessions, ["session-1"])
+  assert.equal(cacheLeaseCoordinator.disposed, false)
+
+  process.emitExit(0)
   await disposePromise
 
   assert.equal(disposed, true)
@@ -1742,7 +1775,67 @@ test("runtime manager revokes a new cache writer lease when process launch fails
   assert.equal(launcher.processes.length, 0)
   assert.equal(cacheLeaseCoordinator.activateCalls.length, 1)
   assert.equal(cacheLeaseCoordinator.revokeCalls[0], cacheLeaseCoordinator.activateCalls[0])
-  assert.deepEqual(cacheLeaseCoordinator.events, ["activate:session-1", "revoke:session-1"])
+  assert.deepEqual(cacheLeaseCoordinator.events, [
+    "activate:session-1",
+    "revoke:session-1",
+    "release-retention:session-1"
+  ])
+})
+
+test("runtime manager waits for terminal cache cleanup when launch revoke loses its lock", async () => {
+  const launcher = new FakeRuntimeProcessLauncher()
+  launcher.throwOnLaunch = true
+  const { cacheLeaseCoordinator, manager } = createManager({ launcher })
+  cacheLeaseCoordinator.failRevoke = true
+  const releaseGate = createDeferred<void>()
+  cacheLeaseCoordinator.releaseRetentionGate = releaseGate.promise
+
+  let settled = false
+  const start = manager.startForeground(createLaunchIntent()).finally(() => {
+    settled = true
+  })
+  await flushPromises()
+
+  assert.equal(settled, false)
+  assert.equal(cacheLeaseCoordinator.revokeCalls.length, 0)
+  assert.equal(
+    cacheLeaseCoordinator.releaseRetentionCalls[0],
+    cacheLeaseCoordinator.activateCalls[0]
+  )
+
+  releaseGate.resolve()
+  await assert.rejects(start, (error) => {
+    assert.ok(error instanceof Error)
+    assert.equal(error.message, "runtime launch unavailable")
+    return true
+  })
+  assert.equal(settled, true)
+})
+
+test("runtime manager reports one bounded error when both launch cleanup paths fail", async () => {
+  const launcher = new FakeRuntimeProcessLauncher()
+  launcher.throwOnLaunch = true
+  const { cacheLeaseCoordinator, manager } = createManager({ launcher })
+  cacheLeaseCoordinator.failRevoke = true
+  cacheLeaseCoordinator.failReleaseRetention = true
+
+  await assert.rejects(manager.startForeground(createLaunchIntent()), (error) => {
+    assert.ok(error instanceof ExtensionRuntimeCacheLeaseCoordinatorError)
+    assert.equal(error.code, "runtime_cache_writer_lease_failed")
+    assert.equal(error.message, "Extension runtime cache writer lease coordination failed.")
+    assert.ok(error.cause instanceof AggregateError)
+    assert.deepEqual(
+      error.cause.errors.map((cause) => (cause instanceof Error ? cause.message : cause)),
+      [
+        "runtime launch unavailable",
+        "cache lease state unavailable",
+        "cache retention state unavailable"
+      ]
+    )
+    return true
+  })
+
+  assert.equal(cacheLeaseCoordinator.releaseRetentionCalls.length, 1)
 })
 
 test("runtime manager drops messages from a stopped foreground session", async () => {

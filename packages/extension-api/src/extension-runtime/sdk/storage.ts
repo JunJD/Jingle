@@ -32,6 +32,10 @@ export interface RuntimeCacheBackendSnapshot {
   revision: number
 }
 export type RuntimeCacheBackendSnapshotListener = (snapshot: RuntimeCacheBackendSnapshot) => void
+export interface RuntimeCacheBackendSubscription {
+  ready: Promise<void>
+  unsubscribe: RuntimeCacheSubscription
+}
 export type RuntimeCacheBackendMutation =
   | { kind: "clear" }
   | {
@@ -49,7 +53,7 @@ export interface RuntimeCacheBackend {
   subscribeStore: (
     scope: RuntimeCacheBackendScope,
     listener: RuntimeCacheBackendSnapshotListener
-  ) => RuntimeCacheSubscription
+  ) => RuntimeCacheBackendSubscription
 }
 
 export function encodeRuntimeCacheBackendScopeKey(scope: RuntimeCacheBackendScope): string {
@@ -78,7 +82,7 @@ interface RuntimeCacheStore {
   backendRevision: number
   backendSubscriptionGeneration: number
   backendSubscriptionPending: boolean
-  backendSubscription?: RuntimeCacheSubscription
+  backendSubscription?: RuntimeCacheBackendSubscription
   backendVersion: number
   entries: Map<string, string>
   key: string
@@ -177,7 +181,7 @@ export class Cache {
   }
 
   subscribe(subscriber: RuntimeCacheSubscriber): RuntimeCacheSubscription {
-    const store = this.#getStore()
+    const store = this.#getStore(false)
     const registration: RuntimeCacheSubscriberRegistration = { active: true, subscriber }
     store.subscribers.add(registration)
     try {
@@ -192,8 +196,8 @@ export class Cache {
     }
   }
 
-  #getStore(): RuntimeCacheStore {
-    return getCacheStore(this.#namespace)
+  #getStore(loadBackend = true): RuntimeCacheStore {
+    return getCacheStore(this.#namespace, loadBackend)
   }
 }
 
@@ -316,7 +320,7 @@ function migrateActiveCacheStores(backend: RuntimeCacheBackend | undefined): voi
   }
 }
 
-function getCacheStore(namespace: string): RuntimeCacheStore {
+function getCacheStore(namespace: string, loadBackend = true): RuntimeCacheStore {
   const { reportSubscriberFailure, scope } = resolveCacheStoreContext(namespace)
   const storeKey = encodeRuntimeCacheBackendScopeKey(scope)
   const existing = cacheStores.get(storeKey)
@@ -330,7 +334,7 @@ function getCacheStore(namespace: string): RuntimeCacheStore {
 
   const entries = new Map<string, string>()
   let totalBytes = 0
-  for (const [key, data] of backend?.loadStore(scope) ?? []) {
+  for (const [key, data] of loadBackend ? (backend?.loadStore(scope) ?? []) : []) {
     entries.set(key, data)
     totalBytes += measureCacheEntry(key, data)
   }
@@ -376,7 +380,7 @@ function cancelBackendSubscription(store: RuntimeCacheStore): void {
   const unsubscribe = store.backendSubscription
   store.backendSubscription = undefined
   store.backendRevision = -1
-  unsubscribe?.()
+  unsubscribe?.unsubscribe()
 }
 
 function ensureBackendSubscription(store: RuntimeCacheStore): void {
@@ -387,16 +391,23 @@ function ensureBackendSubscription(store: RuntimeCacheStore): void {
   const backend = store.backend
   const generation = ++store.backendSubscriptionGeneration
   try {
-    const unsubscribe = backend.subscribeStore(store.scope, (snapshot) => {
+    const subscription = backend.subscribeStore(store.scope, (snapshot) => {
       if (store.backendSubscriptionGeneration !== generation || store.backend !== backend) {
         return
       }
       applyBackendSnapshot(store, snapshot)
     })
     if (store.backendSubscriptionGeneration === generation && store.backend === backend) {
-      store.backendSubscription = unsubscribe
+      store.backendSubscription = subscription
+      void subscription.ready.catch((error) => {
+        if (store.backendSubscriptionGeneration !== generation || store.backend !== backend) {
+          return
+        }
+        cancelBackendSubscription(store)
+        store.reportSubscriberFailure(error)
+      })
     } else {
-      unsubscribe()
+      subscription.unsubscribe()
     }
   } finally {
     store.backendSubscriptionPending = false

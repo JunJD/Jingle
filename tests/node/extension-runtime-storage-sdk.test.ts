@@ -619,6 +619,44 @@ test("Cache read and subscribe do not persist over-capacity backend snapshots", 
   }
 })
 
+test("Cache reports asynchronous backend subscription admission failure once", async () => {
+  const admissionError = new Error("bounded async admission failure")
+  const failures: unknown[] = []
+  let unsubscribeCount = 0
+  const backend: RuntimeCacheBackend = {
+    ...createBackendLifecycle(),
+    loadStore: () => [],
+    mutateStore: () => undefined,
+    subscribeStore: () => ({
+      ready: Promise.reject(admissionError),
+      unsubscribe: () => {
+        unsubscribeCount++
+      }
+    })
+  }
+  const uninstallBackend = installExtensionRuntimeCacheBackend(backend)
+
+  try {
+    await runWithCacheContext(
+      async () => {
+        const unsubscribe = new Cache({ namespace: "async-admission-failure" }).subscribe(
+          () => undefined
+        )
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        assert.deepEqual(failures, [admissionError])
+        assert.equal(unsubscribeCount, 1)
+        unsubscribe()
+        assert.equal(unsubscribeCount, 1)
+      },
+      createAvailableDataIdentity(),
+      "search-page",
+      (error) => failures.push(error)
+    )
+  } finally {
+    uninstallBackend()
+  }
+})
+
 test("Cache applies only newer backend snapshots and cancels the change feed", async () => {
   let activeListener: Parameters<RuntimeCacheBackend["subscribeStore"]>[1] | null = null
   let initialEntries: RuntimeCacheEntry[] = []
@@ -630,11 +668,14 @@ test("Cache applies only newer backend snapshots and cancels the change feed", a
     subscribeStore(_scope, listener) {
       activeListener = listener
       listener({ entries: initialEntries, revision: 0 })
-      return () => {
-        if (activeListener === listener) {
-          activeListener = null
+      return {
+        ready: Promise.resolve(),
+        unsubscribe: () => {
+          if (activeListener === listener) {
+            activeListener = null
+          }
+          unsubscribeCount++
         }
-        unsubscribeCount++
       }
     }
   }
@@ -684,9 +725,12 @@ test("Cache isolates throwing subscribers and preserves reentrant notification o
     subscribeStore(_scope, listener) {
       activeListener = listener
       listener({ entries: [], revision: 0 })
-      return () => {
-        if (activeListener === listener) {
-          activeListener = null
+      return {
+        ready: Promise.resolve(),
+        unsubscribe: () => {
+          if (activeListener === listener) {
+            activeListener = null
+          }
         }
       }
     }
@@ -780,7 +824,7 @@ test("Cache migrates an active change feed when the backend is replaced", async 
       assert.equal(second.subscribeCount, 1)
       first.publishLate([["page", "late-first"]], 99)
       assert.equal(cache.get("page"), "second")
-      assert.deepEqual(events, ["second"])
+      assert.deepEqual(events, ["first", "second"])
 
       unsubscribe()
       assert.equal(second.unsubscribeCount, 1)
@@ -835,7 +879,7 @@ function createBackendLifecycle(): Pick<
     close: async () => undefined,
     flush: async () => undefined,
     onFailure: () => () => undefined,
-    subscribeStore: () => () => undefined
+    subscribeStore: () => ({ ready: Promise.resolve(), unsubscribe: () => undefined })
   }
 }
 
@@ -902,8 +946,11 @@ function createTrackedSnapshotBackend(initialEntries: RuntimeCacheEntry[]): {
       subscribeCount++
       lastListener = listener
       listener({ entries: initialEntries, revision: 0 })
-      return () => {
-        unsubscribeCount++
+      return {
+        ready: Promise.resolve(),
+        unsubscribe: () => {
+          unsubscribeCount++
+        }
       }
     }
   }

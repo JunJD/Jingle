@@ -3,19 +3,23 @@ import type { ExtensionRuntimeCacheWriterLease } from "@shared/extension-runtime
 import { normalizeExtensionRuntimeCacheWriterLease } from "@shared/extension-runtime-protocol"
 import {
   activateExtensionRuntimeCacheWriterLease,
+  releaseExtensionRuntimeCacheRetention,
   resetExtensionRuntimeCacheWriterLeases,
-  revokeExtensionRuntimeCacheWriterLease
+  revokeExtensionRuntimeCacheWrites
 } from "../../../extension-runtime/cache-backend"
 
 export interface ExtensionRuntimeCacheLeaseCoordinator {
   activate: (sessionId: string) => ExtensionRuntimeCacheWriterLease
-  dispose: () => void
-  revoke: (lease: ExtensionRuntimeCacheWriterLease) => void
+  dispose: () => Promise<void>
+  releaseRetention: (lease: ExtensionRuntimeCacheWriterLease) => Promise<void>
+  revokeWrites: (lease: ExtensionRuntimeCacheWriterLease) => void
 }
 
 export class FileExtensionRuntimeCacheLeaseCoordinator implements ExtensionRuntimeCacheLeaseCoordinator {
   private disposed = false
+  private disposePromise: Promise<void> | null = null
   private readonly leases = new Map<string, ExtensionRuntimeCacheWriterLease>()
+  private operationTail = Promise.resolve()
 
   constructor(private readonly cacheDir: string) {
     try {
@@ -44,28 +48,62 @@ export class FileExtensionRuntimeCacheLeaseCoordinator implements ExtensionRunti
     }
   }
 
-  revoke(lease: ExtensionRuntimeCacheWriterLease): void {
+  revokeWrites(lease: ExtensionRuntimeCacheWriterLease): void {
     try {
-      revokeExtensionRuntimeCacheWriterLease(this.cacheDir, lease)
-      if (this.leases.get(lease.sessionId)?.token === lease.token) {
-        this.leases.delete(lease.sessionId)
-      }
+      revokeExtensionRuntimeCacheWrites(this.cacheDir, lease)
     } catch (cause) {
       throw new ExtensionRuntimeCacheLeaseCoordinatorError(cause)
     }
   }
 
-  dispose(): void {
-    if (this.disposed) {
-      return
+  releaseRetention(lease: ExtensionRuntimeCacheWriterLease): Promise<void> {
+    return this.enqueue(async () => {
+      try {
+        await releaseExtensionRuntimeCacheRetention(this.cacheDir, lease)
+        this.deleteLeaseIfCurrent(lease)
+      } catch (cause) {
+        throw new ExtensionRuntimeCacheLeaseCoordinatorError(cause)
+      }
+    })
+  }
+
+  dispose(): Promise<void> {
+    if (this.disposePromise) {
+      return this.disposePromise
     }
     this.disposed = true
-    try {
-      resetExtensionRuntimeCacheWriterLeases(this.cacheDir)
-      this.leases.clear()
-    } catch (cause) {
-      throw new ExtensionRuntimeCacheLeaseCoordinatorError(cause)
+    this.disposePromise = this.enqueue(async () => {
+      const failures: unknown[] = []
+      for (const lease of Array.from(this.leases.values())) {
+        try {
+          await releaseExtensionRuntimeCacheRetention(this.cacheDir, lease)
+          this.deleteLeaseIfCurrent(lease)
+        } catch (cause) {
+          failures.push(cause)
+        }
+      }
+      if (failures.length > 0) {
+        throw new ExtensionRuntimeCacheLeaseCoordinatorError(
+          new AggregateError(failures, "Extension runtime cache lease disposal failed.")
+        )
+      }
+    }).catch((cause: unknown) => {
+      this.disposePromise = null
+      throw cause
+    })
+    return this.disposePromise
+  }
+
+  private deleteLeaseIfCurrent(lease: ExtensionRuntimeCacheWriterLease): void {
+    if (this.leases.get(lease.sessionId)?.token === lease.token) {
+      this.leases.delete(lease.sessionId)
     }
+  }
+
+  private enqueue(operation: () => Promise<void>): Promise<void> {
+    const result = this.operationTail.then(operation)
+    this.operationTail = result.catch(() => undefined)
+    return result
   }
 }
 

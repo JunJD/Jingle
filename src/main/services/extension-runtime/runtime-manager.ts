@@ -172,13 +172,16 @@ interface RuntimeSessionStopState {
 
 interface RuntimeSession {
   activeStorageIssues: Map<string, ActiveRuntimeStorageIssue>
+  cacheRetentionReleased: boolean
   cacheWriterLease: ExtensionRuntimeCacheWriterLease
   cacheWriterLeaseRevoked: boolean
+  disposeCacheRetentionExitListener: (() => void) | null
   disposeListeners: Array<() => void>
   kind: ExtensionRuntimeSessionKind
   lease: ExtensionRuntimeExecutionLease
   pendingRunOnceSuccess: boolean
   process: ExtensionRuntimeProcess
+  resolveCacheRetentionExitBarrier: (() => void) | null
   resolveRunOnce?: (result: ExtensionRuntimeRunResult) => void
   sessionId: string
   storageIssueTerminal: boolean
@@ -222,6 +225,7 @@ export class ExtensionRuntimeManager {
   private disposePromise: Promise<void> | null = null
   private foregroundSession: RuntimeSession | null = null
   private lastError: ExtensionRuntimeSessionError | null = null
+  private readonly pendingCacheRetentionExitBarriers = new Set<Promise<void>>()
   private readonly eventAckListeners = new Set<ExtensionRuntimeEventAckListener>()
   private readonly errorListeners = new Set<ExtensionRuntimeErrorListener>()
   private readonly issueSnapshotListeners = new Set<ExtensionRuntimeIssueSnapshotListener>()
@@ -255,9 +259,9 @@ export class ExtensionRuntimeManager {
     }
     const sessions = Array.from(this.sessions.values())
     const stopPromises = sessions.map((session) => this.waitForSessionStop(session))
-    this.disposePromise = Promise.all(stopPromises).then(() => {
-      this.options.cacheLeaseCoordinator.dispose()
-    })
+    this.disposePromise = Promise.all(stopPromises)
+      .then(() => this.waitForCacheRetentionExitBarriers())
+      .then(() => this.options.cacheLeaseCoordinator.dispose())
     for (const session of sessions) {
       this.stopSession(session, error)
     }
@@ -330,21 +334,19 @@ export class ExtensionRuntimeManager {
   ): Promise<ExtensionRuntimeRunResult> {
     const sessionId = options?.sessionId ?? this.createSessionId()
     return new Promise((resolve) => {
-      try {
-        this.startSession("run-once", intent, {
-          beforeStart: (session) => {
-            session.resolveRunOnce = resolve
-            options?.onSessionStart?.(toSessionInfo(session))
-          },
-          sessionId
-        })
-      } catch (error) {
+      void this.startSession("run-once", intent, {
+        beforeStart: (session) => {
+          session.resolveRunOnce = resolve
+          options?.onSessionStart?.(toSessionInfo(session))
+        },
+        sessionId
+      }).catch((error: unknown) => {
         resolve({
           error: toRuntimeError(getRuntimeErrorCode(error, "runtime_start_failed"), error),
           sessionId,
           status: "error"
         })
-      }
+      })
     })
   }
 
@@ -375,7 +377,7 @@ export class ExtensionRuntimeManager {
     intent: ExtensionRuntimeLaunchIntent,
     options?: { onSessionStart?: (session: ExtensionRuntimeSessionInfo) => void }
   ): Promise<ExtensionRuntimeSessionInfo> {
-    const session = this.startSession("ambient", intent, {
+    const session = await this.startSession("ambient", intent, {
       beforeStart: options?.onSessionStart
         ? (startedSession) => options.onSessionStart?.(toSessionInfo(startedSession))
         : undefined
@@ -401,7 +403,7 @@ export class ExtensionRuntimeManager {
     if (replacedSession && this.sessions.get(replacedSession.sessionId) === replacedSession) {
       this.revokeForegroundWriterBeforeReplacement(replacedSession)
     }
-    const session = this.startSession("foreground", intent, {
+    const session = await this.startSession("foreground", intent, {
       beforeStart: options?.onSessionStart
         ? (startedSession) => options.onSessionStart?.(toSessionInfo(startedSession))
         : undefined,
@@ -1017,11 +1019,11 @@ export class ExtensionRuntimeManager {
     }
   }
 
-  private startSession(
+  private async startSession(
     kind: ExtensionRuntimeSessionKind,
     intent: ExtensionRuntimeLaunchIntent,
     options: StartSessionOptions = {}
-  ): RuntimeSession {
+  ): Promise<RuntimeSession> {
     if (this.disposed) {
       throw new ExtensionRuntimeLifecycleError(
         "runtime_manager_disposed",
@@ -1061,19 +1063,37 @@ export class ExtensionRuntimeManager {
     let process: ExtensionRuntimeProcess
     try {
       process = this.options.processLauncher.launch({ cacheWriterLease })
-    } catch (error) {
-      this.options.cacheLeaseCoordinator.revoke(cacheWriterLease)
-      throw error
+    } catch (launchError) {
+      let revokeError: unknown
+      try {
+        this.options.cacheLeaseCoordinator.revokeWrites(cacheWriterLease)
+      } catch (cause) {
+        revokeError = cause
+      }
+      try {
+        await this.options.cacheLeaseCoordinator.releaseRetention(cacheWriterLease)
+      } catch (releaseError) {
+        throw new ExtensionRuntimeCacheLeaseCoordinatorError(
+          new AggregateError(
+            [launchError, ...(revokeError === undefined ? [] : [revokeError]), releaseError],
+            "Extension runtime launch cleanup failed."
+          )
+        )
+      }
+      throw launchError
     }
     const session: RuntimeSession = {
       activeStorageIssues: new Map(),
+      cacheRetentionReleased: false,
       cacheWriterLease,
       cacheWriterLeaseRevoked: false,
+      disposeCacheRetentionExitListener: null,
       disposeListeners: [],
       kind,
       lease,
       pendingRunOnceSuccess: false,
       process,
+      resolveCacheRetentionExitBarrier: null,
       sessionId,
       storageIssueTerminal: false,
       storageIssueRevision: 0,
@@ -1085,6 +1105,7 @@ export class ExtensionRuntimeManager {
     let configurationRevoked = false
     try {
       this.sessions.set(sessionId, session)
+      this.trackCacheRetentionProcessExit(session)
       session.disposeListeners.push(
         process.onMessage((message) => this.handleMessage(session, message))
       )
@@ -1375,15 +1396,62 @@ export class ExtensionRuntimeManager {
       return true
     }
     try {
-      this.options.cacheLeaseCoordinator.revoke(session.cacheWriterLease)
+      this.options.cacheLeaseCoordinator.revokeWrites(session.cacheWriterLease)
       session.cacheWriterLeaseRevoked = true
       return true
     } catch {
+      console.error("[jingle:extension-runtime] Cache writer revocation failed.")
       if (session.stopState && !session.stopState.error) {
         session.stopState.error = CACHE_WRITER_LEASE_CLEANUP_ERROR
         this.recordError(session, CACHE_WRITER_LEASE_CLEANUP_ERROR)
       }
       return false
+    }
+  }
+
+  private releaseCacheRetentionAfterProcessExit(session: RuntimeSession): void {
+    if (session.cacheRetentionReleased) {
+      return
+    }
+    session.disposeCacheRetentionExitListener?.()
+    session.disposeCacheRetentionExitListener = null
+    session.cacheRetentionReleased = true
+    void this.options.cacheLeaseCoordinator
+      .releaseRetention(session.cacheWriterLease)
+      .catch(() => {
+        session.cacheRetentionReleased = false
+        console.error("[jingle:extension-runtime] Cache retention release failed.")
+      })
+      .finally(() => {
+        session.resolveCacheRetentionExitBarrier?.()
+        session.resolveCacheRetentionExitBarrier = null
+      })
+  }
+
+  private trackCacheRetentionProcessExit(session: RuntimeSession): void {
+    let resolveBarrier!: () => void
+    const barrier = new Promise<void>((resolve) => {
+      resolveBarrier = resolve
+    })
+    session.resolveCacheRetentionExitBarrier = resolveBarrier
+    this.pendingCacheRetentionExitBarriers.add(barrier)
+    void barrier.finally(() => {
+      this.pendingCacheRetentionExitBarriers.delete(barrier)
+    })
+    try {
+      session.disposeCacheRetentionExitListener = session.process.onExit(() => {
+        this.releaseCacheRetentionAfterProcessExit(session)
+      })
+    } catch (error) {
+      session.resolveCacheRetentionExitBarrier = null
+      resolveBarrier()
+      throw error
+    }
+  }
+
+  private async waitForCacheRetentionExitBarriers(): Promise<void> {
+    while (this.pendingCacheRetentionExitBarriers.size > 0) {
+      await Promise.all(Array.from(this.pendingCacheRetentionExitBarriers))
     }
   }
 

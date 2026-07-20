@@ -183,6 +183,7 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
     }
 
     this.#replaceRawValue(changedKey === undefined ? undefined : data)
+    this.#discardInvalidSnapshot()
   }
 
   #discardInvalidSnapshot(): void {
