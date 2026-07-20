@@ -1,5 +1,6 @@
 import type { IpcMain } from "electron"
 import { instanceCachingFactory, type DependencyContainer } from "tsyringe"
+import { getDurableWindowCallerLease, getWindowIdentity } from "../windows/window-identity"
 import { ArtifactsController } from "./controller"
 import { ArtifactsService } from "./service"
 
@@ -10,9 +11,13 @@ export function registerArtifactsModule(container: DependencyContainer): void {
     })
   })
   container.register(ArtifactsController, {
-    useFactory: instanceCachingFactory((dependencyContainer) => {
-      return new ArtifactsController(dependencyContainer.resolve(ArtifactsService))
-    })
+    useFactory: instanceCachingFactory(
+      (dependencyContainer) =>
+        new ArtifactsController(dependencyContainer.resolve(ArtifactsService), {
+          getDurableCallerLease: (sender) => getDurableWindowCallerLease(sender),
+          isLauncher: (sender) => getWindowIdentity(sender)?.kind === "launcher"
+        })
+    )
   })
 }
 

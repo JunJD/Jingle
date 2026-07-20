@@ -58,16 +58,26 @@ export class ArtifactsService {
     return listArtifactsByToolCallId(input)
   }
 
-  open(artifactId: string, action?: ArtifactActionId): Promise<ArtifactActionResolution> {
-    return openArtifact(artifactId, action)
+  open(
+    artifactId: string,
+    action?: ArtifactActionId,
+    assertAccess: (threadId: string) => void = () => undefined
+  ): Promise<ArtifactActionResolution> {
+    return openArtifact(artifactId, action, assertAccess)
   }
 
-  readFile(artifactId: string): Promise<ArtifactFileReadResult> {
-    return this.readArtifactFile(artifactId, "text")
+  readFile(
+    artifactId: string,
+    assertAccess: (threadId: string) => void = () => undefined
+  ): Promise<ArtifactFileReadResult> {
+    return this.readArtifactFile(artifactId, "text", assertAccess)
   }
 
-  readBinaryFile(artifactId: string): Promise<ArtifactFileReadResult> {
-    return this.readArtifactFile(artifactId, "binary")
+  readBinaryFile(
+    artifactId: string,
+    assertAccess: (threadId: string) => void = () => undefined
+  ): Promise<ArtifactFileReadResult> {
+    return this.readArtifactFile(artifactId, "binary", assertAccess)
   }
 
   onChanged(listener: (event: ArtifactChangedEvent) => void): () => void {
@@ -80,18 +90,32 @@ export class ArtifactsService {
 
   private async readArtifactFile(
     artifactId: string,
-    mode: "binary" | "text"
+    mode: "binary" | "text",
+    assertAccess: (threadId: string) => void
   ): Promise<ArtifactFileReadResult> {
+    let artifact: ArtifactRecord
     try {
-      return {
-        success: true,
-        ...(await readArtifactFile(artifactId, mode))
-      }
+      artifact = await getArtifactOrThrow(artifactId)
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error"
       }
+    }
+    assertAccess(artifact.threadId)
+    let content: Awaited<ReturnType<typeof readArtifactRecordFile>>
+    try {
+      content = await readArtifactRecordFile(artifact, mode)
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error"
+      }
+    }
+    assertAccess(artifact.threadId)
+    return {
+      success: true,
+      ...content
     }
   }
 }
@@ -466,9 +490,11 @@ export async function presentArtifacts(
 
 export async function openArtifact(
   artifactId: string,
-  action?: ArtifactActionId
+  action?: ArtifactActionId,
+  assertAccess: (threadId: string) => void = () => undefined
 ): Promise<ArtifactActionResolution> {
   const artifact = await getArtifactOrThrow(artifactId)
+  assertAccess(artifact.threadId)
   const capabilities = getArtifactCapabilities(artifact)
   const resolvedAction = action ?? capabilities.primaryAction
 
@@ -483,20 +509,24 @@ export async function openArtifact(
   switch (artifact.kind) {
     case "summary":
       return { type: "detail" }
-    case "link":
+    case "link": {
       if (resolvedAction === "copy-link") {
         return {
           type: "copy-link",
           value: artifact.source.uri
         }
       }
-      await shell.openExternal((await assertSafePublicHttpUrl(artifact.source.uri)).toString())
+      const externalUrl = await assertSafePublicHttpUrl(artifact.source.uri)
+      assertAccess(artifact.threadId)
+      await shell.openExternal(externalUrl.toString())
       return {
         type: "external-browser",
         url: artifact.source.uri
       }
+    }
     case "file":
       if (resolvedAction === "reveal-source") {
+        assertAccess(artifact.threadId)
         shell.showItemInFolder(artifact.source.uri)
         return {
           path: artifact.source.uri,
@@ -510,6 +540,7 @@ export async function openArtifact(
         }
       }
       {
+        assertAccess(artifact.threadId)
         const error = await shell.openPath(artifact.source.uri)
         if (error) {
           throw new Error(error)
@@ -524,6 +555,7 @@ export async function openArtifact(
         return { type: "detail" }
       }
       if (resolvedAction === "reveal-source") {
+        assertAccess(artifact.threadId)
         shell.showItemInFolder(artifact.source.uri)
         return {
           path: artifact.source.uri,
@@ -537,6 +569,7 @@ export async function openArtifact(
         }
       }
       {
+        assertAccess(artifact.threadId)
         const error = await shell.openPath(artifact.source.uri)
         if (error) {
           throw new Error(error)
@@ -558,7 +591,17 @@ export async function readArtifactFile(
   size: number
 }> {
   const artifact = await getArtifactOrThrow(artifactId)
+  return readArtifactRecordFile(artifact, mode)
+}
 
+async function readArtifactRecordFile(
+  artifact: ArtifactRecord,
+  mode: "binary" | "text"
+): Promise<{
+  content: string
+  modified_at: string
+  size: number
+}> {
   if (artifact.source.type !== "managed-file-path") {
     throw new Error("Artifact does not reference a managed file")
   }
@@ -577,8 +620,9 @@ export async function readArtifactFile(
     }
   }
 
+  const content = await fs.readFile(artifact.source.uri, "utf-8")
   return {
-    content: await fs.readFile(artifact.source.uri, "utf-8"),
+    content,
     modified_at: stat.mtime.toISOString(),
     size: stat.size
   }
