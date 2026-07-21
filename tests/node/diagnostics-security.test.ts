@@ -199,6 +199,29 @@ test("process session markers classify clean, failed shutdown, JavaScript fatal,
         "diagnostics.session_started"
       ]
     )
+    assert.deepEqual(
+      sink.inputs
+        .filter((input) => input.eventCode.startsWith("process.previous_session_"))
+        .map((input) => input.refs),
+      [
+        [
+          { id: "main", kind: "process" },
+          { id: "11111111-1111-4111-8111-111111111111", kind: "process-session" }
+        ],
+        [
+          { id: "main", kind: "process" },
+          { id: "22222222-2222-4222-8222-222222222222", kind: "process-session" }
+        ],
+        [
+          { id: "main", kind: "process" },
+          { id: "33333333-3333-4333-8333-333333333333", kind: "process-session" }
+        ],
+        [
+          { id: "main", kind: "process" },
+          { id: "44444444-4444-4444-8444-444444444444", kind: "process-session" }
+        ]
+      ]
+    )
   } finally {
     rmSync(home, { force: true, recursive: true })
   }
@@ -226,6 +249,7 @@ test("invalid process session state is replaced without guessing a native crash"
     assert.equal(started.currentSessionId, "55555555-5555-4555-8555-555555555555")
     assert.equal(started.previousOutcome, "state_unavailable")
     assert.equal(session.markCleanExit(), true)
+    assert.equal(sink.inputs[0].refs, undefined)
     assert.deepEqual(
       sink.inputs.map((input) => input.eventCode),
       [
@@ -245,6 +269,41 @@ test("invalid process session state is replaced without guessing a native crash"
     }
     assert.equal(marker.sessionId, "55555555-5555-4555-8555-555555555555")
     assert.equal(marker.terminal.kind, "clean_exit")
+  } finally {
+    rmSync(home, { force: true, recursive: true })
+  }
+})
+
+test("unreplaceable process session state remains unavailable and cannot record a terminal outcome", () => {
+  const home = createTempDir("process-session-unreplaceable")
+  const logDir = join(home, "logs")
+  const markerPath = join(logDir, "process-session.json")
+  mkdirSync(markerPath, { mode: 0o700, recursive: true })
+  const sink = new CapturingDiagnosticSink()
+  try {
+    const session = new DiagnosticsProcessSession({
+      idFactory: () => "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      logDir,
+      now: () => new Date("2026-07-21T02:05:00.000Z"),
+      sink
+    })
+    const started = session.start({
+      appVersion: "1.2.3",
+      electronVersion: "37.2.0",
+      isPackaged: true,
+      platform: process.platform
+    })
+    assert.equal(started.currentSessionId, null)
+    assert.equal(started.previousOutcome, "state_unavailable")
+    assert.equal(session.markCleanExit(), false)
+    assert.equal(session.markJsFatal("uncaughtException"), false)
+    assert.equal(session.markShutdownFailed(), false)
+    assert.deepEqual(
+      sink.inputs.map((input) => input.eventCode),
+      ["process.session_state_unavailable", "diagnostics.session_started"]
+    )
+    assert.equal(sink.inputs[0].refs, undefined)
+    assert.equal(statSync(markerPath).isDirectory(), true)
   } finally {
     rmSync(home, { force: true, recursive: true })
   }

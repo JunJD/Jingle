@@ -179,6 +179,9 @@ test("support packet preserves an untrusted build without inventing a source rev
 test("support packet carries the causal previous-session abrupt classification", async () => {
   const source = createSource("process-session")
   const destination = createTempDirectory("process-session-output")
+  const firstSessionId = "66666666-6666-4666-8666-666666666666"
+  const secondSessionId = "77777777-7777-4777-8777-777777777777"
+  const thirdSessionId = "88888888-8888-4888-8888-888888888888"
   const context = {
     appVersion: "1.2.3",
     electronVersion: "37.2.0",
@@ -186,29 +189,45 @@ test("support packet carries the causal previous-session abrupt classification",
     platform: process.platform
   }
   try {
+    const firstGraph = new DiagnosticsGraphRecorder({
+      logger: source.logger,
+      sessionId: firstSessionId
+    })
     const first = new DiagnosticsProcessSession({
-      idFactory: () => "66666666-6666-4666-8666-666666666666",
+      idFactory: () => firstSessionId,
       logDir: source.logDir,
       now: () => new Date("2026-07-21T03:00:00.000Z"),
-      sink: source.graph
+      sink: firstGraph
     })
     assert.equal(first.start(context).previousOutcome, "none")
+    await firstGraph.flush()
+
+    const secondGraph = new DiagnosticsGraphRecorder({
+      logger: source.logger,
+      sessionId: secondSessionId
+    })
     const second = new DiagnosticsProcessSession({
-      idFactory: () => "77777777-7777-4777-8777-777777777777",
+      idFactory: () => secondSessionId,
       logDir: source.logDir,
       now: () => new Date("2026-07-21T03:01:00.000Z"),
-      sink: source.graph
+      sink: secondGraph
     })
     assert.equal(second.start(context).previousOutcome, "abrupt_exit_unclassified")
     assert.equal(second.markCleanExit({ captureEvent: false }), true)
+    await secondGraph.flush()
+
+    const thirdGraph = new DiagnosticsGraphRecorder({
+      logger: source.logger,
+      sessionId: thirdSessionId
+    })
     const third = new DiagnosticsProcessSession({
-      idFactory: () => "88888888-8888-4888-8888-888888888888",
+      idFactory: () => thirdSessionId,
       logDir: source.logDir,
       now: () => new Date("2026-07-21T03:01:30.000Z"),
-      sink: source.graph
+      sink: thirdGraph
     })
     assert.equal(third.start(context).previousOutcome, "clean_exit")
-    await source.graph.flush()
+    await thirdGraph.flush()
 
     const result = await createDiagnosticSupportPacket({
       destinationDirectory: destination,
@@ -230,8 +249,19 @@ test("support packet carries the causal previous-session abrupt classification",
     )
     assert.ok(abrupt)
     assert.ok(current)
+    assert.equal(abrupt.sessionId, secondSessionId)
     assert.equal(abrupt.evidenceRefs.length, 0)
-    assert.deepEqual(abrupt.refs, [{ id: "main", kind: "process" }])
+    assert.deepEqual(abrupt.refs, [
+      { id: "main", kind: "process" },
+      { id: firstSessionId, kind: "process-session" }
+    ])
+    const priorSession = packet.events.find(
+      (event) =>
+        event.eventCode === "diagnostics.session_started" && event.sessionId === firstSessionId
+    )
+    assert.ok(priorSession)
+    assert.equal(abrupt.parentEventIds.includes(priorSession.eventId), false)
+    assert.deepEqual(abrupt.parentEventIds, [])
     const clean = packet.events.find(
       (event) => event.eventCode === "process.previous_session_clean_exit"
     )
@@ -242,7 +272,16 @@ test("support packet carries the causal previous-session abrupt classification",
     )
     assert.ok(clean)
     assert.ok(afterClean)
+    assert.equal(clean.sessionId, thirdSessionId)
     assert.equal(clean.evidenceRefs.length, 0)
+    assert.deepEqual(clean.refs, [
+      { id: "main", kind: "process" },
+      { id: secondSessionId, kind: "process-session" }
+    ])
+    assert.equal(
+      packet.manifest.gaps.some((gap) => gap.code === "cross-session-parent-edge"),
+      false
+    )
   } finally {
     rmSync(source.root, { force: true, recursive: true })
     rmSync(destination, { force: true, recursive: true })

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import { join } from "path"
 import { getJingleHomeDir } from "../storage"
 import { DiagnosticsGraphRecorder } from "./graph"
@@ -19,6 +20,7 @@ type DiagnosticsSessionContext = Omit<DiagnosticsInitialization, "setAppLogsPath
 
 const jingleHomeDir = getJingleHomeDir()
 const diagnosticsLogDir = join(jingleHomeDir, "logs")
+const diagnosticsSessionId = randomUUID()
 
 export const diagnosticsLogger = new DiagnosticsLogger({
   logDir: diagnosticsLogDir,
@@ -27,10 +29,12 @@ export const diagnosticsLogger = new DiagnosticsLogger({
 
 export const diagnosticsGraph = new DiagnosticsGraphRecorder({
   logger: diagnosticsLogger,
-  processKind: "main"
+  processKind: "main",
+  sessionId: diagnosticsSessionId
 })
 
 const diagnosticsProcessSession = new DiagnosticsProcessSession({
+  idFactory: () => diagnosticsSessionId,
   logDir: diagnosticsLogDir,
   sink: diagnosticsGraph
 })

@@ -17,7 +17,7 @@ import {
 import { basename, dirname, join } from "node:path"
 import { types } from "node:util"
 import { assertPrivateRegularFileSync, ensurePrivateDirectorySync } from "./private-files"
-import type { DiagnosticEventRef, DiagnosticGraphSink } from "./schema"
+import type { DiagnosticEventRef, DiagnosticGraphSink, DiagnosticResourceRef } from "./schema"
 
 const PROCESS_SESSION_SCHEMA_VERSION = 1
 const PROCESS_SESSION_FILE_NAME = "process-session.json"
@@ -361,6 +361,13 @@ export class DiagnosticsProcessSession {
     outcome: PreviousProcessSessionOutcome,
     previous: ProcessSessionMarker | null
   ): DiagnosticEventRef | null {
+    if (!previous) {
+      return null
+    }
+    const refs: readonly DiagnosticResourceRef[] = [
+      { id: "main", kind: "process" },
+      { id: previous.sessionId, kind: "process-session" }
+    ]
     if (outcome === "abrupt_exit_unclassified") {
       return this.sink.capture({
         component: "electron",
@@ -368,7 +375,7 @@ export class DiagnosticsProcessSession {
         level: "warn",
         operation: "classify-previous-session",
         recoverable: true,
-        refs: [{ id: "main", kind: "process" }],
+        refs,
         stateImpact: "previous_process_terminal_unclassified",
         summary: "Previous Jingle process session ended without a terminal marker"
       })
@@ -381,7 +388,7 @@ export class DiagnosticsProcessSession {
         level: "warn",
         operation: "classify-previous-session",
         recoverable: true,
-        refs: [{ id: "main", kind: "process" }],
+        refs,
         stateImpact: "previous_process_js_fatal",
         summary: "Previous Jingle process session recorded a JavaScript fatal error"
       })
@@ -393,7 +400,7 @@ export class DiagnosticsProcessSession {
         level: "info",
         operation: "classify-previous-session",
         recoverable: true,
-        refs: [{ id: "main", kind: "process" }],
+        refs,
         stateImpact: "none",
         summary: "Previous Jingle process session completed cleanly"
       })
@@ -405,7 +412,7 @@ export class DiagnosticsProcessSession {
         level: "warn",
         operation: "classify-previous-session",
         recoverable: true,
-        refs: [{ id: "main", kind: "process" }],
+        refs,
         stateImpact: "previous_process_shutdown_incomplete",
         summary: "Previous Jingle process session recorded an incomplete shutdown"
       })

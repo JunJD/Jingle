@@ -793,6 +793,11 @@ test("diagnostics singleton requires explicit Electron bootstrap initialization"
     const sessionRecord = records.find(
       (record) => record["eventCode"] === "diagnostics.session_started"
     )
+    const marker = JSON.parse(
+      readFileSync(join(expectedLogDir, "process-session.json"), "utf8")
+    ) as { sessionId: string }
+    assert.equal(marker.sessionId, session.sessionId)
+    assert.equal(sessionRecord?.["sessionId"], marker.sessionId)
     assert.deepEqual(sessionRecord?.["dimensions"], {
       appVersion: "3.2.1",
       electronVersion: "37.2.0",
