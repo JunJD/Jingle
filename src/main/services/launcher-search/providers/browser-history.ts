@@ -1,6 +1,6 @@
 import PinyinMatch from "pinyin-match"
 import { execFile } from "node:child_process"
-import { Dirent, promises as fs } from "node:fs"
+import { Dirent, promises as fs, rmSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
@@ -46,8 +46,51 @@ interface BrowserHistoryCandidate {
   visitCount: number
 }
 
+interface BrowserHistorySnapshot {
+  expiresAt: number
+  fingerprint: string
+  generation: number
+  readers: number
+  retired: boolean
+  snapshotPath: string
+  tempDirectory: string
+}
+
+interface BrowserHistorySnapshotLease {
+  release: () => Promise<void>
+  snapshotPath: string
+}
+
+interface BrowserHistorySnapshotBuild {
+  controller: AbortController
+  fingerprint: string
+  generation: number
+  promise: Promise<BrowserHistorySnapshot>
+  snapshot?: BrowserHistorySnapshot
+  settled: boolean
+  waiters: number
+}
+
+interface BrowserHistorySnapshotState {
+  current?: BrowserHistorySnapshot
+  generation: number
+  pendingByFingerprint: Map<string, BrowserHistorySnapshotBuild>
+  retiredSnapshots: Set<BrowserHistorySnapshot>
+}
+
+export interface BrowserHistorySnapshotLeaseManagerOptions {
+  copyHistoryDatabase?: typeof copyChromiumHistoryDatabase
+  now?: () => number
+  onCleanupError?: () => void
+  readFingerprint?: typeof readBrowserHistoryFingerprint
+  removeDirectory?: (directoryPath: string) => Promise<void>
+  snapshotTtlMs?: number
+  tempDirectoryRoot?: string
+}
+
 const execFileAsync = promisify(execFile)
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" })
+const BROWSER_HISTORY_SNAPSHOT_TTL_MS = 10_000
 const CHROMIUM_BROWSER_ROOTS: ChromiumBrowserRoot[] = [
   {
     browser: "chrome",
@@ -302,17 +345,417 @@ async function copyChromiumHistoryDatabase(params: {
   signal.throwIfAborted()
 }
 
-async function queryChromiumHistoryRows(params: {
+async function readBrowserHistoryFileFingerprint(filePath: string): Promise<string> {
+  try {
+    const stats = await fs.stat(filePath, { bigint: true })
+    return [stats.dev, stats.ino, stats.size, stats.mtimeNs, stats.ctimeNs].join(":")
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return "missing"
+    }
+
+    throw error
+  }
+}
+
+async function readBrowserHistoryFingerprint(historyPath: string): Promise<string> {
+  const fingerprints = await Promise.all(
+    [historyPath, `${historyPath}-wal`, `${historyPath}-shm`].map((filePath) =>
+      readBrowserHistoryFileFingerprint(filePath)
+    )
+  )
+
+  if (fingerprints[0] === "missing") {
+    const error = new Error(`Browser history database does not exist: ${historyPath}`)
+    ;(error as NodeJS.ErrnoException).code = "ENOENT"
+    throw error
+  }
+
+  return fingerprints.join("|")
+}
+
+function waitForBrowserHistorySnapshot<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  signal.throwIfAborted()
+
+  return new Promise<T>((resolve, reject) => {
+    const handleAbort = (): void => {
+      reject(signal.reason)
+    }
+
+    signal.addEventListener("abort", handleAbort, { once: true })
+    promise.then(resolve, reject).finally(() => {
+      signal.removeEventListener("abort", handleAbort)
+    })
+  })
+}
+
+class BrowserHistorySnapshotChangedError extends Error {
+  constructor() {
+    super("Browser history changed while its search snapshot was being created.")
+    this.name = "BrowserHistorySnapshotChangedError"
+  }
+}
+
+export class BrowserHistorySnapshotLeaseManager {
+  private readonly disposalController = new AbortController()
+  private disposed = false
+  private readonly cleanupFailureReported = new Set<string>()
+  private readonly ownedDirectories = new Set<string>()
+  private readonly pendingCleanupDirectories = new Set<string>()
+  private readonly states = new Map<string, BrowserHistorySnapshotState>()
+
+  constructor(private readonly options: BrowserHistorySnapshotLeaseManagerOptions = {}) {}
+
+  async acquire(historyPath: string, signal: AbortSignal): Promise<BrowserHistorySnapshotLease> {
+    if (this.disposed) {
+      throw new Error("Browser history snapshot manager is disposed.")
+    }
+    const acquisitionSignal = AbortSignal.any([signal, this.disposalController.signal])
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      acquisitionSignal.throwIfAborted()
+      await this.removePendingCleanupDirectories()
+      acquisitionSignal.throwIfAborted()
+      const fingerprint = await this.readFingerprint(historyPath)
+      acquisitionSignal.throwIfAborted()
+      const state = this.getState(historyPath)
+      await this.removeRetiredSnapshots(state)
+      acquisitionSignal.throwIfAborted()
+      const current = state.current
+
+      if (current) {
+        const isCurrent =
+          !current.retired && current.fingerprint === fingerprint && this.now() < current.expiresAt
+        if (isCurrent) {
+          return this.createLease(state, current)
+        }
+
+        this.retireSnapshot(state, current)
+        await this.removeRetiredSnapshot(state, current)
+      }
+
+      const pending = state.pendingByFingerprint.get(fingerprint)
+      const build =
+        pending && !pending.controller.signal.aborted
+          ? pending
+          : this.startSnapshotBuild(historyPath, fingerprint, state)
+
+      try {
+        const lease = await this.waitForBuild(state, build, acquisitionSignal)
+        try {
+          acquisitionSignal.throwIfAborted()
+          return lease
+        } catch (error) {
+          await lease.release()
+          throw error
+        }
+      } catch (error) {
+        if (error instanceof BrowserHistorySnapshotChangedError && attempt < 2) {
+          continue
+        }
+
+        throw error
+      }
+    }
+
+    throw new BrowserHistorySnapshotChangedError()
+  }
+
+  async dispose(): Promise<void> {
+    if (this.disposed) {
+      return
+    }
+
+    this.disposed = true
+    this.disposalController.abort(new Error("Browser history snapshot manager is disposed."))
+    const builds: Promise<BrowserHistorySnapshot>[] = []
+    for (const state of this.states.values()) {
+      for (const build of state.pendingByFingerprint.values()) {
+        build.controller.abort(new Error("Browser history snapshot manager is disposed."))
+        builds.push(build.promise)
+      }
+    }
+    await Promise.allSettled(builds)
+
+    for (const state of this.states.values()) {
+      if (state.current) {
+        this.retireSnapshot(state, state.current)
+      }
+      await this.removeRetiredSnapshots(state)
+    }
+    await this.removePendingCleanupDirectories()
+  }
+
+  disposeSync(): void {
+    this.disposed = true
+    this.disposalController.abort(new Error("Browser history snapshot manager is disposed."))
+    for (const state of this.states.values()) {
+      for (const build of state.pendingByFingerprint.values()) {
+        build.controller.abort(new Error("Browser history snapshot manager is disposed."))
+      }
+    }
+
+    for (const directoryPath of this.ownedDirectories) {
+      try {
+        rmSync(directoryPath, { force: true, recursive: true })
+      } catch {
+        this.reportCleanupError(directoryPath)
+      }
+    }
+    this.ownedDirectories.clear()
+    this.pendingCleanupDirectories.clear()
+  }
+
+  private createLease(
+    state: BrowserHistorySnapshotState,
+    snapshot: BrowserHistorySnapshot
+  ): BrowserHistorySnapshotLease {
+    snapshot.readers += 1
+    let released = false
+
+    return {
+      release: async () => {
+        if (released) {
+          return
+        }
+
+        released = true
+        snapshot.readers -= 1
+        if (!snapshot.retired && this.now() >= snapshot.expiresAt) {
+          this.retireSnapshot(state, snapshot)
+        }
+        await this.removeRetiredSnapshot(state, snapshot)
+      },
+      snapshotPath: snapshot.snapshotPath
+    }
+  }
+
+  private getState(historyPath: string): BrowserHistorySnapshotState {
+    const existing = this.states.get(historyPath)
+    if (existing) {
+      return existing
+    }
+
+    const state: BrowserHistorySnapshotState = {
+      generation: 0,
+      pendingByFingerprint: new Map(),
+      retiredSnapshots: new Set()
+    }
+    this.states.set(historyPath, state)
+    return state
+  }
+
+  private now(): number {
+    return this.options.now?.() ?? Date.now()
+  }
+
+  private readFingerprint(historyPath: string): Promise<string> {
+    return (this.options.readFingerprint ?? readBrowserHistoryFingerprint)(historyPath)
+  }
+
+  private reportCleanupError(directoryPath: string): void {
+    if (this.cleanupFailureReported.has(directoryPath)) {
+      return
+    }
+
+    this.cleanupFailureReported.add(directoryPath)
+    if (this.options.onCleanupError) {
+      this.options.onCleanupError()
+      return
+    }
+
+    console.warn("[LauncherSearch] Failed to clean up a browser history snapshot.")
+  }
+
+  private async removeDirectory(directoryPath: string): Promise<boolean> {
+    try {
+      await (
+        this.options.removeDirectory ??
+        ((target) => fs.rm(target, { force: true, recursive: true }))
+      )(directoryPath)
+      this.cleanupFailureReported.delete(directoryPath)
+      this.ownedDirectories.delete(directoryPath)
+      this.pendingCleanupDirectories.delete(directoryPath)
+      return true
+    } catch {
+      this.pendingCleanupDirectories.add(directoryPath)
+      this.reportCleanupError(directoryPath)
+      return false
+    }
+  }
+
+  private async removePendingCleanupDirectories(): Promise<void> {
+    await Promise.all(
+      [...this.pendingCleanupDirectories].map((directoryPath) =>
+        this.removeDirectory(directoryPath)
+      )
+    )
+  }
+
+  private async removeRetiredSnapshot(
+    state: BrowserHistorySnapshotState,
+    snapshot: BrowserHistorySnapshot
+  ): Promise<void> {
+    if (!snapshot.retired || snapshot.readers > 0) {
+      return
+    }
+
+    if (await this.removeDirectory(snapshot.tempDirectory)) {
+      state.retiredSnapshots.delete(snapshot)
+    }
+  }
+
+  private async removeRetiredSnapshots(state: BrowserHistorySnapshotState): Promise<void> {
+    await Promise.all(
+      [...state.retiredSnapshots].map((snapshot) => this.removeRetiredSnapshot(state, snapshot))
+    )
+  }
+
+  private retireSnapshot(
+    state: BrowserHistorySnapshotState,
+    snapshot: BrowserHistorySnapshot
+  ): void {
+    snapshot.retired = true
+    state.retiredSnapshots.add(snapshot)
+    if (state.current === snapshot) {
+      state.current = undefined
+    }
+  }
+
+  private startSnapshotBuild(
+    historyPath: string,
+    fingerprint: string,
+    state: BrowserHistorySnapshotState
+  ): BrowserHistorySnapshotBuild {
+    const controller = new AbortController()
+    const generation = state.generation + 1
+    state.generation = generation
+    const build: BrowserHistorySnapshotBuild = {
+      controller,
+      fingerprint,
+      generation,
+      promise: Promise.resolve(undefined as never),
+      settled: false,
+      waiters: 0
+    }
+
+    build.promise = this.buildSnapshot(historyPath, fingerprint, generation, controller.signal)
+      .then((snapshot) => {
+        build.snapshot = snapshot
+        if (generation === state.generation) {
+          const previous = state.current
+          state.current = snapshot
+          if (previous && previous !== snapshot) {
+            this.retireSnapshot(state, previous)
+            void this.removeRetiredSnapshot(state, previous)
+          }
+        } else {
+          snapshot.retired = true
+          state.retiredSnapshots.add(snapshot)
+        }
+
+        return snapshot
+      })
+      .finally(() => {
+        build.settled = true
+        if (state.pendingByFingerprint.get(fingerprint) === build) {
+          state.pendingByFingerprint.delete(fingerprint)
+        }
+        if (build.snapshot?.retired && build.waiters === 0) {
+          void this.removeRetiredSnapshot(state, build.snapshot)
+        }
+      })
+
+    state.pendingByFingerprint.set(fingerprint, build)
+    return build
+  }
+
+  private async buildSnapshot(
+    historyPath: string,
+    fingerprint: string,
+    generation: number,
+    signal: AbortSignal
+  ): Promise<BrowserHistorySnapshot> {
+    const tempDirectory = await fs.mkdtemp(
+      path.join(this.options.tempDirectoryRoot ?? os.tmpdir(), "jingle-browser-history-")
+    )
+    this.ownedDirectories.add(tempDirectory)
+
+    try {
+      await (this.options.copyHistoryDatabase ?? copyChromiumHistoryDatabase)({
+        historyPath,
+        signal,
+        tempDirectory
+      })
+      const finalFingerprint = await this.readFingerprint(historyPath)
+      signal.throwIfAborted()
+      if (finalFingerprint !== fingerprint) {
+        throw new BrowserHistorySnapshotChangedError()
+      }
+
+      return {
+        expiresAt: this.now() + (this.options.snapshotTtlMs ?? BROWSER_HISTORY_SNAPSHOT_TTL_MS),
+        fingerprint,
+        generation,
+        readers: 0,
+        retired: false,
+        snapshotPath: path.join(tempDirectory, "History"),
+        tempDirectory
+      }
+    } catch (error) {
+      await this.removeDirectory(tempDirectory)
+      throw error
+    }
+  }
+
+  private async waitForBuild(
+    state: BrowserHistorySnapshotState,
+    build: BrowserHistorySnapshotBuild,
+    signal: AbortSignal
+  ): Promise<BrowserHistorySnapshotLease> {
+    build.waiters += 1
+
+    try {
+      const snapshot = await waitForBrowserHistorySnapshot(build.promise, signal)
+      return this.createLease(state, snapshot)
+    } finally {
+      build.waiters -= 1
+      if (build.waiters === 0 && !build.settled) {
+        build.controller.abort(new Error("Browser history snapshot has no active readers."))
+      }
+
+      if (build.settled) {
+        const snapshot = build.snapshot ?? (await build.promise.catch(() => undefined))
+        if (snapshot?.retired && build.waiters === 0) {
+          await this.removeRetiredSnapshot(state, snapshot)
+        }
+      }
+    }
+  }
+}
+
+const browserHistorySnapshotLeaseManager = new BrowserHistorySnapshotLeaseManager()
+process.once("exit", () => {
+  browserHistorySnapshotLeaseManager.disposeSync()
+})
+
+export async function queryChromiumHistoryRows(params: {
   historyPath: string
   limit: number
   query: string
   signal: AbortSignal
+  snapshotLeaseManager?: BrowserHistorySnapshotLeaseManager
 }): Promise<BrowserHistoryRow[]> {
-  const { historyPath, limit, query, signal } = params
+  const {
+    historyPath,
+    limit,
+    query,
+    signal,
+    snapshotLeaseManager = browserHistorySnapshotLeaseManager
+  } = params
   signal.throwIfAborted()
   const sqlQuery = escapeSqlLiteral(escapeSqlLike(query))
-  const tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "jingle-browser-history-"))
-  const snapshotPath = path.join(tempDirectory, "History")
+  const lease = await snapshotLeaseManager.acquire(historyPath, signal)
   const sql = `
     SELECT
       url,
@@ -324,16 +767,15 @@ async function queryChromiumHistoryRows(params: {
       hidden = 0
       AND url LIKE 'http%'
       AND (
-        lower(COALESCE(title, '')) LIKE lower('%${sqlQuery}%') ESCAPE '\\'
-        OR lower(url) LIKE lower('%${sqlQuery}%') ESCAPE '\\'
+        COALESCE(title, '') LIKE '%${sqlQuery}%' ESCAPE '\\'
+        OR url LIKE '%${sqlQuery}%' ESCAPE '\\'
       )
     ORDER BY last_visit_time DESC
     LIMIT ${Math.max(limit, 1)};
   `
 
   try {
-    await copyChromiumHistoryDatabase({ historyPath, signal, tempDirectory })
-    const { stdout } = await execFileAsync("/usr/bin/sqlite3", ["-json", snapshotPath, sql], {
+    const { stdout } = await execFileAsync("/usr/bin/sqlite3", ["-json", lease.snapshotPath, sql], {
       maxBuffer: 8 * 1024 * 1024,
       signal
     })
@@ -341,7 +783,7 @@ async function queryChromiumHistoryRows(params: {
     const rows = stdout.toString().trim()
     return rows ? (JSON.parse(rows) as BrowserHistoryRow[]) : []
   } finally {
-    await fs.rm(tempDirectory, { force: true, recursive: true })
+    await lease.release()
   }
 }
 
