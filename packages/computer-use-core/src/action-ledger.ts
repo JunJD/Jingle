@@ -9,6 +9,11 @@ import type {
   ComputerUseWindowIdentity
 } from "./contract"
 import { sameComputerUseWindowIdentity } from "./authorization"
+import {
+  parseComputerUseSemanticAction,
+  parseComputerUseSemanticActions,
+  sameComputerUseSemanticAction
+} from "./semantic-action"
 
 const ACTION_KINDS = new Set<ComputerUseActionKind>([
   "keypress",
@@ -301,10 +306,7 @@ function normalizeAttempt(
   if (!Number.isInteger(attempt.revision) || attempt.revision < 0) {
     throw new Error("Computer-use action attempt revision must be a non-negative integer.")
   }
-  if (!Array.isArray(attempt.actions) || attempt.actions.length === 0) {
-    throw new Error("Computer-use action attempt requires semantic actions.")
-  }
-  attempt.actions.forEach((action, index) => assertAction(action, `actions[${index}]`))
+  attempt.actions = parseComputerUseSemanticActions(attempt.actions, "action attempt.actions")
   if (!attempt.authorization || typeof attempt.authorization !== "object") {
     throw new Error("Computer-use action attempt requires authorization evidence.")
   }
@@ -378,19 +380,6 @@ function normalizeAttempt(
   return freeze(attempt)
 }
 
-export function sameComputerUseSemanticAction(
-  left: ComputerUseSemanticAction,
-  right: ComputerUseSemanticAction
-): boolean {
-  return (
-    left.kind === right.kind &&
-    left.ref === right.ref &&
-    left.value === right.value &&
-    left.scrollAmount === right.scrollAmount &&
-    sameKeys(left.keys, right.keys)
-  )
-}
-
 function sameComputerUseActionAttemptIdentity(
   left: ComputerUseActionAttempt,
   right: ComputerUseActionAttempt
@@ -414,23 +403,6 @@ function sameComputerUseActionAttemptIdentity(
   )
 }
 
-function assertAction(action: ComputerUseSemanticAction, path: string): void {
-  if (!action || typeof action !== "object" || !ACTION_KINDS.has(action.kind)) {
-    throw new Error(`Computer-use ${path} has an invalid action kind.`)
-  }
-  normalizeId(action.ref, `${path}.ref`)
-  if (action.value !== undefined && typeof action.value !== "string") {
-    throw new Error(`Computer-use ${path}.value must be a string.`)
-  }
-  if (action.scrollAmount !== undefined && !Number.isFinite(action.scrollAmount)) {
-    throw new Error(`Computer-use ${path}.scrollAmount must be finite.`)
-  }
-  if (action.keys !== undefined) {
-    if (!Array.isArray(action.keys)) throw new Error(`Computer-use ${path}.keys must be an array.`)
-    action.keys.forEach((key, index) => normalizeId(key, `${path}.keys[${index}]`))
-  }
-}
-
 function assertResult(
   result: ComputerUseTransactionResult,
   actions: readonly ComputerUseSemanticAction[],
@@ -450,10 +422,19 @@ function assertResult(
   result.steps.forEach((step, index) => assertStep(step, actions[index]!, index))
   const stepOutcomes = new Set(result.steps.map((step) => step.outcome))
   if (
-    (result.outcome === "worked" || result.outcome === "didnt") &&
+    result.outcome === "worked" &&
+    (result.stoppedAt !== undefined ||
+      result.steps.length !== actions.length ||
+      stepOutcomes.size !== 1 ||
+      !stepOutcomes.has("worked"))
+  ) {
+    throw new Error("Durable computer-use worked result has inconsistent steps.")
+  }
+  if (
+    result.outcome === "didnt" &&
     (result.steps.length !== actions.length ||
       stepOutcomes.size !== 1 ||
-      !stepOutcomes.has(result.outcome))
+      !stepOutcomes.has("didnt"))
   ) {
     throw new Error(`Durable computer-use ${result.outcome} result has inconsistent steps.`)
   }
@@ -469,11 +450,29 @@ function assertResult(
   ) {
     throw new Error("Durable pre-dispatch cancellation contains dispatched evidence.")
   }
-  if (
-    (result.outcome === "refused" || result.outcome === "unavailable") &&
-    [...stepOutcomes].some((outcome) => outcome === "worked" || outcome === "unknown")
-  ) {
-    throw new Error("Durable computer-use refusal contradicts dispatched step outcomes.")
+  if (result.outcome === "unknown") {
+    const hasStoppedPrefix = result.steps.length > 0 && result.stoppedAt === result.steps.length - 1
+    const hasCompleteCoreEvidence =
+      result.stoppedAt === undefined &&
+      (result.steps.length === 0 || result.steps.length === actions.length)
+    if (!hasStoppedPrefix && !hasCompleteCoreEvidence) {
+      throw new Error("Durable computer-use unknown result has an invalid step boundary.")
+    }
+  }
+  if (result.outcome === "refused" || result.outcome === "unavailable") {
+    if (result.steps.length === 0) {
+      if (result.stoppedAt !== undefined) {
+        throw new Error("Durable computer-use empty refusal has a stoppedAt boundary.")
+      }
+    } else if (
+      result.stoppedAt !== result.steps.length - 1 ||
+      result.steps.at(-1)?.outcome !== result.outcome ||
+      result.steps
+        .slice(0, -1)
+        .some((step) => step.outcome === "worked" || step.outcome === "unknown")
+    ) {
+      throw new Error("Durable computer-use refusal has an inconsistent stopped step prefix.")
+    }
   }
   if (result.successor) {
     assertObservation(result.successor, "result.successor")
@@ -520,7 +519,7 @@ function assertStep(
   if (!step || typeof step !== "object") {
     throw new Error(`Durable computer-use result.steps[${index}] must be an object.`)
   }
-  assertAction(step.action, `result.steps[${index}].action`)
+  step.action = parseComputerUseSemanticAction(step.action, `durable result.steps[${index}].action`)
   if (!sameComputerUseSemanticAction(step.action, action)) {
     throw new Error("Durable computer-use result steps are not an ordered action prefix.")
   }
@@ -543,8 +542,18 @@ function assertStep(
       `Durable computer-use result.steps[${index}] has invalid verification evidence.`
     )
   }
-  if (step.outcome === "worked" && evidence.verification !== "verified") {
-    throw new Error("Durable computer-use worked step lacks verified evidence.")
+  const evidenceIsConsistent =
+    (step.outcome === "worked" &&
+      evidence.verification === "verified" &&
+      !evidence.noSideEffectProof) ||
+    (step.outcome === "unknown" &&
+      evidence.verification === "unverifiable" &&
+      !evidence.noSideEffectProof) ||
+    ((step.outcome === "didnt" || step.outcome === "refused" || step.outcome === "unavailable") &&
+      evidence.verification === "failed" &&
+      evidence.noSideEffectProof)
+  if (!evidenceIsConsistent) {
+    throw new Error(`Durable computer-use result.steps[${index}] has contradictory evidence.`)
   }
 }
 
@@ -595,15 +604,6 @@ function assertWindowIdentity(window: ComputerUseAuthorizationGrant["window"], p
   if (!["linux", "macos", "windows"].includes(window.platform)) {
     throw new Error(`Computer-use ${path}.platform is invalid.`)
   }
-}
-
-function sameKeys(
-  left: readonly string[] | undefined,
-  right: readonly string[] | undefined
-): boolean {
-  if (left === right) return true
-  if (!left || !right || left.length !== right.length) return false
-  return left.every((key, index) => key === right[index])
 }
 
 function normalizeId(value: string, field: string): string {

@@ -5,7 +5,6 @@ import {
   COMPUTER_USE_NATIVE_RESPONSE_LIMITS,
   ComputerUseAuthorizationRegistry,
   ComputerUseActionLedger,
-  computerUseCapabilityMatrix,
   createJingleComputerUseNativeBackend,
   ComputerUseObservationStore,
   ComputerUseResourceScheduler,
@@ -21,6 +20,7 @@ import {
   type ComputerUseCapabilityMatrix,
   type ComputerUseObservation,
   type ComputerUseBackendExecutionResult,
+  type ComputerUseSemanticAction,
   type ComputerUseTransactionResult,
   type JingleComputerUseNativeBridge,
   type JingleComputerUseNativeRequest
@@ -148,7 +148,7 @@ function unreachableComputerUseBackend(calls: {
   observe: number
 }): ComputerUseBackend {
   return {
-    matrix: computerUseCapabilityMatrix("macos-quartz"),
+    matrix: probedMatrix("macos-quartz"),
     disposeSession: resolvedVoid,
     execute() {
       calls.execute += 1
@@ -403,6 +403,15 @@ test("foreground retry requires an explicit side-effect-free didnt", () => {
     }),
     true
   )
+  assert.equal(
+    computerUseResultAllowsForegroundRetry({
+      baseStateId: "state-0",
+      outcome: "didnt",
+      steps: [{ ...base, outcome: "didnt" }],
+      stoppedAt: 0
+    }),
+    true
+  )
   for (const outcome of ["unknown", "worked", "refused"] as const) {
     assert.equal(
       computerUseResultAllowsForegroundRetry({
@@ -509,6 +518,133 @@ test("coordinator never replays an ambiguous background outcome", async () => {
     transactionId: "transaction-1"
   })
   assert.deepEqual(calls, ["background"])
+})
+
+test("a complete side-effect-free didnt prefix remains eligible for foreground retry", async () => {
+  const calls: string[] = []
+  const raw = typeTextObservation()
+  const backend: ComputerUseBackend = {
+    matrix: {
+      ...probedMatrix("macos-quartz"),
+      capabilities: [
+        {
+          action: "type_text",
+          background: "verified",
+          foreground: "verified",
+          route: "ax_value"
+        }
+      ]
+    },
+    disposeSession: resolvedVoid,
+    execute(request) {
+      calls.push(request.delivery)
+      return Promise.resolve({
+        baseStateId: request.base.stateId,
+        outcome: "didnt",
+        steps: [
+          {
+            action: request.actions[0]!,
+            evidence: {
+              delivery: "semantic",
+              noSideEffectProof: true,
+              route: "ax_value",
+              verification: "failed"
+            },
+            outcome: "didnt"
+          }
+        ],
+        stoppedAt: 0
+      })
+    },
+    observe() {
+      const { epoch: _epoch, stateId: _stateId, ...value } = raw
+      return Promise.resolve(value)
+    }
+  }
+  const sessions = new ComputerUseSessionManager(backend)
+  const coordinator = new ComputerUseTransactionCoordinator(
+    backend,
+    new ComputerUseResourceScheduler(),
+    sessions,
+    new ComputerUseActionLedger(actionLedgerPort())
+  )
+  const base = await coordinator.observe({ applicationId: raw.application.id })
+  await sessions.setEnabled(true)
+  const grant = sessions.openSession({
+    observation: base,
+    runId: "run-1",
+    threadId: "thread-1"
+  })
+  const result = await coordinator.execute({
+    actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
+    baseStateId: base.stateId,
+    runId: "run-1",
+    sessionId: grant.sessionId,
+    threadId: "thread-1",
+    transactionId: "complete-didnt-prefix"
+  })
+
+  assert.deepEqual(calls, ["background", "foreground"])
+  assert.equal(result.outcome, "didnt")
+  assert.equal(result.stoppedAt, 0)
+  assert.equal(result.successor?.epoch, 1)
+})
+
+test("coordinator rejects noncanonical actions before durable or scheduler admission", async () => {
+  const base = typeTextObservation()
+  let executeCalls = 0
+  let reserves = 0
+  let writes = 0
+  const backend: ComputerUseBackend = {
+    matrix: probedMatrix("macos-quartz"),
+    disposeSession: resolvedVoid,
+    execute() {
+      executeCalls += 1
+      return Promise.reject(new Error("invalid actions must not reach the backend"))
+    },
+    observe() {
+      const { epoch: _epoch, stateId: _stateId, ...raw } = base
+      return Promise.resolve(raw)
+    }
+  }
+  const scheduler = new ComputerUseResourceScheduler()
+  const sessions = new ComputerUseSessionManager(backend)
+  const ledger = new ComputerUseActionLedger(
+    actionLedgerPort({
+      onReserve() {
+        reserves += 1
+      },
+      onWrite() {
+        writes += 1
+      }
+    })
+  )
+  const coordinator = new ComputerUseTransactionCoordinator(backend, scheduler, sessions, ledger)
+  const canonicalBase = await coordinator.observe({ applicationId: base.application.id })
+  await sessions.setEnabled(true)
+  const grant = sessions.openSession({
+    observation: canonicalBase,
+    runId: "run-1",
+    threadId: "thread-1"
+  })
+
+  await assert.rejects(
+    coordinator.execute({
+      actions: [
+        { kind: "press", ref: "@e1", value: "forbidden" }
+      ] as unknown as readonly ComputerUseSemanticAction[],
+      baseStateId: canonicalBase.stateId,
+      runId: "run-1",
+      sessionId: grant.sessionId,
+      threadId: "thread-1",
+      transactionId: "invalid-action"
+    }),
+    /transaction\.actions\[0\].*invalid action shape/
+  )
+  assert.equal(reserves, 0)
+  assert.equal(writes, 0)
+  assert.equal(executeCalls, 0)
+  assert.equal(scheduler.epoch(base.resourceKey), 0)
 })
 
 test("observation store keeps immutable bounded states", () => {
@@ -1285,9 +1421,28 @@ test("durable replay rejects corrupt authorization, action, evidence, and succes
     },
     {
       mutate(attempt) {
+        attempt.actions = [
+          { kind: "press", ref: "@e1", value: "forbidden" }
+        ] as unknown as readonly ComputerUseSemanticAction[]
+      },
+      pattern: /action attempt\.actions\[0\].*invalid action shape/
+    },
+    {
+      mutate(attempt) {
+        attempt.result!.steps[0]!.action = {
+          kind: "type_text",
+          ref: "@e1",
+          scrollAmount: 1,
+          value: "hello"
+        } as unknown as ComputerUseSemanticAction
+      },
+      pattern: /durable result\.steps\[0\]\.action.*invalid action shape/
+    },
+    {
+      mutate(attempt) {
         attempt.result!.steps[0]!.evidence.verification = "unverifiable"
       },
-      pattern: /worked step lacks verified evidence/
+      pattern: /contradictory evidence/
     },
     {
       mutate(attempt) {
@@ -1798,12 +1953,20 @@ test("cancellation while waiting for physical input does not advance epoch", asy
   assert.equal(scheduler.epoch("window:b"), 0)
 })
 
-test("capability matrices cannot be mutated into verified support", () => {
-  const matrix = computerUseCapabilityMatrix("windows-win32")
+test("capability matrices cannot be mutated into verified support", async () => {
+  const first = await createJingleComputerUseNativeBackend(
+    "windows-win32",
+    recordingNativeBridge(() => probedMatrix("windows-win32")).bridge
+  )
+  const matrix = first.matrix
   assert.throws(() => {
     ;(matrix.capabilities[0] as { background: string }).background = "verified"
   })
-  assert.equal(computerUseCapabilityMatrix("windows-win32").capabilities[0]?.background, "unavailable")
+  const second = await createJingleComputerUseNativeBackend(
+    "windows-win32",
+    recordingNativeBridge(() => probedMatrix("windows-win32")).bridge
+  )
+  assert.equal(second.matrix.capabilities[0]?.background, "unavailable")
 })
 
 test("latest settings-off wins while session disposal is pending", async () => {
@@ -1813,7 +1976,7 @@ test("latest settings-off wins while session disposal is pending", async () => {
   })
   let disposeCalls = 0
   const backend: ComputerUseBackend = {
-    matrix: computerUseCapabilityMatrix("macos-quartz"),
+    matrix: probedMatrix("macos-quartz"),
     async disposeSession() {
       disposeCalls += 1
       await disposeGate
@@ -1845,7 +2008,7 @@ test("latest settings-off wins while session disposal is pending", async () => {
 test("enable retries failed session cleanup before accepting new work", async () => {
   let disposeCalls = 0
   const backend: ComputerUseBackend = {
-    matrix: computerUseCapabilityMatrix("macos-quartz"),
+    matrix: probedMatrix("macos-quartz"),
     async disposeSession() {
       disposeCalls += 1
       if (disposeCalls === 1) throw new Error("dispose failed")
@@ -2174,7 +2337,7 @@ test("coordinator preserves typed stale-state failure before dispatch", async ()
 
 test("session TTL must be finite and bounded", async () => {
   const backend: ComputerUseBackend = {
-    matrix: computerUseCapabilityMatrix("macos-quartz"),
+    matrix: probedMatrix("macos-quartz"),
     disposeSession: resolvedVoid,
     async execute() {
       throw new Error("unused")
@@ -2227,6 +2390,7 @@ test("backend actions are compared by fields rather than object property order",
     disposeSession: resolvedVoid,
     async execute(request) {
       const source = request.actions[0]!
+      if (source.kind !== "type_text") throw new Error("expected type_text fixture action")
       return {
         baseStateId: request.base.stateId,
         outcome: "worked",
@@ -2292,7 +2456,7 @@ test("native capability probes accept the exact policy for every environment", a
     const backend = await createJingleComputerUseNativeBackend(environment, bridge)
 
     assert.equal(calls.length, 1)
-    assert.deepEqual(calls[0]?.request, { environment, method: "probe" })
+    assert.deepEqual(calls[0]?.request, { environment, method: "probe", protocolVersion: 1 })
     assert.equal(backend.matrix.environment, environment)
     assert.deepEqual(
       backend.matrix.capabilities.map((capability) => capability.action),
@@ -2413,12 +2577,92 @@ test("native bridge keeps signals out of probe, observe, and execute JSON payloa
   for (const call of calls) {
     assert.equal(call.signal, controller.signal)
     assert.equal(JSON.stringify(call.request).includes("signal"), false)
-    if (call.request.method === "observe" || call.request.method === "execute") {
+    if (call.request.method !== "dispose_session") {
       assert.equal(call.request.environment, "macos-quartz")
       assert.equal(call.request.protocolVersion, 1)
+    }
+    if (call.request.method === "observe" || call.request.method === "execute") {
       assert.equal(Object.hasOwn(call.request.request, "signal"), false)
     }
+    if (call.request.method === "execute") {
+      assert.equal(Object.isFrozen(call.request.request.actions), true)
+      assert.equal(Object.isFrozen(call.request.request.actions[0]), true)
+    }
   }
+})
+
+test("native action codec rejects invalid actions and rebuilds exact signal-free wire DTOs", async () => {
+  const base = typeTextObservation()
+  const { bridge, calls } = recordingNativeBridge((request) => {
+    if (request.method === "probe") return probedMatrix("macos-quartz")
+    if (request.method === "execute") {
+      return nativeOperationResponse("execute", {
+        baseStateId: request.request.base.stateId,
+        outcome: "worked",
+        steps: [
+          {
+            action: request.request.actions[0],
+            evidence: {
+              delivery: "semantic",
+              noSideEffectProof: false,
+              route: "ax_value",
+              verification: "verified"
+            },
+            outcome: "worked"
+          }
+        ]
+      })
+    }
+    return undefined
+  })
+  const backend = await createJingleComputerUseNativeBackend("macos-quartz", bridge)
+  calls.length = 0
+  const authorization = {
+    expiresAt: Date.now() + 1_000,
+    runId: "run",
+    sessionId: "session",
+    threadId: "thread",
+    window: base.window
+  }
+  const invalidActions: unknown[] = [
+    { kind: "press", ref: "@e1", value: "ignored" },
+    { kind: "press", ref: "@e1", signal: new AbortController().signal },
+    { kind: "set_value", ref: "@e1" },
+    { keys: ["ENTER"], kind: "type_text", ref: "@e1", value: "hello" },
+    { keys: [], kind: "keypress", ref: "@e1" },
+    { kind: "scroll", ref: "@e1" },
+    { kind: "scroll", ref: "@e1", scrollAmount: 1, value: "ignored" }
+  ]
+
+  for (const invalidAction of invalidActions) {
+    await assert.rejects(
+      backend.execute({
+        actions: [invalidAction] as readonly ComputerUseSemanticAction[],
+        authorization,
+        base,
+        delivery: "background"
+      }),
+      /Computer-use native execution action/
+    )
+  }
+  assert.equal(calls.length, 0)
+
+  await backend.execute({
+    actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
+    authorization,
+    base: {
+      ...base,
+      metadata: {
+        toJSON() {
+          return { signal: {} }
+        }
+      },
+      window: { ...base.window, signal: new AbortController().signal }
+    } as unknown as ComputerUseObservation,
+    delivery: "background"
+  })
+  assert.equal(calls.length, 1)
+  assert.equal(JSON.stringify(calls[0]!.request).includes("signal"), false)
 })
 
 test("native operation responses reject missing or mismatched wire discriminators", async () => {
@@ -2622,6 +2866,8 @@ test("native execution results reject malformed action, status, route, and evide
     { ...validResult, unexpected: true },
     { ...validResult, baseStateId: "another-state" },
     { ...validResult, outcome: "cancelled_before_dispatch" },
+    { ...validResult, outcome: "unknown", steps: [] },
+    { ...validResult, outcome: "unknown", steps: [{ ...validStep, outcome: "unknown" }] },
     { ...validResult, steps: [] },
     { ...validResult, outcome: "didnt" },
     { ...validResult, outcome: "refused" },
@@ -2633,6 +2879,53 @@ test("native execution results reject malformed action, status, route, and evide
           ...validStep,
           evidence: { ...validStep.evidence, verification: "unverifiable" },
           outcome: "unknown"
+        }
+      ]
+    },
+    {
+      ...validResult,
+      outcome: "refused",
+      steps: [
+        {
+          ...validStep,
+          evidence: {
+            ...validStep.evidence,
+            noSideEffectProof: true,
+            verification: "failed"
+          },
+          outcome: "didnt"
+        }
+      ],
+      stoppedAt: 0
+    },
+    {
+      ...validResult,
+      outcome: "unavailable",
+      steps: [
+        {
+          ...validStep,
+          evidence: {
+            ...validStep.evidence,
+            noSideEffectProof: true,
+            verification: "failed"
+          },
+          outcome: "refused"
+        }
+      ],
+      stoppedAt: 0
+    },
+    {
+      ...validResult,
+      outcome: "refused",
+      steps: [
+        {
+          ...validStep,
+          evidence: {
+            ...validStep.evidence,
+            noSideEffectProof: true,
+            verification: "failed"
+          },
+          outcome: "refused"
         }
       ]
     },
@@ -2656,6 +2949,68 @@ test("native execution results reject malformed action, status, route, and evide
           evidence: { ...validStep.evidence, verification: "unverifiable" }
         }
       ]
+    },
+    {
+      ...validResult,
+      steps: [
+        {
+          ...validStep,
+          evidence: { ...validStep.evidence, noSideEffectProof: true }
+        }
+      ]
+    },
+    {
+      ...validResult,
+      outcome: "unknown",
+      steps: [{ ...validStep, outcome: "unknown" }],
+      stoppedAt: 0
+    },
+    {
+      ...validResult,
+      outcome: "didnt",
+      steps: [
+        {
+          ...validStep,
+          evidence: {
+            ...validStep.evidence,
+            noSideEffectProof: false,
+            verification: "failed"
+          },
+          outcome: "didnt"
+        }
+      ]
+    },
+    {
+      ...validResult,
+      outcome: "refused",
+      steps: [
+        {
+          ...validStep,
+          evidence: {
+            ...validStep.evidence,
+            noSideEffectProof: false,
+            verification: "failed"
+          },
+          outcome: "refused"
+        }
+      ],
+      stoppedAt: 0
+    },
+    {
+      ...validResult,
+      outcome: "unavailable",
+      steps: [
+        {
+          ...validStep,
+          evidence: {
+            ...validStep.evidence,
+            noSideEffectProof: false,
+            verification: "failed"
+          },
+          outcome: "unavailable"
+        }
+      ],
+      stoppedAt: 0
     },
     { ...validResult, steps: [validStep, validStep] }
   ]
@@ -2696,6 +3051,42 @@ test("native execution results reject malformed action, status, route, and evide
   })
   assert.deepEqual(result, validResult)
   assert.equal(Object.isFrozen(result.steps[0]?.evidence), true)
+
+  const targetMiss = {
+    baseStateId: base.stateId,
+    outcome: "didnt",
+    steps: [
+      {
+        ...validStep,
+        evidence: {
+          ...validStep.evidence,
+          noSideEffectProof: true,
+          verification: "failed"
+        },
+        outcome: "didnt"
+      }
+    ],
+    stoppedAt: 0
+  }
+  const targetMissHelper = recordingNativeBridge((request) => {
+    if (request.method === "probe") return probedMatrix("macos-quartz")
+    if (request.method === "execute") {
+      return nativeOperationResponse("execute", targetMiss)
+    }
+    return undefined
+  })
+  const targetMissBackend = await createJingleComputerUseNativeBackend(
+    "macos-quartz",
+    targetMissHelper.bridge
+  )
+  const targetMissResult = await targetMissBackend.execute({
+    actions: [action],
+    authorization,
+    base,
+    delivery: "background"
+  })
+  assert.deepEqual(targetMissResult, targetMiss)
+  assert.equal(computerUseResultAllowsForegroundRetry(targetMissResult, [action]), true)
 
   const secondAction = { ...action, value: "world" }
   const didntStep = {
@@ -2766,7 +3157,7 @@ test("native execution results reject malformed action, status, route, and evide
       base,
       delivery: "background"
     }),
-    /invalid action count/
+    /bounded non-empty action list/
   )
 })
 

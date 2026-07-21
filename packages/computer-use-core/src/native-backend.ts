@@ -19,9 +19,18 @@ import type {
   ComputerUseSemanticAction,
   ComputerUseWindowIdentity
 } from "./contract"
+import {
+  parseComputerUseSemanticAction,
+  parseComputerUseSemanticActions,
+  sameComputerUseSemanticAction
+} from "./semantic-action"
 
 export type JingleComputerUseNativeRequest =
-  | { environment: ComputerUseBackendEnvironment; method: "probe" }
+  | {
+      environment: ComputerUseBackendEnvironment
+      method: "probe"
+      protocolVersion: typeof JINGLE_COMPUTER_USE_PROTOCOL_VERSION
+    }
   | {
       environment: ComputerUseBackendEnvironment
       method: "observe"
@@ -123,7 +132,10 @@ export async function createJingleComputerUseNativeBackend(
   signal?: AbortSignal
 ): Promise<ComputerUseBackend> {
   signal?.throwIfAborted()
-  const rawMatrix = await bridge.invoke({ environment, method: "probe" }, signal)
+  const rawMatrix = await bridge.invoke(
+    { environment, method: "probe", protocolVersion: JINGLE_COMPUTER_USE_PROTOCOL_VERSION },
+    signal
+  )
   signal?.throwIfAborted()
   return new NativeComputerUseBackend(bridge, validateProbedMatrix(environment, rawMatrix))
 }
@@ -136,7 +148,8 @@ class NativeComputerUseBackend implements ComputerUseBackend {
 
   async observe(request: ComputerUseObserveRequest): Promise<ComputerUseBackendObservation> {
     request.signal?.throwIfAborted()
-    const { signal, ...nativeRequest } = request
+    const signal = request.signal
+    const nativeRequest = encodeNativeObserveRequest(request)
     const result = await this.bridge.invoke(
       {
         environment: this.matrix.environment,
@@ -155,13 +168,9 @@ class NativeComputerUseBackend implements ComputerUseBackend {
 
   async execute(request: ComputerUseExecuteRequest): Promise<ComputerUseBackendExecutionResult> {
     request.signal?.throwIfAborted()
-    if (
-      request.actions.length === 0 ||
-      request.actions.length > COMPUTER_USE_NATIVE_RESPONSE_LIMITS.actions
-    ) {
-      throw new Error("Computer-use native execution has an invalid action count.")
-    }
-    for (const action of request.actions) {
+    const signal = request.signal
+    const actions = parseComputerUseSemanticActions(request.actions, "native execution actions")
+    for (const action of actions) {
       const capability = this.matrix.capabilities.find(
         (candidate) => candidate.action === action.kind
       )
@@ -174,7 +183,7 @@ class NativeComputerUseBackend implements ComputerUseBackend {
         }
       }
     }
-    const { signal, ...nativeRequest } = request
+    const nativeRequest = encodeNativeExecuteRequest(request, actions, this.matrix.platform)
     const result = await this.bridge.invoke(
       {
         environment: this.matrix.environment,
@@ -187,13 +196,137 @@ class NativeComputerUseBackend implements ComputerUseBackend {
     signal?.throwIfAborted()
     return decodeNativeExecutionResult(
       decodeNativeOperationResponse(this.matrix.environment, "execute", result),
-      request,
+      nativeRequest,
       this.matrix
     )
   }
 
   async disposeSession(sessionId: string): Promise<void> {
     await this.bridge.invoke({ method: "dispose_session", sessionId })
+  }
+}
+
+function encodeNativeObserveRequest(
+  request: ComputerUseObserveRequest
+): Omit<ComputerUseObserveRequest, "signal"> {
+  const result: Omit<ComputerUseObserveRequest, "signal"> = {}
+  if (request.applicationId !== undefined) {
+    result.applicationId = readString(
+      request.applicationId,
+      "observe.applicationId",
+      COMPUTER_USE_NATIVE_RESPONSE_LIMITS.token
+    )
+  }
+  if (request.applicationName !== undefined) {
+    result.applicationName = readString(
+      request.applicationName,
+      "observe.applicationName",
+      COMPUTER_USE_NATIVE_RESPONSE_LIMITS.text
+    )
+  }
+  if (request.windowId !== undefined) {
+    result.windowId = readString(
+      request.windowId,
+      "observe.windowId",
+      COMPUTER_USE_NATIVE_RESPONSE_LIMITS.token
+    )
+  }
+  return deepFreeze(result)
+}
+
+function encodeNativeExecuteRequest(
+  request: ComputerUseExecuteRequest,
+  actions: readonly ComputerUseSemanticAction[],
+  platform: ComputerUsePlatform
+): Omit<ComputerUseExecuteRequest, "signal"> {
+  const authorization = request.authorization
+  if (!isRecord(authorization)) {
+    throw new Error("Computer-use native authorization has an invalid envelope.")
+  }
+  const expiresAt = readFiniteNumber(authorization.expiresAt, "authorization.expiresAt")
+  const delivery = readDelivery(request.delivery)
+  const base = encodeNativeBaseObservation(request.base, platform)
+  return deepFreeze({
+    actions,
+    authorization: {
+      expiresAt,
+      runId: readString(
+        authorization.runId,
+        "authorization.runId",
+        COMPUTER_USE_NATIVE_RESPONSE_LIMITS.token
+      ),
+      sessionId: readString(
+        authorization.sessionId,
+        "authorization.sessionId",
+        COMPUTER_USE_NATIVE_RESPONSE_LIMITS.token
+      ),
+      threadId: readString(
+        authorization.threadId,
+        "authorization.threadId",
+        COMPUTER_USE_NATIVE_RESPONSE_LIMITS.token
+      ),
+      window: decodeNativeWindowIdentity(
+        projectNativeWindowIdentity(authorization.window),
+        platform
+      )
+    },
+    base,
+    delivery
+  })
+}
+
+function encodeNativeBaseObservation(
+  value: ComputerUseExecuteRequest["base"],
+  platform: ComputerUsePlatform
+): ComputerUseExecuteRequest["base"] {
+  if (!isRecord(value)) {
+    throw new Error("Computer-use native base observation has an invalid envelope.")
+  }
+  const observation = decodeNativeObservation(platform, projectNativeObservation(value))
+  return deepFreeze({
+    ...observation,
+    epoch: readNonNegativeInteger(value.epoch, "base.epoch"),
+    stateId: readString(value.stateId, "base.stateId", COMPUTER_USE_NATIVE_RESPONSE_LIMITS.token)
+  })
+}
+
+function projectNativeObservation(value: Record<string, unknown>): Record<string, unknown> {
+  const application = isRecord(value.application) ? value.application : {}
+  const elements = isDenseArray(value.elements, COMPUTER_USE_NATIVE_RESPONSE_LIMITS.elements)
+    ? value.elements.map((element) => projectNativeElement(element))
+    : value.elements
+  return {
+    application: { id: application.id, name: application.name },
+    capturedAt: value.capturedAt,
+    elements,
+    resourceKey: value.resourceKey,
+    window: projectNativeWindowIdentity(value.window)
+  }
+}
+
+function projectNativeElement(value: unknown): unknown {
+  if (!isRecord(value)) return value
+  const result: Record<string, unknown> = {
+    actions: isDenseArray(value.actions, ACTIONS.length)
+      ? value.actions.map((action) => action)
+      : value.actions,
+    index: value.index,
+    ref: value.ref,
+    role: value.role
+  }
+  for (const key of ["description", "identifier", "title", "value"] as const) {
+    if (Object.hasOwn(value, key)) result[key] = value[key]
+  }
+  return result
+}
+
+function projectNativeWindowIdentity(value: unknown): unknown {
+  if (!isRecord(value)) return value
+  return {
+    generation: value.generation,
+    nativeId: value.nativeId,
+    pid: value.pid,
+    platform: value.platform
   }
 }
 
@@ -465,7 +598,7 @@ function decodeNativeExecutionResult(
   if (stoppedAt !== undefined && stoppedAt !== steps.length - 1) {
     throw new Error("Computer-use native execution result has an invalid stoppedAt boundary.")
   }
-  assertNativeExecutionConsistency(outcome, steps, request.actions.length)
+  assertNativeExecutionConsistency(outcome, steps, request.actions.length, stoppedAt)
   return deepFreeze({
     baseStateId,
     outcome,
@@ -483,8 +616,11 @@ function decodeNativeStep(
   if (!hasExactKeys(value, ["action", "evidence", "outcome"])) {
     throw new Error(`Computer-use native execution step ${offset} has an invalid shape.`)
   }
-  const action = decodeNativeAction(value.action, offset)
-  if (!sameSemanticAction(action, expectedAction)) {
+  const action = parseComputerUseSemanticAction(
+    value.action,
+    `native execution steps[${offset}].action`
+  )
+  if (!sameComputerUseSemanticAction(action, expectedAction)) {
     throw new Error("Computer-use native execution returned actions out of order.")
   }
   const capability = matrix.capabilities.find((candidate) => candidate.action === action.kind)
@@ -503,9 +639,12 @@ function decodeNativeStep(
     throw new Error(`Computer-use native execution step ${offset} has untrusted evidence.`)
   }
   const outcome = readExecutionOutcome(value.outcome, `steps[${offset}].outcome`)
-  if (outcome === "worked" && value.evidence.verification !== "verified") {
-    throw new Error("Computer-use native execution reported worked without verified evidence.")
-  }
+  assertNativeStepEvidenceConsistency(
+    outcome,
+    value.evidence.verification,
+    value.evidence.noSideEffectProof,
+    offset
+  )
   return {
     action,
     evidence: {
@@ -522,80 +661,65 @@ function decodeNativeStep(
   }
 }
 
-function decodeNativeAction(value: unknown, offset: number): ComputerUseSemanticAction {
-  if (!hasExactKeys(value, ["kind", "ref"], ["keys", "scrollAmount", "value"])) {
-    throw new Error(`Computer-use native execution action ${offset} has an invalid shape.`)
+function assertNativeStepEvidenceConsistency(
+  outcome: ComputerUseBackendExecutionOutcome,
+  verification: "verified" | "failed" | "unverifiable",
+  noSideEffectProof: boolean,
+  offset: number
+): void {
+  const consistent =
+    (outcome === "worked" && verification === "verified" && !noSideEffectProof) ||
+    (outcome === "unknown" && verification === "unverifiable" && !noSideEffectProof) ||
+    ((outcome === "didnt" || outcome === "refused" || outcome === "unavailable") &&
+      verification === "failed" &&
+      noSideEffectProof)
+  if (!consistent) {
+    throw new Error(`Computer-use native execution step ${offset} has contradictory evidence.`)
   }
-  if (!isComputerUseActionKind(value.kind)) {
-    throw new Error(`Computer-use native execution action ${offset} has an invalid kind.`)
-  }
-  const ref = readString(
-    value.ref,
-    `steps[${offset}].action.ref`,
-    COMPUTER_USE_NATIVE_RESPONSE_LIMITS.token
-  )
-  const action: ComputerUseSemanticAction = { kind: value.kind, ref }
-  if (Object.hasOwn(value, "value")) {
-    action.value = readText(value.value, `steps[${offset}].action.value`)
-  }
-  if (Object.hasOwn(value, "scrollAmount")) {
-    if (typeof value.scrollAmount !== "number" || !Number.isFinite(value.scrollAmount)) {
-      throw new Error(`Computer-use native execution action ${offset} has invalid scrollAmount.`)
-    }
-    action.scrollAmount = value.scrollAmount
-  }
-  if (Object.hasOwn(value, "keys")) {
-    if (!isDenseArray(value.keys, COMPUTER_USE_NATIVE_RESPONSE_LIMITS.keys)) {
-      throw new Error(`Computer-use native execution action ${offset} has invalid keys.`)
-    }
-    action.keys = value.keys.map((key, keyOffset) =>
-      readString(
-        key,
-        `steps[${offset}].action.keys[${keyOffset}]`,
-        COMPUTER_USE_NATIVE_RESPONSE_LIMITS.token
-      )
-    )
-    if (new Set(action.keys).size !== action.keys.length) {
-      throw new Error(`Computer-use native execution action ${offset} has duplicate keys.`)
-    }
-  }
-  return action
-}
-
-function sameSemanticAction(
-  left: ComputerUseSemanticAction,
-  right: ComputerUseSemanticAction
-): boolean {
-  return (
-    left.kind === right.kind &&
-    left.ref === right.ref &&
-    left.value === right.value &&
-    left.scrollAmount === right.scrollAmount &&
-    sameStrings(left.keys, right.keys)
-  )
-}
-
-function sameStrings(left?: readonly string[], right?: readonly string[]): boolean {
-  if (!left || !right) return left === right
-  return left.length === right.length && left.every((value, index) => value === right[index])
 }
 
 function assertNativeExecutionConsistency(
   outcome: ComputerUseBackendExecutionOutcome,
   steps: readonly ComputerUseBackendStepResult[],
-  actionCount: number
+  actionCount: number,
+  stoppedAt: number | undefined
 ): void {
-  if (outcome === "worked" || outcome === "didnt") {
-    if (steps.length !== actionCount || steps.some((step) => step.outcome !== outcome)) {
-      throw new Error(`Computer-use native execution returned an inconsistent ${outcome} result.`)
+  if (outcome === "worked") {
+    if (
+      stoppedAt !== undefined ||
+      steps.length !== actionCount ||
+      steps.some((step) => step.outcome !== "worked")
+    ) {
+      throw new Error("Computer-use native execution returned an inconsistent worked result.")
     }
     return
   }
-  if (
-    (outcome === "refused" || outcome === "unavailable") &&
-    steps.some((step) => step.outcome === "worked" || step.outcome === "unknown")
-  ) {
-    throw new Error("Computer-use native execution refusal contradicts its step outcomes.")
+  if (outcome === "didnt") {
+    if (steps.length !== actionCount || steps.some((step) => step.outcome !== "didnt")) {
+      throw new Error("Computer-use native execution returned an inconsistent didnt result.")
+    }
+    return
+  }
+  if (outcome === "unknown") {
+    if (steps.length === 0 || stoppedAt !== steps.length - 1) {
+      throw new Error("Computer-use native execution returned unknown without step evidence.")
+    }
+    return
+  }
+  if (outcome === "refused" || outcome === "unavailable") {
+    if (steps.length === 0) {
+      if (stoppedAt !== undefined) {
+        throw new Error("Computer-use native empty refusal contains a stoppedAt boundary.")
+      }
+      return
+    }
+    if (
+      stoppedAt !== steps.length - 1 ||
+      steps.at(-1)?.outcome !== outcome ||
+      steps.slice(0, -1).some((step) => step.outcome === "worked" || step.outcome === "unknown")
+    ) {
+      throw new Error("Computer-use native refusal has an inconsistent stopped step prefix.")
+    }
   }
 }
 
@@ -634,6 +758,20 @@ function readNonNegativeInteger(value: unknown, path: string): number {
     throw new Error(`Computer-use native ${path} must be a non-negative safe integer.`)
   }
   return value as number
+}
+
+function readFiniteNumber(value: unknown, path: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`Computer-use native ${path} must be finite.`)
+  }
+  return value
+}
+
+function readDelivery(value: unknown): "background" | "foreground" {
+  if (value !== "background" && value !== "foreground") {
+    throw new Error("Computer-use native delivery mode is invalid.")
+  }
+  return value
 }
 
 function readString(value: unknown, path: string, maximum: number): string {

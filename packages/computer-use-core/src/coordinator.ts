@@ -7,11 +7,8 @@ import type {
   ComputerUseTransactionResult
 } from "./contract"
 import { sameComputerUseWindowIdentity } from "./authorization"
-import {
-  ComputerUseActionLedger,
-  sameComputerUseSemanticAction,
-  type ComputerUseActionAttemptClaim
-} from "./action-ledger"
+import { ComputerUseActionLedger, type ComputerUseActionAttemptClaim } from "./action-ledger"
+import { parseComputerUseSemanticActions, sameComputerUseSemanticAction } from "./semantic-action"
 import { ComputerUseResourceScheduler } from "./scheduler"
 import { ComputerUseSessionManager } from "./session-manager"
 import { ComputerUseObservationStore } from "./state-store"
@@ -23,7 +20,7 @@ function mayRetryForeground(
   return (
     result.outcome === "didnt" &&
     result.steps.length === actions.length &&
-    result.stoppedAt === undefined &&
+    (result.stoppedAt === undefined || result.stoppedAt === result.steps.length - 1) &&
     result.steps.every(
       (step, index) =>
         sameComputerUseSemanticAction(step.action, actions[index]!) &&
@@ -72,7 +69,7 @@ export class ComputerUseTransactionCoordinator {
     threadId: string
     transactionId: string
   }): Promise<ComputerUseTransactionResult> {
-    const actions = freeze(structuredClone(input.actions))
+    const actions = parseComputerUseSemanticActions(input.actions, "transaction.actions")
     const base = this.observations.get(input.baseStateId)
     let sessionSignal: AbortSignal | undefined
     let authorization: ReturnType<ComputerUseSessionManager["assertAuthorized"]> | undefined
@@ -160,11 +157,7 @@ export class ComputerUseTransactionCoordinator {
             base.stateId
           )
           if (mayRetryForeground(execution, actions)) {
-            const foregroundUnavailable = this.preflight(
-              actions,
-              base.stateId,
-              "foreground"
-            )
+            const foregroundUnavailable = this.preflight(actions, base.stateId, "foreground")
             if (!foregroundUnavailable) {
               signal.throwIfAborted()
               const foregroundAuthorization = this.sessions.assertAuthorized({
@@ -320,7 +313,8 @@ export class ComputerUseTransactionCoordinator {
     const elements = new Map(base.elements.map((element) => [element.ref, element]))
     for (const action of actions) {
       const element = elements.get(action.ref)
-      if (!element) throw new Error(`Computer-use ref ${action.ref} is not owned by ${base.stateId}.`)
+      if (!element)
+        throw new Error(`Computer-use ref ${action.ref} is not owned by ${base.stateId}.`)
       if (!element.actions.includes(action.kind)) {
         throw new Error(`Computer-use ref ${action.ref} does not support ${action.kind}.`)
       }
@@ -346,7 +340,8 @@ export class ComputerUseTransactionCoordinator {
     if (result.baseStateId !== baseStateId) {
       throw new Error("Computer-use backend result belongs to another base state.")
     }
-    if (result.steps.length > actions.length) throw new Error("Computer-use backend returned extra steps.")
+    if (result.steps.length > actions.length)
+      throw new Error("Computer-use backend returned extra steps.")
     if (result.stoppedAt !== undefined && result.stoppedAt !== result.steps.length - 1) {
       throw new Error("Computer-use backend returned an inconsistent stoppedAt boundary.")
     }
@@ -367,22 +362,57 @@ export class ComputerUseTransactionCoordinator {
       if (delivery === "background" && step.evidence.delivery === "global_input") {
         throw new Error("Computer-use backend used global input for a background action.")
       }
-      if (step.outcome === "worked" && step.evidence.verification !== "verified") {
-        throw new Error("Computer-use backend reported worked without verified evidence.")
+      const evidenceIsConsistent =
+        (step.outcome === "worked" &&
+          step.evidence.verification === "verified" &&
+          !step.evidence.noSideEffectProof) ||
+        (step.outcome === "unknown" &&
+          step.evidence.verification === "unverifiable" &&
+          !step.evidence.noSideEffectProof) ||
+        ((step.outcome === "didnt" ||
+          step.outcome === "refused" ||
+          step.outcome === "unavailable") &&
+          step.evidence.verification === "failed" &&
+          step.evidence.noSideEffectProof)
+      if (!evidenceIsConsistent) {
+        throw new Error("Computer-use backend returned contradictory step evidence.")
       }
     })
     const stepOutcomes = new Set(result.steps.map((step) => step.outcome))
     if (result.outcome === "worked") {
-      if (result.steps.length !== actions.length || stepOutcomes.size !== 1 || !stepOutcomes.has("worked")) {
+      if (
+        result.stoppedAt !== undefined ||
+        result.steps.length !== actions.length ||
+        stepOutcomes.size !== 1 ||
+        !stepOutcomes.has("worked")
+      ) {
         throw new Error("Computer-use backend returned an inconsistent worked transaction.")
       }
     } else if (result.outcome === "didnt") {
-      if (result.steps.length !== actions.length || stepOutcomes.size !== 1 || !stepOutcomes.has("didnt")) {
+      if (
+        result.steps.length !== actions.length ||
+        stepOutcomes.size !== 1 ||
+        !stepOutcomes.has("didnt")
+      ) {
         throw new Error("Computer-use backend returned an inconsistent didnt transaction.")
       }
+    } else if (result.outcome === "unknown") {
+      if (result.steps.length === 0 || result.stoppedAt !== result.steps.length - 1) {
+        throw new Error("Computer-use backend returned unknown without a stopped step prefix.")
+      }
     } else if (result.outcome === "refused" || result.outcome === "unavailable") {
-      if ([...stepOutcomes].some((outcome) => outcome === "worked" || outcome === "unknown")) {
-        throw new Error("Computer-use backend refusal contradicts dispatched step outcomes.")
+      if (result.steps.length === 0) {
+        if (result.stoppedAt !== undefined) {
+          throw new Error("Computer-use backend empty refusal contains a stoppedAt boundary.")
+        }
+      } else if (
+        result.stoppedAt !== result.steps.length - 1 ||
+        result.steps.at(-1)?.outcome !== result.outcome ||
+        result.steps
+          .slice(0, -1)
+          .some((step) => step.outcome === "worked" || step.outcome === "unknown")
+      ) {
+        throw new Error("Computer-use backend refusal has an inconsistent stopped step prefix.")
       }
     }
     return result

@@ -118,18 +118,37 @@ export interface ComputerUseObservationQueryResult {
   truncation: ComputerUseProjectionTruncation
 }
 
-export type ComputerUseBackendObservation = Omit<
-  ComputerUseObservation,
-  "epoch" | "stateId"
->
+export type ComputerUseBackendObservation = Omit<ComputerUseObservation, "epoch" | "stateId">
 
-export interface ComputerUseSemanticAction {
-  kind: ComputerUseActionKind
+interface ComputerUseSemanticActionBase {
   ref: string
-  value?: string
-  keys?: readonly string[]
-  scrollAmount?: number
 }
+
+export type ComputerUseSemanticAction =
+  | (ComputerUseSemanticActionBase & {
+      keys?: never
+      kind: "press"
+      scrollAmount?: never
+      value?: never
+    })
+  | (ComputerUseSemanticActionBase & {
+      keys?: never
+      kind: "set_value" | "type_text"
+      scrollAmount?: never
+      value: string
+    })
+  | (ComputerUseSemanticActionBase & {
+      keys: readonly string[]
+      kind: "keypress"
+      scrollAmount?: never
+      value?: never
+    })
+  | (ComputerUseSemanticActionBase & {
+      keys?: never
+      kind: "scroll"
+      scrollAmount: number
+      value?: never
+    })
 
 export interface ComputerUseActionEvidence {
   delivery: "semantic" | "targeted_input" | "global_input"
