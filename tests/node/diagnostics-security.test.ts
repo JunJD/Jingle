@@ -291,7 +291,7 @@ test("fatal Electron single-flight starts synchronously and caches recorder thro
   assert.deepEqual(await first, { kind: "failed" })
 })
 
-test("fatal Electron diagnostic writes report bounded truthful outcomes", async () => {
+test("fatal Electron diagnostic writes stay alive through their bounded timeout", async () => {
   assert.deepEqual(await settleFatalDiagnosticWrites([Promise.resolve(), Promise.resolve()]), {
     kind: "written"
   })
@@ -306,7 +306,8 @@ test("fatal Electron diagnostic writes report bounded truthful outcomes", async 
     ]),
     { kind: "failed" }
   )
-  assert.deepEqual(await waitForFatalDiagnosticWrite(new Promise(() => undefined), 5), {
+  const pendingWrite = new Promise<{ kind: "written" }>(() => undefined)
+  assert.deepEqual(await waitForFatalDiagnosticWrite(pendingWrite, 5), {
     kind: "timed_out"
   })
   assert.deepEqual(

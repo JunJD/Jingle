@@ -97,7 +97,6 @@ export async function waitForFatalDiagnosticWrite(
       write.catch(() => FAILED_FATAL_DIAGNOSTIC_WRITE),
       new Promise<FatalDiagnosticWriteOutcome>((resolve) => {
         timeout = setTimeout(() => resolve(TIMED_OUT_FATAL_DIAGNOSTIC_WRITE), timeoutMs)
-        timeout.unref()
       })
     ])
   } finally {
