@@ -33,6 +33,7 @@ export type { RuntimeSubmitFormValues } from "./extension-runtime/sdk/actions"
 export { resolveColorLike, type ColorLike } from "./extension-runtime/sdk/visual"
 export type {
   RuntimeCacheBackend,
+  RuntimeCacheBackendAdmission,
   RuntimeCacheBackendFailureListener,
   RuntimeCacheBackendIdentity,
   RuntimeCacheBackendMutation,

@@ -30,11 +30,13 @@ not read or write persistent cache state.
 - Cache entries use a strict, versioned JSON envelope. Values are limited to plain JSON trees, plus
   an explicit root `undefined` variant; lossy values such as `Date`, `Map`, custom `toJSON`, sparse
   arrays, non-finite numbers, and `-0` are rejected. Encoding and capacity failures keep the fresh
-  request data visible and show a bounded cache warning. A binding starts with a stable miss and does
-  not read the backend during render. Its subscription registers first, then reads the exact durable
-  snapshot at commit; invalid envelopes are discarded there and revalidated as misses. Backend read,
-  subscription, and persistence failures remain fatal runtime facts instead of being downgraded to
-  cache misses.
+  request data visible and show a bounded cache warning. A binding starts in a stable pending state
+  and does not read the backend during render. Subscription commit first awaits exact namespace
+  retention and the backend's immutable initial snapshot. Automatic execution and durable writes
+  remain disabled until that typed admission succeeds; cancellation and backend replacement return
+  to pending instead of exposing the previous generation. Invalid envelopes are discarded after
+  admission and revalidated as misses. Backend read, subscription, and persistence failures remain
+  fatal runtime facts instead of being downgraded to cache misses.
 - Only page zero and its cursor are persisted. Additional pages stay in the hook state and are
   discarded when another hook publishes a newer page-zero snapshot.
 - `execute: false` still allows a cache read and always reports `isLoading: false`. It disables the
@@ -52,9 +54,10 @@ address and automatically executes the new request. URL functions run only when 
 never during render. Request objects with bodies and body types that cannot be represented
 canonically are rejected instead of sharing an ambiguous cache entry.
 
-The cache has no TTL and does not deduplicate simultaneous requests. A binding subscribes before
-reading its exact key, so writes between construction and subscription cannot be missed. Backend
-reads and in-memory recency updates begin only at subscription commit, never during render. The
-atomic file backend serializes mutation across utility processes, while live subscription delivery
-remains process-local; a newly started utility reads the latest durable snapshot. Callers must not
-use this cache as authoritative business state.
+The cache has no TTL and does not deduplicate simultaneous requests. A binding admits its exact
+namespace before publishing the initial snapshot, so writes during admission cannot be overwritten
+by a stale process-local value. Backend reads and in-memory recency updates begin only at subscription
+commit, never during render. The atomic file backend serializes mutation across utility processes.
+Filesystem notifications can wake another live utility process to reread the durable snapshot, but
+that notification path is not a lossless commit protocol; a newly started utility always reads the
+latest durable snapshot. Callers must not use this cache as authoritative business state.

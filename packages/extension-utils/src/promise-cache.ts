@@ -17,6 +17,7 @@ export interface PromiseCacheValue<TResult> {
 export type PromiseCacheSnapshot<TResult> =
   | { failure: PromiseCacheFailure; kind: "invalid" }
   | { kind: "miss" }
+  | { kind: "pending" }
   | { kind: "value"; value: PromiseCacheValue<TResult> }
 
 export interface PromiseCacheIdentity {
@@ -103,8 +104,9 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
   readonly #listeners = new Set<() => void>()
   readonly #onFailure: PromiseCacheBindingOptions["onFailure"]
   #rawValue: string | undefined = undefined
-  #snapshot: PromiseCacheSnapshot<TResult> = { kind: "miss" }
-  #unsubscribeCache: (() => void) | null = null
+  #snapshot: PromiseCacheSnapshot<TResult> = { kind: "pending" }
+  #subscriptionGeneration = 0
+  #unsubscribeCache: ReturnType<Cache["subscribe"]> | null = null
   #writeOwnedRawValue: string | null = null
   #writeOwnedSynchronizationRevision: number | null = null
 
@@ -122,12 +124,12 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
 
     if (!this.#unsubscribeCache) {
       this.#clearWriteOwnership()
-      let unsubscribeCache: (() => void) | null = null
+      this.#beginPendingGeneration()
+      let unsubscribeCache: ReturnType<Cache["subscribe"]> | null = null
       try {
         unsubscribeCache = this.#cache.subscribe(this.#handleCacheChange)
         this.#unsubscribeCache = unsubscribeCache
-        this.#replaceRawValue(this.#readCurrentValue())
-        this.#discardInvalidSnapshot()
+        this.#admitSubscription(unsubscribeCache, this.#subscriptionGeneration)
       } catch (error) {
         unsubscribeCache?.()
         this.#unsubscribeCache = null
@@ -141,12 +143,16 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
       if (this.#listeners.size === 0) {
         this.#unsubscribeCache?.()
         this.#unsubscribeCache = null
+        this.#beginPendingGeneration(false)
         this.#clearWriteOwnership()
       }
     }
   }
 
   write = (value: PromiseCacheValue<TResult>): boolean => {
+    if (this.#unsubscribeCache && this.#snapshot.kind === "pending") {
+      return false
+    }
     let encoded: string
     try {
       encoded = encodePromiseCacheValue(value)
@@ -210,6 +216,11 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
   }
 
   #handleCacheChange = (changedKey: string | undefined, data?: string): void => {
+    if (this.#cache.synchronizationRevision === null && this.#unsubscribeCache) {
+      this.#beginPendingGeneration()
+      this.#admitSubscription(this.#unsubscribeCache, this.#subscriptionGeneration)
+      return
+    }
     if (changedKey !== undefined && changedKey !== this.#key) {
       return
     }
@@ -237,16 +248,49 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
     this.#writeOwnedSynchronizationRevision = null
   }
 
-  #replaceRawValue(rawValue: string | undefined): void {
-    if (rawValue === this.#rawValue) {
+  #admitSubscription(subscription: ReturnType<Cache["subscribe"]>, generation: number): void {
+    void subscription.admission
+      .then((admission) => {
+        if (
+          admission.kind !== "admitted" ||
+          this.#unsubscribeCache !== subscription ||
+          this.#subscriptionGeneration !== generation ||
+          this.#listeners.size === 0
+        ) {
+          return
+        }
+        if (this.#snapshot.kind === "pending") {
+          this.#replaceRawValue(this.#readCurrentValue(), true)
+        }
+        this.#discardInvalidSnapshot()
+      })
+      .catch(() => undefined)
+  }
+
+  #beginPendingGeneration(notify = true): void {
+    this.#subscriptionGeneration++
+    this.#rawValue = undefined
+    if (this.#snapshot.kind === "pending") {
+      return
+    }
+    this.#snapshot = { kind: "pending" }
+    if (notify) {
+      this.#notifyListeners()
+    }
+  }
+
+  #replaceRawValue(rawValue: string | undefined, force = false): void {
+    if (!force && rawValue === this.#rawValue && this.#snapshot.kind !== "pending") {
       return
     }
 
     this.#rawValue = rawValue
     this.#snapshot = decodePromiseCacheValue<TResult>(rawValue)
-    for (const listener of this.#listeners) {
-      listener()
-    }
+    this.#notifyListeners()
+  }
+
+  #notifyListeners(): void {
+    for (const listener of this.#listeners) listener()
   }
 }
 

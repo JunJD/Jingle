@@ -318,6 +318,8 @@ export function useCachedPromise<TFn extends (...args: any[]) => unknown>(
     cacheBinding.getSnapshot,
     cacheBinding.getSnapshot
   )
+  const cachePending = cacheSnapshot.kind === "pending"
+  const machineOptions = cachePending ? { ...resolvedOptions, execute: false } : resolvedOptions
   const cacheDriver = useMemo<PromiseMachineDriver<PromiseData<TFn>>>(
     () => ({
       commitPageZero(data, pagination) {
@@ -342,7 +344,7 @@ export function useCachedPromise<TFn extends (...args: any[]) => unknown>(
   const state = usePromiseMachine<PromiseData<TFn>, Parameters<TFn>>(
     fn as MaybePaginatedAsyncFunction<PromiseData<TFn>, Parameters<TFn>>,
     resolvedArgs,
-    resolvedOptions,
+    machineOptions,
     cacheIdentity,
     cacheSnapshot.kind === "value" ? cacheSnapshot.value : undefined,
     cacheDriver,
@@ -481,7 +483,7 @@ export function useCachedPromise<TFn extends (...args: any[]) => unknown>(
   return {
     data: returnedData,
     error: cacheTimelineChanged ? undefined : state.error,
-    isLoading: resolvedOptions.execute === false ? false : state.isLoading,
+    isLoading: resolvedOptions.execute === false ? false : cachePending ? true : state.isLoading,
     mutate,
     pagination: returnedPagination,
     revalidate: state.revalidate

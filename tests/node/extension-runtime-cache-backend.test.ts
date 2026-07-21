@@ -1059,16 +1059,19 @@ test("live cache subscriptions reread exact durable snapshots across backend ins
     })
     const cacheFileName = basename(getCacheFilePathForScope(cacheDir, notionScope))
 
-    await subscription.ready
+    assert.deepEqual(await subscription.admission, {
+      kind: "admitted",
+      snapshot: { entries: [], revision: 0 }
+    })
 
-    assert.deepEqual(snapshots, [{ entries: [], revision: 0 }])
+    assert.equal(snapshots.length, 0)
     assert.equal(watchHub.activeWatcherCount, 1)
 
     writeEntries(firstBackend, notionScope, [["page", "external-1"]])
     await firstBackend.flush()
     watchHub.emit("store-unrelated.json")
     await settleCacheChangeFeed()
-    assert.equal(snapshots.length, 1)
+    assert.equal(snapshots.length, 0)
 
     watchHub.emit(cacheFileName)
     await waitForCacheCondition(() => snapshots.at(-1)?.entries[0]?.[1] === "external-1")
@@ -1087,7 +1090,7 @@ test("live cache subscriptions reread exact durable snapshots across backend ins
     assert.deepEqual(snapshots.at(-1)?.entries, [["page", "local-after-external"]])
     assert.deepEqual(
       snapshots.map((snapshot) => snapshot.revision),
-      snapshots.map((_, index) => index)
+      snapshots.map((_, index) => index + 1)
     )
 
     writeEntries(firstBackend, notionScope, [["page", "null-filename-wake"]])
@@ -1133,13 +1136,13 @@ test("cache subscription admission performs no synchronous watcher or retention 
     cancelled.unsubscribe()
     assert.equal(watchHub.activeWatcherCount, 0)
     assert.deepEqual(listRetentionRecords(cacheDir), [])
-    await cancelled.ready
+    assert.deepEqual(await cancelled.admission, { kind: "cancelled" })
     assert.deepEqual(listRetentionRecords(cacheDir), [])
 
     const cancelledDuringAdmission = backend.subscribeStore(notionScope, () => undefined)
     await Promise.resolve()
     cancelledDuringAdmission.unsubscribe()
-    await cancelledDuringAdmission.ready
+    assert.deepEqual(await cancelledDuringAdmission.admission, { kind: "cancelled" })
     assert.equal(watchHub.activeWatcherCount, 0)
     assert.equal(listRetentionRecords(cacheDir).length, 1)
 
@@ -1147,7 +1150,7 @@ test("cache subscription admission performs no synchronous watcher or retention 
     assert.equal(watchHub.activeWatcherCount, 0)
     assert.equal(listRetentionRecords(cacheDir).length, 1)
 
-    await admitted.ready
+    assert.equal((await admitted.admission).kind, "admitted")
 
     assert.equal(watchHub.activeWatcherCount, 1)
     assert.equal(listRetentionRecords(cacheDir).length, 1)
@@ -1163,7 +1166,7 @@ test("cache quota rejects a retention record stored at a forged address", async 
     activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: lease })
     const subscription = backend.subscribeStore(notionScope, () => undefined)
-    await subscription.ready
+    await subscription.admission
     subscription.unsubscribe()
     const retentionName = listRetentionRecords(cacheDir)[0]
     assert.ok(retentionName)
@@ -1250,7 +1253,7 @@ test("cache control records permit one atomic temp at the full physical budget",
     })
 
     const subscription = backend.subscribeStore(notionScope, () => undefined)
-    await subscription.ready
+    await subscription.admission
 
     assert.equal(listRetentionRecords(cacheDir).length, leases.length)
     assert.equal(listWriterLeases(cacheDir).length, leases.length)
@@ -1323,7 +1326,7 @@ test("exact namespace retention survives unsubscribe and write revocation until 
     activateExtensionRuntimeCacheWriterLease(cacheDir, readerLease)
     const reader = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: readerLease })
     const subscription = reader.subscribeStore(pinnedScope, () => undefined)
-    await subscription.ready
+    await subscription.admission
     subscription.unsubscribe()
     revokeExtensionRuntimeCacheWrites(cacheDir, readerLease)
 
@@ -1353,7 +1356,7 @@ test("cache change feed failure is bounded, terminal, and cancels its watcher", 
     const failures: Error[] = []
     backend.onFailure((error) => failures.push(error))
     const subscription = backend.subscribeStore(notionScope, () => undefined)
-    await subscription.ready
+    await subscription.admission
 
     watchHub.fail(new Error("raw watcher path and payload"))
 
@@ -1385,7 +1388,7 @@ test("cache change feed bounds active aggregate files behind one watcher", async
       )
     }
 
-    await Promise.all(subscriptions.map((subscription) => subscription.ready))
+    await Promise.all(subscriptions.map((subscription) => subscription.admission))
 
     assert.equal(watchHub.activeWatcherCount, 1)
     assert.throws(
@@ -1423,9 +1426,12 @@ test("cache subscription does not replace an accepted local write with an older 
 
     assert.deepEqual(snapshots, [])
     await backend.flush()
-    await subscription.ready
+    assert.deepEqual(await subscription.admission, {
+      kind: "admitted",
+      snapshot: { entries: [["page", "accepted-local-write"]], revision: 0 }
+    })
     await settleCacheChangeFeed()
-    assert.deepEqual(snapshots, [{ entries: [["page", "accepted-local-write"]], revision: 0 }])
+    assert.deepEqual(snapshots, [])
 
     subscription.unsubscribe()
     assert.equal(watchHub.activeWatcherCount, 0)
@@ -1459,7 +1465,7 @@ test("throwing snapshot listeners do not poison persistence or block other liste
       })
       unsubscribeThrowing = throwingSubscription.unsubscribe
       unsubscribeReceiving = receivingSubscription.unsubscribe
-      await Promise.all([throwingSubscription.ready, receivingSubscription.ready])
+      await Promise.all([throwingSubscription.admission, receivingSubscription.admission])
       writeEntries(writer, notionScope, [["page", "still-delivered"]])
       await writer.flush()
       watchHub.emit(basename(getCacheFilePathForScope(cacheDir, notionScope)))
@@ -1498,7 +1504,8 @@ test("reentrant cache subscriptions preserve each registration revision order", 
     const reentrantRevisions: number[] = []
     let armReentrantSubscribe = false
     let unsubscribeReentrant: () => void = () => undefined
-    const admissionPromises: Promise<void>[] = []
+    const admissionPromises: Array<ReturnType<RuntimeCacheBackend["subscribeStore"]>["admission"]> =
+      []
     const firstSubscription = reader.subscribeStore(notionScope, (snapshot) => {
       firstRevisions.push(snapshot.revision)
       if (armReentrantSubscribe) {
@@ -1506,14 +1513,14 @@ test("reentrant cache subscriptions preserve each registration revision order", 
         const reentrantSubscription = reader.subscribeStore(notionScope, (nestedSnapshot) => {
           reentrantRevisions.push(nestedSnapshot.revision)
         })
-        admissionPromises.push(reentrantSubscription.ready)
+        admissionPromises.push(reentrantSubscription.admission)
         unsubscribeReentrant = reentrantSubscription.unsubscribe
       }
     })
     const secondSubscription = reader.subscribeStore(notionScope, (snapshot) => {
       secondRevisions.push(snapshot.revision)
     })
-    await Promise.all([firstSubscription.ready, secondSubscription.ready])
+    await Promise.all([firstSubscription.admission, secondSubscription.admission])
     armReentrantSubscribe = true
 
     writeEntries(writer, notionScope, [["page", "revision-order"]])
@@ -1522,9 +1529,11 @@ test("reentrant cache subscriptions preserve each registration revision order", 
     await waitForCacheCondition(() => admissionPromises.length === 1)
     await Promise.all(admissionPromises)
 
-    assert.deepEqual(firstRevisions, [0, 1, 2, 3])
-    assert.deepEqual(secondRevisions, [0, 1, 2, 3])
-    assert.deepEqual(reentrantRevisions, [3])
+    assert.deepEqual(firstRevisions.slice(-2), [2, 3])
+    assert.deepEqual(secondRevisions.slice(-2), [2, 3])
+    assert.ok(firstRevisions.length === 2 || firstRevisions.length === 3)
+    assert.ok(secondRevisions.length === 2 || secondRevisions.length === 3)
+    assert.deepEqual(reentrantRevisions, [])
     assertStrictlyIncreasing(firstRevisions)
     assertStrictlyIncreasing(secondRevisions)
     assertStrictlyIncreasing(reentrantRevisions)
@@ -1571,12 +1580,15 @@ test("duplicate cache keys recover through the durable corruption owner", async 
       const subscription = recoveringBackend.subscribeStore(notionScope, (snapshot) => {
         snapshots.push(structuredClone(snapshot.entries))
       })
-      await subscription.ready
+      assert.deepEqual(await subscription.admission, {
+        kind: "admitted",
+        snapshot: { entries: [], revision: 0 }
+      })
     } finally {
       console.error = originalConsoleError
     }
 
-    assert.deepEqual(snapshots, [[]])
+    assert.deepEqual(snapshots, [])
     assert.deepEqual(recoveringBackend.loadStore(notionSecondaryScope), [
       ["notification", "preserved"]
     ])

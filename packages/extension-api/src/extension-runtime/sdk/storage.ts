@@ -32,8 +32,11 @@ export interface RuntimeCacheBackendSnapshot {
   revision: number
 }
 export type RuntimeCacheBackendSnapshotListener = (snapshot: RuntimeCacheBackendSnapshot) => void
+export type RuntimeCacheBackendAdmission =
+  | { kind: "admitted"; snapshot: RuntimeCacheBackendSnapshot }
+  | { kind: "cancelled" }
 export interface RuntimeCacheBackendSubscription {
-  ready: Promise<void>
+  admission: Promise<RuntimeCacheBackendAdmission>
   unsubscribe: RuntimeCacheSubscription
 }
 export type RuntimeCacheBackendMutation =
@@ -73,6 +76,16 @@ export function encodeRuntimeCacheBackendScopeKey(scope: RuntimeCacheBackendScop
 
 export type RuntimeCacheSubscriber = (key: string | undefined, data?: string) => void
 export type RuntimeCacheSubscription = () => void
+export type RuntimeCacheSubscriptionAdmission =
+  | {
+      generation: number
+      kind: "admitted"
+      synchronizationRevision: number | null
+    }
+  | { generation: number; kind: "cancelled" }
+export interface RuntimeCacheSubscriberSubscription extends RuntimeCacheSubscription {
+  readonly admission: Promise<RuntimeCacheSubscriptionAdmission>
+}
 
 const cacheStores = new Map<string, RuntimeCacheStore>()
 let cacheBackendVersion = 0
@@ -84,6 +97,7 @@ interface RuntimeCacheStore {
   backendSubscriptionGeneration: number
   backendSubscriptionPending: boolean
   backendSubscription?: RuntimeCacheBackendSubscription
+  backendSubscriptionAdmission?: Promise<RuntimeCacheSubscriptionAdmission>
   backendVersion: number
   entries: Map<string, string>
   key: string
@@ -150,6 +164,7 @@ export class Cache {
 
   set(key: string, data: string): void {
     const store = this.#getStore()
+    assertCacheStoreMutationAdmitted(store)
     removeCacheEntry(store, key)
     store.entries.set(key, data)
     store.totalBytes += measureCacheEntry(key, data)
@@ -170,6 +185,7 @@ export class Cache {
 
   remove(key: string): boolean {
     const store = this.#getStore()
+    assertCacheStoreMutationAdmitted(store)
     const removed = removeCacheEntry(store, key)
     if (removed) {
       persistCacheMutation(store, {
@@ -184,6 +200,7 @@ export class Cache {
 
   clear(options: { notifySubscribers?: boolean } = {}): void {
     const store = this.#getStore()
+    assertCacheStoreMutationAdmitted(store)
     store.entries.clear()
     store.totalBytes = 0
     persistCacheMutation(store, { kind: "clear" })
@@ -192,7 +209,7 @@ export class Cache {
     }
   }
 
-  subscribe(subscriber: RuntimeCacheSubscriber): RuntimeCacheSubscription {
+  subscribe(subscriber: RuntimeCacheSubscriber): RuntimeCacheSubscriberSubscription {
     const store = this.#getStore(false)
     const registration: RuntimeCacheSubscriberRegistration = { active: true, subscriber }
     store.subscribers.add(registration)
@@ -203,9 +220,14 @@ export class Cache {
       store.subscribers.delete(registration)
       throw error
     }
-    return () => {
+    const unsubscribe = () => {
       removeCacheSubscriber(store, registration)
     }
+    return Object.defineProperty(unsubscribe, "admission", {
+      configurable: false,
+      enumerable: true,
+      get: () => readCacheSubscriptionAdmission(store)
+    }) as RuntimeCacheSubscriberSubscription
   }
 
   #getStore(loadBackend = true): RuntimeCacheStore {
@@ -325,9 +347,14 @@ function migrateActiveCacheStores(backend: RuntimeCacheBackend | undefined): voi
     store.backendVersion = cacheBackendVersion
     if (backend) {
       store.backend = backend
-      ensureBackendSubscription(store)
     } else {
       delete store.backend
+    }
+    store.entries.clear()
+    store.totalBytes = 0
+    enqueueCacheNotifications(store, [[undefined, undefined]])
+    if (backend) {
+      ensureBackendSubscription(store)
     }
   }
 }
@@ -392,6 +419,7 @@ function cancelBackendSubscription(store: RuntimeCacheStore): void {
   store.backendSubscriptionGeneration++
   const unsubscribe = store.backendSubscription
   store.backendSubscription = undefined
+  store.backendSubscriptionAdmission = undefined
   store.backendRevision = -1
   store.synchronizationRevision = null
   unsubscribe?.unsubscribe()
@@ -414,13 +442,30 @@ function ensureBackendSubscription(store: RuntimeCacheStore): void {
     })
     if (store.backendSubscriptionGeneration === generation && store.backend === backend) {
       store.backendSubscription = subscription
-      void subscription.ready.catch((error) => {
-        if (store.backendSubscriptionGeneration !== generation || store.backend !== backend) {
-          return
-        }
-        cancelBackendSubscription(store)
-        store.reportSubscriberFailure(error)
-      })
+      store.backendSubscriptionAdmission = subscription.admission
+        .then((admission): RuntimeCacheSubscriptionAdmission => {
+          if (
+            store.backendSubscriptionGeneration !== generation ||
+            store.backend !== backend ||
+            admission.kind === "cancelled"
+          ) {
+            return { generation, kind: "cancelled" }
+          }
+          applyBackendSnapshot(store, admission.snapshot)
+          return {
+            generation,
+            kind: "admitted",
+            synchronizationRevision: store.synchronizationRevision
+          }
+        })
+        .catch((error) => {
+          if (store.backendSubscriptionGeneration === generation && store.backend === backend) {
+            cancelBackendSubscription(store)
+            store.reportSubscriberFailure(error)
+          }
+          throw error
+        })
+      void store.backendSubscriptionAdmission.catch(() => undefined)
     } else {
       subscription.unsubscribe()
     }
@@ -430,6 +475,23 @@ function ensureBackendSubscription(store: RuntimeCacheStore): void {
   if (!store.backendSubscription && store.subscribers.size > 0 && store.backend) {
     ensureBackendSubscription(store)
   }
+}
+
+function readCacheSubscriptionAdmission(
+  subscribedStore: RuntimeCacheStore
+): Promise<RuntimeCacheSubscriptionAdmission> {
+  const currentStore = cacheStores.get(subscribedStore.key)
+  const store =
+    currentStore?.subscribers === subscribedStore.subscribers ? currentStore : subscribedStore
+  ensureBackendSubscription(store)
+  if (store.backendSubscriptionAdmission) {
+    return store.backendSubscriptionAdmission
+  }
+  return Promise.resolve({
+    generation: store.backendSubscriptionGeneration,
+    kind: "admitted",
+    synchronizationRevision: store.synchronizationRevision
+  })
 }
 
 function applyBackendSnapshot(
@@ -547,6 +609,12 @@ function persistCacheMutation(
   }
 
   store.backend.mutateStore(store.scope, mutation)
+}
+
+function assertCacheStoreMutationAdmitted(store: RuntimeCacheStore): void {
+  if (store.backend && store.subscribers.size > 0 && store.synchronizationRevision === null) {
+    throw new Error("Extension runtime Cache subscription admission is pending.")
+  }
 }
 
 function enqueueCacheNotifications(

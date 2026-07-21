@@ -322,7 +322,7 @@ test("Cache synchronization revision does not create or load an unsubscribed sto
   const uninstallBackend = installExtensionRuntimeCacheBackend(backend)
 
   try {
-    await runWithCacheContext(() => {
+    await runWithCacheContext(async () => {
       const cache = new Cache({ namespace: "synchronization-revision-read" })
       assert.equal(cache.synchronizationRevision, null)
       assert.equal(loadCount, 0)
@@ -655,7 +655,7 @@ test("Cache reports asynchronous backend subscription admission failure once", a
     loadStore: () => [],
     mutateStore: () => undefined,
     subscribeStore: () => ({
-      ready: Promise.reject(admissionError),
+      admission: Promise.reject(admissionError),
       unsubscribe: () => {
         unsubscribeCount++
       }
@@ -694,9 +694,11 @@ test("Cache applies only newer backend snapshots and cancels the change feed", a
     mutateStore: () => undefined,
     subscribeStore(_scope, listener) {
       activeListener = listener
-      listener({ entries: initialEntries, revision: 0 })
       return {
-        ready: Promise.resolve(),
+        admission: Promise.resolve({
+          kind: "admitted",
+          snapshot: { entries: initialEntries, revision: 0 }
+        }),
         unsubscribe: () => {
           if (activeListener === listener) {
             activeListener = null
@@ -709,10 +711,11 @@ test("Cache applies only newer backend snapshots and cancels the change feed", a
   const uninstallBackend = installExtensionRuntimeCacheBackend(backend)
 
   try {
-    await runWithCacheContext(() => {
+    await runWithCacheContext(async () => {
       const cache = new Cache({ namespace: "live-snapshot-ordering" })
       const events: Array<{ data: string | undefined; key: string | undefined }> = []
       const unsubscribe = cache.subscribe((key, data) => events.push({ data, key }))
+      assert.equal((await unsubscribe.admission).kind, "admitted")
       const listener = activeListener
       assert.ok(listener)
 
@@ -733,6 +736,7 @@ test("Cache applies only newer backend snapshots and cancels the change feed", a
       initialEntries = [["page", "resubscribed-page"]]
       const resumedEvents: Array<{ data: string | undefined; key: string | undefined }> = []
       const unsubscribeResumed = cache.subscribe((key, data) => resumedEvents.push({ data, key }))
+      assert.equal((await unsubscribeResumed.admission).kind, "admitted")
       assert.deepEqual(resumedEvents, [{ data: "resubscribed-page", key: "page" }])
       assert.equal(cache.get("page"), "resubscribed-page")
       unsubscribeResumed()
@@ -751,9 +755,11 @@ test("Cache isolates throwing subscribers and preserves reentrant notification o
     mutateStore: () => undefined,
     subscribeStore(_scope, listener) {
       activeListener = listener
-      listener({ entries: [], revision: 0 })
       return {
-        ready: Promise.resolve(),
+        admission: Promise.resolve({
+          kind: "admitted",
+          snapshot: { entries: [], revision: 0 }
+        }),
         unsubscribe: () => {
           if (activeListener === listener) {
             activeListener = null
@@ -839,23 +845,25 @@ test("Cache migrates an active change feed when the backend is replaced", async 
   const uninstallFirst = installExtensionRuntimeCacheBackend(first.backend)
 
   try {
-    await runWithCacheContext(() => {
+    await runWithCacheContext(async () => {
       const cache = new Cache({ namespace: "backend-replacement-feed" })
       const events: string[] = []
       const unsubscribe = cache.subscribe((_key, data) => events.push(data ?? "removed"))
+      assert.equal((await unsubscribe.admission).kind, "admitted")
       assert.equal(first.subscribeCount, 1)
       assert.equal(first.unsubscribeCount, 0)
       const firstSynchronizationRevision = cache.synchronizationRevision
       assert.ok(firstSynchronizationRevision !== null)
 
       const uninstallSecond = installExtensionRuntimeCacheBackend(second.backend)
+      assert.equal((await unsubscribe.admission).kind, "admitted")
       assert.equal(first.unsubscribeCount, 1)
       assert.equal(second.subscribeCount, 1)
       assert.ok(cache.synchronizationRevision !== null)
       assert.notEqual(cache.synchronizationRevision, firstSynchronizationRevision)
       first.publishLate([["page", "late-first"]], 99)
       assert.equal(cache.get("page"), "second")
-      assert.deepEqual(events, ["first", "second"])
+      assert.deepEqual(events, ["first", "removed", "second"])
 
       unsubscribe()
       assert.equal(second.unsubscribeCount, 1)
@@ -910,7 +918,13 @@ function createBackendLifecycle(): Pick<
     close: async () => undefined,
     flush: async () => undefined,
     onFailure: () => () => undefined,
-    subscribeStore: () => ({ ready: Promise.resolve(), unsubscribe: () => undefined })
+    subscribeStore: () => ({
+      admission: Promise.resolve({
+        kind: "admitted",
+        snapshot: { entries: [], revision: 0 }
+      }),
+      unsubscribe: () => undefined
+    })
   }
 }
 
@@ -976,9 +990,11 @@ function createTrackedSnapshotBackend(initialEntries: RuntimeCacheEntry[]): {
     subscribeStore(_scope, listener) {
       subscribeCount++
       lastListener = listener
-      listener({ entries: initialEntries, revision: 0 })
       return {
-        ready: Promise.resolve(),
+        admission: Promise.resolve({
+          kind: "admitted",
+          snapshot: { entries: initialEntries, revision: 0 }
+        }),
         unsubscribe: () => {
           unsubscribeCount++
         }

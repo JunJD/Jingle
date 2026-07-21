@@ -28,6 +28,7 @@ import {
 import {
   encodeRuntimeCacheBackendScopeKey,
   type RuntimeCacheBackend,
+  type RuntimeCacheBackendAdmission,
   type RuntimeCacheBackendFailureListener,
   type RuntimeCacheBackendMutation,
   type RuntimeCacheBackendSnapshot,
@@ -80,6 +81,7 @@ interface RuntimeCacheStoreSubscriptionState {
 
 interface RuntimeCacheStoreSubscriptionRegistration {
   active: boolean
+  admitted: boolean
   listener: RuntimeCacheBackendSnapshotListener
 }
 
@@ -277,7 +279,7 @@ export function createFileExtensionRuntimeCacheBackend(
   let failureReported = false
   let acceptingWrites = true
   let writeQueue = Promise.resolve()
-  const admissionPromises = new Set<Promise<void>>()
+  const admissionPromises = new Set<Promise<RuntimeCacheBackendAdmission>>()
   const subscribedFiles = new Map<string, RuntimeCacheFileSubscriptionState>()
   const pendingRefreshPaths = new Set<string>()
   let directoryWatcher: RuntimeCacheDirectoryWatcher | null = null
@@ -339,10 +341,12 @@ export function createFileExtensionRuntimeCacheBackend(
     } while (pendingWrites !== writeQueue)
   }
 
-  const refreshSubscribedFile = async (cacheFilePath: string): Promise<void> => {
+  const refreshSubscribedFile = async (
+    cacheFilePath: string
+  ): Promise<ReadonlyMap<string, RuntimeCacheBackendSnapshot>> => {
     const fileState = subscribedFiles.get(cacheFilePath)
     if (!fileState) {
-      return
+      return new Map()
     }
     const result = await readCacheFileWithRecovery(
       cacheDir,
@@ -353,12 +357,16 @@ export function createFileExtensionRuntimeCacheBackend(
     if (result.corruption) {
       reportCacheCorruptionRecovery()
     }
+    const snapshots = new Map<string, RuntimeCacheBackendSnapshot>()
     for (const [storeKey, storeState] of fileState.stores) {
-      applyStoreSubscriptionSnapshot(storeState, {
+      const snapshot = freezeRuntimeCacheBackendSnapshot({
         entries: result.cacheFile.stores[storeKey]?.entries ?? [],
         revision: storeState.revision + 1
       })
+      applyStoreSubscriptionSnapshot(storeState, snapshot)
+      snapshots.set(storeKey, snapshot)
     }
+    return snapshots
   }
 
   const runRefreshLoop = async (): Promise<void> => {
@@ -524,6 +532,7 @@ export function createFileExtensionRuntimeCacheBackend(
       }
       const registration: RuntimeCacheStoreSubscriptionRegistration = {
         active: true,
+        admitted: false,
         listener
       }
       storeState.listeners.add(registration)
@@ -538,10 +547,10 @@ export function createFileExtensionRuntimeCacheBackend(
           closeDirectoryWatcher()
         }
       }
-      const ready = Promise.resolve()
-        .then(async () => {
+      const admission: Promise<RuntimeCacheBackendAdmission> = Promise.resolve()
+        .then(async (): Promise<RuntimeCacheBackendAdmission> => {
           if (!registration.active || !acceptingWrites || failure) {
-            return
+            return { kind: "cancelled" }
           }
           await admitCacheRetention(
             cacheDir,
@@ -550,28 +559,37 @@ export function createFileExtensionRuntimeCacheBackend(
             options.writerLease
           )
           if (!registration.active || !acceptingWrites || failure) {
-            return
+            return { kind: "cancelled" }
           }
           await ensureDirectoryWatcher()
           if (!registration.active || !acceptingWrites || failure) {
-            return
+            return { kind: "cancelled" }
           }
           await waitForStableWrites()
           if (!registration.active || !acceptingWrites || failure) {
-            return
+            return { kind: "cancelled" }
           }
-          await refreshSubscribedFile(cacheFilePath)
+          const snapshots = await refreshSubscribedFile(cacheFilePath)
+          if (!registration.active || !acceptingWrites || failure) {
+            return { kind: "cancelled" }
+          }
+          const snapshot = snapshots.get(storeKey)
+          if (!snapshot) {
+            return { kind: "cancelled" }
+          }
+          registration.admitted = true
+          return { kind: "admitted", snapshot }
         })
         .catch((error: unknown) => {
           unsubscribe()
           throw recordFailure(error)
         })
         .finally(() => {
-          admissionPromises.delete(ready)
+          admissionPromises.delete(admission)
         })
-      admissionPromises.add(ready)
-      void ready.catch(() => undefined)
-      return { ready, unsubscribe }
+      admissionPromises.add(admission)
+      void admission.catch(() => undefined)
+      return { admission, unsubscribe }
     }
   }
 }
@@ -609,10 +627,7 @@ function applyStoreSubscriptionSnapshot(
     throw new RangeError("Extension runtime cache change feed revision is exhausted.")
   }
   state.revision = snapshot.revision
-  const frozenSnapshot = Object.freeze({
-    entries: Object.freeze(snapshot.entries.map(([key, data]) => [key, data] as const)),
-    revision: state.revision
-  })
+  const frozenSnapshot = freezeRuntimeCacheBackendSnapshot(snapshot)
   state.notificationQueue.push({
     listeners: Array.from(state.listeners),
     snapshot: frozenSnapshot
@@ -626,7 +641,7 @@ function applyStoreSubscriptionSnapshot(
     while (state.notificationQueue.length > 0) {
       const batch = state.notificationQueue.shift()!
       for (const registration of batch.listeners) {
-        if (!registration.active || !state.listeners.has(registration)) {
+        if (!registration.active || !registration.admitted || !state.listeners.has(registration)) {
           continue
         }
         try {
@@ -639,6 +654,15 @@ function applyStoreSubscriptionSnapshot(
   } finally {
     state.notifyingListeners = false
   }
+}
+
+function freezeRuntimeCacheBackendSnapshot(
+  snapshot: RuntimeCacheBackendSnapshot
+): RuntimeCacheBackendSnapshot {
+  return Object.freeze({
+    entries: Object.freeze(snapshot.entries.map(([key, data]) => [key, data] as const)),
+    revision: snapshot.revision
+  })
 }
 
 function removeEmptyStoreSubscription(

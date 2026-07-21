@@ -34,7 +34,13 @@ class FakeRuntimeCacheBackend implements RuntimeCacheBackend {
   }
 
   subscribeStore() {
-    return { ready: Promise.resolve(), unsubscribe: () => undefined }
+    return {
+      admission: Promise.resolve({
+        kind: "admitted" as const,
+        snapshot: { entries: [], revision: 0 }
+      }),
+      unsubscribe: () => undefined
+    }
   }
 
   reportFailure(): void {

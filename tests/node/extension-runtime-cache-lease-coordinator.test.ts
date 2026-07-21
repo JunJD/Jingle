@@ -122,7 +122,7 @@ test("process-exit cleanup retries writer and retention release after lock conte
     const lease = coordinator.activate("session-1")
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: lease })
     const subscription = backend.subscribeStore(scope, () => undefined)
-    await subscription.ready
+    await subscription.admission
     subscription.unsubscribe()
     assert.equal(listWriterLeases(cacheDir).length, 1)
     assert.equal(listRetentionRecords(cacheDir).length, 1)
@@ -153,7 +153,7 @@ test("cache coordinator serializes dispose with in-flight process cleanup", asyn
     coordinator.activate("session-2")
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: firstLease })
     const subscription = backend.subscribeStore(scope, () => undefined)
-    await subscription.ready
+    await subscription.admission
     subscription.unsubscribe()
 
     const releaseLock = await properLockfile.lock(cacheDir, {
@@ -182,7 +182,7 @@ test("cache coordinator disposes later leases and retries only failed terminal c
     coordinator.activate("session-2")
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: firstLease })
     const subscription = backend.subscribeStore(scope, () => undefined)
-    await subscription.ready
+    await subscription.admission
     subscription.unsubscribe()
     const retentionPath = getRetentionRecordPath(cacheDir, firstLease)
     writeFileSync(retentionPath, "not-json")

@@ -119,7 +119,7 @@ test("promise cache binding consumes the complete SDK scope without render-path 
       const identity = createPromiseCacheIdentity(loadScopedValue, ["page-1"])
       const binding = createPromiseCacheBinding(identity)
 
-      assert.deepEqual(binding.getSnapshot(), { kind: "miss" })
+      assert.deepEqual(binding.getSnapshot(), { kind: "pending" })
       assert.equal(memoryBackend.mutationCount, 0)
       assert.deepEqual(memoryBackend.loadedScopes, [])
 
@@ -207,17 +207,19 @@ test("promise cache binding closes the construction-to-subscribe race with an ex
   const context = createSdkContext("atomic-subscribe")
 
   try {
-    await runWithExtensionRuntimeSdk(context, () => {
+    await runWithExtensionRuntimeSdk(context, async () => {
       const identity = createPromiseCacheIdentity(loadScopedValue, ["page-2"])
       const observer = createPromiseCacheBinding<string>(identity)
       const writer = createPromiseCacheBinding<string>(identity)
-      assert.deepEqual(observer.getSnapshot(), { kind: "miss" })
+      assert.deepEqual(observer.getSnapshot(), { kind: "pending" })
 
       assert.equal(writer.write(cacheValue("written-before-subscribe")), true)
       let notificationCount = 0
       const unsubscribe = observer.subscribe(() => {
         notificationCount += 1
       })
+      assert.deepEqual(observer.getSnapshot(), { kind: "pending" })
+      await flushPromises()
 
       assert.deepEqual(observer.getSnapshot(), {
         kind: "value",
@@ -245,6 +247,7 @@ test("promise cache binding skips exact repeat writes without mutation or notifi
         notificationCount += 1
       })
       await flushPromises()
+      notificationCount = 0
 
       assert.equal(binding.write(cacheValue({ label: "stable" })), true)
       assert.equal(memoryBackend.mutationCount, 1)
@@ -325,19 +328,16 @@ test("promise cache binding never trusts stale process-local data after resubscr
       assert.equal(memoryBackend.mutationCount, 2)
 
       const unsubscribeSecond = binding.subscribe(() => undefined)
-      assert.deepEqual(binding.getSnapshot(), {
-        kind: "value",
-        value: cacheValue("local-old")
-      })
+      assert.deepEqual(binding.getSnapshot(), { kind: "pending" })
 
-      assert.equal(binding.write(cacheValue("local-old")), true)
-      assert.equal(memoryBackend.mutationCount, 3)
+      assert.equal(binding.write(cacheValue("local-old")), false)
+      assert.equal(memoryBackend.mutationCount, 2)
 
       secondSubscriptionReady.resolve()
       await flushPromises()
       assert.deepEqual(binding.getSnapshot(), {
         kind: "value",
-        value: cacheValue("local-old")
+        value: cacheValue("durable-new")
       })
       unsubscribeSecond()
     })
@@ -364,8 +364,9 @@ test("promise cache binding waits for the first feed snapshot after a synchronou
       assert.equal(memoryBackend.mutationCount, 1)
 
       const unsubscribe = binding.subscribe(() => undefined)
-      assert.equal(binding.write(cacheValue("local")), true)
-      assert.equal(memoryBackend.mutationCount, 2)
+      assert.deepEqual(binding.getSnapshot(), { kind: "pending" })
+      assert.equal(binding.write(cacheValue("local")), false)
+      assert.equal(memoryBackend.mutationCount, 1)
 
       const targetScope = memoryBackend.loadedScopes.find(
         (scope) => scope.commandName === "sync-load-feed" && scope.namespace === identity.namespace
@@ -381,16 +382,16 @@ test("promise cache binding waits for the first feed snapshot after a synchronou
           ]
         ]
       })
-      assert.equal(memoryBackend.mutationCount, 3)
+      assert.equal(memoryBackend.mutationCount, 2)
 
-      assert.equal(binding.write(cacheValue("local")), true)
-      assert.equal(memoryBackend.mutationCount, 4)
+      assert.equal(binding.write(cacheValue("local")), false)
+      assert.equal(memoryBackend.mutationCount, 2)
 
       initialSnapshotReady.resolve()
       await flushPromises()
       assert.deepEqual(binding.getSnapshot(), {
         kind: "value",
-        value: cacheValue("local")
+        value: cacheValue("external")
       })
       unsubscribe()
     })
@@ -439,15 +440,16 @@ test("promise cache binding invalidates same-value ownership while replacing the
       })
       uninstallReplacementBackend = installExtensionRuntimeCacheBackend(replacementBackend.backend)
       assert.equal(replacementBackend.mutationCount, 1)
+      assert.deepEqual(binding.getSnapshot(), { kind: "pending" })
 
-      assert.equal(binding.write(cacheValue("local-old")), true)
-      assert.equal(replacementBackend.mutationCount, 2)
+      assert.equal(binding.write(cacheValue("local-old")), false)
+      assert.equal(replacementBackend.mutationCount, 1)
 
       replacementSnapshotReady.resolve()
       await flushPromises()
       assert.deepEqual(binding.getSnapshot(), {
         kind: "value",
-        value: cacheValue("local-old")
+        value: cacheValue("durable-new")
       })
       unsubscribe()
     })
@@ -538,7 +540,7 @@ test("promise cache reports typed encoding and corrupt-entry recovery failures",
       const binding = createPromiseCacheBinding(corruptIdentity, {
         onFailure: (failure) => failures.push(failure)
       })
-      assert.deepEqual(binding.getSnapshot(), { kind: "miss" })
+      assert.deepEqual(binding.getSnapshot(), { kind: "pending" })
       assert.equal(corruptBackend.mutationCount, 0)
 
       const unsubscribe = binding.subscribe(() => undefined)
@@ -578,7 +580,7 @@ test("promise cache reports typed encoding and corrupt-entry recovery failures",
     const binding = createPromiseCacheBinding(
       createPromiseCacheIdentity(loadScopedValue, ["unavailable"])
     )
-    assert.deepEqual(binding.getSnapshot(), { kind: "miss" })
+    assert.deepEqual(binding.getSnapshot(), { kind: "pending" })
     assert.throws(() => binding.subscribe(() => undefined), /artifact-revision-unavailable/)
   })
 })
@@ -624,6 +626,8 @@ test("useCachedPromise renders stale data immediately and commits background rev
     })
     await renderer.flushSnapshots()
     assert.equal(getDetailMarkdown(renderer), "external:ready")
+    renderer.render(null)
+    await flushPromises()
   } finally {
     uninstallBackend()
   }
@@ -684,6 +688,8 @@ test("useFetch dependencies isolate functional URL resources and execute identit
       "https://api.notion.test/search?q=beta"
     ])
     assert.equal(new Set(memoryBackend.upsertedKeys).size, 2)
+    renderer.render(null)
+    await flushPromises()
   } finally {
     globalThis.fetch = originalFetch
     uninstallBackend()
@@ -875,16 +881,19 @@ function createMemoryBackend(
       )
     },
     onFailure: () => () => undefined,
-    subscribeStore(scope, listener) {
+    subscribeStore(scope, _listener) {
       let active = true
-      const ready = Promise.resolve().then(async () => {
+      const admission = Promise.resolve().then(async () => {
         await options.beforeSubscriptionSnapshot?.(scope)
-        if (active) {
-          listener({ entries: backend.loadStore(scope), revision: 0 })
-        }
+        return active
+          ? {
+              kind: "admitted" as const,
+              snapshot: { entries: backend.loadStore(scope), revision: 0 }
+            }
+          : { kind: "cancelled" as const }
       })
       return {
-        ready,
+        admission,
         unsubscribe: () => {
           active = false
         }
