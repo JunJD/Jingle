@@ -4,7 +4,11 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 
-import { assertMacNativeLinks } from "../../scripts/audit-packaged-runtime.mjs"
+import {
+  assertMacNativeLinks,
+  assertPackagedNativeArchitectures,
+  readNativeBinaryDescriptor
+} from "../../scripts/audit-packaged-runtime.mjs"
 
 function createResourcesFixture(): {
   nativeDirectory: string
@@ -17,6 +21,165 @@ function createResourcesFixture(): {
   mkdirSync(nativeDirectory, { recursive: true })
   return { nativeDirectory, resourcesPath, root }
 }
+
+function writeMachO(path: string, architecture: "arm64" | "x64"): void {
+  const header = Buffer.alloc(8)
+  header.writeUInt32LE(0xfeedfacf, 0)
+  header.writeUInt32LE(architecture === "arm64" ? 0x0100000c : 0x01000007, 4)
+  writeFileSync(path, header)
+}
+
+function writeElf(path: string, architecture: "arm64" | "x64"): void {
+  const header = Buffer.alloc(20)
+  header.set([0x7f, 0x45, 0x4c, 0x46], 0)
+  header[5] = 1
+  header.writeUInt16LE(architecture === "arm64" ? 0xb7 : 0x3e, 18)
+  writeFileSync(path, header)
+}
+
+function writePe(path: string, architecture: "arm64" | "x64"): void {
+  const header = Buffer.alloc(80)
+  header.write("MZ", 0, "ascii")
+  header.writeUInt32LE(64, 0x3c)
+  header.set([0x50, 0x45, 0, 0], 64)
+  header.writeUInt16LE(architecture === "arm64" ? 0xaa64 : 0x8664, 68)
+  writeFileSync(path, header)
+}
+
+test("native binary descriptor reads declared macOS, Linux, and Windows architectures", () => {
+  const root = mkdtempSync(join(tmpdir(), "jingle-native-architecture-descriptor-"))
+  try {
+    const machO = join(root, "mac")
+    const elf = join(root, "linux")
+    const pe = join(root, "windows.exe")
+    writeMachO(machO, "arm64")
+    writeElf(elf, "x64")
+    writePe(pe, "x64")
+
+    assert.deepEqual(readNativeBinaryDescriptor(machO), {
+      architectures: ["arm64"],
+      format: "mach-o"
+    })
+    assert.deepEqual(readNativeBinaryDescriptor(elf), {
+      architectures: ["x64"],
+      format: "elf"
+    })
+    assert.deepEqual(readNativeBinaryDescriptor(pe), {
+      architectures: ["x64"],
+      format: "pe"
+    })
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test("packaged architecture audit verifies the application, native addons, and helpers", () => {
+  const fixture = createResourcesFixture()
+  try {
+    const executablePath = join(fixture.root, "Jingle")
+    const addonPath = join(fixture.nativeDirectory, "binding.node")
+    const helperPath = join(fixture.nativeDirectory, "jingle-computer-use-macos")
+    const scriptPath = join(fixture.nativeDirectory, "jingle-computer-use-linux.py")
+    for (const path of [executablePath, addonPath, helperPath]) writeMachO(path, "arm64")
+    writeFileSync(scriptPath, "#!/usr/bin/env python3\n")
+    for (const path of [executablePath, helperPath, scriptPath]) chmodSync(path, 0o755)
+
+    assert.doesNotThrow(() =>
+      assertPackagedNativeArchitectures(
+        { executablePath, resourcesPath: fixture.resourcesPath },
+        { expectedArchitecture: "arm64", platform: "darwin" }
+      )
+    )
+
+    writeMachO(addonPath, "x64")
+    assert.throws(
+      () =>
+        assertPackagedNativeArchitectures(
+          { executablePath, resourcesPath: fixture.resourcesPath },
+          { expectedArchitecture: "arm64", platform: "darwin" }
+        ),
+      /native addon.*expected only arm64/
+    )
+  } finally {
+    rmSync(fixture.root, { force: true, recursive: true })
+  }
+})
+
+test("packaged architecture audit rejects cross-platform and ambiguous application binaries", () => {
+  const fixture = createResourcesFixture()
+  try {
+    const executablePath = join(fixture.root, "Jingle")
+    writePe(executablePath, "x64")
+
+    assert.throws(
+      () =>
+        assertPackagedNativeArchitectures(
+          { executablePath, resourcesPath: fixture.resourcesPath },
+          { expectedArchitecture: "x64", platform: "linux" }
+        ),
+      /application executable has pe format, expected elf/
+    )
+
+    assert.throws(
+      () =>
+        assertPackagedNativeArchitectures(
+          { executablePath, resourcesPath: fixture.resourcesPath },
+          {
+            expectedArchitecture: "x64",
+            platform: "win32",
+            readDescriptor: () => ({ architectures: ["x64", "arm64"], format: "pe" })
+          }
+        ),
+      /expected only x64/
+    )
+  } finally {
+    rmSync(fixture.root, { force: true, recursive: true })
+  }
+})
+
+test("packaged architecture audit rejects a Windows helper without POSIX execute bits", () => {
+  const fixture = createResourcesFixture()
+  try {
+    const executablePath = join(fixture.root, "Jingle.exe")
+    const helperPath = join(fixture.nativeDirectory, "wrong-architecture-helper.exe")
+    writePe(executablePath, "x64")
+    writePe(helperPath, "arm64")
+    chmodSync(helperPath, 0o644)
+
+    assert.throws(
+      () =>
+        assertPackagedNativeArchitectures(
+          { executablePath, resourcesPath: fixture.resourcesPath },
+          { expectedArchitecture: "x64", platform: "win32" }
+        ),
+      /native helper.*arm64.*expected only x64/
+    )
+  } finally {
+    rmSync(fixture.root, { force: true, recursive: true })
+  }
+})
+
+test("packaged architecture audit rejects malformed files with native extensions", () => {
+  const fixture = createResourcesFixture()
+  try {
+    const executablePath = join(fixture.root, "Jingle.exe")
+    const helperPath = join(fixture.nativeDirectory, "malformed-helper.exe")
+    writePe(executablePath, "x64")
+    writeFileSync(helperPath, "#!/bin/not-a-pe\n")
+    chmodSync(helperPath, 0o644)
+
+    assert.throws(
+      () =>
+        assertPackagedNativeArchitectures(
+          { executablePath, resourcesPath: fixture.resourcesPath },
+          { expectedArchitecture: "x64", platform: "win32" }
+        ),
+      /native helper is not a recognized native binary/
+    )
+  } finally {
+    rmSync(fixture.root, { force: true, recursive: true })
+  }
+})
 
 test("macOS packaged runtime audit skips executable non-Mach-O helpers", () => {
   const fixture = createResourcesFixture()

@@ -164,12 +164,18 @@ jobs:
         include:
           - name: mac
             runner: macos-latest
+            expected_arch: arm64
+            expected_artifact_arch: arm64
             command: pnpm run dist:mac
           - name: windows
             runner: windows-latest
+            expected_arch: x64
+            expected_artifact_arch: x64
             command: pnpm run dist:win
           - name: linux
             runner: ubuntu-latest
+            expected_arch: x64
+            expected_artifact_arch: x86_64
             command: pnpm run dist:linux
 
     steps:
@@ -184,6 +190,26 @@ jobs:
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "22.23.1"
+
+      - name: Verify runner architecture
+        shell: bash
+        env:
+          EXPECTED_ARCH: ${{ matrix.expected_arch }}
+          RUNNER_ARCH: ${{ runner.arch }}
+        run: |
+          case "$RUNNER_ARCH" in
+            X64) normalized_runner_arch="x64" ;;
+            ARM64) normalized_runner_arch="arm64" ;;
+            *)
+              echo "::error::Unsupported runner architecture '$RUNNER_ARCH'."
+              exit 1
+              ;;
+          esac
+          node_arch="$(node -p 'process.arch')"
+          if [[ "$normalized_runner_arch" != "$EXPECTED_ARCH" || "$node_arch" != "$EXPECTED_ARCH" ]]; then
+            echo "::error::Expected $EXPECTED_ARCH, runner reported $RUNNER_ARCH and Node reported $node_arch."
+            exit 1
+          fi
 
       - name: Setup pnpm
         shell: bash
@@ -211,38 +237,54 @@ jobs:
         run: pnpm run audit:frontend-packages
 
       - name: Package desktop app
+        env:
+          JINGLE_BUILD_TARGET_ARCH: ${{ matrix.expected_arch }}
         run: ${{ matrix.command }}
 
       - name: Verify local package output
         shell: bash
         env:
+          EXPECTED_ARTIFACT_ARCH: ${{ matrix.expected_artifact_arch }}
           RUNNER_OS_NAME: ${{ runner.os }}
         run: |
           shopt -s nullglob
           case "$RUNNER_OS_NAME" in
-            macOS) packages=(dist/*.dmg) ;;
-            Windows) packages=(dist/*.exe) ;;
-            Linux) packages=(dist/*.AppImage) ;;
+            macOS)
+              packages=(dist/*.dmg)
+              expected_packages=(dist/*-mac-"$EXPECTED_ARTIFACT_ARCH".dmg)
+              ;;
+            Windows)
+              packages=(dist/*.exe)
+              expected_packages=(dist/*-win-"$EXPECTED_ARTIFACT_ARCH".exe)
+              ;;
+            Linux)
+              packages=(dist/*.AppImage)
+              expected_packages=(dist/*-linux-"$EXPECTED_ARTIFACT_ARCH".AppImage)
+              ;;
             *)
               echo "::error::Unsupported runner OS '$RUNNER_OS_NAME'."
               exit 1
               ;;
           esac
 
-          if (( ${#packages[@]} == 0 )); then
-            echo "::error::No packaged application was produced for $RUNNER_OS_NAME."
+          if (( ${#packages[@]} != 1 || ${#expected_packages[@]} != 1 )); then
+            echo "::error::Expected exactly one $RUNNER_OS_NAME package for architecture $EXPECTED_ARTIFACT_ARCH; found ${#packages[@]} total and ${#expected_packages[@]} matching."
+            exit 1
+          fi
+          if [[ "${packages[0]}" != "${expected_packages[0]}" ]]; then
+            echo "::error::Packaged application does not carry the expected architecture in its name."
             exit 1
           fi
 
           {
             echo "### $RUNNER_OS_NAME package verification"
-            for package in "${packages[@]}"; do
-              if [[ ! -s "$package" ]]; then
-                echo "::error::Packaged application '$package' is empty."
-                exit 1
-              fi
-              echo "- \`$(basename "$package")\`"
-            done
+            package="${packages[0]}"
+            if [[ ! -s "$package" ]]; then
+              echo "::error::Packaged application '$package' is empty."
+              exit 1
+            fi
+            echo "- \`$(basename "$package")\`"
+            echo "- Architecture: \`${{ matrix.expected_arch }}\`"
             echo "- Build-only: no artifact was uploaded."
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -251,6 +293,7 @@ jobs:
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JINGLE_BUILD_TARGET_ARCH: ${{ matrix.expected_arch }}
         run: |
           mkdir -p release-smoke-diagnostics
           printf 'runner_os=%s\nrunner_arch=%s\n' \

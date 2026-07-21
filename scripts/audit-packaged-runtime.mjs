@@ -26,6 +26,7 @@ const machOMagicHexValues = new Set([
   "feedface",
   "feedfacf"
 ])
+const supportedRuntimeArchitectures = new Set(["arm64", "x64"])
 const requiredExternalPackages = ["@prisma/client", "just-bash"]
 const requiredPrismaMigrationNames = readdirSync(resolve("prisma/migrations"), {
   withFileTypes: true
@@ -182,18 +183,33 @@ function findRootAppExecutable(appPath) {
   return selectRootAppExecutableCandidate(candidates)
 }
 
+function hasNativeFileExtension(path) {
+  const name = basename(path).toLowerCase()
+  return (
+    name.endsWith(".node") ||
+    name.endsWith(".exe") ||
+    name.endsWith(".dll") ||
+    name.endsWith(".dylib") ||
+    name.endsWith(".so") ||
+    name.includes(".so.")
+  )
+}
+
 function findNativeFiles(resourcesPath) {
   return collectMatching(resourcesPath, (path, entry) => {
     if (entry.isDirectory()) {
       return false
     }
 
-    const name = basename(path)
-    if (name.endsWith(".node")) {
+    if (basename(path).toLowerCase().endsWith(".node")) {
       return statSync(path).isFile()
     }
 
-    return path.split(sep).includes("app.asar.unpacked") && Boolean(entry.mode & 0o111) && statSync(path).isFile()
+    return (
+      path.split(sep).includes("app.asar.unpacked") &&
+      (hasNativeFileExtension(path) || Boolean(entry.mode & 0o111)) &&
+      statSync(path).isFile()
+    )
   }).sort()
 }
 
@@ -205,6 +221,166 @@ function isMachOFile(path) {
     return bytesRead === header.length && machOMagicHexValues.has(header.toString("hex"))
   } finally {
     closeSync(file)
+  }
+}
+
+function readBinaryHeader(path, maximumBytes = 4096) {
+  const file = openSync(path, "r")
+  const header = Buffer.alloc(Math.min(statSync(path).size, maximumBytes))
+  try {
+    const bytesRead = readSync(file, header, 0, header.length, 0)
+    return header.subarray(0, bytesRead)
+  } finally {
+    closeSync(file)
+  }
+}
+
+function readUnsigned(buffer, offset, bytes, littleEndian) {
+  if (offset + bytes > buffer.length) {
+    throw new Error("Native binary header is truncated.")
+  }
+  if (bytes === 2) {
+    return littleEndian ? buffer.readUInt16LE(offset) : buffer.readUInt16BE(offset)
+  }
+  return littleEndian ? buffer.readUInt32LE(offset) : buffer.readUInt32BE(offset)
+}
+
+function architectureFromCpuType(cpuType) {
+  switch (cpuType) {
+    case 0x0100000c:
+      return "arm64"
+    case 0x01000007:
+      return "x64"
+    default:
+      return `cpu-0x${cpuType.toString(16)}`
+  }
+}
+
+function readMachOArchitectures(buffer, magic) {
+  const isFat =
+    magic === "cafebabe" || magic === "bebafeca" || magic === "cafebabf" || magic === "bfbafeca"
+  const littleEndian =
+    magic === "cefaedfe" || magic === "cffaedfe" || magic === "bebafeca" || magic === "bfbafeca"
+  if (!isFat) {
+    return [architectureFromCpuType(readUnsigned(buffer, 4, 4, littleEndian))]
+  }
+
+  const isFat64 = magic === "cafebabf" || magic === "bfbafeca"
+  const architectureCount = readUnsigned(buffer, 4, 4, littleEndian)
+  if (architectureCount < 1 || architectureCount > 32) {
+    throw new Error(`Native Mach-O has invalid architecture count ${architectureCount}.`)
+  }
+  const entrySize = isFat64 ? 32 : 20
+  const architectures = []
+  for (let index = 0; index < architectureCount; index += 1) {
+    const entryOffset = 8 + index * entrySize
+    architectures.push(architectureFromCpuType(readUnsigned(buffer, entryOffset, 4, littleEndian)))
+  }
+  return architectures
+}
+
+export function readNativeBinaryDescriptor(path) {
+  const header = readBinaryHeader(path)
+  const magic = header.subarray(0, 4).toString("hex")
+  if (machOMagicHexValues.has(magic)) {
+    return { architectures: readMachOArchitectures(header, magic), format: "mach-o" }
+  }
+
+  if (magic === "7f454c46") {
+    if (header.length < 20 || (header[5] !== 1 && header[5] !== 2)) {
+      throw new Error(`Native ELF header is malformed: ${path}`)
+    }
+    const machine = readUnsigned(header, 18, 2, header[5] === 1)
+    const architecture =
+      machine === 0xb7 ? "arm64" : machine === 0x3e ? "x64" : `machine-0x${machine.toString(16)}`
+    return { architectures: [architecture], format: "elf" }
+  }
+
+  if (header.subarray(0, 2).toString("ascii") === "MZ") {
+    if (header.length < 64) {
+      throw new Error(`Native PE header is malformed: ${path}`)
+    }
+    const peOffset = header.readUInt32LE(0x3c)
+    if (
+      peOffset + 6 > header.length ||
+      header.subarray(peOffset, peOffset + 4).toString("hex") !== "50450000"
+    ) {
+      throw new Error(`Native PE header is malformed: ${path}`)
+    }
+    const machine = header.readUInt16LE(peOffset + 4)
+    const architecture =
+      machine === 0xaa64
+        ? "arm64"
+        : machine === 0x8664
+          ? "x64"
+          : `machine-0x${machine.toString(16)}`
+    return { architectures: [architecture], format: "pe" }
+  }
+
+  return null
+}
+
+function expectedNativeFormat(platform) {
+  switch (platform) {
+    case "darwin":
+      return "mach-o"
+    case "linux":
+      return "elf"
+    case "win32":
+      return "pe"
+    default:
+      throw new Error(`Unsupported packaged runtime platform: ${platform}`)
+  }
+}
+
+export function assertPackagedNativeArchitectures(
+  { executablePath, resourcesPath },
+  {
+    expectedArchitecture = process.env.JINGLE_BUILD_TARGET_ARCH ?? process.arch,
+    platform = process.platform,
+    readDescriptor = readNativeBinaryDescriptor
+  } = {}
+) {
+  if (!supportedRuntimeArchitectures.has(expectedArchitecture)) {
+    throw new Error(`Unsupported packaged runtime architecture: ${expectedArchitecture}`)
+  }
+  if (!executablePath) {
+    throw new Error("Packaged application executable is missing.")
+  }
+
+  const requiredFormat = expectedNativeFormat(platform)
+  const candidates = [
+    { kind: "application executable", path: executablePath, required: true },
+    ...findNativeFiles(resourcesPath).map((path) => ({
+      kind: basename(path).toLowerCase().endsWith(".node") ? "native addon" : "native helper",
+      path,
+      required: hasNativeFileExtension(path)
+    }))
+  ]
+
+  for (const candidate of candidates) {
+    const descriptor = readDescriptor(candidate.path)
+    if (!descriptor) {
+      if (candidate.required) {
+        throw new Error(
+          `Packaged ${candidate.kind} is not a recognized native binary: ${candidate.path}`
+        )
+      }
+      continue
+    }
+    if (descriptor.format !== requiredFormat) {
+      throw new Error(
+        `Packaged ${candidate.kind} has ${descriptor.format} format, expected ${requiredFormat}: ${candidate.path}`
+      )
+    }
+    if (
+      descriptor.architectures.length !== 1 ||
+      descriptor.architectures[0] !== expectedArchitecture
+    ) {
+      throw new Error(
+        `Packaged ${candidate.kind} has architectures ${descriptor.architectures.join(", ")}, expected only ${expectedArchitecture}: ${candidate.path}`
+      )
+    }
   }
 }
 
@@ -476,6 +652,7 @@ function runPackagedRuntimeAudit() {
 
   for (const packagedApp of packagedApps) {
     assertForbiddenRuntimeNotPackaged(packagedApp)
+    assertPackagedNativeArchitectures(packagedApp)
     assertMacNativeLinks(packagedApp)
     runPackagedRuntimeSmoke(packagedApp)
     console.log(`packaged runtime audit passed: ${packagedApp.appPath}`)
