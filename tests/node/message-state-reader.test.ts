@@ -149,6 +149,99 @@ test("canonical main message reader folds latest events with run ownership insid
   assert.deepEqual(await prisma.message.findMany({ where: { threadId } }), [])
 })
 
+test("targeted canonical reader isolates requested latest message facts", async () => {
+  const { createRun, createThread } = await import("../../src/main/db")
+  const { getPrismaClient } = await import("../../src/main/db/client")
+  const {
+    getCanonicalMainThreadMessage,
+    listCanonicalMainThreadMessagesByIds,
+    persistMessageStateVersion
+  } = await import("../../src/main/db/message-state")
+  const prisma = getPrismaClient()
+  const threadId = "thread-targeted-canonical-message-reader"
+  const runId = "run-targeted-canonical-message-reader"
+  await createThread(threadId)
+  await createRun(runId, threadId)
+
+  const requested = messageItem({
+    content: "requested",
+    messageId: "message-targeted-requested",
+    order: 1,
+    role: "assistant"
+  })
+  const superseded = messageItem({
+    content: "superseded-old",
+    messageId: "message-targeted-superseded",
+    order: 2,
+    role: "assistant"
+  })
+  const unrelated = messageItem({
+    content: "unrelated",
+    messageId: "message-targeted-unrelated",
+    order: 3,
+    role: "assistant"
+  })
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-targeted-reader-first",
+    checkpointNs: "",
+    messages: [requested, superseded, unrelated],
+    runId,
+    threadId,
+    version: "messages-targeted-reader-first"
+  })
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-targeted-reader-second",
+    checkpointNs: "",
+    messages: [
+      requested,
+      { ...superseded, content: JSON.stringify("superseded-latest"), rawHash: "latest-hash" },
+      unrelated
+    ],
+    runId,
+    threadId,
+    version: "messages-targeted-reader-second"
+  })
+
+  const supersededEvents = await prisma.messageEvent.findMany({
+    orderBy: { seq: "asc" },
+    where: { messageId: superseded.messageId, threadId }
+  })
+  await prisma.messageEvent.update({
+    data: { payload: "{" },
+    where: { eventId: supersededEvents[0]!.eventId }
+  })
+  const unrelatedEvent = await prisma.messageEvent.findFirstOrThrow({
+    orderBy: { seq: "desc" },
+    where: { messageId: unrelated.messageId, threadId }
+  })
+  await prisma.messageEvent.update({
+    data: { payload: "{" },
+    where: { eventId: unrelatedEvent.eventId }
+  })
+
+  const rows = await prisma.$transaction((tx) =>
+    listCanonicalMainThreadMessagesByIds(
+      { messageIds: [superseded.messageId, requested.messageId], threadId },
+      tx
+    )
+  )
+  assert.deepEqual(
+    rows.map((row) => ({ content: JSON.parse(row.content), messageId: row.message_id })),
+    [
+      { content: "requested", messageId: requested.messageId },
+      { content: "superseded-latest", messageId: superseded.messageId }
+    ]
+  )
+  assert.equal(
+    await getCanonicalMainThreadMessage({ messageId: "message-targeted-missing", threadId }),
+    null
+  )
+  await assert.rejects(
+    listCanonicalMainThreadMessagesByIds({ messageIds: [unrelated.messageId], threadId }),
+    SyntaxError
+  )
+})
+
 test("canonical main message reader rejects malformed event and run ownership facts", async () => {
   const { createRun, createThread } = await import("../../src/main/db")
   const { getPrismaClient } = await import("../../src/main/db/client")

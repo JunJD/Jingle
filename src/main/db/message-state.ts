@@ -834,16 +834,23 @@ export async function listProjectedThreadMessages(
   }))
 }
 
-export async function listCanonicalMainThreadMessages(
-  threadId: string,
-  tx: TransactionClient = getPrismaClient()
+async function listCanonicalMainThreadMessagesMatching(
+  input: { messageIds?: readonly string[]; threadId: string },
+  tx: TransactionClient
 ): Promise<MessageProjectionRow[]> {
   const latest = await tx.messageStateVersion.findFirst({
     orderBy: [{ throughSeq: "desc" }, { createdAt: "desc" }, { version: "desc" }],
     select: { throughSeq: true },
-    where: { checkpointNs: "", threadId }
+    where: { checkpointNs: "", threadId: input.threadId }
   })
   if (!latest || latest.throughSeq <= 0) return []
+
+  const messageIds =
+    input.messageIds === undefined ? undefined : Array.from(new Set(input.messageIds)).sort()
+  if (messageIds?.length === 0) return []
+  const messageFilter = messageIds
+    ? Prisma.sql`AND "message_events"."message_id" IN (${Prisma.join(messageIds)})`
+    : Prisma.empty
 
   const events = await tx.$queryRaw<CanonicalMainMessageEventRow[]>(Prisma.sql`
     WITH "ranked_message_events" AS (
@@ -862,9 +869,10 @@ export async function listCanonicalMainThreadMessages(
         ) AS "position"
       FROM "message_events"
       LEFT JOIN "runs" ON "runs"."run_id" = "message_events"."run_id"
-      WHERE "message_events"."thread_id" = ${threadId}
+      WHERE "message_events"."thread_id" = ${input.threadId}
         AND "message_events"."checkpoint_ns" = ''
         AND "message_events"."seq" <= ${latest.throughSeq}
+        ${messageFilter}
     )
     SELECT
       "createdAt",
@@ -877,6 +885,7 @@ export async function listCanonicalMainThreadMessages(
       "seq",
       "type"
     FROM "ranked_message_events"
+    WHERE "position" = 1
     ORDER BY "seq" ASC
   `)
 
@@ -885,7 +894,7 @@ export async function listCanonicalMainThreadMessages(
     if (typeof event.messageId !== "string") {
       throw new Error(`[MessageState] Message event "${event.eventId}" has no message identity.`)
     }
-    if (event.runId !== null && event.runThreadId !== threadId) {
+    if (event.runId !== null && event.runThreadId !== input.threadId) {
       throw new Error(
         `[MessageState] Message event "${event.eventId}" has conflicting run ownership.`
       )
@@ -898,7 +907,6 @@ export async function listCanonicalMainThreadMessages(
     if (item.messageId !== event.messageId) {
       throw new Error(`[MessageState] Message event "${event.eventId}" has conflicting identities.`)
     }
-    if (Number(event.position) !== 1) continue
     rows.push({
       content: item.content,
       created_at: Number(BigInt(event.createdAt) + BigInt(item.order)),
@@ -915,7 +923,7 @@ export async function listCanonicalMainThreadMessages(
       role: item.role,
       run_id: event.runId,
       seq: item.order,
-      thread_id: threadId,
+      thread_id: input.threadId,
       tool_call_id: item.toolCallId,
       tool_calls: item.toolCalls
     })
@@ -923,6 +931,31 @@ export async function listCanonicalMainThreadMessages(
   return rows
     .sort((left, right) => left.seq - right.seq || left.eventSeq - right.eventSeq)
     .map(({ eventSeq: _eventSeq, ...row }) => row)
+}
+
+export async function listCanonicalMainThreadMessagesByIds(
+  input: { messageIds: readonly string[]; threadId: string },
+  tx: TransactionClient = getPrismaClient()
+): Promise<MessageProjectionRow[]> {
+  return listCanonicalMainThreadMessagesMatching(input, tx)
+}
+
+export async function getCanonicalMainThreadMessage(
+  input: { messageId: string; threadId: string },
+  tx: TransactionClient = getPrismaClient()
+): Promise<MessageProjectionRow | null> {
+  const rows = await listCanonicalMainThreadMessagesMatching(
+    { messageIds: [input.messageId], threadId: input.threadId },
+    tx
+  )
+  return rows[0] ?? null
+}
+
+export async function listCanonicalMainThreadMessages(
+  threadId: string,
+  tx: TransactionClient = getPrismaClient()
+): Promise<MessageProjectionRow[]> {
+  return listCanonicalMainThreadMessagesMatching({ threadId }, tx)
 }
 
 function mapMessageSearchQueryRow(row: MessageSearchQueryRow): MessageSearchMatchRow {
