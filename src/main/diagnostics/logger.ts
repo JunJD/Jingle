@@ -93,12 +93,21 @@ const ERROR_FIELD_KEYS = [
 ] as const
 
 interface PendingDiagnosticLine {
+  readonly acknowledgement: PendingDiagnosticAcknowledgement | null
   readonly bytes: number
   readonly coalesceKey: string | null
   readonly fatal: boolean
   readonly level: DiagnosticsLevel
   readonly line: string
 }
+
+interface PendingDiagnosticAcknowledgement {
+  readonly promise: Promise<void>
+  readonly reject: (reason?: unknown) => void
+  readonly resolve: () => void
+}
+
+type DiagnosticDelivery = "best-effort" | "fatal" | "strict"
 
 interface DiagnosticQueuePressure {
   coalescedRecords: number
@@ -309,7 +318,7 @@ export class DiagnosticsLogger {
   }
 
   errorAndFlush(message: string, fields?: DiagnosticsLogFields): Promise<void> {
-    return this.enqueueRecord(this.createRecord("error", message, fields), false, true)
+    return this.enqueueRecord(this.createRecord("error", message, fields), "fatal")
   }
 
   [APPEND_DIAGNOSTIC_GRAPH_EVENT](record: DiagnosticGraphEvent): Promise<void> {
@@ -323,7 +332,7 @@ export class DiagnosticsLogger {
     ) {
       return Promise.reject(new Error("Diagnostics logger rejected an untrusted graph event."))
     }
-    return this.enqueueRecord(record, true, false)
+    return this.enqueueRecord(record, "strict")
   }
 
   async flush(): Promise<void> {
@@ -347,16 +356,19 @@ export class DiagnosticsLogger {
 
   private write(level: DiagnosticsLevel, message: string, fields?: DiagnosticsLogFields): void {
     const record = this.createRecord(level, message, fields)
-    void this.enqueueRecord(record, false, false)
+    void this.enqueueRecord(record, "best-effort")
   }
 
-  private enqueueRecord(record: object, rejectOversize: boolean, fatal: boolean): Promise<void> {
+  private enqueueRecord(record: object, delivery: DiagnosticDelivery): Promise<void> {
+    const fatal = delivery === "fatal"
+    const strict = delivery === "strict"
     let pending: PendingDiagnosticLine
     try {
-      const line = this.serializeRecord(record, rejectOversize)
+      const line = this.serializeRecord(record, strict)
       pending = {
+        acknowledgement: strict ? this.createAcknowledgement() : null,
         bytes: Buffer.byteLength(line, "utf8"),
-        coalesceKey: fatal ? null : this.readCoalesceKey(record),
+        coalesceKey: fatal || strict ? null : this.readCoalesceKey(record),
         fatal,
         level: this.readRecordLevel(record),
         line
@@ -371,6 +383,14 @@ export class DiagnosticsLogger {
       const pressureOwner = this.findQueuePressureOwner()
       if (pressureOwner) {
         this.recordQueueDrop(pressureOwner, pending)
+        if (pending.acknowledgement) {
+          this.settleAcknowledgementAfterBatch(
+            pressureOwner,
+            pending,
+            new Error("Diagnostics graph event could not be admitted to the write queue.")
+          )
+          return pending.acknowledgement.promise
+        }
         return pressureOwner.completion
       }
     }
@@ -378,7 +398,17 @@ export class DiagnosticsLogger {
     if (fatal) {
       this.ensureFatalCompletion(batch)
     }
-    this.addPendingLine(batch, pending)
+    const admitted = this.addPendingLine(batch, pending)
+    if (pending.acknowledgement) {
+      if (!admitted) {
+        this.settleAcknowledgementAfterBatch(
+          batch,
+          pending,
+          new Error("Diagnostics graph event could not be admitted to the write queue.")
+        )
+      }
+      return pending.acknowledgement.promise
+    }
     return fatal ? (batch.fatalCompletion as Promise<void>) : batch.completion
   }
 
@@ -413,11 +443,11 @@ export class DiagnosticsLogger {
     return batch
   }
 
-  private addPendingLine(batch: DiagnosticWriteBatch, pending: PendingDiagnosticLine): void {
+  private addPendingLine(batch: DiagnosticWriteBatch, pending: PendingDiagnosticLine): boolean {
     const duplicate = pending.coalesceKey ? batch.fingerprints.get(pending.coalesceKey) : undefined
     if (duplicate) {
       batch.pressure.coalescedRecords = addBoundedCount(batch.pressure.coalescedRecords, 1)
-      return
+      return false
     }
 
     if (pending.fatal) {
@@ -430,7 +460,7 @@ export class DiagnosticsLogger {
           this.recordQueueDrop(batch, pending)
           batch.fatalWriteError ??= error
           batch.writeError ??= error
-          return
+          return false
         }
         this.recordQueueDrop(batch, evicted)
       }
@@ -440,32 +470,33 @@ export class DiagnosticsLogger {
       } else {
         batch.fatal.push(pending)
       }
-      return
+      return true
     }
 
     if (!batch.leading) {
       if (!this.hasPendingCapacity(batch, pending)) {
         this.recordQueueDrop(batch, pending)
-        return
+        return false
       }
       this.trackPendingLine(batch, pending)
       batch.leading = pending
-      return
+      return true
     }
 
     if (!this.hasPendingCapacity(batch, pending)) {
       this.recordQueueDrop(batch, pending)
-      return
+      return false
     }
     this.trackPendingLine(batch, pending)
     batch.normal.push(pending)
+    return true
   }
 
   private evictPendingForFatal(batch: DiagnosticWriteBatch): PendingDiagnosticLine | null {
     const current = batch.normal.pop() ?? batch.fatal.shift()
     if (current) {
       this.untrackPendingLine(batch, current)
-      this.markEvictedFatalFailure(batch, current)
+      this.markEvictedWriteFailure(batch, current)
       return current
     }
     const queuedBatches = [...this.pendingBatches]
@@ -482,17 +513,22 @@ export class DiagnosticsLogger {
         queued.leading = null
       }
       this.untrackPendingLine(queued, pending)
-      this.markEvictedFatalFailure(queued, pending)
+      this.markEvictedWriteFailure(queued, pending)
       this.absorbEmptyPendingBatch(batch, queued)
       return pending
     }
     return null
   }
 
-  private markEvictedFatalFailure(
+  private markEvictedWriteFailure(
     owner: DiagnosticWriteBatch,
     pending: PendingDiagnosticLine
   ): void {
+    this.settleAcknowledgementAfterBatch(
+      owner,
+      pending,
+      new Error("Diagnostics graph event was evicted before persistence.")
+    )
     if (!pending.fatal) {
       return
     }
@@ -634,6 +670,7 @@ export class DiagnosticsLogger {
         throw batch.writeError
       }
     } catch (error) {
+      this.rejectPendingStrictWrites(batch, error)
       this.rejectPendingFatal(batch, error)
       throw error
     } finally {
@@ -681,6 +718,35 @@ export class DiagnosticsLogger {
     })
   }
 
+  private createAcknowledgement(): PendingDiagnosticAcknowledgement {
+    let reject!: (reason?: unknown) => void
+    let resolve!: () => void
+    const promise = new Promise<void>((resolvePromise, rejectPromise) => {
+      reject = rejectPromise
+      resolve = resolvePromise
+    })
+    return { promise, reject, resolve }
+  }
+
+  private settleAcknowledgementAfterBatch(
+    batch: DiagnosticWriteBatch,
+    pending: PendingDiagnosticLine,
+    error?: unknown
+  ): void {
+    const acknowledgement = pending.acknowledgement
+    if (!acknowledgement) {
+      return
+    }
+    const settle = (): void => {
+      if (error === undefined) {
+        acknowledgement.resolve()
+      } else {
+        acknowledgement.reject(error)
+      }
+    }
+    void batch.completion.then(settle, settle)
+  }
+
   private createQueuePressure(): DiagnosticQueuePressure {
     return {
       coalescedRecords: 0,
@@ -713,7 +779,9 @@ export class DiagnosticsLogger {
   ): Promise<void> {
     try {
       await this.appendSerializedLine(pending.line, pending.bytes)
+      this.settleAcknowledgementAfterBatch(batch, pending)
     } catch (error) {
+      this.settleAcknowledgementAfterBatch(batch, pending, error)
       batch.writeError ??= error
       if (pending.fatal) {
         batch.fatalWriteError ??= error
@@ -741,6 +809,14 @@ export class DiagnosticsLogger {
     batch.rejectFatal = null
     batch.resolveFatal = null
     reject?.(error)
+  }
+
+  private rejectPendingStrictWrites(batch: DiagnosticWriteBatch, error: unknown): void {
+    for (const pending of [batch.leading, ...batch.normal, ...batch.fatal]) {
+      if (pending) {
+        this.settleAcknowledgementAfterBatch(batch, pending, error)
+      }
+    }
   }
 
   private async appendSerializedLine(line: string, bytes: number): Promise<void> {

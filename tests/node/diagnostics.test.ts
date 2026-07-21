@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } f
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
+import { DiagnosticsGraphRecorder } from "../../src/main/diagnostics/graph"
 import { DiagnosticsLogger } from "../../src/main/diagnostics/logger"
 import {
   diagnosticsBuildIdentity,
@@ -636,6 +637,330 @@ test("diagnostics logger keeps sealed write-lock batches inside the global recor
     )
     assert.equal(pressureRecords.length, 1)
     assert.equal(pressureRecords[0]?.["droppedRecords"], 46)
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true })
+  }
+})
+
+test("diagnostics logger never coalesces strict causal events by fingerprint", async () => {
+  const { logDir, rootDir } = createTempLogPaths()
+  try {
+    const logger = new DiagnosticsLogger({ logDir, rootDir })
+    let releaseWriter!: () => void
+    let writerStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      writerStarted = resolve
+    })
+    const held = logger.runWithWriteLock(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseWriter = resolve
+          writerStarted()
+        })
+    )
+    await started
+
+    const firstGraph = new DiagnosticsGraphRecorder({ logger, sessionId: "strict-first" })
+    const secondGraph = new DiagnosticsGraphRecorder({ logger, sessionId: "strict-second" })
+    const first = firstGraph.capture({
+      component: "diagnostics",
+      eventCode: "diagnostics.strict_coalesce_parent",
+      fingerprint: "shared-strict-fingerprint",
+      level: "error",
+      operation: "test",
+      recoverable: true,
+      stateImpact: "none",
+      summary: "First strict parent"
+    })
+    const second = secondGraph.capture({
+      component: "diagnostics",
+      eventCode: "diagnostics.strict_coalesce_parent",
+      fingerprint: "shared-strict-fingerprint",
+      level: "error",
+      operation: "test",
+      recoverable: true,
+      stateImpact: "none",
+      summary: "Second strict parent"
+    })
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    releaseWriter()
+    await held
+    await Promise.all([firstGraph.flush(), secondGraph.flush()])
+
+    const child = secondGraph.capture({
+      component: "diagnostics",
+      eventCode: "diagnostics.strict_coalesce_child",
+      level: "error",
+      operation: "test",
+      parentEvents: [second],
+      recoverable: true,
+      stateImpact: "none",
+      summary: "Strict child"
+    })
+    await secondGraph.flush()
+
+    const events = readFileSync(logger.getLogFilePath(), "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((record) => record["recordType"] === "diagnostic.event")
+    assert.deepEqual(
+      events.map((event) => event["eventId"]),
+      [first.eventId, second.eventId, child.eventId]
+    )
+    assert.deepEqual(events.at(-1)?.["parentEventIds"], [second.eventId])
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true })
+  }
+})
+
+test("diagnostic graph omits a parent rejected by the bounded logger queue", async () => {
+  const { logDir, rootDir } = createTempLogPaths()
+  try {
+    const logger = new DiagnosticsLogger({ logDir, maxPendingRecords: 2, rootDir })
+    const writeErrors: Array<{
+      context: { eventCode: string; eventId: string }
+      error: unknown
+    }> = []
+    const graph = new DiagnosticsGraphRecorder({
+      logger,
+      onWriteError: (error, context) => writeErrors.push({ context, error }),
+      sessionId: "strict-capacity"
+    })
+    let releaseWriter!: () => void
+    let writerStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      writerStarted = resolve
+    })
+    const held = logger.runWithWriteLock(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseWriter = resolve
+          writerStarted()
+        })
+    )
+    await started
+    logger.error("ordinary-leading", { fingerprint: "ordinary-leading" })
+    logger.error("ordinary-pending", { fingerprint: "ordinary-pending" })
+    const parent = graph.capture({
+      component: "diagnostics",
+      eventCode: "diagnostics.strict_capacity_parent",
+      level: "error",
+      operation: "test",
+      recoverable: true,
+      stateImpact: "none",
+      summary: "Capacity parent"
+    })
+    const child = graph.capture({
+      component: "diagnostics",
+      eventCode: "diagnostics.strict_capacity_child",
+      level: "error",
+      operation: "test",
+      parentEvents: [parent],
+      recoverable: true,
+      stateImpact: "none",
+      summary: "Capacity child"
+    })
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    releaseWriter()
+    await held
+    await graph.flush()
+
+    const records = readFileSync(logger.getLogFilePath(), "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+    const pressure = records.find((record) => record["recordType"] === "diagnostic.queue-pressure")
+    assert.equal(pressure?.["droppedRecords"], 1)
+    assert.equal(
+      records.some((record) => record["eventId"] === parent.eventId),
+      false
+    )
+    const childEvent = records.find((record) => record["eventId"] === child.eventId)
+    assert.deepEqual(childEvent?.["parentEventIds"], [])
+    assert.equal(
+      (childEvent?.["dimensions"] as Record<string, unknown>)["missingDurableParentCount"],
+      1
+    )
+    assert.equal(
+      writeErrors.some(
+        ({ context, error }) =>
+          context.eventId === parent.eventId &&
+          error instanceof Error &&
+          /could not be admitted/.test(error.message)
+      ),
+      true
+    )
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true })
+  }
+})
+
+test("diagnostic graph omits a strict parent evicted for a fatal write", async () => {
+  const { logDir, rootDir } = createTempLogPaths()
+  try {
+    const logger = new DiagnosticsLogger({ logDir, maxPendingRecords: 2, rootDir })
+    const writeErrors: Array<{
+      context: { eventCode: string; eventId: string }
+      error: unknown
+    }> = []
+    const graph = new DiagnosticsGraphRecorder({
+      logger,
+      onWriteError: (error, context) => writeErrors.push({ context, error }),
+      sessionId: "strict-fatal"
+    })
+    let releaseWriter!: () => void
+    let writerStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      writerStarted = resolve
+    })
+    const held = logger.runWithWriteLock(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseWriter = resolve
+          writerStarted()
+        })
+    )
+    await started
+    logger.error("ordinary-leading", { fingerprint: "fatal-ordinary-leading" })
+    const parent = graph.capture({
+      component: "diagnostics",
+      eventCode: "diagnostics.strict_fatal_parent",
+      level: "error",
+      operation: "test",
+      recoverable: true,
+      stateImpact: "none",
+      summary: "Fatal eviction parent"
+    })
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    const fatal = logger.errorAndFlush("fatal-after-strict", {
+      fingerprint: "fatal-after-strict",
+      stateImpact: "process_terminating"
+    })
+    releaseWriter()
+    await held
+    await fatal
+    await graph.flush()
+
+    const child = graph.capture({
+      component: "diagnostics",
+      eventCode: "diagnostics.strict_fatal_child",
+      level: "error",
+      operation: "test",
+      parentEvents: [parent],
+      recoverable: true,
+      stateImpact: "none",
+      summary: "Fatal eviction child"
+    })
+    await graph.flush()
+
+    const records = readFileSync(logger.getLogFilePath(), "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+    assert.equal(
+      records.some((record) => record["message"] === "fatal-after-strict"),
+      true
+    )
+    assert.equal(
+      records.some((record) => record["eventId"] === parent.eventId),
+      false
+    )
+    const childEvent = records.find((record) => record["eventId"] === child.eventId)
+    assert.deepEqual(childEvent?.["parentEventIds"], [])
+    assert.equal(
+      (childEvent?.["dimensions"] as Record<string, unknown>)["missingDurableParentCount"],
+      1
+    )
+    assert.equal(
+      writeErrors.some(
+        ({ context, error }) =>
+          context.eventId === parent.eventId &&
+          error instanceof Error &&
+          /evicted before persistence/.test(error.message)
+      ),
+      true
+    )
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true })
+  }
+})
+
+test("diagnostic graph acknowledges its written parent despite a later batch failure", async () => {
+  const { logDir, rootDir } = createTempLogPaths()
+  try {
+    const logger = new DiagnosticsLogger({ logDir, rootDir })
+    const appendOwner = logger as unknown as {
+      appendSerializedLine(line: string, bytes: number): Promise<void>
+    }
+    const appendSerializedLine = appendOwner.appendSerializedLine.bind(logger)
+    appendOwner.appendSerializedLine = async (line, bytes) => {
+      const record = JSON.parse(line) as { message?: string }
+      if (record.message === "ordinary-after-graph") {
+        throw new Error("injected later batch failure")
+      }
+      await appendSerializedLine(line, bytes)
+    }
+    const graph = new DiagnosticsGraphRecorder({
+      logger,
+      onWriteError: () => undefined,
+      sessionId: "strict-exact-ack"
+    })
+    let releaseWriter!: () => void
+    let writerStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      writerStarted = resolve
+    })
+    const held = logger.runWithWriteLock(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseWriter = resolve
+          writerStarted()
+        })
+    )
+    await started
+    const parent = graph.capture({
+      component: "diagnostics",
+      eventCode: "diagnostics.strict_exact_parent",
+      level: "error",
+      operation: "test",
+      recoverable: true,
+      stateImpact: "none",
+      summary: "Exact acknowledgement parent"
+    })
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    logger.error("ordinary-after-graph", { fingerprint: "ordinary-after-graph" })
+    releaseWriter()
+    await held
+    await assert.rejects(graph.flush(), /injected later batch failure/)
+
+    const child = graph.capture({
+      component: "diagnostics",
+      eventCode: "diagnostics.strict_exact_child",
+      level: "error",
+      operation: "test",
+      parentEvents: [parent],
+      recoverable: true,
+      stateImpact: "none",
+      summary: "Exact acknowledgement child"
+    })
+    await graph.flush()
+
+    const records = readFileSync(logger.getLogFilePath(), "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+    assert.equal(
+      records.some((record) => record["eventId"] === parent.eventId),
+      true
+    )
+    const childEvent = records.find((record) => record["eventId"] === child.eventId)
+    assert.deepEqual(childEvent?.["parentEventIds"], [parent.eventId])
+    assert.equal(
+      "missingDurableParentCount" in
+        ((childEvent?.["dimensions"] as Record<string, unknown> | undefined) ?? {}),
+      false
+    )
   } finally {
     rmSync(rootDir, { recursive: true, force: true })
   }

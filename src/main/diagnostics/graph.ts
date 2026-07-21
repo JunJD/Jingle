@@ -410,8 +410,7 @@ export class DiagnosticsGraphRecorder implements DiagnosticGraphSink {
             )
           }
           const event = this.sealEvent({ ...baseEvent, evidenceRefs, parentEventIds })
-          await this.logger[APPEND_DIAGNOSTIC_GRAPH_EVENT](event)
-          this.durableEvents.add(eventRef)
+          await this.appendDurably(event, eventRef)
           this.acknowledgeDroppedEvents(recoveredDroppedEventCount)
         })
         .catch((error) => {
@@ -451,8 +450,7 @@ export class DiagnosticsGraphRecorder implements DiagnosticGraphSink {
       })
       this.writeQueue = this.writeQueue
         .then(async () => {
-          await this.logger[APPEND_DIAGNOSTIC_GRAPH_EVENT](event)
-          this.durableEvents.add(eventRef)
+          await this.appendDurably(event, eventRef)
           this.acknowledgeDroppedEvents(recoveredDroppedEventCount)
         })
         .catch((writeError) => {
@@ -514,6 +512,14 @@ export class DiagnosticsGraphRecorder implements DiagnosticGraphSink {
       parentEvents.push(parentObject as DiagnosticEventRef)
     }
     return { invalidParentCount, parentEvents }
+  }
+
+  private async appendDurably(
+    event: DiagnosticGraphEvent,
+    eventRef: DiagnosticEventRef
+  ): Promise<void> {
+    await this.logger[APPEND_DIAGNOSTIC_GRAPH_EVENT](event)
+    this.durableEvents.add(eventRef)
   }
 
   private setInternalDimension(
