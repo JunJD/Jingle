@@ -70,6 +70,44 @@ The customer must identify the `JINGLE_HOME` that belonged to the affected
 build. Maintainers must not silently inspect a default home or infer that a
 different local directory contains the incident.
 
+## Export A Jingle Support Packet
+
+When the affected installation can still open Settings, use **General >
+Diagnostic Support Packet > Export Support Packet**. Jingle asks for a
+destination directory in the main process; the renderer neither supplies nor
+receives that filesystem path.
+
+The versioned JSON packet contains only validated Jingle causal diagnostic
+events and the content-addressed evidence blobs that those events reference.
+The exporter applies the diagnostics redaction policy again, verifies private
+source permissions and blob hashes, enforces fixed scan and output bounds, and
+records coverage and transfer gaps in its manifest. It does not include the
+database, extension data, credentials, Electron's raw log files, unrelated
+`JINGLE_HOME` contents, or Apple `.ips` reports.
+
+An exported packet can still report `no-failure-events-observed`,
+`legacy-only`, or `empty` coverage. It can also report missing retained parents
+or evidence. Those are evidence gaps, not proof that no crash occurred. The
+manifest records the exact source revision only when the build embeds one;
+otherwise the typed value is `not-embedded` and must not be guessed from a
+branch name.
+
+Keep `.ips` selection separate and follow the private handling steps above.
+Never append an unverified `.ips` report or any other local file to a Jingle
+support packet.
+
+The exporter currently fails closed on Windows because Node file modes cannot
+prove that the diagnostics and destination files have private Windows ACLs.
+Windows support requires a main-owned ACL and reparse-point verifier; mode-bit
+or path-based guesses are not accepted.
+
+The selected destination directory must be private. Jingle creates the packet
+with an exclusive file handle and never removes it by pathname. If a write,
+identity check, or directory sync fails after file creation, the typed result is
+`destination_incomplete`; treat any matching file in that directory as
+unverified and do not send it. A complete packet is strict JSON, so interrupted
+writes do not become valid support evidence.
+
 ## Maintainer Health Gate
 
 Before reading individual events, a maintainer runs the repository's bounded

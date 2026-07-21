@@ -44,6 +44,14 @@ interface SettingsCopy {
     localeDescription: string
     skillSourcesTitle: string
     skillSourcesDescription: string
+    supportPacketCancelled: string
+    supportPacketDescription: string
+    supportPacketExport: string
+    supportPacketExported: string
+    supportPacketExporting: string
+    supportPacketFailed: string
+    supportPacketIncomplete: string
+    supportPacketTitle: string
     nativeExtensionsTitle: string
     nativeExtensionsDescription: string
     noNativeExtensions: string
@@ -277,6 +285,15 @@ const zhCN: SettingsCopy = {
     localeDescription: "影响应用文案和设置页语言。",
     skillSourcesTitle: "Skill Sources",
     skillSourcesDescription: "每行一个目录，会并入 agent 默认技能源。",
+    supportPacketCancelled: "已取消导出",
+    supportPacketDescription:
+      "导出经过脱敏与完整性校验的金果因果诊断，不包含数据库、凭据或 extension 数据。",
+    supportPacketExport: "导出支持包",
+    supportPacketExported: "支持包已导出",
+    supportPacketExporting: "正在导出...",
+    supportPacketFailed: "支持包导出失败",
+    supportPacketIncomplete: "导出未完成，请删除所选目录中的未验证支持包",
+    supportPacketTitle: "诊断支持包",
     nativeExtensionsTitle: "Native Extensions",
     nativeExtensionsDescription: "管理金果内置 extension 的偏好设置。",
     noNativeExtensions: "当前没有带设置项的 native extension。",
@@ -513,6 +530,15 @@ const enUS: SettingsCopy = {
     localeDescription: "Affects app copy and settings language.",
     skillSourcesTitle: "Skill Sources",
     skillSourcesDescription: "One directory per line. Merged into the default agent skill sources.",
+    supportPacketCancelled: "Export cancelled",
+    supportPacketDescription:
+      "Export redacted, integrity-checked Jingle causal diagnostics without databases, credentials, or extension data.",
+    supportPacketExport: "Export Support Packet",
+    supportPacketExported: "Support packet exported",
+    supportPacketExporting: "Exporting...",
+    supportPacketFailed: "Support packet export failed",
+    supportPacketIncomplete: "Export incomplete. Remove the unverified packet from that folder.",
+    supportPacketTitle: "Diagnostic Support Packet",
     nativeExtensionsTitle: "Native Extensions",
     nativeExtensionsDescription: "Manage preferences for built-in Jingle extensions.",
     noNativeExtensions: "No native extensions expose preferences yet.",

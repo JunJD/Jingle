@@ -3,6 +3,7 @@ import { getJingleHomeDir } from "../storage"
 import { DiagnosticsGraphRecorder } from "./graph"
 import { DiagnosticsLogger } from "./logger"
 import type { DiagnosticEventRef } from "./schema"
+import type { DiagnosticSupportPacketRuntimeIdentity } from "./support-packet"
 
 export interface DiagnosticsInitialization {
   appVersion: string
@@ -65,4 +66,14 @@ export function startDiagnosticsSession(): DiagnosticEventRef {
     summary: "Jingle diagnostics session started"
   })
   return diagnosticsSessionEvent
+}
+
+export function getDiagnosticsSupportPacketRuntimeIdentity(): DiagnosticSupportPacketRuntimeIdentity {
+  if (!diagnosticsSessionContext) {
+    throw new Error("Diagnostics must be initialized before exporting a support packet.")
+  }
+  return {
+    ...diagnosticsSessionContext,
+    sourceRevision: { kind: "unavailable", reason: "not-embedded" }
+  }
 }

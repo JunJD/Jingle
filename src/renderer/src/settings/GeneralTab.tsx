@@ -1,7 +1,16 @@
 import { useEffect, useReducer } from "react"
-import { CornerDownRight, FolderOpen, Languages, Layers2, Rocket } from "lucide-react"
+import {
+  CornerDownRight,
+  Download,
+  FileArchive,
+  FolderOpen,
+  Languages,
+  Layers2,
+  Rocket
+} from "lucide-react"
 import type { AgentConfig } from "@shared/app-types"
 import type { AgentFollowUpMode } from "@shared/agent-follow-up"
+import type { DiagnosticSupportPacketExportResult } from "@shared/diagnostics"
 import type { LauncherSettings, LauncherWindowMode } from "@shared/launcher-settings"
 import { SUPPORTED_APP_LOCALES, type AppLocale } from "@shared/i18n"
 import { useI18n } from "@/lib/i18n"
@@ -51,15 +60,23 @@ function getWorkspaceSelectLabel(path: string | null, copy: SettingsCopy): strin
   return copy.common.choose
 }
 
-function getFollowUpModeLabel(
-  mode: AgentFollowUpMode,
-  copy: SettingsCopy
-): string {
+function getFollowUpModeLabel(mode: AgentFollowUpMode, copy: SettingsCopy): string {
   if (mode === "queue") {
     return copy.general.followUpModeQueue
   }
 
   return copy.general.followUpModeSteer
+}
+
+function getSupportPacketExportStatus(
+  result: DiagnosticSupportPacketExportResult,
+  copy: SettingsCopy
+): string {
+  if (result.kind === "exported") return copy.general.supportPacketExported
+  if (result.kind === "cancelled") return copy.general.supportPacketCancelled
+  return result.code === "destination_incomplete"
+    ? copy.general.supportPacketIncomplete
+    : copy.general.supportPacketFailed
 }
 
 interface GeneralTabState {
@@ -69,6 +86,8 @@ interface GeneralTabState {
   launcherSettings: LauncherSettings | null
   skillSourcesDraft: string
   status: string
+  supportPacketExporting: boolean
+  supportPacketStatus: string
 }
 
 type GeneralTabAction =
@@ -83,6 +102,9 @@ type GeneralTabAction =
   | { type: "launcher-settings-changed"; launcherSettings: LauncherSettings }
   | { type: "skill-sources-changed"; value: string }
   | { type: "status-cleared" }
+  | { type: "support-packet-export-finished"; status: string }
+  | { type: "support-packet-export-started" }
+  | { type: "support-packet-status-cleared" }
   | { type: "workspace-path-changed"; globalWorkspacePath: string | null }
 
 const initialGeneralTabState: GeneralTabState = {
@@ -91,7 +113,9 @@ const initialGeneralTabState: GeneralTabState = {
   globalWorkspacePath: null,
   launcherSettings: null,
   skillSourcesDraft: "",
-  status: ""
+  status: "",
+  supportPacketExporting: false,
+  supportPacketStatus: ""
 }
 
 function generalTabReducer(state: GeneralTabState, action: GeneralTabAction): GeneralTabState {
@@ -100,8 +124,7 @@ function generalTabReducer(state: GeneralTabState, action: GeneralTabAction): Ge
       return {
         ...state,
         agentConfig: action.agentConfig,
-        desktopAutomationAllowlistDraft:
-          action.agentConfig.desktopAutomationAllowlist.join("\n"),
+        desktopAutomationAllowlistDraft: action.agentConfig.desktopAutomationAllowlist.join("\n"),
         globalWorkspacePath: action.globalWorkspacePath,
         launcherSettings: action.launcherSettings,
         skillSourcesDraft: action.agentConfig.skillSources.join("\n")
@@ -124,6 +147,12 @@ function generalTabReducer(state: GeneralTabState, action: GeneralTabAction): Ge
       }
 
       return { ...state, status: "" }
+    case "support-packet-export-finished":
+      return { ...state, supportPacketExporting: false, supportPacketStatus: action.status }
+    case "support-packet-export-started":
+      return { ...state, supportPacketExporting: true, supportPacketStatus: "" }
+    case "support-packet-status-cleared":
+      return state.supportPacketStatus ? { ...state, supportPacketStatus: "" } : state
     case "workspace-path-changed":
       return { ...state, globalWorkspacePath: action.globalWorkspacePath }
   }
@@ -140,7 +169,9 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
     globalWorkspacePath,
     launcherSettings,
     skillSourcesDraft,
-    status
+    status,
+    supportPacketExporting,
+    supportPacketStatus
   } = state
 
   useEffect(() => {
@@ -166,6 +197,15 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
     const timeoutId = window.setTimeout(() => dispatch({ type: "status-cleared" }), 1600)
     return () => window.clearTimeout(timeoutId)
   }, [status])
+
+  useEffect(() => {
+    if (!supportPacketStatus) return
+    const timeoutId = window.setTimeout(
+      () => dispatch({ type: "support-packet-status-cleared" }),
+      2400
+    )
+    return () => window.clearTimeout(timeoutId)
+  }, [supportPacketStatus])
 
   const saveAgentConfig = async (): Promise<void> => {
     const nextConfig = await window.api.settings.setAgentConfig({
@@ -203,6 +243,22 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
     dispatch({ type: "agent-config-saved", agentConfig: nextConfig, status: "" })
   }
 
+  const handleSupportPacketExport = async (): Promise<void> => {
+    dispatch({ type: "support-packet-export-started" })
+    try {
+      const result = await window.api.diagnostics.exportSupportPacket()
+      dispatch({
+        type: "support-packet-export-finished",
+        status: getSupportPacketExportStatus(result, copy)
+      })
+    } catch {
+      dispatch({
+        type: "support-packet-export-finished",
+        status: copy.general.supportPacketFailed
+      })
+    }
+  }
+
   if (!agentConfig || !launcherSettings) {
     return (
       <div className="flex h-full items-center justify-center [font-size:var(--jingle-font-label)] text-muted-foreground">
@@ -220,7 +276,9 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
 
       <div className={settingsCardClassName}>
         <SettingsRow
-          icon={<FolderOpen className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
+          icon={
+            <FolderOpen className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />
+          }
           title={copy.general.workspaceTitle}
           description={copy.general.workspaceDescription}
         >
@@ -268,7 +326,9 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
         </SettingsRow>
 
         <SettingsRow
-          icon={<Languages className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
+          icon={
+            <Languages className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />
+          }
           title={copy.general.localeTitle}
           description={copy.general.localeDescription}
           titleId="settings-general-locale-title"
@@ -291,7 +351,9 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
         </SettingsRow>
 
         <SettingsRow
-          icon={<CornerDownRight className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
+          icon={
+            <CornerDownRight className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />
+          }
           title={copy.general.followUpModeTitle}
           description={copy.general.followUpModeDescription}
         >
@@ -362,6 +424,34 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
                 </span>
               ) : null}
             </div>
+          </div>
+        </SettingsRow>
+
+        <SettingsRow
+          icon={
+            <FileArchive className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />
+          }
+          title={copy.general.supportPacketTitle}
+          description={copy.general.supportPacketDescription}
+          withBorder={false}
+        >
+          <div className="flex flex-wrap items-center gap-[var(--jingle-gap-md)]">
+            <button
+              type="button"
+              className={secondaryButtonClassName}
+              disabled={supportPacketExporting}
+              onClick={() => void handleSupportPacketExport()}
+            >
+              <Download className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />
+              {supportPacketExporting
+                ? copy.general.supportPacketExporting
+                : copy.general.supportPacketExport}
+            </button>
+            {supportPacketStatus ? (
+              <span className="[font-size:var(--jingle-font-body)] text-muted-foreground">
+                {supportPacketStatus}
+              </span>
+            ) : null}
           </div>
         </SettingsRow>
       </div>
