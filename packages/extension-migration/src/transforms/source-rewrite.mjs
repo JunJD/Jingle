@@ -122,7 +122,10 @@ function isNavigationComponentTag(tagName, localComponents, namespaceImports) {
 }
 
 export function rewriteGenericSourceForJingle(sourceText, filePath, target) {
-  const rewrittenSource = rewriteRaycastRuntimeImports(sourceText, filePath)
+  const rewrittenSource = rewriteRaycastRuntimeImports(
+    rewriteRaycastAiAskCalls(sourceText, filePath).sourceText,
+    filePath
+  )
     .replaceAll(/^\s*(authorizeUrl|tokenUrl):\s*["'][^"']*\.raycast\.com[^"']*["'],?\n/gm, "")
     .replaceAll(/\bForm\.Values\b/g, "Form.Values<any>")
     .replaceAll(/\bgetPreferenceValues\(\)/g, "getPreferenceValues<Preferences>()")
@@ -135,6 +138,224 @@ export function rewriteGenericSourceForJingle(sourceText, filePath, target) {
 
   return rewriteExtensionQuicklinkUrls(rewrittenSource, target)
 }
+
+export function detectRaycastAiAskBlockingAdapters(sourceText, filePath) {
+  return rewriteRaycastAiAskCalls(sourceText, filePath).blockingAdapters
+}
+
+function rewriteRaycastAiAskCalls(sourceText, filePath) {
+  let rewrittenSource = sourceText
+  let hasUnsafeInput = false
+  for (;;) {
+    const analysis = analyzeRaycastAiAskCalls(rewrittenSource, filePath)
+    hasUnsafeInput ||= analysis.hasUnsafeInput
+    if (!analysis.replacement) {
+      return {
+        blockingAdapters: hasUnsafeInput ? [RAYCAST_AI_ASK_INPUT_BLOCKER] : [],
+        sourceText: rewrittenSource
+      }
+    }
+    rewrittenSource = `${rewrittenSource.slice(0, analysis.replacement.start)}${analysis.replacement.text}${rewrittenSource.slice(analysis.replacement.end)}`
+  }
+}
+
+function analyzeRaycastAiAskCalls(sourceText, filePath) {
+  const { checker, sourceFile } = createSourceAnalysisContext(sourceText, filePath)
+  const bindings = readRaycastAiBindings(sourceFile, checker)
+  let hasUnsafeInput = false
+  let replacement = null
+
+  const visit = (node) => {
+    if (!ts.isCallExpression(node) || !isRaycastAiAskCall(node.expression, bindings, checker)) {
+      ts.forEachChild(node, visit)
+      return
+    }
+
+    const [input] = node.arguments
+    if (!input || node.arguments.length !== 1) {
+      hasUnsafeInput = true
+      ts.forEachChild(node, visit)
+      return
+    }
+    const unwrappedInput = unwrapExpression(input)
+    if (!ts.isObjectLiteralExpression(unwrappedInput)) {
+      hasUnsafeInput ||= !isStringExpression(input, checker)
+      ts.forEachChild(node, visit)
+      return
+    }
+
+    const prompt = readExactPromptInitializer(unwrappedInput)
+    if (!prompt || !isStringExpression(prompt, checker)) {
+      hasUnsafeInput = true
+      ts.forEachChild(node, visit)
+      return
+    }
+    replacement ??= {
+      end: input.end,
+      start: input.getStart(sourceFile),
+      text: sourceText.slice(prompt.getStart(sourceFile), prompt.end)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
+
+  return { hasUnsafeInput, replacement }
+}
+
+function createSourceAnalysisContext(sourceText, filePath) {
+  const virtualFilePath = `/jingle-raycast-migration/${filePath.replace(/^\/+/, "")}`
+  const compilerOptions = {
+    allowJs: true,
+    jsx: ts.JsxEmit.Preserve,
+    noLib: true,
+    noResolve: true,
+    target: ts.ScriptTarget.Latest
+  }
+  const sourceFile = ts.createSourceFile(
+    virtualFilePath,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    filePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+  )
+  const host = ts.createCompilerHost(compilerOptions, true)
+  host.fileExists = (candidate) => candidate === virtualFilePath
+  host.getCurrentDirectory = () => "/"
+  host.getSourceFile = (candidate) => (candidate === virtualFilePath ? sourceFile : undefined)
+  host.readFile = (candidate) => (candidate === virtualFilePath ? sourceText : undefined)
+  const program = ts.createProgram([virtualFilePath], compilerOptions, host)
+  return {
+    checker: program.getTypeChecker(),
+    sourceFile: program.getSourceFile(virtualFilePath)
+  }
+}
+
+function readRaycastAiBindings(sourceFile, checker) {
+  const named = new Set()
+  const namespaces = new Set()
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== "@raycast/api"
+    ) {
+      continue
+    }
+    const bindings = statement.importClause?.namedBindings
+    if (ts.isNamedImports(bindings)) {
+      for (const element of bindings.elements) {
+        if ((element.propertyName?.text ?? element.name.text) === "AI") {
+          named.add(checker.getSymbolAtLocation(element.name))
+        }
+      }
+    } else if (ts.isNamespaceImport(bindings)) {
+      namespaces.add(checker.getSymbolAtLocation(bindings.name))
+    }
+  }
+  named.delete(undefined)
+  namespaces.delete(undefined)
+  return { named, namespaces }
+}
+
+function isRaycastAiAskCall(expression, bindings, checker) {
+  const receiver = readStaticMemberReceiver(expression, "ask")
+  if (!receiver) {
+    return false
+  }
+  if (ts.isIdentifier(receiver)) {
+    return bindings.named.has(checker.getSymbolAtLocation(receiver))
+  }
+  const namespace = readStaticMemberReceiver(receiver, "AI")
+  return Boolean(
+    namespace &&
+      ts.isIdentifier(namespace) &&
+      bindings.namespaces.has(checker.getSymbolAtLocation(namespace))
+  )
+}
+
+function readStaticMemberReceiver(expression, memberName) {
+  const unwrappedExpression = unwrapExpression(expression)
+  if (
+    ts.isPropertyAccessExpression(unwrappedExpression) &&
+    unwrappedExpression.name.text === memberName
+  ) {
+    return unwrapExpression(unwrappedExpression.expression)
+  }
+  if (
+    ts.isElementAccessExpression(unwrappedExpression) &&
+    isStaticMemberName(unwrappedExpression.argumentExpression, memberName)
+  ) {
+    return unwrapExpression(unwrappedExpression.expression)
+  }
+  return null
+}
+
+function isStaticMemberName(expression, memberName) {
+  const unwrappedExpression = unwrapExpression(expression)
+  return (
+    (ts.isStringLiteral(unwrappedExpression) ||
+      ts.isNoSubstitutionTemplateLiteral(unwrappedExpression)) &&
+    unwrappedExpression.text === memberName
+  )
+}
+
+function unwrapExpression(expression) {
+  let current = expression
+  while (
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isTypeAssertionExpression(current) ||
+    ts.isSatisfiesExpression(current) ||
+    ts.isNonNullExpression(current) ||
+    ts.isPartiallyEmittedExpression(current)
+  ) {
+    current = current.expression
+  }
+  return current
+}
+
+function isStringExpression(expression, checker) {
+  return isStringType(checker.getTypeAtLocation(unwrapExpression(expression)), checker, new Set())
+}
+
+function isStringType(type, checker, seen) {
+  if (seen.has(type)) {
+    return false
+  }
+  seen.add(type)
+  if ((type.flags & ts.TypeFlags.StringLike) !== 0) {
+    return true
+  }
+  if (type.isUnion()) {
+    return type.types.every((member) => isStringType(member, checker, seen))
+  }
+  const constraint = checker.getBaseConstraintOfType(type)
+  return Boolean(constraint && constraint !== type && isStringType(constraint, checker, seen))
+}
+
+function readExactPromptInitializer(input) {
+  if (input.properties.length !== 1) {
+    return null
+  }
+  const [property] = input.properties
+  if (ts.isShorthandPropertyAssignment(property) && property.name.text === "prompt") {
+    return property.name
+  }
+  if (!ts.isPropertyAssignment(property) || !isPromptPropertyName(property.name)) {
+    return null
+  }
+  return property.initializer
+}
+
+function isPromptPropertyName(name) {
+  return (
+    (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) &&
+    name.text === "prompt"
+  )
+}
+
+const RAYCAST_AI_ASK_INPUT_BLOCKER =
+  'Uses a Raycast AI.ask input that cannot be mapped safely; use a string prompt or migrate explicitly to Jingle AI.ask({ prompt, modelPreference: "fast" }).'
 
 export function runKnownExtensionTransforms(sourceText, filePath, target, transforms, context = {}) {
   return transforms.reduce(

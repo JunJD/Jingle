@@ -21,7 +21,10 @@ import {
   extendKnownExtensionPreferenceTypeLiteral,
   suppressKnownExtensionBlockingAdapters
 } from "../../packages/extension-migration/src/transforms/known-extensions/index.mjs"
-import { rewriteSourceForJingle } from "../../packages/extension-migration/src/transforms/source-rewrite.mjs"
+import {
+  detectRaycastAiAskBlockingAdapters,
+  rewriteSourceForJingle
+} from "../../packages/extension-migration/src/transforms/source-rewrite.mjs"
 import {
   buildRaycastAiMigrationArtifacts,
   buildRaycastAiMigrationPreview
@@ -78,6 +81,149 @@ test("Raycast migration gives runtime view roots a canonical navigation title", 
   assert.match(result.sourceText, /<Detail navigationTitle=\{"Search Pages"\} \/>/)
   assert.match(result.sourceText, /<Runtime\.List navigationTitle=\{"Search Pages"\} \/>/)
   assert.equal(result.sourceText.match(/navigationTitle=/g)?.length, 4)
+})
+
+test("Raycast migration rewrites only semantically exact AI.ask object inputs", () => {
+  const source = [
+    'import { AI as RuntimeAI } from "@raycast/api"',
+    'import * as Raycast from "@raycast/api"',
+    'const prompt = "Summarize"',
+    "void RuntimeAI.ask({ prompt })",
+    'void Raycast["AI"]["ask"]({ prompt: "Translate" })',
+    'function shadowed(RuntimeAI: { ask(input: { prompt: string }): void }) {',
+    '  RuntimeAI.ask({ prompt: "Keep this object" })',
+    '}'
+  ].join("\n")
+
+  const result = rewriteSourceForJingle(source, "src/command.ts", {
+    extensionId: "fixture",
+    sourceExtensionId: "fixture"
+  })
+
+  assert.match(result.sourceText, /RuntimeAI\.ask\(prompt\)/)
+  assert.match(result.sourceText, /Jingle\["AI"\]\["ask"\]\("Translate"\)/)
+  assert.match(result.sourceText, /RuntimeAI\.ask\(\{ prompt: "Keep this object" \}\)/)
+  assert.deepEqual(detectRaycastAiAskBlockingAdapters(source, "src/command.ts"), [])
+})
+
+test("Raycast migration blocks every unproven AI.ask input shape", () => {
+  const source = [
+    'import { AI as RuntimeAI } from "@raycast/api"',
+    'const prompt = "Summarize"',
+    'const options = { prompt, creativity: "high" }',
+    "void RuntimeAI.ask(options)",
+    'void RuntimeAI.ask(({ prompt, creativity: "high" }) as { prompt: string; creativity: string })',
+    'void RuntimeAI.ask(({ prompt, creativity: "high" }) satisfies { prompt: string; creativity: string })',
+    "void RuntimeAI.ask()"
+  ].join("\n")
+
+  const result = rewriteSourceForJingle(source, "src/command.ts", {
+    extensionId: "fixture",
+    sourceExtensionId: "fixture"
+  })
+
+  assert.match(result.sourceText, /RuntimeAI\.ask\(options\)/)
+  assert.match(result.sourceText, /RuntimeAI\.ask\(\(\{ prompt, creativity: "high" \}\) as/)
+  assert.match(result.sourceText, /RuntimeAI\.ask\(\(\{ prompt, creativity: "high" \}\) satisfies/)
+  assert.deepEqual(detectRaycastAiAskBlockingAdapters(source, "src/command.ts"), [
+    'Uses a Raycast AI.ask input that cannot be mapped safely; use a string prompt or migrate explicitly to Jingle AI.ask({ prompt, modelPreference: "fast" }).'
+  ])
+})
+
+test("Raycast migration generated AI.ask default calls typecheck against the public SDK", async () => {
+  const extensionRoot = await mkdtemp(join(tmpdir(), "jingle-raycast-migration-ai-ask-"))
+  const artifactDir = join(extensionRoot, "migration-artifacts")
+
+  try {
+    await mkdir(join(extensionRoot, "src"), { recursive: true })
+    await writeFile(
+      join(extensionRoot, "package.json"),
+      JSON.stringify({
+        commands: [
+          {
+            description: "Ask Jingle.",
+            mode: "no-view",
+            name: "ask-jingle",
+            title: "Ask Jingle"
+          }
+        ],
+        dependencies: { "@raycast/api": "^1.104.5" },
+        name: "ai-ask-fixture",
+        title: "AI Ask Fixture"
+      })
+    )
+    await writeFile(
+      join(extensionRoot, "src", "ask-jingle.ts"),
+      [
+        'import { AI } from "@raycast/api"',
+        "export default async function askJingle() {",
+        '  await AI.ask({ prompt: "Summarize this page" })',
+        "}"
+      ].join("\n")
+    )
+
+    const preview = buildRaycastAiMigrationPreview({
+      extensionPath: extensionRoot,
+      gitRef: "HEAD",
+      gitRepo: null,
+      out: null,
+      targetExtensionId: "ai-ask-fixture",
+      targetExtensionTitle: "AI Ask Fixture"
+    })
+    const artifacts = buildRaycastAiMigrationArtifacts(preview)
+    assert.equal(preview.unsupportedApis.counts.blockingIssues, 0)
+    assert.match(
+      String(artifacts["jingle-package/src/ask-jingle.ts"]),
+      /AI\.ask\("Summarize this page"\)/
+    )
+
+    await writeArtifacts(artifactDir, artifacts)
+    await symlink(
+      join(repoRoot, "node_modules"),
+      join(artifactDir, "jingle-package", "node_modules"),
+      "dir"
+    )
+    execFileSync(
+      process.execPath,
+      [
+        join(repoRoot, "node_modules/typescript/bin/tsc"),
+        "-p",
+        join(artifactDir, "jingle-package", "tsconfig.check.json"),
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      {
+        cwd: repoRoot,
+        encoding: "utf8",
+        maxBuffer: 4 * 1024 * 1024
+      }
+    )
+
+    await writeFile(
+      join(extensionRoot, "src", "ask-jingle.ts"),
+      [
+        'import { AI } from "@raycast/api"',
+        "export default async function askJingle() {",
+        '  await AI.ask({ prompt: "Summarize this page", creativity: "high" })',
+        "}"
+      ].join("\n")
+    )
+    const blockedPreview = buildRaycastAiMigrationPreview({
+      extensionPath: extensionRoot,
+      gitRef: "HEAD",
+      gitRepo: null,
+      out: null,
+      targetExtensionId: "ai-ask-fixture",
+      targetExtensionTitle: "AI Ask Fixture"
+    })
+    assert.equal(blockedPreview.unsupportedApis.counts.blockingIssues, 1)
+    assert.deepEqual(blockedPreview.unsupportedApis.entries[0]?.blockingAdapters, [
+      'Uses a Raycast AI.ask input that cannot be mapped safely; use a string prompt or migrate explicitly to Jingle AI.ask({ prompt, modelPreference: "fast" }).'
+    ])
+  } finally {
+    await rm(extensionRoot, { force: true, recursive: true })
+  }
 })
 
 test("Raycast migration gates known extension transforms by target context", () => {
@@ -1253,6 +1399,8 @@ test("Raycast migration preview reports dependency decisions and unsupported API
     assert.match(migratedCommandSource, /from "@jingle\/extension-utils"/)
     assert.doesNotMatch(migratedCommandSource, /@raycast\/api|@raycast\/utils/)
     assert.doesNotMatch(migratedCommandSource, /Raycast|raycast/)
+    assert.match(migratedCommandSource, /AI\.ask\('Summarize this page'\)/)
+    assert.doesNotMatch(migratedCommandSource, /AI\.ask\(\{ prompt:/)
     assert.match(migratedCommandSource, /import React from "react"\nvoid React/)
 
     const migratedOauthSource = await readFile(

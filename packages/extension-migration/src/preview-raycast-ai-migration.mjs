@@ -11,7 +11,10 @@ import {
   suppressKnownExtensionBlockingAdapters
 } from "./transforms/known-extensions/index.mjs"
 import { rewritePublicJingleCopy } from "./transforms/jingle-copy.mjs"
-import { rewriteSourceForJingle } from "./transforms/source-rewrite.mjs"
+import {
+  detectRaycastAiAskBlockingAdapters,
+  rewriteSourceForJingle
+} from "./transforms/source-rewrite.mjs"
 
 const require = createRequire(import.meta.url)
 const ts = require("typescript")
@@ -1372,6 +1375,7 @@ function resolveMemberSupport(importedName, memberName) {
 function detectBlockingAdapters(sourceText, filePath, target) {
   const blockers = []
   const isToolFile = filePath.includes("/src/tools/") || filePath.startsWith("src/tools/")
+  blockers.push(...detectRaycastAiAskBlockingAdapters(sourceText, filePath))
   blockers.push(...detectKnownExtensionBlockingAdapters({ filePath, isToolFile, sourceText, target }))
   return blockers
 }

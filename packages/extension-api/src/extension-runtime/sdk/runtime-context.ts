@@ -10,6 +10,7 @@ import type {
   ExtensionRuntimeLaunchProps
 } from "../../shared/extension-runtime-protocol"
 import {
+  normalizeExtensionAiHostRequest,
   normalizeExtensionRuntimeErrorDetails,
   normalizeExtensionRuntimeJsonFact,
   normalizeExtensionRuntimeLaunchProps,
@@ -116,9 +117,13 @@ function finalizeExtensionRuntimeHostRequest(
     }
   }) as ExtensionHostRequest
 
-  return capabilityDescriptor.value === "navigation"
-    ? normalizeExtensionRuntimeNavigationHostRequest(requestWithId)
-    : requestWithId
+  if (capabilityDescriptor.value === "navigation") {
+    return normalizeExtensionRuntimeNavigationHostRequest(requestWithId)
+  }
+  if (capabilityDescriptor.value === "ai") {
+    return normalizeExtensionAiHostRequest(requestWithId)
+  }
+  return requestWithId
 }
 
 export interface ExtensionRuntimeCommandAddress {

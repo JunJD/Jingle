@@ -9,10 +9,7 @@ import type {
 import type { ExtensionConfirmAlertPayload } from "@shared/extension-runtime-protocol"
 import type { ExtensionToastPayload } from "@shared/extension-runtime-protocol"
 import { getChatModelInstance } from "../../llm/get-chat-model"
-import {
-  resolveDefaultModelRuntimeSelection,
-  resolveModelRuntimeSelectionFromStoredPreference
-} from "../../model-provider/resolver"
+import { resolveDefaultModelRuntimeSelection } from "../../model-provider/resolver"
 import type { SettingsWindowRoutingService } from "../../settings-window-routing/service"
 import type { ExternalLinksService } from "../../external-links/service"
 import type { ExtensionQuicklinkService } from "../../extension-quicklinks/service"
@@ -73,10 +70,7 @@ export class DefaultExtensionRuntimeHostCapabilities implements ExtensionRuntime
             thinkingEffort: null
           })
         : getChatModelInstance({
-            selection:
-              target.kind === "explicit"
-                ? resolveModelRuntimeSelectionFromStoredPreference(target.modelId)
-                : resolveDefaultModelRuntimeSelection(),
+            selection: resolveDefaultModelRuntimeSelection(),
             temperature: input.temperature
           })
     const messages = input.system

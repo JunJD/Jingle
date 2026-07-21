@@ -43,6 +43,8 @@ export type {
   RuntimeCacheEntry
 } from "./extension-runtime/sdk/storage"
 export {
+  normalizeExtensionAiAskPayload,
+  normalizeExtensionAiHostRequest,
   normalizeExtensionRuntimeJsonFact,
   normalizeExtensionRuntimeLaunchIntent,
   normalizeExtensionRuntimeLaunchProps,

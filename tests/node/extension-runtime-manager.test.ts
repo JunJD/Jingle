@@ -1942,6 +1942,7 @@ test("runtime manager responds to host requests and drops late responses after s
     id: "ai-1",
     method: "ask",
     payload: {
+      modelPreference: "default",
       prompt: "hello"
     }
   }
@@ -3596,7 +3597,7 @@ test("runtime manager forwards AI ask requests to the host capability", async ()
     id: "ai-1",
     method: "ask",
     payload: {
-      modelId: "openai:gpt-test",
+      modelPreference: "fast",
       prompt: "hello",
       system: "Translate.",
       temperature: 0
@@ -3612,7 +3613,7 @@ test("runtime manager forwards AI ask requests to the host capability", async ()
 
   assert.deepEqual(aiRequests, [
     {
-      modelId: "openai:gpt-test",
+      modelPreference: "fast",
       prompt: "hello",
       system: "Translate.",
       temperature: 0
@@ -3630,6 +3631,84 @@ test("runtime manager forwards AI ask requests to the host capability", async ()
       type: "host-response"
     }
   )
+})
+
+test("runtime manager rejects invalid AI payloads at the main trust boundary", async () => {
+  let invocationCount = 0
+  const host = createHost({
+    askAI: async () => {
+      invocationCount += 1
+      return "unreachable"
+    }
+  })
+  const { launcher, manager } = createManager({ host })
+
+  await manager.startForeground(createLaunchIntent())
+  const invalidPayloads: Array<{ id: string; payload: unknown }> = [
+    {
+      id: "ai-legacy",
+      payload: { modelId: "openai:gpt-test", prompt: "hello" }
+    },
+    {
+      id: "ai-unknown-policy",
+      payload: { modelPreference: "balanced", prompt: "hello" }
+    },
+    {
+      id: "ai-missing-policy",
+      payload: { prompt: "hello" }
+    },
+    {
+      id: "ai-extra-key",
+      payload: { modelPreference: "fast", prompt: "hello", provider: "custom" }
+    },
+    {
+      id: "ai-long-prompt",
+      payload: { modelPreference: "fast", prompt: "x".repeat(200_001) }
+    },
+    {
+      id: "ai-long-system",
+      payload: { modelPreference: "fast", prompt: "hello", system: "x".repeat(40_001) }
+    },
+    {
+      id: "ai-temperature",
+      payload: { modelPreference: "fast", prompt: "hello", temperature: Number.POSITIVE_INFINITY }
+    }
+  ]
+  for (const invalid of invalidPayloads) {
+    launcher.processes[0]?.emitMessage({
+      request: {
+        capability: "ai",
+        id: invalid.id,
+        method: "ask",
+        payload: invalid.payload
+      } as ExtensionHostRequest,
+      sessionId: "session-1",
+      type: "host-request"
+    })
+  }
+  await flushPromises()
+
+  assert.equal(invocationCount, 0)
+  for (const invalid of invalidPayloads) {
+    assert.deepEqual(
+      launcher.processes[0]?.messages.find(
+        (message) => message.type === "host-response" && message.response.id === invalid.id
+      ),
+      {
+        response: {
+          error: {
+            code: "extension_ai_request_invalid",
+            message:
+              'Extension AI request is invalid. Rebuild the extension against the current SDK; use AI.ask(prompt) or AI.ask({ prompt, modelPreference: "fast" }).'
+          },
+          id: invalid.id,
+          ok: false
+        },
+        sessionId: "session-1",
+        type: "host-response"
+      }
+    )
+  }
 })
 
 test("runtime manager rejects cross-extension host capability requests", async () => {
@@ -3922,6 +4001,7 @@ test("runtime manager rejects undeclared AI host capability requests", async () 
     id: "ai-1",
     method: "ask",
     payload: {
+      modelPreference: "default",
       prompt: "hello"
     }
   }

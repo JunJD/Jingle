@@ -5,6 +5,8 @@ export const EXTENSION_RUNTIME_VM_MODULE_EXEC_ARGV = Object.freeze([
 ] as const)
 
 export {
+  normalizeExtensionAiAskPayload,
+  normalizeExtensionAiHostRequest,
   normalizeExtensionRuntimeJsonFact,
   normalizeExtensionRuntimeErrorDetails,
   normalizeExtensionRuntimeLaunchIntent,

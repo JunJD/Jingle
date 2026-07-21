@@ -807,8 +807,7 @@ export interface ExtensionAiHostRequest extends ExtensionHostRequestBase {
 }
 
 export interface ExtensionAiAskPayload {
-  modelPreference?: "fast"
-  modelId?: string
+  modelPreference: "default" | "fast"
   prompt: string
   system?: string
   temperature?: number
@@ -846,6 +845,10 @@ export interface ExtensionRuntimeMetrics {
 
 const MAX_EXTENSION_RUNTIME_ERROR_DETAIL_KEYS = 64
 const MAX_EXTENSION_RUNTIME_ERROR_DETAIL_KEY_LENGTH = 1024
+const MAX_EXTENSION_AI_PROMPT_LENGTH = 200_000
+const MAX_EXTENSION_AI_SYSTEM_LENGTH = 40_000
+const MIN_EXTENSION_AI_TEMPERATURE = 0
+const MAX_EXTENSION_AI_TEMPERATURE = 2
 
 export function normalizeExtensionRuntimeErrorDetails(
   value: unknown,
@@ -897,6 +900,70 @@ export function normalizeExtensionRuntimeJsonFact(
   path = "extension runtime JSON fact"
 ): ExtensionRuntimeJsonValue {
   return normalizeJsonFact(value, path, new Set<object>())
+}
+
+export function normalizeExtensionAiAskPayload(
+  value: unknown,
+  path = "extension AI request payload"
+): ExtensionAiAskPayload {
+  const normalized = normalizeExtensionRuntimeJsonFact(value, path)
+  const payload = assertNormalizedRecord(normalized, path)
+  assertExactKeys(payload, path, ["modelPreference", "prompt", "system", "temperature"])
+
+  const prompt = readBoundedNonEmptyString(
+    payload.prompt,
+    `${path}.prompt`,
+    MAX_EXTENSION_AI_PROMPT_LENGTH
+  )
+  const modelPreference = payload.modelPreference
+  if (modelPreference !== "default" && modelPreference !== "fast") {
+    throw new TypeError(`${path}.modelPreference must be "default" or "fast"`)
+  }
+  const system =
+    payload.system === undefined
+      ? undefined
+      : readBoundedNonEmptyString(payload.system, `${path}.system`, MAX_EXTENSION_AI_SYSTEM_LENGTH)
+  const temperature = payload.temperature
+  if (
+    temperature !== undefined &&
+    (typeof temperature !== "number" ||
+      !Number.isFinite(temperature) ||
+      temperature < MIN_EXTENSION_AI_TEMPERATURE ||
+      temperature > MAX_EXTENSION_AI_TEMPERATURE)
+  ) {
+    throw new TypeError(
+      `${path}.temperature must be between ${MIN_EXTENSION_AI_TEMPERATURE} and ${MAX_EXTENSION_AI_TEMPERATURE}`
+    )
+  }
+
+  return Object.freeze({
+    modelPreference,
+    prompt,
+    ...(system !== undefined ? { system } : {}),
+    ...(temperature !== undefined ? { temperature } : {})
+  })
+}
+
+export function normalizeExtensionAiHostRequest(
+  value: unknown,
+  path = "extension AI host request"
+): ExtensionAiHostRequest {
+  const normalized = normalizeExtensionRuntimeJsonFact(value, path)
+  const request = assertNormalizedRecord(normalized, path)
+  assertExactKeys(request, path, ["capability", "id", "method", "payload"])
+  if (request.capability !== "ai") {
+    throw new TypeError(`${path}.capability must be ai`)
+  }
+  if (request.method !== "ask") {
+    throw new TypeError(`${path}.method must be ask`)
+  }
+
+  return Object.freeze({
+    capability: "ai",
+    id: readNonEmptyString(request.id, `${path}.id`),
+    method: "ask",
+    payload: normalizeExtensionAiAskPayload(request.payload, `${path}.payload`)
+  })
 }
 
 export function normalizeExtensionRuntimeLaunchProps(
@@ -1177,6 +1244,18 @@ function readNonEmptyString(value: ExtensionRuntimeJsonValue | undefined, path: 
     throw new TypeError(`${path} must be a non-empty string`)
   }
   return value
+}
+
+function readBoundedNonEmptyString(
+  value: ExtensionRuntimeJsonValue | undefined,
+  path: string,
+  maxLength: number
+): string {
+  const text = readNonEmptyString(value, path)
+  if (text.length > maxLength) {
+    throw new TypeError(`${path} must not exceed ${maxLength} characters`)
+  }
+  return text
 }
 
 function hasOwn(value: object, key: PropertyKey): boolean {

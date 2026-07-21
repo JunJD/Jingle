@@ -4,6 +4,8 @@ import { getPreferenceValues, runWithExtensionRuntimeSdk } from "@jingle/extensi
 import {
   createExtensionRuntimeNavigation,
   getActiveExtensionRuntimeSdk,
+  sendExtensionRuntimeHostRequest,
+  type ExtensionRuntimeHostRequestInput,
   type ExtensionRuntimeSdkContextValue
 } from "@jingle/extension-api/host-runtime"
 import { z } from "../../src/main/agent/tool-input-schema"
@@ -95,6 +97,28 @@ test("imperative runtime SDK context restores the outer async run after nested r
   })
 
   assert.deepEqual(observedNames, ["outer-sdk", "inner-sdk", "outer-sdk"])
+})
+
+test("host runtime validates raw AI requests before utility transport", async () => {
+  let sendCount = 0
+  await assert.rejects(
+    sendExtensionRuntimeHostRequest(
+      {
+        capability: "ai",
+        method: "ask",
+        payload: { modelId: "openai:gpt-test", prompt: "hello" }
+      } as unknown as ExtensionRuntimeHostRequestInput,
+      {
+        createRequestId: () => "ai-invalid",
+        send: async () => {
+          sendCount += 1
+          return { id: "ai-invalid", ok: true, result: "unreachable" }
+        }
+      }
+    ),
+    /unsupported property "modelId"/
+  )
+  assert.equal(sendCount, 0)
 })
 
 function createPreferenceEchoTool(): ExtensionToolDefinition<

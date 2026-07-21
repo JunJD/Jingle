@@ -115,6 +115,23 @@ export const myExtensionRuntime = defineNativeExtensionRuntime({
 })
 ```
 
+## 调用宿主 AI
+
+Runtime command 可以在 manifest 声明 `ai` capability 后通过公开 SDK 调用宿主模型：
+
+```ts
+import { AI } from "@jingle/extension-api"
+
+const normal = await AI.ask("Summarize the current item")
+const quick = await AI.ask({
+  modelPreference: "fast",
+  prompt: "Extract a short title",
+  temperature: 0
+})
+```
+
+字符串形式使用默认策略；对象形式必须显式提供 `modelPreference: "fast"`。`prompt` 上限为 200,000 字符，可选 `system` 上限为 40,000 字符，可选 `temperature` 范围为 `0..2`。模型 ID、provider 和推理强度由宿主拥有；`modelId` 不属于公开请求契约。旧 runtime 若仍发送 `modelId` 或缺失模型策略，宿主会返回 `extension_ai_request_invalid`，必须用当前 SDK 重新构建，不能静默改用默认模型。
+
 `runtime-metadata.ts`：
 
 ```ts

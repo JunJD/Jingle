@@ -28,6 +28,7 @@ import type {
   ExtensionToastPayload
 } from "@shared/extension-runtime-protocol"
 import {
+  normalizeExtensionAiHostRequest,
   normalizeExtensionRuntimeErrorDetails,
   normalizeExtensionRuntimeNavigationHostRequest
 } from "@shared/extension-runtime-protocol"
@@ -527,9 +528,10 @@ export class ExtensionRuntimeManager {
     request: ExtensionHostRequest
   ): Promise<ExtensionHostResponse> {
     try {
-      const result = await this.resolveHostRequest(session, request)
+      const normalizedRequest = normalizeExtensionHostRequestAtTrustBoundary(request)
+      const result = await this.resolveHostRequest(session, normalizedRequest)
       return {
-        id: request.id,
+        id: normalizedRequest.id,
         ok: true,
         result
       }
@@ -1524,6 +1526,27 @@ function throwUnsupportedWireHostRequest(request: unknown): never {
     "host_request_unsupported",
     `Unsupported runtime host request "${String(unsupported.capability)}:${String(unsupported.method)}".`
   )
+}
+
+function normalizeExtensionHostRequestAtTrustBoundary(
+  request: ExtensionHostRequest
+): ExtensionHostRequest {
+  const capability = Object.getOwnPropertyDescriptor(request, "capability")
+  if (!capability || !("value" in capability) || capability.value !== "ai") {
+    return request
+  }
+  const method = Object.getOwnPropertyDescriptor(request, "method")
+  if (!method || !("value" in method) || method.value !== "ask") {
+    return request
+  }
+  try {
+    return normalizeExtensionAiHostRequest(request)
+  } catch {
+    throw new ExtensionRuntimeLifecycleError(
+      "extension_ai_request_invalid",
+      'Extension AI request is invalid. Rebuild the extension against the current SDK; use AI.ask(prompt) or AI.ask({ prompt, modelPreference: "fast" }).'
+    )
+  }
 }
 
 function assertOwnExtension(session: RuntimeSession, extensionName: string): void {
