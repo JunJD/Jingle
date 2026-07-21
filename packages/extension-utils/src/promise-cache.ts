@@ -105,6 +105,8 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
   #rawValue: string | undefined = undefined
   #snapshot: PromiseCacheSnapshot<TResult> = { kind: "miss" }
   #unsubscribeCache: (() => void) | null = null
+  #writeOwnedRawValue: string | null = null
+  #writeOwnedSynchronizationRevision: number | null = null
 
   constructor(identity: PromiseCacheIdentity, options: PromiseCacheBindingOptions) {
     this.identity = identity.identity
@@ -119,6 +121,7 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
     this.#listeners.add(listener)
 
     if (!this.#unsubscribeCache) {
+      this.#clearWriteOwnership()
       let unsubscribeCache: (() => void) | null = null
       try {
         unsubscribeCache = this.#cache.subscribe(this.#handleCacheChange)
@@ -138,6 +141,7 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
       if (this.#listeners.size === 0) {
         this.#unsubscribeCache?.()
         this.#unsubscribeCache = null
+        this.#clearWriteOwnership()
       }
     }
   }
@@ -155,6 +159,20 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
       return false
     }
 
+    const synchronizationRevision = this.#unsubscribeCache
+      ? this.#cache.synchronizationRevision
+      : null
+    if (
+      this.#unsubscribeCache &&
+      synchronizationRevision !== null &&
+      synchronizationRevision === this.#writeOwnedSynchronizationRevision &&
+      encoded === this.#writeOwnedRawValue &&
+      encoded === this.#rawValue &&
+      this.#cache.has(this.#key)
+    ) {
+      return true
+    }
+
     this.#cache.set(this.#key, encoded)
     if (!this.#hasStoredValue()) {
       this.#onFailure?.({
@@ -165,7 +183,21 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
       this.#replaceRawValue(undefined)
       return false
     }
-    this.#replaceRawValue(encoded)
+    const storedRawValue = this.#readCurrentValue()
+    this.#replaceRawValue(storedRawValue)
+    if (storedRawValue !== encoded) {
+      this.#clearWriteOwnership()
+      return false
+    }
+    const committedSynchronizationRevision = this.#unsubscribeCache
+      ? this.#cache.synchronizationRevision
+      : null
+    if (committedSynchronizationRevision !== null) {
+      this.#writeOwnedRawValue = encoded
+      this.#writeOwnedSynchronizationRevision = committedSynchronizationRevision
+    } else {
+      this.#clearWriteOwnership()
+    }
     return true
   }
 
@@ -182,7 +214,11 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
       return
     }
 
-    this.#replaceRawValue(changedKey === undefined ? undefined : data)
+    const nextRawValue = changedKey === undefined ? undefined : data
+    if (nextRawValue !== this.#writeOwnedRawValue) {
+      this.#clearWriteOwnership()
+    }
+    this.#replaceRawValue(nextRawValue)
     this.#discardInvalidSnapshot()
   }
 
@@ -194,6 +230,11 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
     this.#cache.remove(this.#key)
     this.#replaceRawValue(undefined)
     this.#onFailure?.(failure)
+  }
+
+  #clearWriteOwnership(): void {
+    this.#writeOwnedRawValue = null
+    this.#writeOwnedSynchronizationRevision = null
   }
 
   #replaceRawValue(rawValue: string | undefined): void {

@@ -309,6 +309,33 @@ test("Cache uses extension-scoped runtime backend when installed", async () => {
   assert.deepEqual(requests, [])
 })
 
+test("Cache synchronization revision does not create or load an unsubscribed store", async () => {
+  let loadCount = 0
+  const backend: RuntimeCacheBackend = {
+    ...createBackendLifecycle(),
+    loadStore: () => {
+      loadCount += 1
+      return []
+    },
+    mutateStore: () => undefined
+  }
+  const uninstallBackend = installExtensionRuntimeCacheBackend(backend)
+
+  try {
+    await runWithCacheContext(() => {
+      const cache = new Cache({ namespace: "synchronization-revision-read" })
+      assert.equal(cache.synchronizationRevision, null)
+      assert.equal(loadCount, 0)
+
+      assert.equal(cache.has("page"), false)
+      assert.equal(loadCount, 1)
+      assert.ok(cache.synchronizationRevision !== null)
+    })
+  } finally {
+    uninstallBackend()
+  }
+})
+
 test("Cache resolves backend connection identity from the wire LocalStorage owner", async () => {
   const loadedScopes: RuntimeCacheBackendScope[] = []
   const backend: RuntimeCacheBackend = {
@@ -818,10 +845,14 @@ test("Cache migrates an active change feed when the backend is replaced", async 
       const unsubscribe = cache.subscribe((_key, data) => events.push(data ?? "removed"))
       assert.equal(first.subscribeCount, 1)
       assert.equal(first.unsubscribeCount, 0)
+      const firstSynchronizationRevision = cache.synchronizationRevision
+      assert.ok(firstSynchronizationRevision !== null)
 
       const uninstallSecond = installExtensionRuntimeCacheBackend(second.backend)
       assert.equal(first.unsubscribeCount, 1)
       assert.equal(second.subscribeCount, 1)
+      assert.ok(cache.synchronizationRevision !== null)
+      assert.notEqual(cache.synchronizationRevision, firstSynchronizationRevision)
       first.publishLate([["page", "late-first"]], 99)
       assert.equal(cache.get("page"), "second")
       assert.deepEqual(events, ["first", "second"])

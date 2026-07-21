@@ -76,6 +76,7 @@ export type RuntimeCacheSubscription = () => void
 
 const cacheStores = new Map<string, RuntimeCacheStore>()
 let cacheBackendVersion = 0
+let cacheSynchronizationRevision = 0
 
 interface RuntimeCacheStore {
   backend?: RuntimeCacheBackend
@@ -91,6 +92,7 @@ interface RuntimeCacheStore {
   reportSubscriberFailure: (error: unknown) => void
   scope: RuntimeCacheBackendScope
   subscribers: Set<RuntimeCacheSubscriberRegistration>
+  synchronizationRevision: number | null
   totalBytes: number
 }
 
@@ -119,6 +121,16 @@ export class Cache {
 
   get isEmpty(): boolean {
     return this.#getStore().entries.size === 0
+  }
+
+  get synchronizationRevision(): number | null {
+    const { scope } = resolveCacheStoreContext(this.#namespace)
+    const store = cacheStores.get(encodeRuntimeCacheBackendScopeKey(scope))
+    const backend = readRuntimeCacheBackend()
+    if (!store || store.backend !== backend || store.backendVersion !== cacheBackendVersion) {
+      return null
+    }
+    return store.synchronizationRevision
   }
 
   get(key: string): string | undefined {
@@ -352,6 +364,7 @@ function getCacheStore(namespace: string, loadBackend = true): RuntimeCacheStore
     reportSubscriberFailure,
     scope,
     subscribers: existing?.subscribers ?? new Set(),
+    synchronizationRevision: loadBackend && backend ? ++cacheSynchronizationRevision : null,
     totalBytes
   }
   cacheStores.set(storeKey, store)
@@ -380,6 +393,7 @@ function cancelBackendSubscription(store: RuntimeCacheStore): void {
   const unsubscribe = store.backendSubscription
   store.backendSubscription = undefined
   store.backendRevision = -1
+  store.synchronizationRevision = null
   unsubscribe?.unsubscribe()
 }
 
@@ -390,6 +404,7 @@ function ensureBackendSubscription(store: RuntimeCacheStore): void {
   store.backendSubscriptionPending = true
   const backend = store.backend
   const generation = ++store.backendSubscriptionGeneration
+  store.synchronizationRevision = null
   try {
     const subscription = backend.subscribeStore(store.scope, (snapshot) => {
       if (store.backendSubscriptionGeneration !== generation || store.backend !== backend) {
@@ -460,6 +475,7 @@ function applyBackendSnapshot(
 
   store.backendRevision = snapshot.revision
   store.entries = nextEntries
+  store.synchronizationRevision = ++cacheSynchronizationRevision
   store.totalBytes = nextTotalBytes
   enqueueCacheNotifications(store, notifications)
 }

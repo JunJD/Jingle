@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { createElement, useState } from "react"
-import { Detail } from "@jingle/extension-api"
+import { Cache, Detail } from "@jingle/extension-api"
 import {
   createExtensionRuntimeNavigation,
   ExtensionRuntimeNavigationProvider,
@@ -224,6 +224,271 @@ test("promise cache binding closes the construction-to-subscribe race with an ex
         value: cacheValue("written-before-subscribe")
       })
       assert.equal(notificationCount, 1)
+      unsubscribe()
+    })
+  } finally {
+    uninstallBackend()
+  }
+})
+
+test("promise cache binding skips exact repeat writes without mutation or notification", async () => {
+  const memoryBackend = createMemoryBackend()
+  const uninstallBackend = installExtensionRuntimeCacheBackend(memoryBackend.backend)
+  const context = createSdkContext("same-value-no-op")
+
+  try {
+    await runWithExtensionRuntimeSdk(context, async () => {
+      const identity = createPromiseCacheIdentity(loadScopedValue, ["page-same"])
+      const binding = createPromiseCacheBinding<{ label: string }>(identity)
+      let notificationCount = 0
+      const unsubscribe = binding.subscribe(() => {
+        notificationCount += 1
+      })
+      await flushPromises()
+
+      assert.equal(binding.write(cacheValue({ label: "stable" })), true)
+      assert.equal(memoryBackend.mutationCount, 1)
+      assert.equal(notificationCount, 1)
+      const committedSnapshot = binding.getSnapshot()
+
+      for (let index = 0; index < 10_000; index += 1) {
+        assert.equal(binding.write(cacheValue({ label: "stable" })), true)
+      }
+
+      assert.equal(memoryBackend.mutationCount, 1)
+      assert.equal(notificationCount, 1)
+      assert.equal(binding.getSnapshot(), committedSnapshot)
+
+      new Cache({ namespace: identity.namespace }).clear({ notifySubscribers: false })
+      assert.equal(memoryBackend.mutationCount, 2)
+      assert.equal(notificationCount, 1)
+
+      assert.equal(binding.write(cacheValue({ label: "stable" })), true)
+      assert.equal(memoryBackend.mutationCount, 3)
+      assert.equal(notificationCount, 1)
+
+      assert.equal(binding.write(cacheValue({ label: "changed" })), true)
+      assert.equal(memoryBackend.mutationCount, 4)
+      assert.equal(notificationCount, 2)
+      assert.deepEqual(binding.getSnapshot(), {
+        kind: "value",
+        value: cacheValue({ label: "changed" })
+      })
+      unsubscribe()
+    })
+  } finally {
+    uninstallBackend()
+  }
+})
+
+test("promise cache binding never trusts stale process-local data after resubscribe", async () => {
+  const secondSubscriptionReady = createDeferred<void>()
+  let subscriptionCount = 0
+  const memoryBackend = createMemoryBackend({
+    async beforeSubscriptionSnapshot(scope) {
+      if (scope.commandName !== "resubscribe-stale-value") {
+        return
+      }
+      subscriptionCount += 1
+      if (subscriptionCount === 2) {
+        await secondSubscriptionReady.promise
+      }
+    }
+  })
+  const uninstallBackend = installExtensionRuntimeCacheBackend(memoryBackend.backend)
+  const context = createSdkContext("resubscribe-stale-value")
+
+  try {
+    await runWithExtensionRuntimeSdk(context, async () => {
+      const identity = createPromiseCacheIdentity(loadScopedValue, ["page-resubscribe"])
+      const binding = createPromiseCacheBinding<string>(identity)
+      const unsubscribeFirst = binding.subscribe(() => undefined)
+      await flushPromises()
+
+      assert.equal(binding.write(cacheValue("local-old")), true)
+      unsubscribeFirst()
+      const targetScope = memoryBackend.loadedScopes.find(
+        (scope) =>
+          scope.commandName === "resubscribe-stale-value" && scope.namespace === identity.namespace
+      )
+      assert.ok(targetScope, JSON.stringify(memoryBackend.loadedScopes))
+      memoryBackend.backend.mutateStore(targetScope, {
+        kind: "update",
+        removeKeys: [],
+        upsertEntries: [
+          [
+            identity.key,
+            '{"pagination":{"kind":"none"},"value":{"data":"durable-new","kind":"json"},"version":1}'
+          ]
+        ]
+      })
+      assert.equal(memoryBackend.mutationCount, 2)
+
+      const unsubscribeSecond = binding.subscribe(() => undefined)
+      assert.deepEqual(binding.getSnapshot(), {
+        kind: "value",
+        value: cacheValue("local-old")
+      })
+
+      assert.equal(binding.write(cacheValue("local-old")), true)
+      assert.equal(memoryBackend.mutationCount, 3)
+
+      secondSubscriptionReady.resolve()
+      await flushPromises()
+      assert.deepEqual(binding.getSnapshot(), {
+        kind: "value",
+        value: cacheValue("local-old")
+      })
+      unsubscribeSecond()
+    })
+  } finally {
+    uninstallBackend()
+  }
+})
+
+test("promise cache binding waits for the first feed snapshot after a synchronous load", async () => {
+  const initialSnapshotReady = createDeferred<void>()
+  const memoryBackend = createMemoryBackend({
+    beforeSubscriptionSnapshot: (scope) =>
+      scope.commandName === "sync-load-feed" ? initialSnapshotReady.promise : Promise.resolve()
+  })
+  const uninstallBackend = installExtensionRuntimeCacheBackend(memoryBackend.backend)
+  const context = createSdkContext("sync-load-feed")
+
+  try {
+    await runWithExtensionRuntimeSdk(context, async () => {
+      const identity = createPromiseCacheIdentity(loadScopedValue, ["page-sync-load"])
+      const binding = createPromiseCacheBinding<string>(identity)
+
+      assert.equal(binding.write(cacheValue("local")), true)
+      assert.equal(memoryBackend.mutationCount, 1)
+
+      const unsubscribe = binding.subscribe(() => undefined)
+      assert.equal(binding.write(cacheValue("local")), true)
+      assert.equal(memoryBackend.mutationCount, 2)
+
+      const targetScope = memoryBackend.loadedScopes.find(
+        (scope) => scope.commandName === "sync-load-feed" && scope.namespace === identity.namespace
+      )
+      assert.ok(targetScope)
+      memoryBackend.backend.mutateStore(targetScope, {
+        kind: "update",
+        removeKeys: [],
+        upsertEntries: [
+          [
+            identity.key,
+            '{"pagination":{"kind":"none"},"value":{"data":"external","kind":"json"},"version":1}'
+          ]
+        ]
+      })
+      assert.equal(memoryBackend.mutationCount, 3)
+
+      assert.equal(binding.write(cacheValue("local")), true)
+      assert.equal(memoryBackend.mutationCount, 4)
+
+      initialSnapshotReady.resolve()
+      await flushPromises()
+      assert.deepEqual(binding.getSnapshot(), {
+        kind: "value",
+        value: cacheValue("local")
+      })
+      unsubscribe()
+    })
+  } finally {
+    uninstallBackend()
+  }
+})
+
+test("promise cache binding invalidates same-value ownership while replacing the backend", async () => {
+  const replacementSnapshotReady = createDeferred<void>()
+  const firstBackend = createMemoryBackend()
+  const replacementBackend = createMemoryBackend({
+    beforeSubscriptionSnapshot: (scope) =>
+      scope.commandName === "replacement-stale-value"
+        ? replacementSnapshotReady.promise
+        : Promise.resolve()
+  })
+  const uninstallFirstBackend = installExtensionRuntimeCacheBackend(firstBackend.backend)
+  const context = createSdkContext("replacement-stale-value")
+  let uninstallReplacementBackend: () => void = () => undefined
+
+  try {
+    await runWithExtensionRuntimeSdk(context, async () => {
+      const identity = createPromiseCacheIdentity(loadScopedValue, ["page-replacement"])
+      const binding = createPromiseCacheBinding<string>(identity)
+      const unsubscribe = binding.subscribe(() => undefined)
+      await flushPromises()
+
+      assert.equal(binding.write(cacheValue("local-old")), true)
+      assert.equal(firstBackend.mutationCount, 1)
+      const targetScope = firstBackend.loadedScopes.find(
+        (scope) =>
+          scope.commandName === "replacement-stale-value" && scope.namespace === identity.namespace
+      )
+      assert.ok(targetScope)
+
+      replacementBackend.backend.mutateStore(targetScope, {
+        kind: "update",
+        removeKeys: [],
+        upsertEntries: [
+          [
+            identity.key,
+            '{"pagination":{"kind":"none"},"value":{"data":"durable-new","kind":"json"},"version":1}'
+          ]
+        ]
+      })
+      uninstallReplacementBackend = installExtensionRuntimeCacheBackend(replacementBackend.backend)
+      assert.equal(replacementBackend.mutationCount, 1)
+
+      assert.equal(binding.write(cacheValue("local-old")), true)
+      assert.equal(replacementBackend.mutationCount, 2)
+
+      replacementSnapshotReady.resolve()
+      await flushPromises()
+      assert.deepEqual(binding.getSnapshot(), {
+        kind: "value",
+        value: cacheValue("local-old")
+      })
+      unsubscribe()
+    })
+  } finally {
+    uninstallReplacementBackend()
+    uninstallFirstBackend()
+  }
+})
+
+test("promise cache binding adopts a reentrant write before granting same-value ownership", async () => {
+  const memoryBackend = createMemoryBackend()
+  const uninstallBackend = installExtensionRuntimeCacheBackend(memoryBackend.backend)
+  const context = createSdkContext("reentrant-write")
+
+  try {
+    await runWithExtensionRuntimeSdk(context, async () => {
+      const identity = createPromiseCacheIdentity(loadScopedValue, ["page-reentrant"])
+      const binding = createPromiseCacheBinding<string>(identity)
+      let reentered = false
+      const unsubscribe = binding.subscribe(() => {
+        const snapshot = binding.getSnapshot()
+        if (!reentered && snapshot.kind === "value" && snapshot.value.data === "outer-new") {
+          reentered = true
+          assert.equal(binding.write(cacheValue("reentrant-old")), true)
+        }
+      })
+      await flushPromises()
+
+      assert.equal(binding.write(cacheValue("outer-new")), false)
+      assert.equal(memoryBackend.mutationCount, 2)
+      assert.deepEqual(binding.getSnapshot(), {
+        kind: "value",
+        value: cacheValue("reentrant-old")
+      })
+
+      assert.equal(binding.write(cacheValue("outer-new")), true)
+      assert.equal(memoryBackend.mutationCount, 3)
+      assert.deepEqual(binding.getSnapshot(), {
+        kind: "value",
+        value: cacheValue("outer-new")
+      })
       unsubscribe()
     })
   } finally {
@@ -576,7 +841,11 @@ function withRuntimeProvider(
 }
 
 function createMemoryBackend(
-  options: { loadEntries?: RuntimeCacheEntry[]; onLoad?: () => void } = {}
+  options: {
+    beforeSubscriptionSnapshot?: (scope: RuntimeCacheBackendScope) => Promise<void>
+    loadEntries?: RuntimeCacheEntry[]
+    onLoad?: () => void
+  } = {}
 ): {
   backend: RuntimeCacheBackend
   loadedScopes: RuntimeCacheBackendScope[]
@@ -608,7 +877,8 @@ function createMemoryBackend(
     onFailure: () => () => undefined,
     subscribeStore(scope, listener) {
       let active = true
-      const ready = Promise.resolve().then(() => {
+      const ready = Promise.resolve().then(async () => {
+        await options.beforeSubscriptionSnapshot?.(scope)
         if (active) {
           listener({ entries: backend.loadStore(scope), revision: 0 })
         }
