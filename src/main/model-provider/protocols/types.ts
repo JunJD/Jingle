@@ -3,11 +3,13 @@ import type { BaseChatModel } from "@langchain/core/language_models/chat_models"
 import type { ChatGoogleGenerativeAI } from "@langchain/google-genai"
 import type { ChatOpenAI } from "@langchain/openai"
 import type { ResolvedModelRuntimeConfig } from "../types"
+import type { ProviderExchangeCorrelationSink } from "../provider-exchange-correlation"
 
 export type ChatModelInstance = ChatAnthropic | ChatOpenAI | ChatGoogleGenerativeAI | BaseChatModel
 
 export interface ChatModelOptions {
   parallelToolCalls?: boolean
+  providerExchangeCorrelationSink?: ProviderExchangeCorrelationSink
   temperature?: number
 }
 

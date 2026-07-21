@@ -1,5 +1,28 @@
-import { ChatOpenAI } from "@langchain/openai"
+import { AsyncLocalStorage } from "node:async_hooks"
+import type { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager"
+import type { BaseMessage } from "@langchain/core/messages"
+import type { ChatGenerationChunk, ChatResult } from "@langchain/core/outputs"
+import { ChatOpenAI, type ChatOpenAIFields } from "@langchain/openai"
+import {
+  parseProviderCorrelationId,
+  readProviderRequestIdFromError,
+  readProviderResponseIdFromMessage,
+  recordProviderExchangeCorrelation,
+  type ProviderExchangeCorrelationSink
+} from "../provider-exchange-correlation"
 import type { ChatModelOptions, ProtocolCreateModelInput } from "./types"
+
+interface ProviderExchangeInvocationState {
+  requestIds: string[]
+  responseId: string | null
+  responseIdConflict: boolean
+}
+
+interface ProviderExchangeTransportContext {
+  fetch: typeof globalThis.fetch
+  run<T>(state: ProviderExchangeInvocationState, operation: () => Promise<T>): Promise<T>
+  settle(state: ProviderExchangeInvocationState, error?: unknown): void
+}
 
 export function createOpenAICompatibleChatModel(
   input: ProtocolCreateModelInput & {
@@ -8,8 +31,7 @@ export function createOpenAICompatibleChatModel(
   }
 ): ChatOpenAI {
   const { apiKey, baseURL, headers, options, runtimeConfig } = input
-
-  return new ChatOpenAI({
+  const fields: ChatOpenAIFields = {
     apiKey,
     ...createOpenAICompatibleOutputTokenOptions(runtimeConfig.maxOutputTokens),
     model: runtimeConfig.modelName,
@@ -27,7 +49,182 @@ export function createOpenAICompatibleChatModel(
           }
         }
       : {})
-  })
+  }
+
+  return options.providerExchangeCorrelationSink
+    ? new ProviderCorrelatedChatOpenAI(fields, options.providerExchangeCorrelationSink)
+    : new ChatOpenAI(fields)
+}
+
+class ProviderCorrelatedChatOpenAI extends ChatOpenAI {
+  private readonly correlation: ProviderExchangeTransportContext
+  private readonly correlationSink: ProviderExchangeCorrelationSink
+  private readonly providerFields: ChatOpenAIFields
+
+  constructor(fields: ChatOpenAIFields, sink: ProviderExchangeCorrelationSink) {
+    const correlation = createProviderExchangeTransportContext(
+      sink,
+      fields.configuration?.fetch ?? globalThis.fetch.bind(globalThis)
+    )
+    super({
+      ...fields,
+      configuration: {
+        ...fields.configuration,
+        fetch: correlation.fetch
+      }
+    })
+    this.correlation = correlation
+    this.correlationSink = sink
+    this.providerFields = fields
+  }
+
+  override withConfig(config: Parameters<ChatOpenAI["withConfig"]>[0]) {
+    const model = new ProviderCorrelatedChatOpenAI(this.providerFields, this.correlationSink)
+    model.defaultOptions = {
+      ...this.defaultOptions,
+      ...config
+    }
+    return model
+  }
+
+  override async _generate(
+    messages: BaseMessage[],
+    options: this["ParsedCallOptions"],
+    runManager?: CallbackManagerForLLMRun
+  ): Promise<ChatResult> {
+    const state = createProviderExchangeInvocationState()
+    return this.correlation.run(state, async () => {
+      try {
+        const result = await super._generate(messages, options, runManager)
+        for (const generation of result.generations) {
+          observeProviderResponseId(state, readProviderResponseIdFromMessage(generation.message))
+        }
+        this.correlation.settle(state)
+        return result
+      } catch (error) {
+        this.correlation.settle(state, error)
+        throw error
+      }
+    })
+  }
+
+  override async *_streamResponseChunks(
+    messages: BaseMessage[],
+    options: this["ParsedCallOptions"],
+    runManager?: CallbackManagerForLLMRun
+  ): AsyncGenerator<ChatGenerationChunk> {
+    const state = createProviderExchangeInvocationState()
+    const iterator = super._streamResponseChunks(messages, options, runManager)
+    let completed = false
+    let operationError: unknown
+    try {
+      while (true) {
+        const next = await this.correlation.run(state, () => iterator.next())
+        if (next.done) {
+          completed = true
+          break
+        }
+        observeProviderResponseId(state, readProviderResponseIdFromMessage(next.value.message))
+        yield next.value
+      }
+    } catch (error) {
+      operationError = error
+      throw error
+    } finally {
+      if (completed) {
+        this.correlation.settle(state, operationError)
+      } else {
+        await closeProviderStream(this.correlation, state, iterator, operationError)
+      }
+    }
+  }
+}
+
+async function closeProviderStream(
+  correlation: ProviderExchangeTransportContext,
+  state: ProviderExchangeInvocationState,
+  iterator: AsyncGenerator<ChatGenerationChunk>,
+  operationError: unknown
+): Promise<void> {
+  try {
+    await correlation.run(state, () => iterator.return(undefined))
+  } catch (cleanupError) {
+    correlation.settle(state, operationError ?? cleanupError)
+    if (operationError === undefined) {
+      throw cleanupError
+    }
+    return
+  }
+  correlation.settle(state, operationError)
+}
+
+function createProviderExchangeTransportContext(
+  sink: ProviderExchangeCorrelationSink,
+  delegateFetch: typeof globalThis.fetch
+): ProviderExchangeTransportContext {
+  const invocationStorage = new AsyncLocalStorage<ProviderExchangeInvocationState>()
+  return {
+    fetch: async (request, init) => {
+      const response = await delegateFetch(request, init)
+      const state = invocationStorage.getStore()
+      const requestId = response.headers.get("x-request-id")
+      if (state && requestId) {
+        recordRequestId(state, requestId)
+      }
+      return response
+    },
+    run: (state, operation) => invocationStorage.run(state, operation),
+    settle: (state, error) => {
+      const errorRequestId = readProviderRequestIdFromError(error)
+      if (errorRequestId && !state.requestIds.includes(errorRequestId)) {
+        state.requestIds.push(errorRequestId)
+      }
+      const responseId = state.responseIdConflict ? null : state.responseId
+      if (state.requestIds.length === 0) {
+        recordProviderExchangeCorrelation(sink, { providerResponseId: responseId })
+        return
+      }
+      state.requestIds.forEach((providerRequestId, index) => {
+        recordProviderExchangeCorrelation(sink, {
+          providerRequestId,
+          ...(index === state.requestIds.length - 1 && responseId
+            ? { providerResponseId: responseId }
+            : {})
+        })
+      })
+    }
+  }
+}
+
+function createProviderExchangeInvocationState(): ProviderExchangeInvocationState {
+  return {
+    requestIds: [],
+    responseId: null,
+    responseIdConflict: false
+  }
+}
+
+function recordRequestId(state: ProviderExchangeInvocationState, value: string): void {
+  const providerRequestId = parseProviderCorrelationId(value)
+  if (!providerRequestId) {
+    return
+  }
+  state.requestIds.push(providerRequestId)
+}
+
+function observeProviderResponseId(
+  state: ProviderExchangeInvocationState,
+  providerResponseId: string | null
+): void {
+  if (!providerResponseId || state.responseIdConflict) {
+    return
+  }
+  if (state.responseId && state.responseId !== providerResponseId) {
+    state.responseId = null
+    state.responseIdConflict = true
+    return
+  }
+  state.responseId = providerResponseId
 }
 
 function createOpenAICompatibleOutputTokenOptions(maxOutputTokens: number | undefined): {
