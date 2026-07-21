@@ -33,7 +33,7 @@ import { parsePersistedHitlAllowedDecisions } from "../db/hitl"
 import { getCheckpointer } from "../checkpointer/runtime-checkpointer-manager"
 import { JingleIpcError } from "../ipc/error"
 import { extractThreadFactsFromCheckpoint } from "./runtime-state"
-import { listProjectedThreadMessages } from "../db/message-state"
+import { listCanonicalMainThreadMessages } from "../db/message-state"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
 import type { PermissionModeName } from "@shared/permission-mode"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
@@ -513,13 +513,13 @@ export async function syncRunFromLatestCheckpointFacts(
   }
 
   if (options?.expectedMessageId) {
-    const projectedMessages = await listProjectedThreadMessages(threadId)
-    const includesMessage = projectedMessages.some(
+    const canonicalMessages = await listCanonicalMainThreadMessages(threadId)
+    const includesMessage = canonicalMessages.some(
       (message) => message.message_id === options.expectedMessageId
     )
     if (!includesMessage) {
       throw new Error(
-        `[Agent] Message projection for run "${runId}" does not include submitted message "${options.expectedMessageId}".`
+        `[Agent] Canonical message state for run "${runId}" does not include submitted message "${options.expectedMessageId}".`
       )
     }
   }

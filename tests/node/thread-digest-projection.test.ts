@@ -27,15 +27,32 @@ async function resetDatabase(): Promise<void> {
 }
 
 async function seedThread(threadId: string, text: string): Promise<void> {
-  const { createThread, syncMessageSearchIndexFromSnapshot } = await loadDbModules()
+  const { createThread, persistMessageStateVersion } = await loadDbModules()
   await createThread(threadId, { title: `Title for ${threadId}` })
-  await syncMessageSearchIndexFromSnapshot(threadId, [
-    {
-      content: JSON.stringify(text),
-      message_id: `message-${threadId}`,
-      role: "user"
-    }
-  ])
+  await persistMessageStateVersion({
+    checkpointId: `checkpoint-${threadId}`,
+    checkpointNs: "",
+    messages: [
+      {
+        content: JSON.stringify(text),
+        kind: "message",
+        messageId: `message-${threadId}`,
+        metadata: null,
+        name: null,
+        order: 1,
+        rawHash: `hash-${threadId}`,
+        rawMessageEncoding: "text",
+        rawMessageType: "json",
+        rawMessageValue: JSON.stringify({ content: text }),
+        role: "user",
+        toolCallId: null,
+        toolCalls: null
+      }
+    ],
+    runId: null,
+    threadId,
+    version: "1"
+  })
 }
 
 async function createThreadsServiceForDigestTest(
@@ -107,12 +124,13 @@ test.after(async () => {
   }
 })
 
-test("manual thread digest generation writes a ready searchable digest", async () => {
-  const { getThreadDigest, searchThreadDigests } = await loadDbModules()
+test("manual thread digest reads canonical message state when its derived projection is absent", async () => {
+  const { getPrismaClient, getThreadDigest, searchThreadDigests } = await loadDbModules()
   const { projectThreadDigest, setThreadDigestGeneratorForTests } =
     await import("../../src/main/projection/thread-digest-projection")
   const threadId = "thread-digest-ready"
   await seedThread(threadId, "ThreadDigest routes session search.")
+  await getPrismaClient().message.deleteMany({ where: { threadId } })
 
   const restoreGenerator = setThreadDigestGeneratorForTests(async ({ prompt }) => {
     assert.match(prompt, /ThreadDigest routes session search/)

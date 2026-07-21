@@ -64,7 +64,7 @@ import { ThreadLifecycleGate, type ThreadRunLease } from "./thread-lifecycle-gat
 import { getHitlRequest, parsePersistedHitlAllowedDecisions } from "../db/hitl"
 import { getRun } from "../db/runs"
 import { getThread } from "../db/threads"
-import { listProjectedThreadMessages } from "../db/message-state"
+import { listCanonicalMainThreadMessages } from "../db/message-state"
 import { buildIpcErrorPayload, JingleIpcError } from "../ipc/error"
 import { diagnosticsGraph } from "../diagnostics/instance"
 import { JingleMemoryService } from "../jingle-memory/service"
@@ -361,7 +361,7 @@ async function readMessageIdsAfterLatestUserMessage(input: {
     })
   }
 
-  const messages = await listProjectedThreadMessages(input.threadId)
+  const messages = await listCanonicalMainThreadMessages(input.threadId)
   const latestUserMessageIndex = messages.findLastIndex((message) => message.role === "user")
   const latestUserMessage = messages[latestUserMessageIndex]
   if (!latestUserMessage) {

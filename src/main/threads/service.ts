@@ -28,7 +28,7 @@ import {
 } from "../db/thread-workspace"
 import {
   checkpointMessageStateIncludesMessage,
-  listProjectedThreadMessages,
+  listCanonicalMainThreadMessages,
   type MessageProjectionRow
 } from "../db/message-state"
 import { listUserMessageCreatedAgentEvents, type AgentEventRow } from "../db/agent-events"
@@ -151,10 +151,8 @@ function resolveArchivedAt(thread: ThreadRow): Date {
   return new Date(thread.archived_at)
 }
 
-function mapProjectedMessagesToThreadMessages(
-  projectedMessages: MessageProjectionRow[]
-): Message[] {
-  return projectedMessages.map((row) => {
+function mapCanonicalMessagesToThreadMessages(messages: MessageProjectionRow[]): Message[] {
+  return messages.map((row) => {
     const role =
       row.role === "tool"
         ? "tool"
@@ -524,15 +522,15 @@ export class ThreadsService {
     )
 
     const checkpointFacts = extractThreadFactsFromCheckpoint(threadId, checkpoint)
-    const [projectedMessages, forkState] = await Promise.all([
-      listProjectedThreadMessages(threadId).then(mapProjectedMessagesToThreadMessages),
+    const [canonicalMessages, forkState] = await Promise.all([
+      listCanonicalMainThreadMessages(threadId).then(mapCanonicalMessagesToThreadMessages),
       computeThreadForkState({
         checkpointHasInterrupt: checkpointFacts.hasInterrupt,
         thread: row,
         threadId
       })
     ])
-    const messages = mergeDurableUserMessageEvents(projectedMessages, userMessageEvents)
+    const messages = mergeDurableUserMessageEvents(canonicalMessages, userMessageEvents)
 
     return {
       approvals: checkpointFacts.approvals,
@@ -876,7 +874,7 @@ export class ThreadsService {
       owner: "thread"
     })
 
-    const sourceMessages = await listProjectedThreadMessages(sourceThreadId)
+    const sourceMessages = await listCanonicalMainThreadMessages(sourceThreadId)
     const targetMessage = sourceMessages.find((message) => message.message_id === messageId)
 
     if (!latest || !targetMessage) {

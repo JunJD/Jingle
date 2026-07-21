@@ -1625,6 +1625,8 @@ test("pending same-id edits replace stale projections without reviving checkpoin
     threadId,
     version: "1"
   })
+  await prisma.message.deleteMany({ where: { threadId } })
+  assert.equal(await prisma.message.count({ where: { threadId } }), 0)
 
   const refs = [
     {
@@ -3259,6 +3261,91 @@ test("invoke command reports missing workspace before accepting the command", as
   assert.equal(await getPrismaClient().run.count({ where: { threadId } }), 0)
 })
 
+test("edit retry derives removals from canonical message state without its projection", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const { persistMessageStateVersion } = await import("../../src/main/db/message-state")
+  const consoleLog = mock.method(console, "log", () => {})
+  const previousRuntimeMode = process.env.JINGLE_BDD_AGENT_RUNTIME
+  const threadId = "thread-edit-canonical-message-state"
+  const userMessageId = "message-edit-canonical-user"
+  const assistantMessageId = "message-edit-canonical-assistant"
+  const prisma = getPrismaClient()
+  process.env.JINGLE_BDD_AGENT_RUNTIME = "scripted"
+
+  try {
+    await createThread(threadId)
+    await bindThreadWorkspace(threadId, repoRoot)
+    await persistMessageStateVersion({
+      checkpointId: "checkpoint-edit-canonical-message-state",
+      checkpointNs: "",
+      messages: [
+        {
+          content: JSON.stringify("original user message"),
+          kind: "message",
+          messageId: userMessageId,
+          metadata: null,
+          name: null,
+          order: 1,
+          rawHash: "hash-edit-canonical-user",
+          rawMessageEncoding: "text",
+          rawMessageType: "json",
+          rawMessageValue: "{}",
+          role: "user",
+          toolCallId: null,
+          toolCalls: null
+        },
+        {
+          content: JSON.stringify("original assistant message"),
+          kind: "message",
+          messageId: assistantMessageId,
+          metadata: null,
+          name: null,
+          order: 2,
+          rawHash: "hash-edit-canonical-assistant",
+          rawMessageEncoding: "text",
+          rawMessageType: "json",
+          rawMessageValue: "{}",
+          role: "assistant",
+          toolCallId: null,
+          toolCalls: null
+        }
+      ],
+      runId: null,
+      threadId,
+      version: "1"
+    })
+    await prisma.message.deleteMany({ where: { threadId } })
+
+    const service = await createAgentServiceForTest()
+    delete process.env.JINGLE_BDD_AGENT_RUNTIME
+    const outcome = await service.dispatchEditLastUserMessageAndInvoke(
+      {
+        message: { content: "bdd:long edited user message", id: userMessageId },
+        threadId
+      },
+      { send: () => undefined }
+    )
+
+    assert.deepEqual(outcome, { disposition: "run", type: "accepted" })
+    const event = await prisma.agentEvent.findFirstOrThrow({
+      orderBy: { createdAt: "desc" },
+      where: { threadId, type: "message.user.created" }
+    })
+    assert.deepEqual(
+      (JSON.parse(event.payload) as { removeMessageIds?: string[] }).removeMessageIds,
+      [assistantMessageId]
+    )
+    assert.equal(await service.cancel({ threadId }), true)
+  } finally {
+    if (previousRuntimeMode === undefined) {
+      delete process.env.JINGLE_BDD_AGENT_RUNTIME
+    } else {
+      process.env.JINGLE_BDD_AGENT_RUNTIME = previousRuntimeMode
+    }
+    consoleLog.mock.restore()
+  }
+})
+
 test("invoke admission rejects file content that differs from canonical composer refs", async () => {
   const { createThread, getPrismaClient } = await loadDbModules()
   const threadId = "thread-file-content-ref-mismatch"
@@ -3907,10 +3994,9 @@ test("thread hydrate maps canonical failure only for failure-bearing run statuse
 
 test("thread hydration fails closed for corrupt and noncanonical persisted message content", async () => {
   const { createThread, getPrismaClient } = await loadDbModules()
+  const { persistMessageStateVersion } = await import("../../src/main/db/message-state")
   const threadId = "thread-invalid-persisted-message-content"
   await createThread(threadId)
-  const prisma = getPrismaClient()
-  const now = BigInt(Date.now())
   const canonicalContent = [
     {
       name: "result.png",
@@ -3918,49 +4004,76 @@ test("thread hydration fails closed for corrupt and noncanonical persisted messa
       type: "image"
     }
   ]
-  await prisma.message.createMany({
-    data: [
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-invalid-persisted-message-content",
+    checkpointNs: "",
+    messages: [
       {
         content: JSON.stringify(canonicalContent),
-        createdAt: now,
         kind: "message",
         messageId: "message-canonical",
+        metadata: null,
+        name: null,
+        order: 1,
         rawHash: "hash-canonical",
-        rawMessage: "{}",
+        rawMessageEncoding: "text",
+        rawMessageType: "json",
+        rawMessageValue: "{}",
         role: "assistant",
-        searchText: "",
-        seq: 1,
-        threadId,
-        updatedAt: now
+        toolCallId: null,
+        toolCalls: null
       },
       {
-        content: "secret raw corrupt payload",
-        createdAt: now + BigInt(1),
+        content: JSON.stringify("placeholder corrupt content"),
         kind: "message",
         messageId: "message-corrupt",
+        metadata: null,
+        name: null,
+        order: 2,
         rawHash: "hash-corrupt",
-        rawMessage: "{}",
+        rawMessageEncoding: "text",
+        rawMessageType: "json",
+        rawMessageValue: "{}",
         role: "user",
-        searchText: "",
-        seq: 2,
-        threadId,
-        updatedAt: now + BigInt(1)
+        toolCallId: null,
+        toolCalls: null
       },
       {
-        content: JSON.stringify([{ content: "legacy raw payload", type: "text" }]),
-        createdAt: now + BigInt(2),
+        content: JSON.stringify("placeholder noncanonical content"),
         kind: "message",
         messageId: "message-noncanonical",
+        metadata: null,
+        name: null,
+        order: 3,
         rawHash: "hash-noncanonical",
-        rawMessage: "{}",
+        rawMessageEncoding: "text",
+        rawMessageType: "json",
+        rawMessageValue: "{}",
         role: "user",
-        searchText: "",
-        seq: 3,
-        threadId,
-        updatedAt: now + BigInt(2)
+        toolCallId: null,
+        toolCalls: null
       }
-    ]
+    ],
+    runId: null,
+    threadId,
+    version: "1"
   })
+  const prisma = getPrismaClient()
+  for (const [messageId, content] of [
+    ["message-corrupt", "secret raw corrupt payload"],
+    ["message-noncanonical", JSON.stringify([{ content: "legacy raw payload", type: "text" }])]
+  ] as const) {
+    const event = await prisma.messageEvent.findFirstOrThrow({ where: { messageId, threadId } })
+    await prisma.messageEvent.update({
+      data: {
+        payload: JSON.stringify({
+          ...(JSON.parse(event.payload) as Record<string, unknown>),
+          content
+        })
+      },
+      where: { eventId: event.eventId }
+    })
+  }
 
   const warnings: unknown[][] = []
   const originalWarn = console.warn
@@ -5403,8 +5516,8 @@ test("prisma checkpoint saver rejects non-string channel versions", async () => 
   )
 })
 
-test("syncRunFromLatestCheckpoint accepts submitted message in message projection", async () => {
-  const { createRun, createThread, getRun } = await loadDbModules()
+test("syncRunFromLatestCheckpoint accepts submitted canonical message without its projection", async () => {
+  const { createRun, createThread, getPrismaClient, getRun } = await loadDbModules()
   const { syncRunFromLatestCheckpoint } = await import("../../src/main/agent/persistence")
   const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
 
@@ -5437,6 +5550,7 @@ test("syncRunFromLatestCheckpoint accepts submitted message in message projectio
       step: 0
     }
   )
+  await getPrismaClient().message.deleteMany({ where: { threadId } })
 
   await assert.doesNotReject(
     syncRunFromLatestCheckpoint(threadId, runId, {

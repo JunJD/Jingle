@@ -2,7 +2,7 @@ import { createHash } from "crypto"
 import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages"
 import { z } from "zod/v4"
 import { getChatModelInstance } from "../llm/get-chat-model"
-import { listProjectedThreadMessages, type MessageProjectionRow } from "../db/message-state"
+import { listCanonicalMainThreadMessages, type MessageProjectionRow } from "../db/message-state"
 import { upsertReadyThreadDigest, type UpsertReadyThreadDigestInput } from "../db/thread-digests"
 import {
   extractMessageText,
@@ -206,7 +206,7 @@ export async function prepareThreadDigestProjection(
   threadId: string,
   signal?: AbortSignal
 ): Promise<UpsertReadyThreadDigestInput> {
-  const allMessages = await listProjectedThreadMessages(threadId)
+  const allMessages = await listCanonicalMainThreadMessages(threadId)
   const sourceMessages = selectDigestSourceMessages(allMessages)
   if (sourceMessages.length === 0) {
     throw new Error("This thread has no user or assistant messages to summarize.")
