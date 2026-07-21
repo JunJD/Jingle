@@ -1,10 +1,9 @@
 import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent } from "electron"
 import { AI_THREAD_SOURCE } from "@shared/launcher-ai"
-import type {
-  LauncherSearchAction,
-  LauncherSearchCancellation,
-  LauncherSearchInvocation,
-  LauncherSearchRequest
+import type { LauncherSearchAction, LauncherSearchRequest } from "@shared/launcher-search"
+import {
+  launcherSearchCancellationArgsSchema,
+  launcherSearchInvocationArgsSchema
 } from "@shared/launcher-search"
 import { launcherPresentArgsSchema } from "@shared/launcher-presentation"
 import {
@@ -18,16 +17,17 @@ import {
   bindLauncherSearchSenderLifetime,
   getScopedLauncherSearchCallerId
 } from "./search-sender-lifetime"
-import { LauncherService } from "./service"
+import type { LauncherService } from "./service"
 
 export class LauncherController {
   constructor(private readonly launcherService: LauncherService) {}
 
   register(ipcMain: IpcMain): void {
-    registerIpcHandle(
+    registerValidatedIpcHandle(
       ipcMain,
       "launcher:search",
-      async (event, invocation: LauncherSearchInvocation) => {
+      launcherSearchInvocationArgsSchema,
+      async (event, invocation) => {
         this.assertSearchSender(event, invocation.request)
         const lifetime = bindLauncherSearchSenderLifetime({
           callerId: invocation.callerId,
@@ -46,10 +46,11 @@ export class LauncherController {
       }
     )
 
-    registerIpcHandle(
+    registerValidatedIpcHandle(
       ipcMain,
       "launcher:cancelSearch",
-      (event, cancellation: LauncherSearchCancellation) => {
+      launcherSearchCancellationArgsSchema,
+      (event, cancellation) => {
         this.assertSearchCancellationSender(event)
         return this.launcherService.cancelSearch(
           getScopedLauncherSearchCallerId(event.sender.id, cancellation.callerId)

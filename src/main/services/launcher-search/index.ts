@@ -1,8 +1,5 @@
-import type {
-  LauncherSearchRequest,
-  LauncherSearchResponse,
-  LauncherSearchSource
-} from "@shared/launcher-search"
+import type { LauncherSearchResponse, LauncherSearchSource } from "@shared/launcher-search"
+import { launcherSearchRequestSchema, type LauncherSearchRequest } from "@shared/launcher-search"
 import { JingleIpcError } from "../../ipc/error"
 import {
   applicationsLauncherSearchProvider,
@@ -218,6 +215,7 @@ export class LauncherSearchCoordinator {
   }
 
   search(request: LauncherSearchRequest, callerId: string): Promise<LauncherSearchResponse> {
+    const normalizedRequest = launcherSearchRequestSchema.parse(request)
     if (this.callers.has(callerId)) {
       throw new JingleIpcError({
         channel: "launcher:search",
@@ -226,10 +224,6 @@ export class LauncherSearchCoordinator {
       })
     }
 
-    const normalizedRequest: LauncherSearchRequest = {
-      ...request,
-      limit: Math.max(request.limit, 1)
-    }
     const cacheKey = getSearchRequestCacheKey(normalizedRequest)
     const cachedResponse = this.cache.get(cacheKey)
     if (cachedResponse) {

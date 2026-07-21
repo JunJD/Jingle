@@ -1,7 +1,12 @@
 import assert from "node:assert/strict"
 import { createRequire } from "node:module"
 import test from "node:test"
-import type { LauncherSearchResponse } from "../../src/shared/launcher-search"
+import {
+  MAX_LAUNCHER_SEARCH_QUERY_LENGTH,
+  type LauncherSearchRequest,
+  type LauncherSearchResponse
+} from "../../src/shared/launcher-search"
+import { MAX_LAUNCHER_SEARCH_RESULTS } from "../../src/shared/launcher"
 import type {
   LauncherSearchProvider,
   LauncherSearchProviderResponse
@@ -140,6 +145,63 @@ test("launcher search cache clear preserves invalidation ownership", async () =>
 
   assert.equal(cache.size, 0)
   assert.equal(cache.get("files:jingle"), null)
+})
+
+test("launcher search coordinator rejects noncanonical direct requests before provider work", async () => {
+  const { LauncherSearchCoordinator } = await cacheModulePromise
+  let providerCalls = 0
+  const coordinator = new LauncherSearchCoordinator({
+    providers: [
+      {
+        search: async () => {
+          providerCalls += 1
+          return { kind: "complete" as const, results: [] }
+        },
+        source: "applications"
+      }
+    ]
+  })
+  const canonicalRequest = { limit: 10, query: "jingle", sources: ["applications"] }
+  const invalidRequests: unknown[] = [
+    { ...canonicalRequest, unexpected: true },
+    { ...canonicalRequest, limit: Number.NaN },
+    { ...canonicalRequest, limit: Number.POSITIVE_INFINITY },
+    { ...canonicalRequest, limit: 1.5 },
+    { ...canonicalRequest, limit: 0 },
+    { ...canonicalRequest, limit: -1 },
+    { ...canonicalRequest, limit: MAX_LAUNCHER_SEARCH_RESULTS + 1 },
+    { ...canonicalRequest, query: 42 },
+    { ...canonicalRequest, query: "x".repeat(MAX_LAUNCHER_SEARCH_QUERY_LENGTH + 1) },
+    { ...canonicalRequest, sources: ["applications", "applications"] },
+    { ...canonicalRequest, sources: ["unknown"] }
+  ]
+
+  for (const [index, request] of invalidRequests.entries()) {
+    assert.throws(() =>
+      coordinator.search(request as LauncherSearchRequest, `invalid-request-${index}`)
+    )
+  }
+  assert.equal(providerCalls, 0)
+
+  await coordinator.search(
+    {
+      limit: MAX_LAUNCHER_SEARCH_RESULTS,
+      query: "x".repeat(MAX_LAUNCHER_SEARCH_QUERY_LENGTH),
+      sources: ["applications"]
+    },
+    "bounded-request"
+  )
+  assert.equal(providerCalls, 1)
+
+  await coordinator.search(
+    {
+      limit: 1,
+      query: "all providers",
+      sources: []
+    },
+    "all-providers-request"
+  )
+  assert.equal(providerCalls, 2)
 })
 
 test("launcher search coordinator shares one execution while callers retain independent cancellation", async () => {

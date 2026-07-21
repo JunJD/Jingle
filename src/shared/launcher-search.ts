@@ -1,29 +1,63 @@
-import type { LauncherResultAvailability, LauncherResultKind } from "./launcher"
+import { z } from "zod/v4"
+import {
+  MAX_LAUNCHER_SEARCH_RESULTS,
+  type LauncherResultAvailability,
+  type LauncherResultKind
+} from "./launcher"
 import type { LocalStartItemKind } from "./local-start"
 
-export type LauncherSearchSource =
-  | "applications"
-  | "browser-history"
-  | "files"
-  | "quicklinks"
-  | "semantic-history"
-  | "threads"
+export const MAX_LAUNCHER_SEARCH_QUERY_LENGTH = 512
+export const MAX_LAUNCHER_SEARCH_CALLER_ID_LENGTH = 128
+export const MAX_LAUNCHER_THREAD_METADATA_SOURCE_LENGTH = 128
 
-export interface LauncherSearchRequest {
-  query: string
-  limit: number
-  sources?: LauncherSearchSource[]
-  threadMetadataSource?: string
-}
+export const launcherSearchSourceSchema = z.enum([
+  "applications",
+  "browser-history",
+  "files",
+  "quicklinks",
+  "semantic-history",
+  "threads"
+])
+export type LauncherSearchSource = z.infer<typeof launcherSearchSourceSchema>
 
-export interface LauncherSearchInvocation {
-  callerId: string
-  request: LauncherSearchRequest
-}
+const launcherSearchSourcesSchema = z
+  .array(launcherSearchSourceSchema)
+  .max(launcherSearchSourceSchema.options.length)
+  .refine((sources) => new Set(sources).size === sources.length, {
+    message: "Launcher search sources must be unique."
+  })
 
-export interface LauncherSearchCancellation {
-  callerId: string
-}
+export const launcherSearchRequestSchema = z
+  .object({
+    limit: z.number().finite().int().min(1).max(MAX_LAUNCHER_SEARCH_RESULTS),
+    query: z.string().max(MAX_LAUNCHER_SEARCH_QUERY_LENGTH),
+    sources: launcherSearchSourcesSchema.optional(),
+    threadMetadataSource: z
+      .string()
+      .min(1)
+      .max(MAX_LAUNCHER_THREAD_METADATA_SOURCE_LENGTH)
+      .optional()
+  })
+  .strict()
+export type LauncherSearchRequest = z.infer<typeof launcherSearchRequestSchema>
+
+export const launcherSearchInvocationSchema = z
+  .object({
+    callerId: z.string().min(1).max(MAX_LAUNCHER_SEARCH_CALLER_ID_LENGTH),
+    request: launcherSearchRequestSchema
+  })
+  .strict()
+export type LauncherSearchInvocation = z.infer<typeof launcherSearchInvocationSchema>
+
+export const launcherSearchCancellationSchema = z
+  .object({
+    callerId: z.string().min(1).max(MAX_LAUNCHER_SEARCH_CALLER_ID_LENGTH)
+  })
+  .strict()
+export type LauncherSearchCancellation = z.infer<typeof launcherSearchCancellationSchema>
+
+export const launcherSearchInvocationArgsSchema = z.tuple([launcherSearchInvocationSchema])
+export const launcherSearchCancellationArgsSchema = z.tuple([launcherSearchCancellationSchema])
 
 export type LauncherActionExecutor = "internal" | "shell"
 
