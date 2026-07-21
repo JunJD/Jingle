@@ -21,6 +21,8 @@ export interface DiagnosticsLoggerOptions {
   logDir: string
   maxBytes?: number
   maxFiles?: number
+  maxPendingBytes?: number
+  maxPendingRecords?: number
   maxRecordBytes?: number
   rootDir: string
 }
@@ -32,6 +34,8 @@ export const DIAGNOSTIC_GRAPH_EVENT_BRAND = Symbol("jingle.diagnostics.graph-eve
 
 const DEFAULT_MAX_BYTES = 1024 * 1024
 const DEFAULT_MAX_FILES = 5
+const DEFAULT_MAX_PENDING_BYTES = 4 * 1024 * 1024
+const DEFAULT_MAX_PENDING_RECORDS = 256
 const DEFAULT_MAX_RECORD_BYTES = 256 * 1024
 const LOG_FILE_NAME = "jingle.log"
 const MAX_DETAIL_MESSAGE_LENGTH = 4_000
@@ -87,6 +91,44 @@ const ERROR_FIELD_KEYS = [
   "stack",
   "syscall"
 ] as const
+
+interface PendingDiagnosticLine {
+  readonly bytes: number
+  readonly coalesceKey: string | null
+  readonly fatal: boolean
+  readonly level: DiagnosticsLevel
+  readonly line: string
+}
+
+interface DiagnosticQueuePressure {
+  coalescedRecords: number
+  droppedBytes: number
+  droppedErrorRecords: number
+  droppedInfoRecords: number
+  droppedRecords: number
+  droppedWarnRecords: number
+}
+
+interface DiagnosticWriteBatch {
+  completion: Promise<void>
+  fatal: PendingDiagnosticLine[]
+  fatalCompletion: Promise<void> | null
+  fatalWriteError: unknown | null
+  fingerprints: Map<string, PendingDiagnosticLine>
+  leading: PendingDiagnosticLine | null
+  normal: PendingDiagnosticLine[]
+  pendingBytes: number
+  pendingRecords: number
+  pressure: DiagnosticQueuePressure
+  rejectFatal: ((reason?: unknown) => void) | null
+  resolveFatal: (() => void) | null
+  sealed: boolean
+  writeError: unknown | null
+}
+
+function addBoundedCount(current: number, increment: number): number {
+  return Math.min(Number.MAX_SAFE_INTEGER, current + Math.max(0, increment))
+}
 
 function readOwnDataField(fields: object | undefined, key: PropertyKey): unknown {
   if (!fields) {
@@ -212,10 +254,15 @@ export class DiagnosticsLogger {
   private readonly logFilePath: string
   private readonly maxBytes: number
   private readonly maxFiles: number
+  private readonly maxPendingBytes: number
+  private readonly maxPendingRecords: number
   private readonly maxRecordBytes: number
   private readonly rootDir: string
   private readonly logDir: string
+  private activeBatch: DiagnosticWriteBatch | null = null
   private lastWriteError: unknown = null
+  private openBatch: DiagnosticWriteBatch | null = null
+  private readonly pendingBatches = new Set<DiagnosticWriteBatch>()
   private writeQueue: Promise<void> = Promise.resolve()
 
   constructor(options: DiagnosticsLoggerOptions) {
@@ -228,6 +275,17 @@ export class DiagnosticsLogger {
     this.maxRecordBytes = Number.isFinite(requestedMaxRecordBytes)
       ? Math.min(DEFAULT_MAX_RECORD_BYTES, Math.max(1024, Math.floor(requestedMaxRecordBytes)))
       : DEFAULT_MAX_RECORD_BYTES
+    const requestedMaxPendingRecords = options.maxPendingRecords ?? DEFAULT_MAX_PENDING_RECORDS
+    this.maxPendingRecords = Number.isFinite(requestedMaxPendingRecords)
+      ? Math.min(DEFAULT_MAX_PENDING_RECORDS, Math.max(2, Math.floor(requestedMaxPendingRecords)))
+      : DEFAULT_MAX_PENDING_RECORDS
+    const requestedMaxPendingBytes = options.maxPendingBytes ?? DEFAULT_MAX_PENDING_BYTES
+    this.maxPendingBytes = Number.isFinite(requestedMaxPendingBytes)
+      ? Math.min(
+          DEFAULT_MAX_PENDING_BYTES,
+          Math.max(this.maxRecordBytes * 2, Math.floor(requestedMaxPendingBytes))
+        )
+      : DEFAULT_MAX_PENDING_BYTES
   }
 
   getLogFilePath(): string {
@@ -251,7 +309,7 @@ export class DiagnosticsLogger {
   }
 
   errorAndFlush(message: string, fields?: DiagnosticsLogFields): Promise<void> {
-    return this.enqueueRecord(this.createRecord("error", message, fields), false)
+    return this.enqueueRecord(this.createRecord("error", message, fields), false, true)
   }
 
   [APPEND_DIAGNOSTIC_GRAPH_EVENT](record: DiagnosticGraphEvent): Promise<void> {
@@ -265,7 +323,7 @@ export class DiagnosticsLogger {
     ) {
       return Promise.reject(new Error("Diagnostics logger rejected an untrusted graph event."))
     }
-    return this.enqueueRecord(record, true)
+    return this.enqueueRecord(record, true, false)
   }
 
   async flush(): Promise<void> {
@@ -278,6 +336,7 @@ export class DiagnosticsLogger {
   }
 
   runWithWriteLock<T>(operation: () => Promise<T>): Promise<T> {
+    this.sealOpenBatch()
     const queued = this.writeQueue.then(operation)
     this.writeQueue = queued.then(
       () => undefined,
@@ -288,26 +347,456 @@ export class DiagnosticsLogger {
 
   private write(level: DiagnosticsLevel, message: string, fields?: DiagnosticsLogFields): void {
     const record = this.createRecord(level, message, fields)
-    void this.enqueueRecord(record, false)
+    void this.enqueueRecord(record, false, false)
   }
 
-  private enqueueRecord(record: object, rejectOversize: boolean): Promise<void> {
-    const write = this.writeQueue.then(async () => {
+  private enqueueRecord(record: object, rejectOversize: boolean, fatal: boolean): Promise<void> {
+    let pending: PendingDiagnosticLine
+    try {
       const line = this.serializeRecord(record, rejectOversize)
-      this.rotateIfNeeded(Buffer.byteLength(line, "utf8"))
-      const handle = await openPrivateFileForAppend(this.logFilePath)
-      try {
-        await handle.appendFile(line, "utf8")
-      } finally {
-        await handle.close()
+      pending = {
+        bytes: Buffer.byteLength(line, "utf8"),
+        coalesceKey: fatal ? null : this.readCoalesceKey(record),
+        fatal,
+        level: this.readRecordLevel(record),
+        line
       }
-    })
+    } catch (error) {
+      this.recordWriteFailure(error)
+      return Promise.reject(error)
+    }
+
+    let batch = fatal && this.activeBatch ? this.activeBatch : this.openBatch
+    if (!batch && !fatal && !this.hasGlobalPendingCapacity(pending)) {
+      const pressureOwner = this.findQueuePressureOwner()
+      if (pressureOwner) {
+        this.recordQueueDrop(pressureOwner, pending)
+        return pressureOwner.completion
+      }
+    }
+    batch ??= this.getOrCreateOpenBatch()
+    if (fatal) {
+      this.ensureFatalCompletion(batch)
+    }
+    this.addPendingLine(batch, pending)
+    return fatal ? (batch.fatalCompletion as Promise<void>) : batch.completion
+  }
+
+  private getOrCreateOpenBatch(): DiagnosticWriteBatch {
+    if (this.openBatch && !this.openBatch.sealed) {
+      return this.openBatch
+    }
+
+    const batch: DiagnosticWriteBatch = {
+      completion: Promise.resolve(),
+      fatal: [],
+      fatalCompletion: null,
+      fatalWriteError: null,
+      fingerprints: new Map(),
+      leading: null,
+      normal: [],
+      pendingBytes: 0,
+      pendingRecords: 0,
+      pressure: this.createQueuePressure(),
+      rejectFatal: null,
+      resolveFatal: null,
+      sealed: false,
+      writeError: null
+    }
+    const write = this.writeQueue.then(() => this.drainBatch(batch))
+    batch.completion = write
     this.writeQueue = write.catch((error) => {
-      this.lastWriteError = error
-      const detail = serializeDiagnosticEvidence(error, 4096).serialized
-      console.error(`[Diagnostics] Failed to write log: ${detail}`)
+      this.recordWriteFailure(error)
     })
-    return write
+    this.pendingBatches.add(batch)
+    this.openBatch = batch
+    return batch
+  }
+
+  private addPendingLine(batch: DiagnosticWriteBatch, pending: PendingDiagnosticLine): void {
+    const duplicate = pending.coalesceKey ? batch.fingerprints.get(pending.coalesceKey) : undefined
+    if (duplicate) {
+      batch.pressure.coalescedRecords = addBoundedCount(batch.pressure.coalescedRecords, 1)
+      return
+    }
+
+    if (pending.fatal) {
+      while (!this.hasPendingCapacity(batch, pending)) {
+        const evicted = this.evictPendingForFatal(batch)
+        if (!evicted) {
+          const error = new Error(
+            "Diagnostics fatal record could not be admitted to the write queue."
+          )
+          this.recordQueueDrop(batch, pending)
+          batch.fatalWriteError ??= error
+          batch.writeError ??= error
+          return
+        }
+        this.recordQueueDrop(batch, evicted)
+      }
+      this.trackPendingLine(batch, pending)
+      if (batch !== this.activeBatch && !batch.leading) {
+        batch.leading = pending
+      } else {
+        batch.fatal.push(pending)
+      }
+      return
+    }
+
+    if (!batch.leading) {
+      if (!this.hasPendingCapacity(batch, pending)) {
+        this.recordQueueDrop(batch, pending)
+        return
+      }
+      this.trackPendingLine(batch, pending)
+      batch.leading = pending
+      return
+    }
+
+    if (!this.hasPendingCapacity(batch, pending)) {
+      this.recordQueueDrop(batch, pending)
+      return
+    }
+    this.trackPendingLine(batch, pending)
+    batch.normal.push(pending)
+  }
+
+  private evictPendingForFatal(batch: DiagnosticWriteBatch): PendingDiagnosticLine | null {
+    const current = batch.normal.pop() ?? batch.fatal.shift()
+    if (current) {
+      this.untrackPendingLine(batch, current)
+      this.markEvictedFatalFailure(batch, current)
+      return current
+    }
+    const queuedBatches = [...this.pendingBatches]
+    for (let index = queuedBatches.length - 1; index >= 0; index -= 1) {
+      const queued = queuedBatches[index]
+      if (queued === batch) {
+        continue
+      }
+      const pending = queued.normal.pop() ?? queued.leading
+      if (!pending) {
+        continue
+      }
+      if (pending === queued.leading) {
+        queued.leading = null
+      }
+      this.untrackPendingLine(queued, pending)
+      this.markEvictedFatalFailure(queued, pending)
+      this.absorbEmptyPendingBatch(batch, queued)
+      return pending
+    }
+    return null
+  }
+
+  private markEvictedFatalFailure(
+    owner: DiagnosticWriteBatch,
+    pending: PendingDiagnosticLine
+  ): void {
+    if (!pending.fatal) {
+      return
+    }
+    const error = new Error("Diagnostics fatal record was evicted before persistence.")
+    owner.fatalWriteError ??= error
+    owner.writeError ??= error
+  }
+
+  private hasPendingCapacity(batch: DiagnosticWriteBatch, pending: PendingDiagnosticLine): boolean {
+    let pendingBytes = batch.pendingBytes
+    let pendingRecords = batch.pendingRecords
+    for (const other of [this.activeBatch, ...this.pendingBatches]) {
+      if (other && other !== batch) {
+        pendingBytes += other.pendingBytes
+        pendingRecords += other.pendingRecords
+      }
+    }
+    return (
+      pendingRecords < this.maxPendingRecords &&
+      pendingBytes + pending.bytes <= this.maxPendingBytes
+    )
+  }
+
+  private hasGlobalPendingCapacity(pending: PendingDiagnosticLine): boolean {
+    let pendingBytes = 0
+    let pendingRecords = 0
+    for (const batch of [this.activeBatch, ...this.pendingBatches]) {
+      if (batch) {
+        pendingBytes += batch.pendingBytes
+        pendingRecords += batch.pendingRecords
+      }
+    }
+    return (
+      pendingRecords < this.maxPendingRecords &&
+      pendingBytes + pending.bytes <= this.maxPendingBytes
+    )
+  }
+
+  private findQueuePressureOwner(): DiagnosticWriteBatch | null {
+    if (this.activeBatch) {
+      return this.activeBatch
+    }
+    return [...this.pendingBatches].at(-1) ?? null
+  }
+
+  private absorbEmptyPendingBatch(
+    target: DiagnosticWriteBatch,
+    emptied: DiagnosticWriteBatch
+  ): void {
+    if (emptied.pendingRecords > 0) {
+      return
+    }
+    this.mergeQueuePressure(target.pressure, emptied.pressure)
+    emptied.pressure = this.createQueuePressure()
+    if (emptied !== this.openBatch) {
+      this.pendingBatches.delete(emptied)
+    }
+  }
+
+  private mergeQueuePressure(
+    target: DiagnosticQueuePressure,
+    source: DiagnosticQueuePressure
+  ): void {
+    target.coalescedRecords = addBoundedCount(target.coalescedRecords, source.coalescedRecords)
+    target.droppedBytes = addBoundedCount(target.droppedBytes, source.droppedBytes)
+    target.droppedErrorRecords = addBoundedCount(
+      target.droppedErrorRecords,
+      source.droppedErrorRecords
+    )
+    target.droppedInfoRecords = addBoundedCount(
+      target.droppedInfoRecords,
+      source.droppedInfoRecords
+    )
+    target.droppedRecords = addBoundedCount(target.droppedRecords, source.droppedRecords)
+    target.droppedWarnRecords = addBoundedCount(
+      target.droppedWarnRecords,
+      source.droppedWarnRecords
+    )
+  }
+
+  private trackPendingLine(batch: DiagnosticWriteBatch, pending: PendingDiagnosticLine): void {
+    batch.pendingBytes += pending.bytes
+    batch.pendingRecords += 1
+    if (pending.coalesceKey) {
+      batch.fingerprints.set(pending.coalesceKey, pending)
+    }
+  }
+
+  private untrackPendingLine(batch: DiagnosticWriteBatch, pending: PendingDiagnosticLine): void {
+    batch.pendingBytes -= pending.bytes
+    batch.pendingRecords -= 1
+    if (pending.coalesceKey && batch.fingerprints.get(pending.coalesceKey) === pending) {
+      batch.fingerprints.delete(pending.coalesceKey)
+    }
+  }
+
+  private recordQueueDrop(batch: DiagnosticWriteBatch, pending: PendingDiagnosticLine): void {
+    batch.pressure.droppedBytes = addBoundedCount(batch.pressure.droppedBytes, pending.bytes)
+    batch.pressure.droppedRecords = addBoundedCount(batch.pressure.droppedRecords, 1)
+    if (pending.level === "error") {
+      batch.pressure.droppedErrorRecords = addBoundedCount(batch.pressure.droppedErrorRecords, 1)
+    } else if (pending.level === "warn") {
+      batch.pressure.droppedWarnRecords = addBoundedCount(batch.pressure.droppedWarnRecords, 1)
+    } else {
+      batch.pressure.droppedInfoRecords = addBoundedCount(batch.pressure.droppedInfoRecords, 1)
+    }
+  }
+
+  private async drainBatch(batch: DiagnosticWriteBatch): Promise<void> {
+    batch.sealed = true
+    if (this.openBatch === batch) {
+      this.openBatch = null
+    }
+    this.pendingBatches.delete(batch)
+    this.activeBatch = batch
+    try {
+      if (batch.leading) {
+        await this.tryAppendPendingLine(batch, batch.leading)
+        batch.leading = null
+      }
+
+      while (true) {
+        if (batch.fatalCompletion) {
+          await this.drainFatalWave(batch)
+          continue
+        }
+        const pending = batch.normal.shift()
+        if (pending) {
+          await this.tryAppendPendingLine(batch, pending)
+          continue
+        }
+        if (this.hasQueuePressure(batch.pressure)) {
+          await this.tryAppendQueuePressure(batch, this.takeQueuePressure(batch))
+          continue
+        }
+        break
+      }
+      if (batch.writeError) {
+        throw batch.writeError
+      }
+    } catch (error) {
+      this.rejectPendingFatal(batch, error)
+      throw error
+    } finally {
+      if (this.activeBatch === batch) {
+        this.activeBatch = null
+      }
+    }
+  }
+
+  private async drainFatalWave(batch: DiagnosticWriteBatch): Promise<void> {
+    while (batch.fatalCompletion) {
+      while (batch.fatal.length > 0) {
+        const pending = batch.fatal.shift() as PendingDiagnosticLine
+        await this.tryAppendPendingLine(batch, pending)
+      }
+      if (this.hasQueuePressure(batch.pressure)) {
+        await this.tryAppendQueuePressure(batch, this.takeQueuePressure(batch))
+      }
+      if (batch.fatal.length > 0) {
+        continue
+      }
+      const resolve = batch.resolveFatal
+      const reject = batch.rejectFatal
+      const fatalWriteError = batch.fatalWriteError
+      batch.fatalCompletion = null
+      batch.fatalWriteError = null
+      batch.rejectFatal = null
+      batch.resolveFatal = null
+      if (fatalWriteError) {
+        reject?.(fatalWriteError)
+      } else {
+        resolve?.()
+      }
+    }
+  }
+
+  private ensureFatalCompletion(batch: DiagnosticWriteBatch): void {
+    if (batch.fatalCompletion) {
+      return
+    }
+    batch.fatalWriteError = null
+    batch.fatalCompletion = new Promise<void>((resolve, reject) => {
+      batch.resolveFatal = resolve
+      batch.rejectFatal = reject
+    })
+  }
+
+  private createQueuePressure(): DiagnosticQueuePressure {
+    return {
+      coalescedRecords: 0,
+      droppedBytes: 0,
+      droppedErrorRecords: 0,
+      droppedInfoRecords: 0,
+      droppedRecords: 0,
+      droppedWarnRecords: 0
+    }
+  }
+
+  private hasQueuePressure(pressure: DiagnosticQueuePressure): boolean {
+    return pressure.coalescedRecords > 0 || pressure.droppedRecords > 0
+  }
+
+  private takeQueuePressure(batch: DiagnosticWriteBatch): DiagnosticQueuePressure {
+    const pressure = batch.pressure
+    batch.pressure = this.createQueuePressure()
+    return pressure
+  }
+
+  private async appendQueuePressure(pressure: DiagnosticQueuePressure): Promise<void> {
+    const line = this.serializeQueuePressure(pressure)
+    await this.appendSerializedLine(line, Buffer.byteLength(line, "utf8"))
+  }
+
+  private async tryAppendPendingLine(
+    batch: DiagnosticWriteBatch,
+    pending: PendingDiagnosticLine
+  ): Promise<void> {
+    try {
+      await this.appendSerializedLine(pending.line, pending.bytes)
+    } catch (error) {
+      batch.writeError ??= error
+      if (pending.fatal) {
+        batch.fatalWriteError ??= error
+      }
+    } finally {
+      this.untrackPendingLine(batch, pending)
+    }
+  }
+
+  private async tryAppendQueuePressure(
+    batch: DiagnosticWriteBatch,
+    pressure: DiagnosticQueuePressure
+  ): Promise<void> {
+    try {
+      await this.appendQueuePressure(pressure)
+    } catch (error) {
+      batch.writeError ??= error
+    }
+  }
+
+  private rejectPendingFatal(batch: DiagnosticWriteBatch, error: unknown): void {
+    const reject = batch.rejectFatal
+    batch.fatalCompletion = null
+    batch.fatalWriteError = null
+    batch.rejectFatal = null
+    batch.resolveFatal = null
+    reject?.(error)
+  }
+
+  private async appendSerializedLine(line: string, bytes: number): Promise<void> {
+    this.rotateIfNeeded(bytes)
+    const handle = await openPrivateFileForAppend(this.logFilePath)
+    try {
+      await handle.appendFile(line, "utf8")
+    } finally {
+      await handle.close()
+    }
+  }
+
+  private serializeQueuePressure(pressure: DiagnosticQueuePressure): string {
+    return `${JSON.stringify({
+      ...pressure,
+      eventCode: "diagnostics.queue_pressure",
+      level: pressure.droppedErrorRecords > 0 ? "error" : "warn",
+      message: "Diagnostics records were coalesced or dropped to keep the write queue bounded",
+      recordType: "diagnostic.queue-pressure",
+      recoverable: true,
+      stateImpact: "diagnostic_detail_omitted",
+      timestamp: new Date().toISOString()
+    })}\n`
+  }
+
+  private readCoalesceKey(record: object): string | null {
+    const fingerprint = readOwnDataField(record, "fingerprint")
+    if (typeof fingerprint !== "string" || fingerprint.length === 0) {
+      return null
+    }
+    const eventCode = readOwnDataField(record, "eventCode")
+    const recordType = readOwnDataField(record, "recordType")
+    return [
+      fingerprint,
+      typeof eventCode === "string" ? eventCode : "",
+      this.readRecordLevel(record),
+      typeof recordType === "string" ? recordType : ""
+    ].join("\u0000")
+  }
+
+  private readRecordLevel(record: object): DiagnosticsLevel {
+    const level = readOwnDataField(record, "level")
+    return level === "error" || level === "warn" ? level : "info"
+  }
+
+  private sealOpenBatch(): void {
+    if (this.openBatch) {
+      this.openBatch.sealed = true
+      this.openBatch = null
+    }
+  }
+
+  private recordWriteFailure(error: unknown): void {
+    this.lastWriteError = error
+    const detail = serializeDiagnosticEvidence(error, 4096).serialized
+    console.error(`[Diagnostics] Failed to write log: ${detail}`)
   }
 
   private createRecord(
