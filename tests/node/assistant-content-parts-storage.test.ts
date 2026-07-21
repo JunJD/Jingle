@@ -79,6 +79,7 @@ async function overwriteCanonicalMessageContent(input: {
   content: string
   messageId: string
   threadId: string
+  updateDerivedProjection?: boolean
 }): Promise<void> {
   const { getPrismaClient } = await loadDb()
   await getPrismaClient().$transaction(async (transaction) => {
@@ -96,12 +97,14 @@ async function overwriteCanonicalMessageContent(input: {
       data: { payload: JSON.stringify(payload) },
       where: { eventId: event.eventId }
     })
-    await transaction.message.update({
-      data: { content: input.content },
-      where: {
-        threadId_messageId: { messageId: input.messageId, threadId: input.threadId }
-      }
-    })
+    if (input.updateDerivedProjection !== false) {
+      await transaction.message.update({
+        data: { content: input.content },
+        where: {
+          threadId_messageId: { messageId: input.messageId, threadId: input.threadId }
+        }
+      })
+    }
   })
 }
 
@@ -1661,6 +1664,57 @@ test("content-card hydrate rejects a stale projection and schedules the canonica
     ])
   }
   stopChanges()
+})
+
+test("content-card hydrate uses canonical facts when the derived message is missing", async () => {
+  const { createRun, createThread, getPrismaClient, persistMessageStateVersion } = await loadDb()
+  const threadId = "thread-content-projection-canonical-hydrate"
+  const runId = "run-content-projection-canonical-hydrate"
+  const messageId = "assistant-message-canonical-hydrate"
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "success" })
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-canonical-hydrate",
+    checkpointNs: "",
+    messages: [
+      {
+        ...assistantItem("raw-canonical-hydrate", null),
+        content: JSON.stringify("Canonical content"),
+        messageId
+      }
+    ],
+    runId,
+    threadId,
+    version: "1"
+  })
+  await enqueueAssistantContentProjection({ runId })
+  await flushAssistantContentProjection()
+  await getPrismaClient().message.delete({
+    where: { threadId_messageId: { messageId, threadId } }
+  })
+
+  const service = new ContentCardsService()
+  assert.equal((await service.getAssistantParts({ messageId, threadId })).status, "ready")
+  assert.equal(
+    (await service.inspectAssistantParts({ messageIds: [messageId], threadId }))[0]?.status,
+    "ready"
+  )
+
+  await overwriteCanonicalMessageContent({
+    content: "{",
+    messageId,
+    threadId,
+    updateDerivedProjection: false
+  })
+  await enqueueAssistantContentProjection({ runId })
+  await flushAssistantContentProjection()
+  assert.deepEqual(await service.inspectAssistantParts({ messageIds: [messageId], threadId }), [
+    { messageId, status: "stale" }
+  ])
+  assert.deepEqual(await service.getAssistantParts({ messageId, threadId }), {
+    issue: { code: "source-invalid", reason: "invalid-json" },
+    status: "blocked"
+  })
 })
 
 test("content-card hydrate schedules a missing terminal projection", async () => {

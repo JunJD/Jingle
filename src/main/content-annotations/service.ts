@@ -13,6 +13,7 @@ import { readContentCardIdSource, type ContentCardIdentity } from "@shared/conte
 import { contentAnchorSchema, type ContentAnchor } from "@shared/content-selection"
 import { readAssistantContentPartsProjection } from "../db/assistant-content-parts"
 import { getPrismaClient } from "../db/client"
+import { getCanonicalMainThreadMessage } from "../db/message-state"
 import { JingleIpcError } from "../ipc/error"
 import type { DiagnosticEventRef, DiagnosticGraphSink } from "../diagnostics/schema"
 
@@ -191,15 +192,10 @@ async function findDurablePart(
   }
 ): Promise<AssistantContentPart | null> {
   if (input.card.sourceType !== "message" || !input.card.slot.startsWith("part:")) return null
-  const message = await tx.message.findUnique({
-    select: { role: true },
-    where: {
-      threadId_messageId: {
-        messageId: input.card.sourceId,
-        threadId: input.card.threadId
-      }
-    }
-  })
+  const message = await getCanonicalMainThreadMessage(
+    { messageId: input.card.sourceId, threadId: input.card.threadId },
+    tx
+  )
   if (message?.role !== "assistant") return null
   const projection = await readAssistantContentPartsProjection(
     { messageId: input.card.sourceId, threadId: input.card.threadId },

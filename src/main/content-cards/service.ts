@@ -15,6 +15,10 @@ import {
   assistantContentRevision,
   readAssistantContentPartsProjection
 } from "../db/assistant-content-parts"
+import {
+  getCanonicalMainThreadMessage,
+  listCanonicalMainThreadMessagesByIds
+} from "../db/message-state"
 import { JingleIpcError } from "../ipc/error"
 import {
   assistantContentProjectionSourceRevision,
@@ -61,14 +65,12 @@ export class ContentCardsService {
   }): Promise<AssistantContentProjectionInspection[]> {
     const messageIds = [...new Set(input.messageIds)]
     return getPrismaClient().$transaction(async (transaction) => {
-      const messages = await transaction.message.findMany({
-        select: { content: true, messageId: true },
-        where: {
-          messageId: { in: messageIds },
-          role: "assistant",
-          threadId: input.threadId
-        }
-      })
+      const messages = (
+        await listCanonicalMainThreadMessagesByIds(
+          { messageIds, threadId: input.threadId },
+          transaction
+        )
+      ).filter((message) => message.role === "assistant")
       const projections = await transaction.assistantContentProjection.findMany({
         select: {
           contentRevision: true,
@@ -80,7 +82,7 @@ export class ContentCardsService {
         },
         where: { messageId: { in: messageIds }, threadId: input.threadId }
       })
-      const messagesById = new Map(messages.map((message) => [message.messageId, message]))
+      const messagesById = new Map(messages.map((message) => [message.message_id, message]))
       const projectionsById = new Map(
         projections.map((projection) => [projection.messageId, projection])
       )
@@ -124,28 +126,7 @@ export class ContentCardsService {
     threadId: string
   }): Promise<AssistantContentPartsResult> {
     const inspection = await getPrismaClient().$transaction(async (transaction) => {
-      const message = await transaction.message.findUnique({
-        select: {
-          content: true,
-          role: true,
-          run: {
-            select: {
-              assistantContentProjectionJob: {
-                select: {
-                  blockedInputs: {
-                    orderBy: { messageId: "asc" },
-                    select: { messageId: true, reason: true, sourceRevision: true }
-                  },
-                  failureCode: true,
-                  status: true
-                }
-              }
-            }
-          },
-          runId: true
-        },
-        where: { threadId_messageId: input }
-      })
+      const message = await getCanonicalMainThreadMessage(input, transaction)
       if (!message) return { kind: "missing" as const }
       if (message.role !== "assistant") {
         throw new JingleIpcError({
@@ -153,7 +134,21 @@ export class ContentCardsService {
           message: "Content cards require an assistant message."
         })
       }
-      const job = parseProjectionJobSnapshot(message.run?.assistantContentProjectionJob ?? null)
+      const job = message.run_id
+        ? parseProjectionJobSnapshot(
+            await transaction.assistantContentProjectionJob.findUnique({
+              select: {
+                blockedInputs: {
+                  orderBy: { messageId: "asc" },
+                  select: { messageId: true, reason: true, sourceRevision: true }
+                },
+                failureCode: true,
+                status: true
+              },
+              where: { runId: message.run_id }
+            })
+          )
+        : null
       let currentRevision: string
       try {
         currentRevision = assistantContentRevision(message.content)
@@ -166,7 +161,7 @@ export class ContentCardsService {
           },
           job,
           kind: "invalid" as const,
-          runId: message.runId
+          runId: message.run_id
         }
       }
       try {
@@ -176,7 +171,7 @@ export class ContentCardsService {
             job,
             kind: "ready" as const,
             projection,
-            runId: message.runId,
+            runId: message.run_id,
             shouldResumeBlockedSource:
               job?.status === "blocked" &&
               job.blockedInputs.some((blockedInput) => blockedInput.messageId === input.messageId)
@@ -185,7 +180,7 @@ export class ContentCardsService {
       } catch (error) {
         if (!isAssistantContentProjectionDecodeError(error)) throw error
       }
-      return { job, kind: "stale" as const, runId: message.runId }
+      return { job, kind: "stale" as const, runId: message.run_id }
     })
 
     if (inspection.kind === "ready") {

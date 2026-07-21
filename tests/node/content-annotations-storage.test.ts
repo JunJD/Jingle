@@ -11,6 +11,10 @@ import {
   finalizeAssistantContentPartsForRun,
   readAssistantContentPartsProjection
 } from "../../src/main/db/assistant-content-parts"
+import {
+  persistMessageStateVersion,
+  type PreparedMessageStateItem
+} from "../../src/main/db/message-state"
 import { createContentCardId, type ContentCardIdentity } from "../../src/shared/content-card"
 import {
   resolveCodeAnnotationAnchorCandidate,
@@ -20,6 +24,40 @@ import {
 const originalJingleHome = process.env.JINGLE_HOME
 let jingleHome = ""
 let durableCard: ContentCardIdentity
+let canonicalMessageVersion = 0
+const canonicalMessages = new Map<string, PreparedMessageStateItem>()
+
+async function persistCanonicalAssistantMessage(input: {
+  content: string
+  messageId: string
+  runId: string
+}): Promise<void> {
+  canonicalMessageVersion += 1
+  const previous = canonicalMessages.get(input.messageId)
+  canonicalMessages.set(input.messageId, {
+    content: JSON.stringify(input.content),
+    kind: "message",
+    messageId: input.messageId,
+    metadata: null,
+    name: null,
+    order: previous?.order ?? canonicalMessages.size + 1,
+    rawHash: `content-annotation:${canonicalMessageVersion}:${input.messageId}`,
+    rawMessageEncoding: "text",
+    rawMessageType: "json",
+    rawMessageValue: JSON.stringify({ content: input.content }),
+    role: "assistant",
+    toolCallId: null,
+    toolCalls: null
+  })
+  await persistMessageStateVersion({
+    checkpointId: `checkpoint-content-annotation-${canonicalMessageVersion}`,
+    checkpointNs: "",
+    messages: [...canonicalMessages.values()].sort((left, right) => left.order - right.order),
+    runId: input.runId,
+    threadId: "thread-annotations",
+    version: `content-annotation-${canonicalMessageVersion}`
+  })
+}
 
 before(async () => {
   jingleHome = await mkdtemp(join(tmpdir(), "jingle-content-annotations-"))
@@ -31,22 +69,10 @@ before(async () => {
   await initializeDatabase()
   await createThread("thread-annotations", { title: "Annotations" })
   await createRun("run-annotations", "thread-annotations", { status: "success" })
-  const now = BigInt(Date.now())
-  await getPrismaClient().message.create({
-    data: {
-      content: JSON.stringify("Summary"),
-      createdAt: now,
-      kind: "assistant",
-      messageId: "message-1",
-      rawHash: "hash",
-      rawMessage: "Summary",
-      role: "assistant",
-      runId: "run-annotations",
-      searchText: "Summary",
-      seq: 1,
-      threadId: "thread-annotations",
-      updatedAt: now
-    }
+  await persistCanonicalAssistantMessage({
+    content: "Summary",
+    messageId: "message-1",
+    runId: "run-annotations"
   })
   await finalizeAssistantContentPartsForRun({
     runId: "run-annotations",
@@ -137,6 +163,85 @@ test("annotation storage enforces revision and retains a tombstone", async () =>
   assert.equal((await service.list("thread-annotations")).length, 1)
   stopChanges()
   assert.deepEqual(changedRevisions, [1, 2, 3])
+})
+
+test("annotation validation follows canonical role when the derived message disagrees", async () => {
+  const prisma = getPrismaClient()
+  await prisma.message.update({
+    data: { role: "user" },
+    where: { threadId_messageId: { messageId: "message-1", threadId: "thread-annotations" } }
+  })
+  const service = new ContentAnnotationsService()
+  const created = await service.create({
+    body: "Trust the canonical assistant fact.",
+    id: "annotation-canonical-assistant",
+    intent: "comment",
+    selection: {
+      anchor: { kind: "whole-card" },
+      anchorResolution: "resolved",
+      card: durableCard,
+      contextHash: "sha256:canonical-assistant",
+      quote: "Summary"
+    }
+  })
+  assert.equal(created.anchorResolution, "resolved")
+
+  const runId = "run-annotation-canonical-user"
+  const messageId = "message-annotation-canonical-user"
+  await createRun(runId, "thread-annotations", { status: "success" })
+  await persistCanonicalAssistantMessage({ content: "Derived assistant only", messageId, runId })
+  await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
+  const projection = await readAssistantContentPartsProjection({
+    messageId,
+    threadId: "thread-annotations"
+  })
+  assert.ok(projection)
+  const part = projection.parts[0]!
+  const event = await prisma.messageEvent.findFirstOrThrow({
+    orderBy: { seq: "desc" },
+    where: { messageId, threadId: "thread-annotations", type: "message.upsert" }
+  })
+  const payload = JSON.parse(event.payload) as Record<string, unknown>
+  payload.role = "user"
+  await prisma.messageEvent.update({
+    data: { payload: JSON.stringify(payload) },
+    where: { eventId: event.eventId }
+  })
+  assert.equal(
+    (
+      await prisma.message.findUniqueOrThrow({
+        select: { role: true },
+        where: { threadId_messageId: { messageId, threadId: "thread-annotations" } }
+      })
+    ).role,
+    "assistant"
+  )
+  const identitySource = {
+    kind: part.kind,
+    slot: `part:${part.id}`,
+    sourceId: messageId,
+    sourceType: "message" as const
+  }
+  await assert.rejects(
+    service.create({
+      body: "Reject the derived assistant fact.",
+      id: "annotation-canonical-user",
+      intent: "comment",
+      selection: {
+        anchor: { kind: "whole-card" },
+        anchorResolution: "resolved",
+        card: {
+          ...identitySource,
+          cardId: createContentCardId(identitySource),
+          revision: part.revision,
+          threadId: "thread-annotations"
+        },
+        contextHash: "sha256:canonical-user",
+        quote: "Derived assistant only"
+      }
+    }),
+    (error: Error & { code?: string }) => error.code === "FAILED_PRECONDITION"
+  )
 })
 
 test("pending stream selections cannot become durable annotations", async () => {
@@ -247,23 +352,7 @@ test("changed-revision orphan repair CASes the old anchor facts and writes the n
   const runId = "run-annotation-changed-revision"
   const messageId = "message-annotation-changed-revision"
   await createRun(runId, "thread-annotations", { status: "success" })
-  const now = BigInt(Date.now())
-  await getPrismaClient().message.create({
-    data: {
-      content: JSON.stringify("Before quote"),
-      createdAt: now,
-      kind: "assistant",
-      messageId,
-      rawHash: "hash-before",
-      rawMessage: "Before quote",
-      role: "assistant",
-      runId,
-      searchText: "Before quote",
-      seq: 2,
-      threadId: "thread-annotations",
-      updatedAt: now
-    }
-  })
+  await persistCanonicalAssistantMessage({ content: "Before quote", messageId, runId })
   await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
   const initialProjection = await readAssistantContentPartsProjection({
     messageId,
@@ -297,16 +386,7 @@ test("changed-revision orphan repair CASes the old anchor facts and writes the n
     }
   })
 
-  await getPrismaClient().message.update({
-    data: {
-      content: JSON.stringify("After only"),
-      rawHash: "hash-after",
-      rawMessage: "After only",
-      searchText: "After only",
-      updatedAt: now + 1n
-    },
-    where: { threadId_messageId: { messageId, threadId: "thread-annotations" } }
-  })
+  await persistCanonicalAssistantMessage({ content: "After only", messageId, runId })
   await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
   const refreshedProjection = await readAssistantContentPartsProjection({
     messageId,
@@ -374,28 +454,12 @@ test("unverified quote positions are persisted as ambiguous, never resolved", as
 
 test("shifted code quote repair persists the canonical current range", async () => {
   const service = new ContentAnnotationsService()
-  const now = BigInt(Date.now())
   const runId = "run-annotation-code-reanchor"
   const messageId = "message-annotation-code-reanchor"
   const quote = "const target = 1"
   const initialContent = `\`\`\`ts\n${quote}\nconst tail = 2\n\`\`\``
   await createRun(runId, "thread-annotations", { status: "success" })
-  await getPrismaClient().message.create({
-    data: {
-      content: JSON.stringify(initialContent),
-      createdAt: now,
-      kind: "assistant",
-      messageId,
-      rawHash: "hash-code-before",
-      rawMessage: initialContent,
-      role: "assistant",
-      runId,
-      searchText: quote,
-      seq: 3,
-      threadId: "thread-annotations",
-      updatedAt: now
-    }
-  })
+  await persistCanonicalAssistantMessage({ content: initialContent, messageId, runId })
   await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
   const initialProjection = await readAssistantContentPartsProjection({
     messageId,
@@ -438,16 +502,7 @@ test("shifted code quote repair persists the canonical current range", async () 
   assert.equal(created.anchorResolution, "resolved")
 
   const shiftedContent = `\`\`\`ts\nconst inserted = 0\n${quote}\nconst tail = 2\n\`\`\``
-  await getPrismaClient().message.update({
-    data: {
-      content: JSON.stringify(shiftedContent),
-      rawHash: "hash-code-after",
-      rawMessage: shiftedContent,
-      searchText: shiftedContent,
-      updatedAt: now + 1n
-    },
-    where: { threadId_messageId: { messageId, threadId: "thread-annotations" } }
-  })
+  await persistCanonicalAssistantMessage({ content: shiftedContent, messageId, runId })
   await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
   const shiftedProjection = await readAssistantContentPartsProjection({
     messageId,
@@ -485,7 +540,6 @@ test("shifted code quote repair persists the canonical current range", async () 
 
 test("standard diff repair persists only an exact canonical side range", async () => {
   const service = new ContentAnnotationsService()
-  const now = BigInt(Date.now())
   const runId = "run-annotation-diff-reanchor"
   const messageId = "message-annotation-diff-reanchor"
   const deletionQuote = "-const previous = 1"
@@ -501,22 +555,7 @@ test("standard diff repair persists only an exact canonical side range", async (
   ].join("\n")
   const initialContent = `\`\`\`diff\n${initialPatch}\n\`\`\``
   await createRun(runId, "thread-annotations", { status: "success" })
-  await getPrismaClient().message.create({
-    data: {
-      content: JSON.stringify(initialContent),
-      createdAt: now,
-      kind: "assistant",
-      messageId,
-      rawHash: "hash-diff-before",
-      rawMessage: initialContent,
-      role: "assistant",
-      runId,
-      searchText: initialPatch,
-      seq: 4,
-      threadId: "thread-annotations",
-      updatedAt: now
-    }
-  })
+  await persistCanonicalAssistantMessage({ content: initialContent, messageId, runId })
   await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
   const initialProjection = await readAssistantContentPartsProjection({
     messageId,
@@ -590,16 +629,7 @@ test("standard diff repair persists only an exact canonical side range", async (
     " tail"
   ].join("\n")
   const shiftedContent = `\`\`\`diff\n${shiftedPatch}\n\`\`\``
-  await getPrismaClient().message.update({
-    data: {
-      content: JSON.stringify(shiftedContent),
-      rawHash: "hash-diff-after",
-      rawMessage: shiftedContent,
-      searchText: shiftedPatch,
-      updatedAt: now + 1n
-    },
-    where: { threadId_messageId: { messageId, threadId: "thread-annotations" } }
-  })
+  await persistCanonicalAssistantMessage({ content: shiftedContent, messageId, runId })
   await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
   const shiftedProjection = await readAssistantContentPartsProjection({
     messageId,
@@ -689,26 +719,10 @@ test("standard diff repair persists only an exact canonical side range", async (
 
 test("whole-card revision repair derives the current durable quote", async () => {
   const service = new ContentAnnotationsService()
-  const now = BigInt(Date.now())
   const runId = "run-annotation-whole-card-repair"
   const messageId = "message-annotation-whole-card-repair"
   await createRun(runId, "thread-annotations", { status: "success" })
-  await getPrismaClient().message.create({
-    data: {
-      content: JSON.stringify("Before whole card"),
-      createdAt: now,
-      kind: "assistant",
-      messageId,
-      rawHash: "hash-whole-card-before",
-      rawMessage: "Before whole card",
-      role: "assistant",
-      runId,
-      searchText: "Before whole card",
-      seq: 5,
-      threadId: "thread-annotations",
-      updatedAt: now
-    }
-  })
+  await persistCanonicalAssistantMessage({ content: "Before whole card", messageId, runId })
   await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
   const initialProjection = await readAssistantContentPartsProjection({
     messageId,
@@ -740,16 +754,7 @@ test("whole-card revision repair derives the current durable quote", async () =>
     }
   })
 
-  await getPrismaClient().message.update({
-    data: {
-      content: JSON.stringify("After whole card"),
-      rawHash: "hash-whole-card-after",
-      rawMessage: "After whole card",
-      searchText: "After whole card",
-      updatedAt: now + 1n
-    },
-    where: { threadId_messageId: { messageId, threadId: "thread-annotations" } }
-  })
+  await persistCanonicalAssistantMessage({ content: "After whole card", messageId, runId })
   await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
   const currentProjection = await readAssistantContentPartsProjection({
     messageId,
@@ -796,29 +801,13 @@ test("whole-card revision repair derives the current durable quote", async () =>
 
 test("table-cell revision repair keeps its stable marker and derives the current quote", async () => {
   const service = new ContentAnnotationsService()
-  const now = BigInt(Date.now())
   const runId = "run-annotation-table-cell-repair"
   const messageId = "message-annotation-table-cell-repair"
   const initialContent = ["| Item | Value |", "| --- | --- |", "| target | Before cell |"].join(
     "\n"
   )
   await createRun(runId, "thread-annotations", { status: "success" })
-  await getPrismaClient().message.create({
-    data: {
-      content: JSON.stringify(initialContent),
-      createdAt: now,
-      kind: "assistant",
-      messageId,
-      rawHash: "hash-table-cell-before",
-      rawMessage: initialContent,
-      role: "assistant",
-      runId,
-      searchText: initialContent,
-      seq: 6,
-      threadId: "thread-annotations",
-      updatedAt: now
-    }
-  })
+  await persistCanonicalAssistantMessage({ content: initialContent, messageId, runId })
   await finalizeAssistantContentPartsForRun({ runId, threadId: "thread-annotations" })
   const initialProjection = await readAssistantContentPartsProjection({
     messageId,
