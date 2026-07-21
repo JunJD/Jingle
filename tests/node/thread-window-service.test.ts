@@ -7,18 +7,32 @@ import {
 } from "../../src/main/thread-window/service"
 import type { ThreadWindowRestoreState } from "../../src/main/preferences"
 import { DurableWindowRestorePolicy } from "../../src/main/durable-window/restore-policy"
+import {
+  getDurableWindowCallerLease,
+  getWindowIdentity,
+  registerDurableWindowIdentity,
+  setDurableWindowIdentityThread
+} from "../../src/main/windows/window-identity"
 
 class FakeWindow extends EventEmitter {
+  destroyed = false
   sent: unknown[] = []
   webContents = {
-    isDestroyed: () => false,
+    isDestroyed: () => this.destroyed,
     send: (_channel: string, value: unknown) => this.sent.push(value)
+  }
+  destroy(): void {
+    if (this.destroyed) return
+    this.destroyed = true
+    const emitWebContents = (this.webContents as { emit?: (event: string) => void }).emit
+    emitWebContents?.call(this.webContents, "destroyed")
+    this.emit("closed")
   }
   getNormalBounds() {
     return { x: 10, y: 10, width: 1000, height: 700 }
   }
   isDestroyed() {
-    return false
+    return this.destroyed
   }
   isMaximized() {
     return false
@@ -38,6 +52,7 @@ function createService(
   const restoreRepairs: unknown[] = []
   const activations: boolean[] = []
   const rendererFailureCallbacks: Array<() => void> = []
+  const windowBindings = new WeakMap<FakeWindow, { threadId: string | null; windowId: string }>()
   let restoreState = {
     version: 1 as const,
     windows: [] as Array<{
@@ -54,10 +69,15 @@ function createService(
         const window = new FakeWindow()
         activations.push(options.activate)
         rendererFailureCallbacks.push(options.onRendererFailure)
+        windowBindings.set(window, { threadId: _entry.threadId, windowId: _entry.windowId })
         windows.push(window)
         return window as never
       },
       getRestoreState: () => restoreState,
+      getWindowBinding: (window) => {
+        const binding = windowBindings.get(window as unknown as FakeWindow)
+        return binding ? { kind: "thread-window", ...binding } : { kind: "replaced" }
+      },
       onWindowClosed: () => {},
       onWindowOpened: () => {},
       recordResourceRefusal: (details) => refusals.push(details),
@@ -67,7 +87,12 @@ function createService(
         events.push(`persist:${state.windows.map(({ windowId }) => windowId).join(",")}`)
         return (restoreState = state)
       },
-      setWindowThread: () => {}
+      setWindowThread: (window, threadId) => {
+        const fakeWindow = window as unknown as FakeWindow
+        const binding = windowBindings.get(fakeWindow)
+        if (!binding) throw new Error("Thread window binding is unavailable.")
+        windowBindings.set(fakeWindow, { ...binding, threadId })
+      }
     },
     new DurableWindowRestorePolicy({ getThread }),
     limit
@@ -160,6 +185,11 @@ describe("ThreadWindowService", () => {
           return window as never
         },
         getRestoreState: () => restoreState,
+        getWindowBinding: () => ({
+          kind: "thread-window",
+          threadId: null,
+          windowId: "unused"
+        }),
         onWindowClosed: () => {},
         onWindowOpened: () => {},
         recordResourceRefusal: () => {},
@@ -283,6 +313,207 @@ describe("ThreadWindowService", () => {
         windowId: "window-a"
       }
     ])
+  })
+
+  it("adopts and publishes a nested authoritative binding after the requested rebind loses", () => {
+    const window = new FakeWindow()
+    const webContents = Object.assign(new EventEmitter(), {
+      isDestroyed: () => window.isDestroyed(),
+      send: (_channel: string, value: unknown) => window.sent.push(value)
+    })
+    ;(window as unknown as { webContents: typeof webContents }).webContents = webContents
+    let restoreState: ThreadWindowRestoreState = { version: 1, windows: [] }
+    const service = new ThreadWindowService(
+      {
+        createThreadWindow: (entry) => {
+          registerDurableWindowIdentity(webContents as never, {
+            kind: "thread-window",
+            threadId: entry.threadId,
+            windowId: entry.windowId
+          })
+          return window as never
+        },
+        getRestoreState: () => restoreState,
+        getWindowBinding: () => {
+          const identity = getWindowIdentity(webContents as never)
+          return identity?.kind === "thread-window"
+            ? {
+                kind: "thread-window",
+                threadId: identity.threadId,
+                windowId: identity.windowId
+              }
+            : { kind: "replaced" }
+        },
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        recordResourceRefusal: () => {},
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        setRestoreState: (state) => (restoreState = state),
+        setWindowThread: (_window, threadId) =>
+          setDurableWindowIdentityThread(webContents as never, threadId)
+      },
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) })
+    )
+
+    const opened = service.openNew({ threadId: "thread-a" })
+    assert.equal(opened.ok, true)
+    const originalLease = getDurableWindowCallerLease(webContents as never)
+    assert.ok(originalLease)
+    originalLease.signal.addEventListener(
+      "abort",
+      () => setDurableWindowIdentityThread(webContents as never, "thread-c"),
+      { once: true }
+    )
+
+    assert.throws(
+      () => service.bindSenderThread(webContents as never, "thread-b"),
+      /changed during revocation/
+    )
+    assert.equal(restoreState.windows[0]?.threadId, "thread-c")
+    assert.deepEqual(window.sent, [{ threadId: "thread-c" }])
+    assert.equal(getDurableWindowCallerLease(webContents as never)?.threadId, "thread-c")
+  })
+
+  it("keeps the previous binding when identity mutation fails before changing it", () => {
+    const window = new FakeWindow()
+    let restoreState: ThreadWindowRestoreState = { version: 1, windows: [] }
+    let authoritativeThreadId: string | null = null
+    let windowId = ""
+    const service = new ThreadWindowService(
+      {
+        createThreadWindow: (entry) => {
+          authoritativeThreadId = entry.threadId
+          windowId = entry.windowId
+          return window as never
+        },
+        getRestoreState: () => restoreState,
+        getWindowBinding: () => ({
+          kind: "thread-window",
+          threadId: authoritativeThreadId,
+          windowId
+        }),
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        recordResourceRefusal: () => {},
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        setRestoreState: (state) => (restoreState = state),
+        setWindowThread: () => {
+          throw new Error("identity write failed")
+        }
+      },
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) })
+    )
+
+    service.openNew({ threadId: "thread-a" })
+    assert.throws(
+      () => service.bindSenderThread(window.webContents as never, "thread-b"),
+      /identity write failed/
+    )
+    assert.equal(restoreState.windows[0]?.threadId, "thread-a")
+    assert.deepEqual(window.sent, [])
+  })
+
+  it("destroys a window when a nested rebind leaves its authoritative thread unbound", () => {
+    const window = new FakeWindow()
+    const webContents = Object.assign(new EventEmitter(), {
+      isDestroyed: () => window.isDestroyed(),
+      send: (_channel: string, value: unknown) => window.sent.push(value)
+    })
+    ;(window as unknown as { webContents: typeof webContents }).webContents = webContents
+    let restoreState: ThreadWindowRestoreState = { version: 1, windows: [] }
+    const service = new ThreadWindowService(
+      {
+        createThreadWindow: (entry) => {
+          registerDurableWindowIdentity(webContents as never, {
+            kind: "thread-window",
+            threadId: entry.threadId,
+            windowId: entry.windowId
+          })
+          return window as never
+        },
+        getRestoreState: () => restoreState,
+        getWindowBinding: () => {
+          const identity = getWindowIdentity(webContents as never)
+          return identity?.kind === "thread-window"
+            ? {
+                kind: "thread-window",
+                threadId: identity.threadId,
+                windowId: identity.windowId
+              }
+            : { kind: "replaced" }
+        },
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        recordResourceRefusal: () => {},
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        setRestoreState: (state) => (restoreState = state),
+        setWindowThread: (_window, threadId) =>
+          setDurableWindowIdentityThread(webContents as never, threadId)
+      },
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) })
+    )
+
+    service.openNew({ threadId: "thread-a" })
+    const originalLease = getDurableWindowCallerLease(webContents as never)
+    assert.ok(originalLease)
+    originalLease.signal.addEventListener(
+      "abort",
+      () => setDurableWindowIdentityThread(webContents as never, null),
+      { once: true }
+    )
+
+    assert.throws(
+      () => service.bindSenderThread(webContents as never, "thread-b"),
+      /changed during revocation/
+    )
+    assert.equal(window.isDestroyed(), true)
+    assert.equal(getDurableWindowCallerLease(webContents as never), null)
+    assert.deepEqual(window.sent, [])
+    service.markApplicationQuitting()
+    assert.deepEqual(restoreState.windows, [])
+  })
+
+  it("destroys a window whose durable identity is replaced during rebind", () => {
+    const window = new FakeWindow()
+    let restoreState: ThreadWindowRestoreState = { version: 1, windows: [] }
+    let replaced = false
+    let windowId = ""
+    const service = new ThreadWindowService(
+      {
+        createThreadWindow: (entry) => {
+          windowId = entry.windowId
+          return window as never
+        },
+        getRestoreState: () => restoreState,
+        getWindowBinding: () =>
+          replaced
+            ? { kind: "replaced" }
+            : { kind: "thread-window", threadId: "thread-a", windowId },
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        recordResourceRefusal: () => {},
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        setRestoreState: (state) => (restoreState = state),
+        setWindowThread: () => {
+          replaced = true
+          throw new Error("identity replaced")
+        }
+      },
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) })
+    )
+
+    service.openNew({ threadId: "thread-a" })
+    assert.throws(
+      () => service.bindSenderThread(window.webContents as never, "thread-b"),
+      /identity replaced/
+    )
+    assert.equal(window.isDestroyed(), true)
+    service.markApplicationQuitting()
+    assert.deepEqual(restoreState.windows, [])
   })
 
   it("rechecks the resource limit after a concurrent window pin", async () => {

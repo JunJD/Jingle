@@ -23,6 +23,9 @@ export interface ThreadWindowRuntime {
     options: { activate: boolean; onRendererFailure: () => void }
   ) => BrowserWindow
   getRestoreState: () => ThreadWindowRestoreState
+  getWindowBinding: (
+    window: BrowserWindow
+  ) => { kind: "thread-window"; threadId: string | null; windowId: string } | { kind: "replaced" }
   onWindowClosed: () => void
   onWindowOpened: () => void
   recordResourceRefusal: (details: { current: number; limit: number }) => void
@@ -235,13 +238,38 @@ export class ThreadWindowService {
   }
 
   private bindThread(windowId: string, window: BrowserWindow, threadId: string): void {
-    if (this.threadIds.get(windowId) === threadId) return
-    this.runtime.setWindowThread(window, threadId)
-    this.threadIds.set(windowId, threadId)
+    const currentThreadId = this.threadIds.get(windowId) ?? null
+    if (currentThreadId === threadId) return
+    let bindingError: unknown = null
+    try {
+      this.runtime.setWindowThread(window, threadId)
+    } catch (error) {
+      bindingError = error
+    }
+
+    const authoritativeBinding = this.runtime.getWindowBinding(window)
+    if (
+      authoritativeBinding.kind === "replaced" ||
+      authoritativeBinding.windowId !== windowId ||
+      authoritativeBinding.threadId === null
+    ) {
+      window.destroy()
+      throw bindingError ?? new Error("Thread window identity was replaced during thread binding.")
+    }
+    const authoritativeThreadId = authoritativeBinding.threadId
+    if (bindingError === null && authoritativeThreadId !== threadId) {
+      bindingError = new Error("Thread window identity did not commit the requested binding.")
+    }
+    if (bindingError !== null && authoritativeThreadId === currentThreadId) {
+      throw bindingError
+    }
+
+    this.threadIds.set(windowId, authoritativeThreadId)
     this.persistAll()
     if (!window.webContents.isDestroyed()) {
-      window.webContents.send("durable-window:threadChanged", { threadId })
+      window.webContents.send("durable-window:threadChanged", { threadId: authoritativeThreadId })
     }
+    if (bindingError !== null) throw bindingError
   }
 
   private persistAll(): boolean {

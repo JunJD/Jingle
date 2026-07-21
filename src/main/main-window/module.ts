@@ -79,6 +79,16 @@ export function registerMainWindowModule(
         {
           createThreadWindow: owner.createThreadWindow,
           getRestoreState: getThreadWindowRestoreState,
+          getWindowBinding: (window) => {
+            const identity = getWindowIdentity(window.webContents)
+            return identity?.kind === "thread-window"
+              ? {
+                  kind: "thread-window",
+                  threadId: identity.threadId,
+                  windowId: identity.windowId
+                }
+              : { kind: "replaced" }
+          },
           onWindowClosed: () => lifecycle.windowClosed(),
           onWindowOpened: () => lifecycle.windowOpened(),
           recordResourceRefusal: (details) =>
