@@ -19,6 +19,7 @@ import {
 } from "../content-cards/projection-error"
 import { isAssistantContentProjectionTerminalRunStatus } from "../content-cards/projection-status"
 import { getPrismaClient } from "./client"
+import { listCanonicalMainThreadMessages } from "./message-state"
 
 type TransactionClient = Omit<
   PrismaClient,
@@ -432,10 +433,9 @@ export async function finalizeAssistantContentPartsForRun(input: {
     ) {
       return { blockedInputs, changedProjections, repairedCorruptions }
     }
-    const messages = await tx.message.findMany({
-      orderBy: { seq: "asc" },
-      where: { role: "assistant", runId: input.runId, threadId: input.threadId }
-    })
+    const messages = (await listCanonicalMainThreadMessages(input.threadId, tx))
+      .filter((message) => message.role === "assistant" && message.run_id === input.runId)
+      .map((message) => ({ content: message.content, messageId: message.message_id }))
     for (const message of messages) {
       let canonical: CanonicalAssistantContent
       try {

@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client"
+import type { Prisma } from "@prisma/client"
 import {
   ASSISTANT_CONTENT_PROJECTION_MAX_ATTEMPTS,
   assistantContentProjectionFailureCause,
@@ -16,6 +16,7 @@ import {
   readAssistantContentPartsProjection
 } from "./assistant-content-parts"
 import { getPrismaClient } from "./client"
+import { listCanonicalMainThreadMessages } from "./message-state"
 
 export interface AssistantContentProjectionClaim {
   attemptCount: number
@@ -44,7 +45,25 @@ function now(): bigint {
   return BigInt(Date.now())
 }
 
-const terminalRunStatuses = Prisma.join(ASSISTANT_CONTENT_PROJECTION_TERMINAL_RUN_STATUSES)
+async function readCanonicalAssistantMessagesForTerminalRun(
+  transaction: Prisma.TransactionClient,
+  runId: string
+) {
+  const run = await transaction.run.findUnique({
+    select: { status: true, threadId: true },
+    where: { runId }
+  })
+  if (
+    !run ||
+    !ASSISTANT_CONTENT_PROJECTION_TERMINAL_RUN_STATUSES.some((status) => status === run.status)
+  ) {
+    return null
+  }
+  const messages = (await listCanonicalMainThreadMessages(run.threadId, transaction)).filter(
+    (message) => message.role === "assistant" && message.run_id === runId
+  )
+  return { messages, threadId: run.threadId }
+}
 
 export function assistantContentProjectionRetryDelayMs(attemptCount: number): number {
   return Math.min(
@@ -54,60 +73,55 @@ export function assistantContentProjectionRetryDelayMs(attemptCount: number): nu
 }
 
 export async function markAssistantContentProjectionDirty(runId: string): Promise<boolean> {
-  const timestamp = now()
-  const changed = await getPrismaClient().$executeRaw`
-    INSERT INTO "assistant_content_projection_jobs" (
-      "run_id", "generation", "status", "attempt_count", "failure_code", "last_error",
-      "next_attempt_at", "created_at", "updated_at"
+  return getPrismaClient().$transaction(async (transaction) => {
+    const source = await readCanonicalAssistantMessagesForTerminalRun(transaction, runId)
+    if (!source || source.messages.length === 0) return false
+    const timestamp = now()
+    const changed = await transaction.$executeRaw`
+      INSERT INTO "assistant_content_projection_jobs" (
+        "run_id", "generation", "status", "attempt_count", "failure_code", "last_error",
+        "next_attempt_at", "created_at", "updated_at"
+      ) VALUES (${runId}, 1, 'pending', 0, NULL, NULL, NULL, ${timestamp}, ${timestamp})
+      ON CONFLICT("run_id") DO UPDATE SET
+        "generation" = CASE
+          WHEN "assistant_content_projection_jobs"."status" = 'running'
+          THEN "assistant_content_projection_jobs"."generation" + 1
+          ELSE "assistant_content_projection_jobs"."generation"
+        END,
+        "status" = CASE
+          WHEN "assistant_content_projection_jobs"."status" IN ('failed', 'exhausted', 'parked', 'blocked')
+          THEN "assistant_content_projection_jobs"."status"
+          ELSE 'pending'
+        END,
+        "failure_code" = CASE
+          WHEN "assistant_content_projection_jobs"."status" IN ('failed', 'exhausted', 'parked', 'blocked')
+          THEN "assistant_content_projection_jobs"."failure_code"
+          ELSE NULL
+        END,
+        "last_error" = CASE
+          WHEN "assistant_content_projection_jobs"."status" IN ('failed', 'exhausted', 'parked', 'blocked')
+          THEN "assistant_content_projection_jobs"."last_error"
+          ELSE NULL
+        END,
+        "next_attempt_at" = CASE
+          WHEN "assistant_content_projection_jobs"."status" = 'failed'
+          THEN "assistant_content_projection_jobs"."next_attempt_at"
+          ELSE NULL
+        END,
+        "updated_at" = ${timestamp}
+    `
+    if (changed !== 1) return false
+    const job = await transaction.assistantContentProjectionJob.findUnique({
+      select: { nextAttemptAt: true, status: true },
+      where: { runId }
+    })
+    return Boolean(
+      job &&
+      (job.status === "pending" ||
+        job.status === "running" ||
+        (job.status === "failed" && job.nextAttemptAt !== null && job.nextAttemptAt <= timestamp))
     )
-    SELECT "run_id", 1, 'pending', 0, NULL, NULL, NULL, ${timestamp}, ${timestamp}
-    FROM "runs"
-    WHERE "run_id" = ${runId}
-      AND "status" IN (${terminalRunStatuses})
-      AND EXISTS (
-        SELECT 1 FROM "messages"
-        WHERE "messages"."run_id" = "runs"."run_id"
-          AND "messages"."role" = 'assistant'
-      )
-    ON CONFLICT("run_id") DO UPDATE SET
-      "generation" = CASE
-        WHEN "assistant_content_projection_jobs"."status" = 'running'
-        THEN "assistant_content_projection_jobs"."generation" + 1
-        ELSE "assistant_content_projection_jobs"."generation"
-      END,
-      "status" = CASE
-        WHEN "assistant_content_projection_jobs"."status" IN ('failed', 'exhausted', 'parked', 'blocked')
-        THEN "assistant_content_projection_jobs"."status"
-        ELSE 'pending'
-      END,
-      "failure_code" = CASE
-        WHEN "assistant_content_projection_jobs"."status" IN ('failed', 'exhausted', 'parked', 'blocked')
-        THEN "assistant_content_projection_jobs"."failure_code"
-        ELSE NULL
-      END,
-      "last_error" = CASE
-        WHEN "assistant_content_projection_jobs"."status" IN ('failed', 'exhausted', 'parked', 'blocked')
-        THEN "assistant_content_projection_jobs"."last_error"
-        ELSE NULL
-      END,
-      "next_attempt_at" = CASE
-        WHEN "assistant_content_projection_jobs"."status" = 'failed'
-        THEN "assistant_content_projection_jobs"."next_attempt_at"
-        ELSE NULL
-      END,
-      "updated_at" = ${timestamp}
-  `
-  if (changed !== 1) return false
-  const job = await getPrismaClient().assistantContentProjectionJob.findUnique({
-    select: { nextAttemptAt: true, status: true },
-    where: { runId }
   })
-  return Boolean(
-    job &&
-    (job.status === "pending" ||
-      job.status === "running" ||
-      (job.status === "failed" && job.nextAttemptAt !== null && job.nextAttemptAt <= timestamp))
-  )
 }
 
 export async function ensureAssistantContentProjectionPending(
@@ -117,83 +131,101 @@ export async function ensureAssistantContentProjectionPending(
     blockedSource?: { messageId: string; sourceRevision: string }
   }
 ): Promise<boolean> {
-  const timestamp = now()
-  const changed = await getPrismaClient().$executeRaw`
-    INSERT INTO "assistant_content_projection_jobs" (
-      "run_id", "generation", "status", "attempt_count", "failure_code", "last_error",
-      "next_attempt_at", "created_at", "updated_at"
-    )
-    SELECT "run_id", 1, 'pending', 0, NULL, NULL, NULL, ${timestamp}, ${timestamp}
-    FROM "runs"
-    WHERE "run_id" = ${runId}
-      AND "status" IN (${terminalRunStatuses})
-      AND EXISTS (
-        SELECT 1 FROM "messages"
-        WHERE "messages"."run_id" = "runs"."run_id"
-          AND "messages"."role" = 'assistant'
-      )
-    ON CONFLICT("run_id") DO NOTHING
-  `
-  if (changed === 1) return true
-  const refreshed = await getPrismaClient().$executeRaw`
-    UPDATE "assistant_content_projection_jobs"
-    SET
-      "generation" = CASE
-        WHEN "status" = 'running' THEN "generation" + 1
-        ELSE "generation"
-      END,
-      "status" = 'pending',
-      "failure_code" = NULL,
-      "last_error" = NULL,
-      "next_attempt_at" = NULL,
-      "updated_at" = ${timestamp}
-    WHERE "run_id" = ${runId}
-      AND "status" IN ('completed', 'running')
-  `
-  if (refreshed === 1) return true
-  if (options.allowBlockedRetry) {
-    const unblocked = await getPrismaClient().assistantContentProjectionJob.updateMany({
-      data: {
-        failureCode: null,
-        lastError: null,
-        nextAttemptAt: null,
-        status: "pending",
-        updatedAt: timestamp
-      },
-      where: { runId, status: "blocked" }
-    })
-    if (unblocked.count === 1) return true
-  } else if (options.blockedSource) {
-    const unblocked = await getPrismaClient().$executeRaw`
-      UPDATE "assistant_content_projection_jobs"
-      SET "status" = 'pending', "failure_code" = NULL, "last_error" = NULL,
-          "next_attempt_at" = NULL, "updated_at" = ${timestamp}
-      WHERE "run_id" = ${runId}
-        AND "status" = 'blocked'
-        AND NOT EXISTS (
-          SELECT 1 FROM "assistant_content_projection_blocked_inputs"
-          WHERE "assistant_content_projection_blocked_inputs"."run_id" = ${runId}
-            AND "assistant_content_projection_blocked_inputs"."message_id" = ${options.blockedSource.messageId}
-            AND "assistant_content_projection_blocked_inputs"."source_revision" = ${options.blockedSource.sourceRevision}
-        )
+  return getPrismaClient().$transaction(async (transaction) => {
+    const source = await readCanonicalAssistantMessagesForTerminalRun(transaction, runId)
+    if (!source || source.messages.length === 0) return false
+    const timestamp = now()
+    const changed = await transaction.$executeRaw`
+      INSERT INTO "assistant_content_projection_jobs" (
+        "run_id", "generation", "status", "attempt_count", "failure_code", "last_error",
+        "next_attempt_at", "created_at", "updated_at"
+      ) VALUES (${runId}, 1, 'pending', 0, NULL, NULL, NULL, ${timestamp}, ${timestamp})
+      ON CONFLICT("run_id") DO NOTHING
     `
-    if (unblocked === 1) return true
-  }
-  const existing = await getPrismaClient().assistantContentProjectionJob.findUnique({
-    include: { run: { select: { status: true } } },
-    where: { runId }
-  })
-  return Boolean(
-    existing &&
-    (existing.status === "pending" ||
-      existing.status === "running" ||
-      (existing.status === "failed" &&
-        existing.nextAttemptAt !== null &&
-        existing.nextAttemptAt <= timestamp)) &&
-    ASSISTANT_CONTENT_PROJECTION_TERMINAL_RUN_STATUSES.some(
-      (status) => status === existing.run.status
+    if (changed === 1) return true
+    const refreshed = await transaction.$executeRaw`
+      UPDATE "assistant_content_projection_jobs"
+      SET
+        "generation" = CASE
+          WHEN "status" = 'running' THEN "generation" + 1
+          ELSE "generation"
+        END,
+        "status" = 'pending',
+        "failure_code" = NULL,
+        "last_error" = NULL,
+        "next_attempt_at" = NULL,
+        "updated_at" = ${timestamp}
+      WHERE "run_id" = ${runId}
+        AND "status" IN ('completed', 'running')
+    `
+    if (refreshed === 1) return true
+    if (options.allowBlockedRetry) {
+      const blockedInputs = await transaction.assistantContentProjectionBlockedInput.findMany({
+        select: { messageId: true, sourceRevision: true },
+        where: { runId }
+      })
+      const canonicalMessagesById = new Map(
+        source.messages.map((message) => [message.message_id, message])
+      )
+      const canonicalSourceChanged = blockedInputs.some((blockedInput) => {
+        const canonicalMessage = canonicalMessagesById.get(blockedInput.messageId)
+        return (
+          !canonicalMessage ||
+          assistantContentProjectionSourceRevision(canonicalMessage.content) !==
+            blockedInput.sourceRevision
+        )
+      })
+      if (!canonicalSourceChanged) return false
+      const unblocked = await transaction.assistantContentProjectionJob.updateMany({
+        data: {
+          failureCode: null,
+          lastError: null,
+          nextAttemptAt: null,
+          status: "pending",
+          updatedAt: timestamp
+        },
+        where: { runId, status: "blocked" }
+      })
+      if (unblocked.count === 1) return true
+    } else if (options.blockedSource) {
+      const canonicalMessage = source.messages.find(
+        (message) => message.message_id === options.blockedSource?.messageId
+      )
+      if (!canonicalMessage) return false
+      const canonicalSourceRevision = assistantContentProjectionSourceRevision(
+        canonicalMessage.content
+      )
+      const unblocked = await transaction.$executeRaw`
+        UPDATE "assistant_content_projection_jobs"
+        SET "status" = 'pending', "failure_code" = NULL, "last_error" = NULL,
+            "next_attempt_at" = NULL, "updated_at" = ${timestamp}
+        WHERE "run_id" = ${runId}
+          AND "status" = 'blocked'
+          AND NOT EXISTS (
+            SELECT 1 FROM "assistant_content_projection_blocked_inputs"
+            WHERE "assistant_content_projection_blocked_inputs"."run_id" = ${runId}
+              AND "assistant_content_projection_blocked_inputs"."message_id" = ${options.blockedSource.messageId}
+              AND "assistant_content_projection_blocked_inputs"."source_revision" = ${canonicalSourceRevision}
+          )
+      `
+      if (unblocked === 1) return true
+    }
+    const existing = await transaction.assistantContentProjectionJob.findUnique({
+      include: { run: { select: { status: true } } },
+      where: { runId }
+    })
+    return Boolean(
+      existing &&
+      (existing.status === "pending" ||
+        existing.status === "running" ||
+        (existing.status === "failed" &&
+          existing.nextAttemptAt !== null &&
+          existing.nextAttemptAt <= timestamp)) &&
+      ASSISTANT_CONTENT_PROJECTION_TERMINAL_RUN_STATUSES.some(
+        (status) => status === existing.run.status
+      )
     )
-  )
+  })
 }
 
 export async function claimAssistantContentProjection(
@@ -331,43 +363,100 @@ export async function resumeAssistantContentProjectionForRepairedMessage(
   runId: string,
   messageId: string
 ): Promise<boolean> {
-  const timestamp = now()
-  const changed = await getPrismaClient().$executeRaw`
-    UPDATE "assistant_content_projection_jobs"
-    SET "status" = 'pending', "failure_code" = NULL, "last_error" = NULL,
-        "next_attempt_at" = NULL, "updated_at" = ${timestamp}
-    WHERE "run_id" = ${runId}
-      AND "status" = 'blocked'
-      AND EXISTS (
-        SELECT 1 FROM "assistant_content_projection_blocked_inputs"
-        WHERE "assistant_content_projection_blocked_inputs"."run_id" = ${runId}
-          AND "assistant_content_projection_blocked_inputs"."message_id" = ${messageId}
-      )
-  `
-  return changed === 1
+  return getPrismaClient().$transaction(async (transaction) => {
+    const source = await readCanonicalAssistantMessagesForTerminalRun(transaction, runId)
+    const message = source?.messages.find((candidate) => candidate.message_id === messageId)
+    if (!message) return false
+    const blockedInput = await transaction.assistantContentProjectionBlockedInput.findUnique({
+      select: { sourceRevision: true },
+      where: { runId_messageId: { messageId, runId } }
+    })
+    if (
+      !blockedInput ||
+      assistantContentProjectionSourceRevision(message.content) === blockedInput.sourceRevision
+    ) {
+      return false
+    }
+    const timestamp = now()
+    const changed = await transaction.assistantContentProjectionJob.updateMany({
+      data: {
+        failureCode: null,
+        lastError: null,
+        nextAttemptAt: null,
+        status: "pending",
+        updatedAt: timestamp
+      },
+      where: { runId, status: "blocked" }
+    })
+    return changed.count === 1
+  })
 }
 
 async function insertMissingAssistantContentProjectionJobs(signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) return
-  const timestamp = now()
-  await getPrismaClient().$executeRaw`
-    INSERT INTO "assistant_content_projection_jobs" (
-      "run_id", "generation", "status", "attempt_count", "failure_code", "last_error",
-      "next_attempt_at", "created_at", "updated_at"
-    )
-    SELECT "runs"."run_id", 1, 'pending', 0, NULL, NULL, NULL, ${timestamp}, ${timestamp}
-    FROM "runs"
-    LEFT JOIN "assistant_content_projection_jobs"
-      ON "assistant_content_projection_jobs"."run_id" = "runs"."run_id"
-    WHERE "assistant_content_projection_jobs"."run_id" IS NULL
-      AND "runs"."status" IN (${terminalRunStatuses})
-      AND EXISTS (
-        SELECT 1 FROM "messages"
-        WHERE "messages"."run_id" = "runs"."run_id"
-          AND "messages"."role" = 'assistant'
-      )
-    ON CONFLICT("run_id") DO NOTHING
-  `
+  const prisma = getPrismaClient()
+  let cursorRunId = ""
+  while (true) {
+    if (signal?.aborted) return
+    const runs = await prisma.run.findMany({
+      orderBy: { runId: "asc" },
+      select: { runId: true, threadId: true },
+      take: ASSISTANT_CONTENT_PROJECTION_RECOVERY_BATCH_SIZE,
+      where: {
+        assistantContentProjectionJob: null,
+        runId: { gt: cursorRunId },
+        status: { in: [...ASSISTANT_CONTENT_PROJECTION_TERMINAL_RUN_STATUSES] }
+      }
+    })
+    if (runs.length === 0) return
+    const runIdsByThreadId = new Map<string, string[]>()
+    for (const run of runs) {
+      const runIds = runIdsByThreadId.get(run.threadId)
+      if (runIds) {
+        runIds.push(run.runId)
+      } else {
+        runIdsByThreadId.set(run.threadId, [run.runId])
+      }
+    }
+    for (const [threadId, candidateRunIds] of runIdsByThreadId) {
+      if (signal?.aborted) return
+      await prisma.$transaction(async (transaction) => {
+        const currentRuns = await transaction.run.findMany({
+          select: { runId: true },
+          where: {
+            assistantContentProjectionJob: null,
+            runId: { in: candidateRunIds },
+            status: { in: [...ASSISTANT_CONTENT_PROJECTION_TERMINAL_RUN_STATUSES] },
+            threadId
+          }
+        })
+        if (signal?.aborted || currentRuns.length === 0) return
+        const currentRunIds = new Set(currentRuns.map((run) => run.runId))
+        const assistantRunIds = new Set<string>()
+        for (const message of await listCanonicalMainThreadMessages(threadId, transaction)) {
+          if (
+            message.role === "assistant" &&
+            message.run_id !== null &&
+            currentRunIds.has(message.run_id)
+          ) {
+            assistantRunIds.add(message.run_id)
+          }
+        }
+        if (signal?.aborted || assistantRunIds.size === 0) return
+        const timestamp = now()
+        for (const runId of assistantRunIds) {
+          await transaction.$executeRaw`
+            INSERT INTO "assistant_content_projection_jobs" (
+              "run_id", "generation", "status", "attempt_count", "failure_code", "last_error",
+              "next_attempt_at", "created_at", "updated_at"
+            ) VALUES (${runId}, 1, 'pending', 0, NULL, NULL, NULL, ${timestamp}, ${timestamp})
+            ON CONFLICT("run_id") DO NOTHING
+          `
+        }
+      })
+    }
+    cursorRunId = runs.at(-1)!.runId
+  }
 }
 
 async function blockedRunNeedsProjection(
@@ -375,74 +464,67 @@ async function blockedRunNeedsProjection(
   signal?: AbortSignal
 ): Promise<boolean | null> {
   const prisma = getPrismaClient()
-  let cursorMessageId = ""
-  let matchedBlockedInputCount = 0
-  while (true) {
+  return prisma.$transaction(async (transaction) => {
     if (signal?.aborted) return null
-    const messages = await prisma.$queryRaw<
-      Array<{
-        blockedSourceRevision: string | null
-        content: string
-        contentRevision: string | null
-        messageId: string
-        threadId: string
-      }>
-    >`
-      SELECT
-        "assistant_content_projection_blocked_inputs"."source_revision" AS "blockedSourceRevision",
-        "messages"."content" AS "content",
-        "assistant_content_projections"."content_revision" AS "contentRevision",
-        "messages"."message_id" AS "messageId",
-        "messages"."thread_id" AS "threadId"
-      FROM "messages"
-      LEFT JOIN "assistant_content_projection_blocked_inputs"
-        ON "assistant_content_projection_blocked_inputs"."run_id" = ${runId}
-        AND "assistant_content_projection_blocked_inputs"."message_id" = "messages"."message_id"
-      LEFT JOIN "assistant_content_projections"
-        ON "assistant_content_projections"."thread_id" = "messages"."thread_id"
-        AND "assistant_content_projections"."message_id" = "messages"."message_id"
-      WHERE "messages"."run_id" = ${runId}
-        AND "messages"."role" = 'assistant'
-        AND "messages"."message_id" > ${cursorMessageId}
-      ORDER BY "messages"."message_id" ASC
-      LIMIT ${ASSISTANT_CONTENT_PROJECTION_RECOVERY_BATCH_SIZE}
-    `
-    if (messages.length === 0) {
-      const blockedInputCount = await prisma.assistantContentProjectionBlockedInput.count({
-        where: { runId }
+    const source = await readCanonicalAssistantMessagesForTerminalRun(transaction, runId)
+    if (!source) return false
+    const blockedInputs = await transaction.assistantContentProjectionBlockedInput.findMany({
+      select: { messageId: true, sourceRevision: true },
+      where: { runId }
+    })
+    const blockedByMessageId = new Map(
+      blockedInputs.map((input) => [input.messageId, input.sourceRevision])
+    )
+    let matchedBlockedInputCount = 0
+    for (
+      let offset = 0;
+      offset < source.messages.length;
+      offset += ASSISTANT_CONTENT_PROJECTION_RECOVERY_BATCH_SIZE
+    ) {
+      if (signal?.aborted) return null
+      const messages = source.messages.slice(
+        offset,
+        offset + ASSISTANT_CONTENT_PROJECTION_RECOVERY_BATCH_SIZE
+      )
+      const projections = await transaction.assistantContentProjection.findMany({
+        select: { contentRevision: true, messageId: true },
+        where: {
+          messageId: { in: messages.map((message) => message.message_id) },
+          threadId: source.threadId
+        }
       })
-      return blockedInputCount === 0 || blockedInputCount !== matchedBlockedInputCount
-    }
-    for (const message of messages) {
-      if (message.blockedSourceRevision) {
-        matchedBlockedInputCount += 1
-        if (
-          assistantContentProjectionSourceRevision(message.content) !==
-          message.blockedSourceRevision
-        ) {
-          return true
+      const projectionByMessageId = new Map(
+        projections.map((projection) => [projection.messageId, projection.contentRevision])
+      )
+      for (const message of messages) {
+        const blockedSourceRevision = blockedByMessageId.get(message.message_id)
+        if (blockedSourceRevision) {
+          matchedBlockedInputCount += 1
+          if (assistantContentProjectionSourceRevision(message.content) !== blockedSourceRevision) {
+            return true
+          }
+          continue
         }
-        continue
-      }
-      try {
-        const revision = assistantContentRevision(message.content)
-        if (message.contentRevision !== revision) return true
         try {
-          await readAssistantContentPartsProjection({
-            messageId: message.messageId,
-            threadId: message.threadId
-          })
+          const revision = assistantContentRevision(message.content)
+          if (projectionByMessageId.get(message.message_id) !== revision) return true
+          try {
+            await readAssistantContentPartsProjection(
+              { messageId: message.message_id, threadId: source.threadId },
+              transaction
+            )
+          } catch (error) {
+            if (!isAssistantContentProjectionDecodeError(error)) throw error
+            return true
+          }
         } catch (error) {
-          if (!isAssistantContentProjectionDecodeError(error)) throw error
+          if (!isAssistantContentProjectionInputError(error)) throw error
           return true
         }
-      } catch (error) {
-        if (!isAssistantContentProjectionInputError(error)) throw error
-        return true
       }
     }
-    cursorMessageId = messages.at(-1)!.messageId
-  }
+    return blockedInputs.length === 0 || blockedInputs.length !== matchedBlockedInputCount
+  })
 }
 
 async function recoverChangedBlockedAssistantContentProjectionJobs(

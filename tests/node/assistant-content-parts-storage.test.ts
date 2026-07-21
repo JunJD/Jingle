@@ -8,7 +8,10 @@ import test from "node:test"
 import { setTimeout as delay } from "node:timers/promises"
 import type { PreparedMessageStateItem } from "../../src/main/db/message-state"
 import { ContentAnnotationsService } from "../../src/main/content-annotations/service"
-import { readAssistantContentPartsProjection } from "../../src/main/db/assistant-content-parts"
+import {
+  assistantContentRevision,
+  readAssistantContentPartsProjection
+} from "../../src/main/db/assistant-content-parts"
 import {
   enqueueAssistantContentProjection,
   flushAssistantContentProjection,
@@ -22,7 +25,8 @@ import {
   failAssistantContentProjection,
   markAssistantContentProjectionDirty,
   readAssistantContentProjectionJob,
-  recoverAssistantContentProjectionJobs
+  recoverAssistantContentProjectionJobs,
+  resumeAssistantContentProjectionForRepairedMessage
 } from "../../src/main/db/assistant-content-projection-jobs"
 import { ContentCardsService } from "../../src/main/content-cards/service"
 import {
@@ -69,6 +73,36 @@ async function waitFor<T>(read: () => Promise<T>, matches: (value: T) => boolean
     await delay(20)
   }
   throw new Error("Timed out waiting for assistant content projection state.")
+}
+
+async function overwriteCanonicalMessageContent(input: {
+  content: string
+  messageId: string
+  threadId: string
+}): Promise<void> {
+  const { getPrismaClient } = await loadDb()
+  await getPrismaClient().$transaction(async (transaction) => {
+    const event = await transaction.messageEvent.findFirstOrThrow({
+      orderBy: { seq: "desc" },
+      where: {
+        messageId: input.messageId,
+        threadId: input.threadId,
+        type: "message.upsert"
+      }
+    })
+    const payload = JSON.parse(event.payload) as Record<string, unknown>
+    payload.content = input.content
+    await transaction.messageEvent.update({
+      data: { payload: JSON.stringify(payload) },
+      where: { eventId: event.eventId }
+    })
+    await transaction.message.update({
+      data: { content: input.content },
+      where: {
+        threadId_messageId: { messageId: input.messageId, threadId: input.threadId }
+      }
+    })
+  })
 }
 
 async function readDiagnosticEventCodes(): Promise<string[]> {
@@ -642,7 +676,7 @@ test("atomic run failure schedules assistant content projection after its termin
 })
 
 test("startup recovery backfills a missing terminal projection job", async () => {
-  const { createRun, createThread, persistMessageStateVersion } = await loadDb()
+  const { createRun, createThread, getPrismaClient, persistMessageStateVersion } = await loadDb()
   await createThread("thread-content-projection-recovery")
   await createRun("run-content-projection-recovery", "thread-content-projection-recovery", {
     status: "success"
@@ -656,6 +690,15 @@ test("startup recovery backfills a missing terminal projection job", async () =>
     version: "1"
   })
   assert.equal(await readAssistantContentProjectionJob("run-content-projection-recovery"), null)
+  await getPrismaClient().message.deleteMany({
+    where: { threadId: "thread-content-projection-recovery" }
+  })
+  assert.equal(
+    await getPrismaClient().message.count({
+      where: { threadId: "thread-content-projection-recovery" }
+    }),
+    0
+  )
 
   await startAssistantContentProjectionLifecycle()
   await flushAssistantContentProjection()
@@ -670,6 +713,151 @@ test("startup recovery backfills a missing terminal projection job", async () =>
       threadId: "thread-content-projection-recovery"
     })
   )
+})
+
+test("dirty scheduling and finalization survive a missing message-search projection", async () => {
+  const { createRun, createThread, getPrismaClient, persistMessageStateVersion } = await loadDb()
+  const threadId = "thread-content-projection-canonical-dirty"
+  const runId = "run-content-projection-canonical-dirty"
+  const messageId = "assistant-message-canonical-dirty"
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "success" })
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-canonical-dirty",
+    checkpointNs: "",
+    messages: [{ ...assistantItem("raw-canonical-dirty", null), messageId }],
+    runId,
+    threadId,
+    version: "1"
+  })
+  await getPrismaClient().message.deleteMany({ where: { threadId } })
+
+  assert.equal(await markAssistantContentProjectionDirty(runId), true)
+  void enqueueAssistantContentProjection({ runId })
+  await flushAssistantContentProjection()
+
+  assert.equal((await readAssistantContentProjectionJob(runId))?.status, "completed")
+  assert.ok(await readAssistantContentPartsProjection({ messageId, threadId }))
+  assert.equal(await getPrismaClient().message.count({ where: { threadId } }), 0)
+})
+
+test("canonical revisions settle while the message-search projection remains stale", async () => {
+  const {
+    closeDatabase,
+    createRun,
+    createThread,
+    getPrismaClient,
+    initializeDatabase,
+    persistMessageStateVersion
+  } = await loadDb()
+  const threadId = "thread-content-projection-canonical-revision"
+  const runId = "run-content-projection-canonical-revision"
+  const messageId = "assistant-message-canonical-revision"
+  const initialContent = JSON.stringify("Initial canonical assistant content")
+  const updatedContent = JSON.stringify("Updated canonical assistant content")
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "success" })
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-canonical-revision-initial",
+    checkpointNs: "",
+    messages: [
+      {
+        ...assistantItem("raw-canonical-revision-initial", null),
+        content: initialContent,
+        messageId
+      }
+    ],
+    runId,
+    threadId,
+    version: "1"
+  })
+  void enqueueAssistantContentProjection({ runId })
+  await flushAssistantContentProjection()
+
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-canonical-revision-updated",
+    checkpointNs: "",
+    messages: [
+      {
+        ...assistantItem("raw-canonical-revision-updated", null),
+        content: updatedContent,
+        messageId
+      }
+    ],
+    runId,
+    threadId,
+    version: "2"
+  })
+  await getPrismaClient().message.update({
+    data: { content: initialContent },
+    where: { threadId_messageId: { messageId, threadId } }
+  })
+
+  assert.equal(await markAssistantContentProjectionDirty(runId), true)
+  void enqueueAssistantContentProjection({ runId })
+  await flushAssistantContentProjection()
+  assert.equal(
+    (await readAssistantContentPartsProjection({ messageId, threadId }))?.contentRevision,
+    assistantContentRevision(updatedContent)
+  )
+  assert.equal(
+    (
+      await getPrismaClient().message.findUniqueOrThrow({
+        where: { threadId_messageId: { messageId, threadId } }
+      })
+    ).content,
+    initialContent
+  )
+
+  await closeDatabase()
+  await initializeDatabase()
+  const recoveredRunIds: string[] = []
+  await recoverAssistantContentProjectionJobs({
+    onBatch: (runIds) => {
+      recoveredRunIds.push(...runIds)
+    }
+  })
+  assert.equal(recoveredRunIds.includes(runId), false)
+  assert.equal((await readAssistantContentProjectionJob(runId))?.status, "completed")
+})
+
+test("derived messages cannot reschedule a run after its canonical source is removed", async () => {
+  const { createRun, createThread, getPrismaClient, persistMessageStateVersion } = await loadDb()
+  const threadId = "thread-content-projection-canonical-removed"
+  const runId = "run-content-projection-canonical-removed"
+  const messageId = "assistant-message-canonical-removed"
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "success" })
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-canonical-removed-initial",
+    checkpointNs: "",
+    messages: [{ ...assistantItem("raw-canonical-removed", null), messageId }],
+    runId,
+    threadId,
+    version: "1"
+  })
+  void enqueueAssistantContentProjection({ runId })
+  await flushAssistantContentProjection()
+  const derivedMessage = await getPrismaClient().message.findUniqueOrThrow({
+    where: { threadId_messageId: { messageId, threadId } }
+  })
+
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-canonical-removed-empty",
+    checkpointNs: "",
+    messages: [],
+    runId,
+    threadId,
+    version: "2"
+  })
+  await getPrismaClient().message.create({ data: derivedMessage })
+
+  assert.equal(
+    await ensureAssistantContentProjectionPending(runId, { allowBlockedRetry: true }),
+    false
+  )
+  assert.equal((await readAssistantContentProjectionJob(runId))?.status, "completed")
+  assert.equal(await getPrismaClient().message.count({ where: { messageId, threadId } }), 1)
 })
 
 test("projection recovery failure does not reject database readiness and remains retryable", async () => {
@@ -766,7 +954,7 @@ test("startup recovery compares canonical revisions even when finalizedAt is new
 })
 
 test("recovery aborts after the current bounded dispatch batch", async () => {
-  const { createThread, getPrismaClient } = await loadDb()
+  const { createThread, getPrismaClient, persistMessageStateVersion } = await loadDb()
   const prisma = getPrismaClient()
   const threadId = "thread-content-projection-bounded-recovery"
   const runIds = Array.from(
@@ -784,22 +972,23 @@ test("recovery aborts after the current bounded dispatch batch", async () => {
       updatedAt: timestamp
     }))
   })
-  await prisma.message.createMany({
-    data: runIds.map((runId, index) => ({
+  const messages: PreparedMessageStateItem[] = []
+  for (const [index, runId] of runIds.entries()) {
+    messages.push({
+      ...assistantItem(`raw-bounded-recovery-${index}`, null),
       content: JSON.stringify(`Bounded recovery ${index}`),
-      createdAt: timestamp,
-      kind: "message",
       messageId: `assistant-message-bounded-recovery-${String(index).padStart(3, "0")}`,
-      rawHash: `raw-bounded-recovery-${index}`,
-      rawMessage: JSON.stringify({ encoding: "text", type: "json", value: "raw" }),
-      role: "assistant",
+      order: index + 1
+    })
+    await persistMessageStateVersion({
+      checkpointId: `checkpoint-bounded-recovery-${index}`,
+      checkpointNs: "",
+      messages,
       runId,
-      searchText: `Bounded recovery ${index}`,
-      seq: index + 1,
       threadId,
-      updatedAt: timestamp
-    }))
-  })
+      version: String(index + 1)
+    })
+  }
 
   const recoveryAbortController = new AbortController()
   const dispatchedRunIds: string[] = []
@@ -973,14 +1162,10 @@ test("a malformed assistant message blocks once while valid siblings remain repa
     threadId: "thread-content-projection-core-boundary",
     version: "1"
   })
-  await getPrismaClient().message.update({
-    data: { content: "{" },
-    where: {
-      threadId_messageId: {
-        messageId: "assistant-message-core-boundary-bad",
-        threadId: "thread-content-projection-core-boundary"
-      }
-    }
+  await overwriteCanonicalMessageContent({
+    content: "{",
+    messageId: "assistant-message-core-boundary-bad",
+    threadId: "thread-content-projection-core-boundary"
   })
 
   await closeDatabase()
@@ -1015,6 +1200,42 @@ test("a malformed assistant message blocks once while valid siblings remain repa
       threadId: "thread-content-projection-core-boundary"
     })
   )
+
+  await prisma.message.update({
+    data: { content: JSON.stringify("Derived-only repair") },
+    where: {
+      threadId_messageId: {
+        messageId: "assistant-message-core-boundary-bad",
+        threadId: "thread-content-projection-core-boundary"
+      }
+    }
+  })
+  assert.equal(
+    await resumeAssistantContentProjectionForRepairedMessage(
+      "run-content-projection-core-boundary",
+      "assistant-message-core-boundary-bad"
+    ),
+    false
+  )
+  assert.equal(
+    await ensureAssistantContentProjectionPending("run-content-projection-core-boundary", {
+      allowBlockedRetry: true
+    }),
+    false
+  )
+  assert.equal(
+    (await readAssistantContentProjectionJob("run-content-projection-core-boundary"))?.status,
+    "blocked"
+  )
+  await prisma.message.update({
+    data: { content: "{" },
+    where: {
+      threadId_messageId: {
+        messageId: "assistant-message-core-boundary-bad",
+        threadId: "thread-content-projection-core-boundary"
+      }
+    }
+  })
 
   const blockedEventCount = (await readDiagnosticEventCodes()).filter(
     (eventCode) => eventCode === "assistant_content_projection.input_blocked"
@@ -1098,14 +1319,25 @@ test("a malformed assistant message blocks once while valid siblings remain repa
     blockedEventCount + 1
   )
 
-  await getPrismaClient().message.update({
-    data: { content: JSON.stringify("Recovered assistant content") },
-    where: {
-      threadId_messageId: {
-        messageId: "assistant-message-core-boundary-bad",
-        threadId: "thread-content-projection-core-boundary"
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-core-boundary-repaired",
+    checkpointNs: "",
+    messages: [
+      {
+        ...assistantItem("raw-core-boundary-bad-repaired", null),
+        content: JSON.stringify("Recovered assistant content"),
+        messageId: "assistant-message-core-boundary-bad"
+      },
+      {
+        ...assistantItem("raw-core-boundary-good", null),
+        content: JSON.stringify("Valid sibling content"),
+        messageId: "assistant-message-core-boundary-good",
+        order: 2
       }
-    }
+    ],
+    runId: "run-content-projection-core-boundary",
+    threadId: "thread-content-projection-core-boundary",
+    version: "3"
   })
   await closeDatabase()
   await initializeDatabase()
@@ -1124,7 +1356,7 @@ test("a malformed assistant message blocks once while valid siblings remain repa
 })
 
 test("malformed input stays hidden without replacing durable card or annotation identity", async () => {
-  const { createRun, createThread, getPrismaClient, persistMessageStateVersion } = await loadDb()
+  const { createRun, createThread, persistMessageStateVersion } = await loadDb()
   const threadId = "thread-content-projection-annotation-identity"
   const runId = "run-content-projection-annotation-identity"
   const messageId = "assistant-message-annotation-identity"
@@ -1183,10 +1415,7 @@ test("malformed input stays hidden without replacing durable card or annotation 
     }
   })
 
-  await getPrismaClient().message.update({
-    data: { content: "{" },
-    where: { threadId_messageId: { messageId, threadId } }
-  })
+  await overwriteCanonicalMessageContent({ content: "{", messageId, threadId })
   const blockedStatesAtDelivery: Array<Promise<string | null>> = []
   const blockedEvents: Array<{ revision: string; status: string }> = []
   const stopBlockedEvents = assistantContentProjectionEvents.onChanged((event) => {
@@ -1214,9 +1443,19 @@ test("malformed input stays hidden without replacing durable card or annotation 
     initialProjection.parts.map((part) => part.id)
   )
 
-  await getPrismaClient().message.update({
-    data: { content: canonicalContent },
-    where: { threadId_messageId: { messageId, threadId } }
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-annotation-identity-repaired",
+    checkpointNs: "",
+    messages: [
+      {
+        ...assistantItem("raw-annotation-identity-repaired", null),
+        content: canonicalContent,
+        messageId
+      }
+    ],
+    runId,
+    threadId,
+    version: "3"
   })
   assert.equal(
     (await new ContentCardsService().getAssistantParts({ messageId, threadId })).status,
@@ -1348,7 +1587,7 @@ test("derived corruption preserves the untouched ordinal across identical duplic
 })
 
 test("content-card hydrate rejects a stale projection and schedules the canonical revision", async () => {
-  const { createRun, createThread, getPrismaClient, persistMessageStateVersion } = await loadDb()
+  const { createRun, createThread, persistMessageStateVersion } = await loadDb()
   const threadId = "thread-content-projection-stale-hydrate"
   const runId = "run-content-projection-stale-hydrate"
   const messageId = "assistant-message-stale-hydrate"
@@ -1383,12 +1622,19 @@ test("content-card hydrate rejects a stale projection and schedules the canonica
     }
   })
 
-  await getPrismaClient().message.update({
-    data: {
-      content: JSON.stringify("Later canonical assistant content"),
-      updatedAt: BigInt(Date.now())
-    },
-    where: { threadId_messageId: { messageId, threadId } }
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-stale-hydrate-later",
+    checkpointNs: "",
+    messages: [
+      {
+        ...assistantItem("raw-stale-hydrate-later", null),
+        content: JSON.stringify("Later canonical assistant content"),
+        messageId
+      }
+    ],
+    runId,
+    threadId,
+    version: "2"
   })
   assert.deepEqual(await service.inspectAssistantParts({ messageIds: [messageId], threadId }), [
     { messageId, status: "stale" }
