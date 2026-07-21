@@ -7,6 +7,10 @@ import test from "node:test"
 import { setTimeout as delay } from "node:timers/promises"
 import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages"
 import type { Serialized } from "@langchain/core/load/serializable"
+import {
+  configureDevtoolsNetworkRecorder,
+  getDevtoolsNetworkRecorder
+} from "@jingle/devtools-network/main"
 import { createJingleLangChainTraceCallback } from "@jingle/langchain-agent-harness/transitional"
 
 const repoRoot = process.cwd()
@@ -1098,6 +1102,43 @@ test("stream boundary recorder keeps assistant completion separate from LLM outp
   const eventTypes = (await getAgentTraceEvents(runId)).map((event) => event.type)
   assert.deepEqual(eventTypes, ["message.assistant.started", "message.assistant.completed"])
   assert.equal(eventTypes.includes("llm.output.captured"), false)
+})
+
+test("stream devtools records the admitted model runtime selection", async () => {
+  const { createAgentStreamBoundaryRecorderState, recordAgentStreamBoundaryEvents } =
+    await import("../../src/main/agent/event-recorder")
+
+  configureDevtoolsNetworkRecorder({ enabled: true, maxEntries: 10 })
+  const recorder = getDevtoolsNetworkRecorder()
+  recorder.clear()
+
+  try {
+    await recordAgentStreamBoundaryEvents({
+      data: { ignored: true },
+      mode: "custom",
+      runId: "run-stream-devtools-selection",
+      selection: TEST_MODEL_RUNTIME_SELECTION,
+      state: createAgentStreamBoundaryRecorderState(),
+      threadId: "thread-stream-devtools-selection"
+    })
+
+    const [entry] = recorder.list()
+    assert.equal(entry.source, "agent-stream")
+    assert.deepEqual(entry.metadata?.preview, {
+      jingle_model_id: "gpt-test",
+      jingle_model_runtime_selection: {
+        modelId: "gpt-test",
+        thinkingEffort: "high",
+        version: 1
+      },
+      mode: "custom",
+      runId: "run-stream-devtools-selection",
+      threadId: "thread-stream-devtools-selection"
+    })
+    assert.equal(entry.metadata?.truncated, false)
+  } finally {
+    configureDevtoolsNetworkRecorder({ enabled: false })
+  }
 })
 
 test("stream boundary recorder does not promote tool call chunks to durable tool events", async () => {
