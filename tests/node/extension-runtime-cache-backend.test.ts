@@ -1125,7 +1125,7 @@ test("cache subscription admission performs no synchronous watcher or retention 
       sessionId: "async-subscription",
       token: "1".repeat(64)
     }
-    activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
+    await activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
     const watchHub = new FakeRuntimeCacheWatchHub()
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir, {
       watchDirectory: watchHub.watch,
@@ -1163,7 +1163,7 @@ test("cache subscription admission performs no synchronous watcher or retention 
 test("cache quota rejects a retention record stored at a forged address", async () => {
   await withCacheDirectory(async (cacheDir) => {
     const lease = { sessionId: "retention-address", token: "4".repeat(64) }
-    activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
+    await activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: lease })
     const subscription = backend.subscribeStore(notionScope, () => undefined)
     await subscription.admission
@@ -1244,7 +1244,7 @@ test("cache control records permit one atomic temp at the full physical budget",
         getRetentionRecordPath(cacheDir, lease),
         `${JSON.stringify({ namespaceDigests: [namespaceDigest], ...lease, version: 1 })}\n`
       )
-      activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
+      await activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
     }
     const currentLease = leases[0]!
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir, {
@@ -1282,15 +1282,14 @@ test("cache control budget rejects an extra writer without leaving a temp", asyn
       })
     )
     for (const lease of leases) {
-      activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
+      await activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
     }
 
-    assert.throws(
-      () =>
-        activateExtensionRuntimeCacheWriterLease(cacheDir, {
-          sessionId: "writer-budget-overflow",
-          token: "f".repeat(64)
-        }),
+    await assert.rejects(
+      activateExtensionRuntimeCacheWriterLease(cacheDir, {
+        sessionId: "writer-budget-overflow",
+        token: "f".repeat(64)
+      }),
       /control records exceeded their budget/
     )
     assert.equal(listWriterLeases(cacheDir).length, leases.length)
@@ -1323,15 +1322,15 @@ test("exact namespace retention survives unsubscribe and write revocation until 
     }
 
     const readerLease = { sessionId: "retained-reader", token: "2".repeat(64) }
-    activateExtensionRuntimeCacheWriterLease(cacheDir, readerLease)
+    await activateExtensionRuntimeCacheWriterLease(cacheDir, readerLease)
     const reader = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: readerLease })
     const subscription = reader.subscribeStore(pinnedScope, () => undefined)
     await subscription.admission
     subscription.unsubscribe()
-    revokeExtensionRuntimeCacheWrites(cacheDir, readerLease)
+    await revokeExtensionRuntimeCacheWrites(cacheDir, readerLease)
 
     const writerLease = { sessionId: "current-writer", token: "3".repeat(64) }
-    activateExtensionRuntimeCacheWriterLease(cacheDir, writerLease)
+    await activateExtensionRuntimeCacheWriterLease(cacheDir, writerLease)
     const writer = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease })
     writeEntries(writer, scopes.at(-2)!, [["page", "while-pinned"]])
     await writer.flush()

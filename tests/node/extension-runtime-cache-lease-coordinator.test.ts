@@ -31,7 +31,7 @@ const scope: RuntimeCacheBackendScope = {
 test("cache lease coordinator atomically replaces one session writer", async () => {
   await withCacheDirectory(async (cacheDir) => {
     const coordinator = new FileExtensionRuntimeCacheLeaseCoordinator(cacheDir)
-    const firstLease = coordinator.activate("session-1")
+    const firstLease = await coordinator.activate("session-1")
     const firstBackend = createFileExtensionRuntimeCacheBackend(cacheDir, {
       writerLease: firstLease
     })
@@ -43,7 +43,7 @@ test("cache lease coordinator atomically replaces one session writer", async () 
     await firstBackend.flush()
     removeStoreFiles(cacheDir)
 
-    const replacementLease = coordinator.activate("session-1")
+    const replacementLease = await coordinator.activate("session-1")
     assert.notEqual(replacementLease.token, firstLease.token)
     firstBackend.mutateStore(scope, {
       kind: "update",
@@ -64,7 +64,7 @@ test("cache lease coordinator atomically replaces one session writer", async () 
     await replacementBackend.flush()
     assert.deepEqual(replacementBackend.loadStore(scope), [["page", "replacement"]])
 
-    coordinator.revokeWrites(firstLease)
+    await coordinator.revokeWrites(firstLease)
     assert.deepEqual(replacementBackend.loadStore(scope), [["page", "replacement"]])
     await coordinator.dispose()
   })
@@ -73,7 +73,7 @@ test("cache lease coordinator atomically replaces one session writer", async () 
 test("revoked cache writer cannot persist corruption recovery", async () => {
   await withCacheDirectory(async (cacheDir) => {
     const coordinator = new FileExtensionRuntimeCacheLeaseCoordinator(cacheDir)
-    const lease = coordinator.activate("session-1")
+    const lease = await coordinator.activate("session-1")
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: lease })
     backend.mutateStore(scope, {
       kind: "update",
@@ -84,7 +84,7 @@ test("revoked cache writer cannot persist corruption recovery", async () => {
     const cacheFilePath = join(cacheDir, listStoreFiles(cacheDir)[0]!)
     const corruptPayload = '{"stores":'
     writeFileSync(cacheFilePath, corruptPayload)
-    coordinator.revokeWrites(lease)
+    await coordinator.revokeWrites(lease)
 
     assert.throws(() => backend.loadStore(scope), assertBoundedPersistenceFailure)
     assert.equal(readFileSync(cacheFilePath, "utf8"), corruptPayload)
@@ -99,9 +99,9 @@ test("revoked cache writer cannot persist corruption recovery", async () => {
 test("revoked cache writer cannot recreate a removed cache directory", async () => {
   await withCacheDirectory(async (cacheDir) => {
     const coordinator = new FileExtensionRuntimeCacheLeaseCoordinator(cacheDir)
-    const lease = coordinator.activate("session-1")
+    const lease = await coordinator.activate("session-1")
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: lease })
-    coordinator.revokeWrites(lease)
+    await coordinator.revokeWrites(lease)
     rmSync(cacheDir, { recursive: true })
 
     backend.mutateStore(scope, {
@@ -116,10 +116,12 @@ test("revoked cache writer cannot recreate a removed cache directory", async () 
   })
 })
 
-test("process-exit cleanup retries writer and retention release after lock contention", async () => {
+test("process-exit cleanup waits for short writer and retention lock contention", async () => {
   await withCacheDirectory(async (cacheDir) => {
-    const coordinator = new FileExtensionRuntimeCacheLeaseCoordinator(cacheDir)
-    const lease = coordinator.activate("session-1")
+    const coordinator = new FileExtensionRuntimeCacheLeaseCoordinator(cacheDir, {
+      lock: { retryCount: 20, retryTimeoutMs: 5, staleMs: 30_000, updateMs: 10_000 }
+    })
+    const lease = await coordinator.activate("session-1")
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: lease })
     const subscription = backend.subscribeStore(scope, () => undefined)
     await subscription.admission
@@ -133,15 +135,41 @@ test("process-exit cleanup retries writer and retention release after lock conte
       stale: 30_000,
       update: 10_000
     })
-    assert.throws(() => coordinator.revokeWrites(lease), /coordination failed/)
+    const revokeWrites = coordinator.revokeWrites(lease)
     const releaseRetention = coordinator.releaseRetention(lease)
     await new Promise<void>((resolve) => setImmediate(resolve))
+    assert.equal(listWriterLeases(cacheDir).length, 1)
     assert.equal(listRetentionRecords(cacheDir).length, 1)
 
     await releaseLock()
-    await releaseRetention
+    await Promise.all([revokeWrites, releaseRetention])
     assert.deepEqual(listRetentionRecords(cacheDir), [])
     assert.deepEqual(listWriterLeases(cacheDir), [])
+    await coordinator.dispose()
+  })
+})
+
+test("cache control lock timeout returns one bounded coordination failure", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const coordinator = new FileExtensionRuntimeCacheLeaseCoordinator(cacheDir, {
+      lock: { retryCount: 0, retryTimeoutMs: 1, staleMs: 30_000, updateMs: 10_000 }
+    })
+    const releaseLock = await properLockfile.lock(cacheDir, {
+      realpath: false,
+      retries: 0,
+      stale: 30_000,
+      update: 10_000
+    })
+
+    await assert.rejects(coordinator.activate("session-1"), (error) => {
+      assert.ok(error instanceof ExtensionRuntimeCacheLeaseCoordinatorError)
+      assert.equal(error.code, "runtime_cache_writer_lease_failed")
+      assert.equal(error.message, "Extension runtime cache writer lease coordination failed.")
+      return true
+    })
+    assert.deepEqual(listWriterLeases(cacheDir), [])
+
+    await releaseLock()
     await coordinator.dispose()
   })
 })
@@ -149,8 +177,8 @@ test("process-exit cleanup retries writer and retention release after lock conte
 test("cache coordinator serializes dispose with in-flight process cleanup", async () => {
   await withCacheDirectory(async (cacheDir) => {
     const coordinator = new FileExtensionRuntimeCacheLeaseCoordinator(cacheDir)
-    const firstLease = coordinator.activate("session-1")
-    coordinator.activate("session-2")
+    const firstLease = await coordinator.activate("session-1")
+    await coordinator.activate("session-2")
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: firstLease })
     const subscription = backend.subscribeStore(scope, () => undefined)
     await subscription.admission
@@ -178,8 +206,8 @@ test("cache coordinator serializes dispose with in-flight process cleanup", asyn
 test("cache coordinator disposes later leases and retries only failed terminal cleanup", async () => {
   await withCacheDirectory(async (cacheDir) => {
     const coordinator = new FileExtensionRuntimeCacheLeaseCoordinator(cacheDir)
-    const firstLease = coordinator.activate("session-1")
-    coordinator.activate("session-2")
+    const firstLease = await coordinator.activate("session-1")
+    await coordinator.activate("session-2")
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: firstLease })
     const subscription = backend.subscribeStore(scope, () => undefined)
     await subscription.admission
@@ -207,16 +235,16 @@ test("cache coordinator disposes later leases and retries only failed terminal c
 test("same-session replacement retains failed old cleanup for dispose retry", async () => {
   await withCacheDirectory(async (cacheDir) => {
     const coordinator = new FileExtensionRuntimeCacheLeaseCoordinator(cacheDir)
-    const firstLease = coordinator.activate("session-1")
+    const firstLease = await coordinator.activate("session-1")
     const firstBackend = createFileExtensionRuntimeCacheBackend(cacheDir, {
       writerLease: firstLease
     })
     const firstSubscription = firstBackend.subscribeStore(scope, () => undefined)
     await firstSubscription.admission
     firstSubscription.unsubscribe()
-    coordinator.revokeWrites(firstLease)
+    await coordinator.revokeWrites(firstLease)
 
-    const replacementLease = coordinator.activate("session-1")
+    const replacementLease = await coordinator.activate("session-1")
     const replacementBackend = createFileExtensionRuntimeCacheBackend(cacheDir, {
       writerLease: replacementLease
     })
@@ -256,15 +284,12 @@ test("cache lease coordinator rejects invalid session identity with one bounded 
   await withCacheDirectory(async (cacheDir) => {
     const coordinator = new FileExtensionRuntimeCacheLeaseCoordinator(cacheDir)
 
-    assert.throws(
-      () => coordinator.activate("x".repeat(129)),
-      (error) => {
-        assert.ok(error instanceof ExtensionRuntimeCacheLeaseCoordinatorError)
-        assert.equal(error.code, "runtime_cache_writer_lease_failed")
-        assert.equal(error.message, "Extension runtime cache writer lease coordination failed.")
-        return true
-      }
-    )
+    await assert.rejects(coordinator.activate("x".repeat(129)), (error) => {
+      assert.ok(error instanceof ExtensionRuntimeCacheLeaseCoordinatorError)
+      assert.equal(error.code, "runtime_cache_writer_lease_failed")
+      assert.equal(error.message, "Extension runtime cache writer lease coordination failed.")
+      return true
+    })
     await coordinator.dispose()
   })
 })

@@ -168,6 +168,7 @@ interface RuntimeSessionStopState {
   awaitingExit: boolean
   cancelTimeout: () => void
   error?: ExtensionRuntimeError
+  gracefulAcknowledged: boolean
   reason: ExtensionRuntimeSessionStopReason
 }
 
@@ -176,12 +177,15 @@ interface RuntimeSession {
   cacheRetentionReleased: boolean
   cacheWriterLease: ExtensionRuntimeCacheWriterLease
   cacheWriterLeaseRevoked: boolean
+  cacheWriterLeaseRevocation: Promise<boolean> | null
   disposeCacheRetentionExitListener: (() => void) | null
   disposeListeners: Array<() => void>
+  finalizeStopPromise: Promise<void> | null
   kind: ExtensionRuntimeSessionKind
   lease: ExtensionRuntimeExecutionLease
   pendingRunOnceSuccess: boolean
   process: ExtensionRuntimeProcess
+  processExited: boolean
   resolveCacheRetentionExitBarrier: (() => void) | null
   resolveRunOnce?: (result: ExtensionRuntimeRunResult) => void
   sessionId: string
@@ -228,6 +232,7 @@ export class ExtensionRuntimeManager {
   private foregroundTransitionTail: Promise<void> = Promise.resolve()
   private lastError: ExtensionRuntimeSessionError | null = null
   private readonly pendingCacheRetentionExitBarriers = new Set<Promise<void>>()
+  private readonly pendingSessionStarts = new Map<string, Promise<void>>()
   private readonly eventAckListeners = new Set<ExtensionRuntimeEventAckListener>()
   private readonly errorListeners = new Set<ExtensionRuntimeErrorListener>()
   private readonly issueSnapshotListeners = new Set<ExtensionRuntimeIssueSnapshotListener>()
@@ -261,7 +266,8 @@ export class ExtensionRuntimeManager {
     }
     const sessions = Array.from(this.sessions.values())
     const stopPromises = sessions.map((session) => this.waitForSessionStop(session))
-    this.disposePromise = Promise.all(stopPromises)
+    const pendingStarts = Array.from(this.pendingSessionStarts.values())
+    this.disposePromise = Promise.all([...stopPromises, ...pendingStarts])
       .then(() => this.waitForCacheRetentionExitBarriers())
       .then(() => this.options.cacheLeaseCoordinator.dispose())
     for (const session of sessions) {
@@ -404,7 +410,7 @@ export class ExtensionRuntimeManager {
       }
       const replacedSession = this.foregroundSession
       if (replacedSession && this.sessions.get(replacedSession.sessionId) === replacedSession) {
-        this.revokeForegroundWriterBeforeReplacement(replacedSession)
+        await this.revokeForegroundWriterBeforeReplacement(replacedSession)
       }
       const session = await this.startSession("foreground", intent, {
         beforeStart: options?.onSessionStart
@@ -549,11 +555,12 @@ export class ExtensionRuntimeManager {
   }
 
   private handleExit(session: RuntimeSession, code: number): void {
+    session.processExited = true
     if (this.sessions.get(session.sessionId) !== session) {
       return
     }
     if (session.stopping) {
-      if (!session.stopState?.error) {
+      if (!session.stopState?.error && !session.stopState?.gracefulAcknowledged) {
         session.stopState!.error = RUNTIME_STOP_ACK_MISSING_ERROR
         this.recordError(session, RUNTIME_STOP_ACK_MISSING_ERROR)
       }
@@ -570,6 +577,7 @@ export class ExtensionRuntimeManager {
       awaitingExit: true,
       cancelTimeout: () => undefined,
       error,
+      gracefulAcknowledged: false,
       reason: "other"
     }
     this.recordError(session, error)
@@ -658,6 +666,7 @@ export class ExtensionRuntimeManager {
 
     const resultKind = getRuntimeStopResultKind(result)
     if (resultKind === "cache-persistence-failed") {
+      session.stopState.gracefulAcknowledged = true
       if (!session.stopState.error) {
         session.stopState.error = CACHE_PERSISTENCE_ERROR
         this.recordError(session, CACHE_PERSISTENCE_ERROR)
@@ -672,11 +681,14 @@ export class ExtensionRuntimeManager {
       }
       this.escalateStopToProcessExit(session, session.stopState)
       return
-    } else if (session.pendingRunOnceSuccess && !session.stopState.error) {
-      this.settleRunOnce(session, {
-        sessionId: session.sessionId,
-        status: "ready"
-      })
+    } else {
+      session.stopState.gracefulAcknowledged = true
+      if (session.pendingRunOnceSuccess && !session.stopState.error) {
+        this.settleRunOnce(session, {
+          sessionId: session.sessionId,
+          status: "ready"
+        })
+      }
     }
     this.finalizeStopSession(session)
   }
@@ -1039,62 +1051,39 @@ export class ExtensionRuntimeManager {
     intent: ExtensionRuntimeLaunchIntent,
     options: StartSessionOptions = {}
   ): Promise<RuntimeSession> {
-    if (this.disposed) {
-      throw new ExtensionRuntimeLifecycleError(
-        "runtime_manager_disposed",
-        "Extension runtime is disposed."
-      )
-    }
-
     const sessionId = options.sessionId ?? this.createSessionId()
-    if (this.sessions.has(sessionId)) {
-      throw new ExtensionRuntimeLifecycleError(
-        "runtime_session_conflict",
-        `Extension runtime session "${sessionId}" already exists.`
-      )
+    const completePendingStart = this.reservePendingSessionStart(sessionId)
+    try {
+      return await this.startReservedSession(kind, intent, sessionId, options)
+    } finally {
+      completePendingStart()
     }
+  }
 
+  private async startReservedSession(
+    kind: ExtensionRuntimeSessionKind,
+    intent: ExtensionRuntimeLaunchIntent,
+    sessionId: string,
+    options: StartSessionOptions
+  ): Promise<RuntimeSession> {
     const lease = this.options.executionLeaseOwner.resolve(kind, intent)
-    if (this.disposed) {
-      throw new ExtensionRuntimeLifecycleError(
-        "runtime_manager_disposed",
-        "Extension runtime is disposed."
-      )
-    }
-    if (!this.isLeaseCurrent(lease)) {
-      throw new ExtensionRuntimeLifecycleError(
-        CONFIGURATION_REVOKED_ERROR.code,
-        CONFIGURATION_REVOKED_ERROR.message
-      )
-    }
-    if (this.sessions.has(sessionId)) {
-      throw new ExtensionRuntimeLifecycleError(
-        "runtime_session_conflict",
-        `Extension runtime session "${sessionId}" already exists.`
-      )
+    const initialAdmissionError = this.getSessionStartAdmissionError(sessionId, lease)
+    if (initialAdmissionError) {
+      throw initialAdmissionError
     }
 
-    const cacheWriterLease = this.options.cacheLeaseCoordinator.activate(sessionId)
+    const cacheWriterLease = await this.options.cacheLeaseCoordinator.activate(sessionId)
+    const activatedAdmissionError = this.getSessionStartAdmissionError(sessionId, lease)
+    if (activatedAdmissionError) {
+      await this.cleanupUnadoptedCacheWriterLease(cacheWriterLease, activatedAdmissionError)
+      throw activatedAdmissionError
+    }
+
     let process: ExtensionRuntimeProcess
     try {
       process = this.options.processLauncher.launch({ cacheWriterLease })
     } catch (launchError) {
-      let revokeError: unknown
-      try {
-        this.options.cacheLeaseCoordinator.revokeWrites(cacheWriterLease)
-      } catch (cause) {
-        revokeError = cause
-      }
-      try {
-        await this.options.cacheLeaseCoordinator.releaseRetention(cacheWriterLease)
-      } catch (releaseError) {
-        throw new ExtensionRuntimeCacheLeaseCoordinatorError(
-          new AggregateError(
-            [launchError, ...(revokeError === undefined ? [] : [revokeError]), releaseError],
-            "Extension runtime launch cleanup failed."
-          )
-        )
-      }
+      await this.cleanupUnadoptedCacheWriterLease(cacheWriterLease, launchError)
       throw launchError
     }
     const session: RuntimeSession = {
@@ -1102,12 +1091,15 @@ export class ExtensionRuntimeManager {
       cacheRetentionReleased: false,
       cacheWriterLease,
       cacheWriterLeaseRevoked: false,
+      cacheWriterLeaseRevocation: null,
       disposeCacheRetentionExitListener: null,
       disposeListeners: [],
+      finalizeStopPromise: null,
       kind,
       lease,
       pendingRunOnceSuccess: false,
       process,
+      processExited: false,
       resolveCacheRetentionExitBarrier: null,
       sessionId,
       storageIssueTerminal: false,
@@ -1126,6 +1118,12 @@ export class ExtensionRuntimeManager {
       )
       session.disposeListeners.push(process.onExit((code) => this.handleExit(session, code)))
       options.beforeStart?.(session)
+      if (this.disposed) {
+        throw new ExtensionRuntimeLifecycleError(
+          "runtime_manager_disposed",
+          "Extension runtime is disposed."
+        )
+      }
       if (!this.isLeaseCurrent(lease)) {
         configurationRevoked = true
         throw new ExtensionRuntimeLifecycleError(
@@ -1147,6 +1145,85 @@ export class ExtensionRuntimeManager {
         configurationRevoked ? "configuration-revoked" : "other"
       )
       throw error
+    }
+  }
+
+  private reservePendingSessionStart(sessionId: string): () => void {
+    if (this.disposed) {
+      throw new ExtensionRuntimeLifecycleError(
+        "runtime_manager_disposed",
+        "Extension runtime is disposed."
+      )
+    }
+    if (this.sessions.has(sessionId) || this.pendingSessionStarts.has(sessionId)) {
+      throw new ExtensionRuntimeLifecycleError(
+        "runtime_session_conflict",
+        `Extension runtime session "${sessionId}" already exists.`
+      )
+    }
+
+    let resolvePendingStart!: () => void
+    const pendingStart = new Promise<void>((resolve) => {
+      resolvePendingStart = resolve
+    })
+    this.pendingSessionStarts.set(sessionId, pendingStart)
+    let completed = false
+    return () => {
+      if (completed) {
+        return
+      }
+      completed = true
+      if (this.pendingSessionStarts.get(sessionId) === pendingStart) {
+        this.pendingSessionStarts.delete(sessionId)
+      }
+      resolvePendingStart()
+    }
+  }
+
+  private getSessionStartAdmissionError(
+    sessionId: string,
+    lease: ExtensionRuntimeExecutionLease
+  ): ExtensionRuntimeLifecycleError | null {
+    if (this.disposed) {
+      return new ExtensionRuntimeLifecycleError(
+        "runtime_manager_disposed",
+        "Extension runtime is disposed."
+      )
+    }
+    if (!this.isLeaseCurrent(lease)) {
+      return new ExtensionRuntimeLifecycleError(
+        CONFIGURATION_REVOKED_ERROR.code,
+        CONFIGURATION_REVOKED_ERROR.message
+      )
+    }
+    if (this.sessions.has(sessionId)) {
+      return new ExtensionRuntimeLifecycleError(
+        "runtime_session_conflict",
+        `Extension runtime session "${sessionId}" already exists.`
+      )
+    }
+    return null
+  }
+
+  private async cleanupUnadoptedCacheWriterLease(
+    cacheWriterLease: ExtensionRuntimeCacheWriterLease,
+    primaryError: unknown
+  ): Promise<void> {
+    let revokeError: unknown
+    try {
+      await this.options.cacheLeaseCoordinator.revokeWrites(cacheWriterLease)
+    } catch (cause) {
+      revokeError = cause
+    }
+    try {
+      await this.options.cacheLeaseCoordinator.releaseRetention(cacheWriterLease)
+    } catch (releaseError) {
+      throw new ExtensionRuntimeCacheLeaseCoordinatorError(
+        new AggregateError(
+          [primaryError, ...(revokeError === undefined ? [] : [revokeError]), releaseError],
+          "Extension runtime cache lease cleanup failed."
+        )
+      )
     }
   }
 
@@ -1238,14 +1315,15 @@ export class ExtensionRuntimeManager {
     this.stopSessionWithError(session, CONFIGURATION_REVOKED_ERROR, "configuration-revoked")
   }
 
-  private revokeForegroundWriterBeforeReplacement(session: RuntimeSession): void {
-    if (!this.revokeCacheWriterLease(session)) {
+  private async revokeForegroundWriterBeforeReplacement(session: RuntimeSession): Promise<void> {
+    if (!(await this.revokeCacheWriterLease(session))) {
       if (!session.stopping) {
         session.stopping = true
         session.stopState = {
           awaitingExit: false,
           cancelTimeout: () => undefined,
           error: CACHE_WRITER_LEASE_CLEANUP_ERROR,
+          gracefulAcknowledged: false,
           reason: "other"
         }
         this.recordError(session, CACHE_WRITER_LEASE_CLEANUP_ERROR)
@@ -1280,6 +1358,7 @@ export class ExtensionRuntimeManager {
       awaitingExit: false,
       cancelTimeout: () => undefined,
       error,
+      gracefulAcknowledged: false,
       reason
     }
     this.recordError(session, error)
@@ -1311,6 +1390,7 @@ export class ExtensionRuntimeManager {
       awaitingExit: false,
       cancelTimeout: () => undefined,
       ...(runOnceError ? { error: runOnceError } : {}),
+      gracefulAcknowledged: false,
       reason
     }
     this.terminateIssueState(session)
@@ -1380,32 +1460,65 @@ export class ExtensionRuntimeManager {
     }
     stopState.awaitingExit = true
     this.cancelStopTimeout(stopState)
-    this.revokeCacheWriterLease(session)
-    try {
-      session.process.kill()
-    } catch (error) {
-      console.error("[jingle:extension-runtime] Failed to kill runtime process", error)
-    }
+    void this.revokeCacheWriterLease(session).then(() => {
+      if (
+        this.sessions.get(session.sessionId) !== session ||
+        session.stopState !== stopState ||
+        session.processExited
+      ) {
+        return
+      }
+      try {
+        session.process.kill()
+      } catch (error) {
+        console.error("[jingle:extension-runtime] Failed to kill runtime process", error)
+      }
+    })
   }
 
   private finalizeStopSession(
     session: RuntimeSession,
     options: { processExited?: boolean } = {}
   ): void {
+    if (options.processExited) {
+      session.processExited = true
+    }
+    if (session.finalizeStopPromise) {
+      return
+    }
     const stopState = session.stopState
     if (!stopState || this.sessions.get(session.sessionId) !== session) {
       return
     }
+    this.cancelStopTimeout(stopState)
+    const finalize = this.finalizeStopSessionAfterWriterRevocation(session, stopState)
+    session.finalizeStopPromise = finalize
+    const clearFinalizePromise = (): void => {
+      if (session.finalizeStopPromise === finalize) {
+        session.finalizeStopPromise = null
+      }
+    }
+    void finalize.then(clearFinalizePromise, (error) => {
+      clearFinalizePromise()
+      console.error("[jingle:extension-runtime] Failed to finalize runtime stop", error)
+    })
+  }
 
-    const leaseRevoked = this.revokeCacheWriterLease(session)
-    if (!leaseRevoked && !options.processExited) {
+  private async finalizeStopSessionAfterWriterRevocation(
+    session: RuntimeSession,
+    stopState: RuntimeSessionStopState
+  ): Promise<void> {
+    const leaseRevoked = await this.revokeCacheWriterLease(session)
+    if (this.sessions.get(session.sessionId) !== session || session.stopState !== stopState) {
+      return
+    }
+    if (!leaseRevoked && !session.processExited) {
       this.escalateStopToProcessExit(session, stopState)
       return
     }
     session.stopState = null
-    this.cancelStopTimeout(stopState)
     const sessionInfo = this.detachSession(session)
-    if (!options.processExited) {
+    if (!session.processExited) {
       try {
         session.process.kill()
       } catch (error) {
@@ -1415,22 +1528,29 @@ export class ExtensionRuntimeManager {
     this.emitSessionStopped(sessionInfo, stopState.reason)
   }
 
-  private revokeCacheWriterLease(session: RuntimeSession): boolean {
+  private revokeCacheWriterLease(session: RuntimeSession): Promise<boolean> {
     if (session.cacheWriterLeaseRevoked) {
-      return true
+      return Promise.resolve(true)
     }
-    try {
-      this.options.cacheLeaseCoordinator.revokeWrites(session.cacheWriterLease)
-      session.cacheWriterLeaseRevoked = true
-      return true
-    } catch {
-      console.error("[jingle:extension-runtime] Cache writer revocation failed.")
-      if (session.stopState && !session.stopState.error) {
-        session.stopState.error = CACHE_WRITER_LEASE_CLEANUP_ERROR
-        this.recordError(session, CACHE_WRITER_LEASE_CLEANUP_ERROR)
-      }
-      return false
+    if (session.cacheWriterLeaseRevocation) {
+      return session.cacheWriterLeaseRevocation
     }
+    const revocation = this.options.cacheLeaseCoordinator
+      .revokeWrites(session.cacheWriterLease)
+      .then(() => {
+        session.cacheWriterLeaseRevoked = true
+        return true
+      })
+      .catch(() => {
+        console.error("[jingle:extension-runtime] Cache writer revocation failed.")
+        if (session.stopState && !session.stopState.error) {
+          session.stopState.error = CACHE_WRITER_LEASE_CLEANUP_ERROR
+          this.recordError(session, CACHE_WRITER_LEASE_CLEANUP_ERROR)
+        }
+        return false
+      })
+    session.cacheWriterLeaseRevocation = revocation
+    return revocation
   }
 
   private releaseCacheRetentionAfterProcessExit(session: RuntimeSession): void {

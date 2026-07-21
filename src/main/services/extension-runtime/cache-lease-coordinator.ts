@@ -5,14 +5,19 @@ import {
   activateExtensionRuntimeCacheWriterLease,
   releaseExtensionRuntimeCacheRetention,
   resetExtensionRuntimeCacheWriterLeases,
-  revokeExtensionRuntimeCacheWrites
+  revokeExtensionRuntimeCacheWrites,
+  type RuntimeCacheFileBackendOptions
 } from "../../../extension-runtime/cache-backend"
 
 export interface ExtensionRuntimeCacheLeaseCoordinator {
-  activate: (sessionId: string) => ExtensionRuntimeCacheWriterLease
+  activate: (sessionId: string) => Promise<ExtensionRuntimeCacheWriterLease>
   dispose: () => Promise<void>
   releaseRetention: (lease: ExtensionRuntimeCacheWriterLease) => Promise<void>
-  revokeWrites: (lease: ExtensionRuntimeCacheWriterLease) => void
+  revokeWrites: (lease: ExtensionRuntimeCacheWriterLease) => Promise<void>
+}
+
+export interface ExtensionRuntimeCacheLeaseCoordinatorOptions {
+  lock?: NonNullable<RuntimeCacheFileBackendOptions["lock"]>
 }
 
 export class FileExtensionRuntimeCacheLeaseCoordinator implements ExtensionRuntimeCacheLeaseCoordinator {
@@ -21,7 +26,10 @@ export class FileExtensionRuntimeCacheLeaseCoordinator implements ExtensionRunti
   private readonly leases = new Map<string, ExtensionRuntimeCacheWriterLease>()
   private operationTail = Promise.resolve()
 
-  constructor(private readonly cacheDir: string) {
+  constructor(
+    private readonly cacheDir: string,
+    private readonly options: ExtensionRuntimeCacheLeaseCoordinatorOptions = {}
+  ) {
     try {
       resetExtensionRuntimeCacheWriterLeases(cacheDir)
     } catch (cause) {
@@ -29,31 +37,35 @@ export class FileExtensionRuntimeCacheLeaseCoordinator implements ExtensionRunti
     }
   }
 
-  activate(sessionId: string): ExtensionRuntimeCacheWriterLease {
-    if (this.disposed) {
-      throw new ExtensionRuntimeCacheLeaseCoordinatorError(
-        new Error("Extension runtime cache lease coordinator is disposed.")
-      )
-    }
-    try {
-      const lease = normalizeExtensionRuntimeCacheWriterLease({
-        sessionId,
-        token: randomBytes(32).toString("hex")
-      })
-      activateExtensionRuntimeCacheWriterLease(this.cacheDir, lease)
-      this.leases.set(lease.token, lease)
-      return lease
-    } catch (cause) {
-      throw new ExtensionRuntimeCacheLeaseCoordinatorError(cause)
-    }
+  activate(sessionId: string): Promise<ExtensionRuntimeCacheWriterLease> {
+    return this.enqueue(async () => {
+      if (this.disposed) {
+        throw new ExtensionRuntimeCacheLeaseCoordinatorError(
+          new Error("Extension runtime cache lease coordinator is disposed.")
+        )
+      }
+      try {
+        const lease = normalizeExtensionRuntimeCacheWriterLease({
+          sessionId,
+          token: randomBytes(32).toString("hex")
+        })
+        await activateExtensionRuntimeCacheWriterLease(this.cacheDir, lease, this.options.lock)
+        this.leases.set(lease.token, lease)
+        return lease
+      } catch (cause) {
+        throw new ExtensionRuntimeCacheLeaseCoordinatorError(cause)
+      }
+    })
   }
 
-  revokeWrites(lease: ExtensionRuntimeCacheWriterLease): void {
-    try {
-      revokeExtensionRuntimeCacheWrites(this.cacheDir, lease)
-    } catch (cause) {
-      throw new ExtensionRuntimeCacheLeaseCoordinatorError(cause)
-    }
+  revokeWrites(lease: ExtensionRuntimeCacheWriterLease): Promise<void> {
+    return this.enqueue(async () => {
+      try {
+        await revokeExtensionRuntimeCacheWrites(this.cacheDir, lease, this.options.lock)
+      } catch (cause) {
+        throw new ExtensionRuntimeCacheLeaseCoordinatorError(cause)
+      }
+    })
   }
 
   releaseRetention(lease: ExtensionRuntimeCacheWriterLease): Promise<void> {
@@ -100,9 +112,12 @@ export class FileExtensionRuntimeCacheLeaseCoordinator implements ExtensionRunti
     }
   }
 
-  private enqueue(operation: () => Promise<void>): Promise<void> {
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.operationTail.then(operation)
-    this.operationTail = result.catch(() => undefined)
+    this.operationTail = result.then(
+      () => undefined,
+      () => undefined
+    )
     return result
   }
 }
