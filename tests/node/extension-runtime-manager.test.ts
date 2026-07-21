@@ -158,6 +158,7 @@ class FakeCacheLeaseCoordinator implements ExtensionRuntimeCacheLeaseCoordinator
   releaseRetentionCalls: ExtensionRuntimeCacheWriterLease[] = []
   revokeCalls: ExtensionRuntimeCacheWriterLease[] = []
   private readonly activeTokens = new Set<string>()
+  private readonly retentionTokens = new Set<string>()
   private tokenIndex = 0
 
   activate(sessionId: string): ExtensionRuntimeCacheWriterLease {
@@ -167,6 +168,7 @@ class FakeCacheLeaseCoordinator implements ExtensionRuntimeCacheLeaseCoordinator
     }
     this.activateCalls.push(lease)
     this.activeTokens.add(lease.token)
+    this.retentionTokens.add(lease.token)
     this.events.push(`activate:${sessionId}`)
     return lease
   }
@@ -183,6 +185,7 @@ class FakeCacheLeaseCoordinator implements ExtensionRuntimeCacheLeaseCoordinator
       throw new Error("cache retention state unavailable")
     }
     this.activeTokens.delete(lease.token)
+    this.retentionTokens.delete(lease.token)
   }
 
   revokeWrites(lease: ExtensionRuntimeCacheWriterLease): void {
@@ -197,6 +200,12 @@ class FakeCacheLeaseCoordinator implements ExtensionRuntimeCacheLeaseCoordinator
   assertMutationAllowed(lease: ExtensionRuntimeCacheWriterLease): void {
     if (!this.activeTokens.has(lease.token)) {
       throw new Error("Extension runtime cache writer lease is inactive.")
+    }
+  }
+
+  assertRetentionActive(lease: ExtensionRuntimeCacheWriterLease): void {
+    if (!this.retentionTokens.has(lease.token)) {
+      throw new Error("Extension runtime cache retention lease is inactive.")
     }
   }
 }
@@ -1736,6 +1745,67 @@ test("foreground replacement revokes the old writer before admitting the new wri
     sessionId: "session-2",
     type: "stopped"
   })
+})
+
+test("concurrent foreground starts serialize writer replacement and retain the old process until exit", async () => {
+  const { cacheLeaseCoordinator, launcher, manager } = createManager()
+
+  const firstStart = manager.startForeground(createLaunchIntent())
+  const secondStart = manager.startForeground(createLaunchIntent())
+  const [firstSession, secondSession] = await Promise.all([firstStart, secondStart])
+
+  assert.equal(firstSession.sessionId, "session-1")
+  assert.equal(secondSession.sessionId, "session-2")
+  assert.equal(manager.getForegroundSession()?.sessionId, "session-2")
+  assert.deepEqual(cacheLeaseCoordinator.events, [
+    "activate:session-1",
+    "revoke:session-1",
+    "activate:session-2"
+  ])
+  assert.equal(launcher.processes[0]?.killed, true)
+  assert.equal(cacheLeaseCoordinator.releaseRetentionCalls.length, 0)
+  cacheLeaseCoordinator.assertRetentionActive(cacheLeaseCoordinator.activateCalls[0]!)
+
+  launcher.processes[0]?.emitExit(0)
+  await flushPromises()
+
+  assert.equal(
+    cacheLeaseCoordinator.releaseRetentionCalls[0],
+    cacheLeaseCoordinator.activateCalls[0]
+  )
+  assert.equal(manager.stopForeground("session-2"), true)
+  launcher.processes[1]?.emitExit(0)
+  await flushPromises()
+})
+
+test("process-exit retention release failure remains pinned and emits one bounded error", async () => {
+  const errors: ExtensionRuntimeSessionError[] = []
+  const { cacheLeaseCoordinator, launcher, manager } = createManager({
+    onError: (error) => errors.push(error)
+  })
+  await manager.startForeground(createLaunchIntent())
+  const lease = cacheLeaseCoordinator.activateCalls[0]
+  const process = launcher.processes[0]
+  assert.ok(lease)
+  assert.ok(process)
+  cacheLeaseCoordinator.failReleaseRetention = true
+
+  assert.equal(manager.stopForeground("session-1"), true)
+  process.emitExit(0)
+  await flushPromises()
+
+  cacheLeaseCoordinator.assertRetentionActive(lease)
+  assert.equal(cacheLeaseCoordinator.releaseRetentionCalls.length, 1)
+  assert.deepEqual(
+    errors.map((entry) => entry.error),
+    [
+      {
+        code: "runtime_cache_writer_lease_failed",
+        message: "Extension runtime cache writer lease coordination failed."
+      }
+    ]
+  )
+  assert.equal(manager.getLastError()?.error.code, "runtime_cache_writer_lease_failed")
 })
 
 test("foreground replacement fails closed when the old writer cannot be revoked", async () => {

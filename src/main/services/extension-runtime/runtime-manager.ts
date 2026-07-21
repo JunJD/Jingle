@@ -225,6 +225,7 @@ export class ExtensionRuntimeManager {
   private disposed = false
   private disposePromise: Promise<void> | null = null
   private foregroundSession: RuntimeSession | null = null
+  private foregroundTransitionTail: Promise<void> = Promise.resolve()
   private lastError: ExtensionRuntimeSessionError | null = null
   private readonly pendingCacheRetentionExitBarriers = new Set<Promise<void>>()
   private readonly eventAckListeners = new Set<ExtensionRuntimeEventAckListener>()
@@ -394,33 +395,35 @@ export class ExtensionRuntimeManager {
     }
   ): Promise<ExtensionRuntimeSessionInfo> {
     const sessionId = options?.sessionId ?? this.createSessionId()
-    if (this.sessions.has(sessionId)) {
-      throw new ExtensionRuntimeLifecycleError(
-        "runtime_session_conflict",
-        `Extension runtime session "${sessionId}" already exists.`
-      )
-    }
-    const replacedSession = this.foregroundSession
-    if (replacedSession && this.sessions.get(replacedSession.sessionId) === replacedSession) {
-      this.revokeForegroundWriterBeforeReplacement(replacedSession)
-    }
-    const session = await this.startSession("foreground", intent, {
-      beforeStart: options?.onSessionStart
-        ? (startedSession) => options.onSessionStart?.(toSessionInfo(startedSession))
-        : undefined,
-      sessionId
-    })
-    if (this.sessions.get(session.sessionId) !== session || !this.isLeaseCurrent(session.lease)) {
-      if (this.sessions.get(session.sessionId) === session) {
-        this.revokeSession(session)
+    return this.enqueueForegroundTransition(async () => {
+      if (this.sessions.has(sessionId)) {
+        throw new ExtensionRuntimeLifecycleError(
+          "runtime_session_conflict",
+          `Extension runtime session "${sessionId}" already exists.`
+        )
       }
-      throw new ExtensionRuntimeLifecycleError(
-        CONFIGURATION_REVOKED_ERROR.code,
-        CONFIGURATION_REVOKED_ERROR.message
-      )
-    }
-    this.foregroundSession = session
-    return toSessionInfo(session)
+      const replacedSession = this.foregroundSession
+      if (replacedSession && this.sessions.get(replacedSession.sessionId) === replacedSession) {
+        this.revokeForegroundWriterBeforeReplacement(replacedSession)
+      }
+      const session = await this.startSession("foreground", intent, {
+        beforeStart: options?.onSessionStart
+          ? (startedSession) => options.onSessionStart?.(toSessionInfo(startedSession))
+          : undefined,
+        sessionId
+      })
+      if (this.sessions.get(session.sessionId) !== session || !this.isLeaseCurrent(session.lease)) {
+        if (this.sessions.get(session.sessionId) === session) {
+          this.revokeSession(session)
+        }
+        throw new ExtensionRuntimeLifecycleError(
+          CONFIGURATION_REVOKED_ERROR.code,
+          CONFIGURATION_REVOKED_ERROR.message
+        )
+      }
+      this.foregroundSession = session
+      return toSessionInfo(session)
+    })
   }
 
   async discardStorageIssue(sessionId: string, issueId: string): Promise<boolean> {
@@ -684,17 +687,27 @@ export class ExtensionRuntimeManager {
     }
 
     this.terminateIssueState(session)
-    const sessionError: ExtensionRuntimeSessionError = {
-      error,
-      issueRevision: session.storageIssueRevision,
-      sessionId: session.sessionId
-    }
-    this.lastError = sessionError
     this.settleRunOnce(session, {
       error,
       sessionId: session.sessionId,
       status: "error"
     })
+    this.publishError(session, error)
+  }
+
+  private publishError(
+    session: RuntimeSession,
+    error: ExtensionRuntimeError,
+    options: { preserveSameSessionPrimary?: boolean } = {}
+  ): void {
+    const sessionError: ExtensionRuntimeSessionError = {
+      error,
+      issueRevision: session.storageIssueRevision,
+      sessionId: session.sessionId
+    }
+    if (!options.preserveSameSessionPrimary || this.lastError?.sessionId !== session.sessionId) {
+      this.lastError = sessionError
+    }
     try {
       this.options.onError?.(sessionError)
     } catch (listenerError) {
@@ -1161,6 +1174,15 @@ export class ExtensionRuntimeManager {
     return this.options.createSessionId?.() ?? randomUUID()
   }
 
+  private enqueueForegroundTransition<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.foregroundTransitionTail.then(operation)
+    this.foregroundTransitionTail = result.then(
+      () => undefined,
+      () => undefined
+    )
+    return result
+  }
+
   private emitSurface(
     surface: ExtensionSurfaceSnapshot,
     sessionInfo: ExtensionRuntimeSessionInfo
@@ -1423,6 +1445,9 @@ export class ExtensionRuntimeManager {
       .catch(() => {
         session.cacheRetentionReleased = false
         console.error("[jingle:extension-runtime] Cache retention release failed.")
+        this.publishError(session, CACHE_WRITER_LEASE_CLEANUP_ERROR, {
+          preserveSameSessionPrimary: true
+        })
       })
       .finally(() => {
         session.resolveCacheRetentionExitBarrier?.()

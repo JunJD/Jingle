@@ -204,6 +204,54 @@ test("cache coordinator disposes later leases and retries only failed terminal c
   })
 })
 
+test("same-session replacement retains failed old cleanup for dispose retry", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const coordinator = new FileExtensionRuntimeCacheLeaseCoordinator(cacheDir)
+    const firstLease = coordinator.activate("session-1")
+    const firstBackend = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      writerLease: firstLease
+    })
+    const firstSubscription = firstBackend.subscribeStore(scope, () => undefined)
+    await firstSubscription.admission
+    firstSubscription.unsubscribe()
+    coordinator.revokeWrites(firstLease)
+
+    const replacementLease = coordinator.activate("session-1")
+    const replacementBackend = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      writerLease: replacementLease
+    })
+    const replacementSubscription = replacementBackend.subscribeStore(scope, () => undefined)
+    await replacementSubscription.admission
+    replacementSubscription.unsubscribe()
+
+    const firstRetentionPath = getRetentionRecordPath(cacheDir, firstLease)
+    writeFileSync(firstRetentionPath, "not-json")
+    await assert.rejects(coordinator.releaseRetention(firstLease), /coordination failed/)
+    replacementBackend.mutateStore(scope, {
+      kind: "update",
+      removeKeys: [],
+      upsertEntries: [["page", "replacement"]]
+    })
+    await assert.rejects(replacementBackend.flush(), assertBoundedPersistenceFailure)
+
+    await assert.rejects(coordinator.dispose(), (error) => {
+      assert.ok(error instanceof ExtensionRuntimeCacheLeaseCoordinatorError)
+      assert.ok(error.cause instanceof AggregateError)
+      assert.equal(error.cause.errors.length, 1)
+      return true
+    })
+    assert.deepEqual(listWriterLeases(cacheDir), [])
+    assert.deepEqual(listRetentionRecords(cacheDir), [basename(firstRetentionPath)])
+
+    rmSync(firstRetentionPath)
+    await coordinator.dispose()
+    assert.deepEqual(listRetentionRecords(cacheDir), [])
+    assert.deepEqual(listWriterLeases(cacheDir), [])
+    await firstBackend.close()
+    await assert.rejects(replacementBackend.close(), assertBoundedPersistenceFailure)
+  })
+})
+
 test("cache lease coordinator rejects invalid session identity with one bounded error", async () => {
   await withCacheDirectory(async (cacheDir) => {
     const coordinator = new FileExtensionRuntimeCacheLeaseCoordinator(cacheDir)

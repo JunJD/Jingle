@@ -41,7 +41,7 @@ export class FileExtensionRuntimeCacheLeaseCoordinator implements ExtensionRunti
         token: randomBytes(32).toString("hex")
       })
       activateExtensionRuntimeCacheWriterLease(this.cacheDir, lease)
-      this.leases.set(sessionId, lease)
+      this.leases.set(lease.token, lease)
       return lease
     } catch (cause) {
       throw new ExtensionRuntimeCacheLeaseCoordinatorError(cause)
@@ -95,8 +95,8 @@ export class FileExtensionRuntimeCacheLeaseCoordinator implements ExtensionRunti
   }
 
   private deleteLeaseIfCurrent(lease: ExtensionRuntimeCacheWriterLease): void {
-    if (this.leases.get(lease.sessionId)?.token === lease.token) {
-      this.leases.delete(lease.sessionId)
+    if (this.leases.get(lease.token)?.sessionId === lease.sessionId) {
+      this.leases.delete(lease.token)
     }
   }
 
