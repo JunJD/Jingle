@@ -6,6 +6,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -24,6 +25,7 @@ import {
   waitForFatalDiagnosticWrite
 } from "../../src/main/diagnostics/electron-failure"
 import { APPEND_DIAGNOSTIC_GRAPH_EVENT, DiagnosticsLogger } from "../../src/main/diagnostics/logger"
+import { DiagnosticsProcessSession } from "../../src/main/diagnostics/process-session"
 import type {
   DiagnosticGraphEventInput,
   DiagnosticGraphSink
@@ -96,6 +98,212 @@ class CapturingDiagnosticSink implements DiagnosticGraphSink {
     return Object.freeze({ eventId: "diag:test:1", sequence: 1, sessionId: "test" })
   }
 }
+
+test("process session markers classify clean, JavaScript fatal, and unclassified exits", () => {
+  const home = createTempDir("process-session-marker")
+  const logDir = join(home, "logs")
+  const sink = new CapturingDiagnosticSink()
+  const timestamps = [
+    "2026-07-21T01:00:00.000Z",
+    "2026-07-21T01:00:01.000Z",
+    "2026-07-21T01:01:00.000Z",
+    "2026-07-21T01:01:01.000Z",
+    "2026-07-21T01:02:00.000Z",
+    "2026-07-21T01:03:00.000Z"
+  ]
+  let timestampIndex = 0
+  const now = () => new Date(timestamps[timestampIndex++] ?? "invalid")
+  const context = {
+    appVersion: "1.2.3",
+    electronVersion: "37.2.0",
+    isPackaged: true,
+    platform: process.platform
+  }
+  try {
+    const fatal = new DiagnosticsProcessSession({
+      idFactory: () => "11111111-1111-4111-8111-111111111111",
+      logDir,
+      now,
+      sink
+    })
+    assert.equal(fatal.start(context).previousOutcome, "none")
+    assert.equal(fatal.markJsFatal("uncaughtException"), true)
+    assert.equal(fatal.markJsFatal("unhandledRejection"), false)
+    assert.equal(fatal.markCleanExit(), false)
+
+    const clean = new DiagnosticsProcessSession({
+      idFactory: () => "22222222-2222-4222-8222-222222222222",
+      logDir,
+      now,
+      sink
+    })
+    assert.equal(clean.start(context).previousOutcome, "js_fatal")
+    assert.equal(fatal.markCleanExit(), false, "a stale process cannot settle its replacement")
+    assert.equal(clean.markCleanExit(), true)
+
+    const active = new DiagnosticsProcessSession({
+      idFactory: () => "33333333-3333-4333-8333-333333333333",
+      logDir,
+      now,
+      sink
+    })
+    assert.equal(active.start(context).previousOutcome, "clean_exit")
+
+    const replacement = new DiagnosticsProcessSession({
+      idFactory: () => "44444444-4444-4444-8444-444444444444",
+      logDir,
+      now,
+      sink
+    })
+    assert.equal(replacement.start(context).previousOutcome, "abrupt_exit_unclassified")
+
+    const markerPath = join(logDir, "process-session.json")
+    const marker = JSON.parse(readFileSync(markerPath, "utf8")) as Record<string, unknown>
+    assert.equal(marker["sessionId"], "44444444-4444-4444-8444-444444444444")
+    assert.equal(marker["terminal"], null)
+    assert.equal(
+      readdirSync(logDir).some((name) => name.endsWith(".tmp")),
+      false,
+      "atomic replacement leaves no temporary marker after success"
+    )
+    if (process.platform !== "win32") {
+      assert.equal(mode(markerPath), 0o600)
+    }
+    assert.deepEqual(
+      sink.inputs.map((input) => input.eventCode),
+      [
+        "diagnostics.session_started",
+        "process.session_js_fatal",
+        "process.previous_session_js_fatal",
+        "diagnostics.session_started",
+        "process.session_clean_exit",
+        "process.previous_session_clean_exit",
+        "diagnostics.session_started",
+        "process.previous_session_abrupt_exit_unclassified",
+        "diagnostics.session_started"
+      ]
+    )
+  } finally {
+    rmSync(home, { force: true, recursive: true })
+  }
+})
+
+test("invalid process session state is replaced without guessing a native crash", () => {
+  const home = createTempDir("process-session-invalid")
+  const logDir = join(home, "logs")
+  mkdirSync(logDir, { mode: 0o700 })
+  writeFileSync(join(logDir, "process-session.json"), '{"terminal":null}\n', { mode: 0o600 })
+  const sink = new CapturingDiagnosticSink()
+  try {
+    const session = new DiagnosticsProcessSession({
+      idFactory: () => "55555555-5555-4555-8555-555555555555",
+      logDir,
+      now: () => new Date("2026-07-21T02:00:00.000Z"),
+      sink
+    })
+    const started = session.start({
+      appVersion: "1.2.3",
+      electronVersion: "37.2.0",
+      isPackaged: true,
+      platform: process.platform
+    })
+    assert.equal(started.currentSessionId, "55555555-5555-4555-8555-555555555555")
+    assert.equal(started.previousOutcome, "state_unavailable")
+    assert.equal(session.markCleanExit(), true)
+    assert.deepEqual(
+      sink.inputs.map((input) => input.eventCode),
+      [
+        "process.session_state_unavailable",
+        "diagnostics.session_started",
+        "process.session_clean_exit"
+      ]
+    )
+    assert.equal(
+      JSON.stringify(sink.inputs).includes("native_crash"),
+      false,
+      "missing or invalid local state cannot become native crash evidence"
+    )
+    const marker = JSON.parse(readFileSync(join(logDir, "process-session.json"), "utf8")) as {
+      sessionId: string
+      terminal: { kind: string }
+    }
+    assert.equal(marker.sessionId, "55555555-5555-4555-8555-555555555555")
+    assert.equal(marker.terminal.kind, "clean_exit")
+  } finally {
+    rmSync(home, { force: true, recursive: true })
+  }
+})
+
+test("oversize process session state is replaced and the new session remains terminal-capable", () => {
+  const home = createTempDir("process-session-oversize")
+  const logDir = join(home, "logs")
+  mkdirSync(logDir, { mode: 0o700 })
+  writeFileSync(join(logDir, "process-session.json"), "x".repeat(4_096), { mode: 0o600 })
+  const sink = new CapturingDiagnosticSink()
+  try {
+    const session = new DiagnosticsProcessSession({
+      idFactory: () => "88888888-8888-4888-8888-888888888888",
+      logDir,
+      now: () => new Date("2026-07-21T02:10:00.000Z"),
+      sink
+    })
+    assert.equal(
+      session.start({
+        appVersion: "1.2.3",
+        electronVersion: "37.2.0",
+        isPackaged: true,
+        platform: process.platform
+      }).previousOutcome,
+      "state_unavailable"
+    )
+    assert.equal(session.markJsFatal("unhandledRejection"), true)
+    const marker = JSON.parse(readFileSync(join(logDir, "process-session.json"), "utf8")) as {
+      terminal: { kind: string; origin: string }
+    }
+    assert.deepEqual(marker.terminal, {
+      kind: "js_fatal",
+      origin: "unhandledRejection",
+      recordedAt: "2026-07-21T02:10:00.000Z"
+    })
+  } finally {
+    rmSync(home, { force: true, recursive: true })
+  }
+})
+
+test("unsafe process session symlink is replaced without reading or deleting its target", (context) => {
+  if (process.platform === "win32") {
+    context.skip("POSIX symlink boundary")
+    return
+  }
+  const home = createTempDir("process-session-symlink")
+  const logDir = join(home, "logs")
+  const target = join(home, "external-marker.json")
+  mkdirSync(logDir, { mode: 0o700 })
+  writeFileSync(target, SECRET_VALUES.join("\n"), { mode: 0o600 })
+  symlinkSync(target, join(logDir, "process-session.json"))
+  const sink = new CapturingDiagnosticSink()
+  try {
+    const session = new DiagnosticsProcessSession({
+      idFactory: () => "99999999-9999-4999-8999-999999999999",
+      logDir,
+      now: () => new Date("2026-07-21T02:20:00.000Z"),
+      sink
+    })
+    const started = session.start({
+      appVersion: "1.2.3",
+      electronVersion: "37.2.0",
+      isPackaged: true,
+      platform: process.platform
+    })
+    assert.equal(started.previousOutcome, "state_unavailable")
+    assert.equal(started.currentSessionId, "99999999-9999-4999-8999-999999999999")
+    assert.equal(readFileSync(target, "utf8"), SECRET_VALUES.join("\n"))
+    assert.equal(statSync(join(logDir, "process-session.json")).isFile(), true)
+    assertSecretsAbsent(JSON.stringify(sink.inputs))
+  } finally {
+    rmSync(home, { force: true, recursive: true })
+  }
+})
 
 test("Electron failure producers only attach evidence for trusted main errors", () => {
   const sink = new CapturingDiagnosticSink()

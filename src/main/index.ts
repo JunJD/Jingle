@@ -19,6 +19,7 @@ import {
   diagnosticsGraph,
   diagnosticsLogger,
   initializeDiagnostics,
+  markDiagnosticsSessionCleanExit,
   startDiagnosticsSession
 } from "./diagnostics/instance"
 import { disposeAppEntry, installAppEntry } from "./app-entry"
@@ -89,12 +90,25 @@ let pendingOAuthCallbackUrl: string | null = null
 type OpenUrlHandling = { kind: "handled"; owner: "oauth" } | { kind: "unhandled" }
 let shutdownComplete = false
 let shutdownPromise: Promise<void> | null = null
+let cleanShutdownPrepared = false
 const DIAGNOSTICS_SHUTDOWN_FLUSH_TIMEOUT_MS = 1_500
 const bypassSingleInstanceLock = process.env.JINGLE_BDD === "1"
 const hasSingleInstanceLock = bypassSingleInstanceLock ? true : app.requestSingleInstanceLock()
-
 // Simple dev check - replaces @electron-toolkit/utils is.dev
 const isDev = !app.isPackaged
+
+if (hasSingleInstanceLock) {
+  startDiagnosticsSession()
+}
+installProcessDiagnostics({
+  handleFatalErrors: !isDev
+})
+process.on("exit", () => {
+  if (cleanShutdownPrepared) {
+    markDiagnosticsSessionCleanExit()
+  }
+})
+
 const enableDevtoolsNetwork = !app.isPackaged
 configureDevtoolsNetworkRecorder({
   enabled: enableDevtoolsNetwork
@@ -106,10 +120,6 @@ if (enableDevtoolsNetwork) {
     windows: BrowserWindow
   })
 }
-
-installProcessDiagnostics({
-  handleFatalErrors: !isDev
-})
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -290,6 +300,7 @@ async function shutdownMainProcess(): Promise<void> {
       await closeRuntimeCheckpointers()
       await closeDatabase()
       shutdownComplete = true
+      cleanShutdownPrepared = true
     } finally {
       await flushDiagnosticsOnShutdown()
     }
@@ -324,8 +335,6 @@ if (!hasSingleInstanceLock) {
 }
 
 if (hasSingleInstanceLock) {
-  startDiagnosticsSession()
-
   app.on("second-instance", (_event, commandLine) => {
     const protocolUrl = findJingleProtocolUrl(commandLine)
     if (protocolUrl && handleOpenUrl(protocolUrl).kind === "handled") {

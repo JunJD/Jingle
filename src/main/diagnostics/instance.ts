@@ -2,6 +2,7 @@ import { join } from "path"
 import { getJingleHomeDir } from "../storage"
 import { DiagnosticsGraphRecorder } from "./graph"
 import { DiagnosticsLogger } from "./logger"
+import { DiagnosticsProcessSession } from "./process-session"
 import type { DiagnosticEventRef } from "./schema"
 import type { DiagnosticSupportPacketRuntimeIdentity } from "./support-packet"
 
@@ -28,6 +29,11 @@ export const diagnosticsGraph = new DiagnosticsGraphRecorder({
   processKind: "main"
 })
 
+const diagnosticsProcessSession = new DiagnosticsProcessSession({
+  logDir: diagnosticsLogDir,
+  sink: diagnosticsGraph
+})
+
 let diagnosticsSessionContext: DiagnosticsSessionContext | null = null
 let diagnosticsSessionEvent: DiagnosticEventRef | null = null
 
@@ -50,22 +56,16 @@ export function startDiagnosticsSession(): DiagnosticEventRef {
     throw new Error("Diagnostics must be initialized before starting a diagnostics session.")
   }
 
-  diagnosticsSessionEvent ??= diagnosticsGraph.capture({
-    component: "diagnostics",
-    dimensionEntries: [
-      { key: "appVersion", value: diagnosticsSessionContext.appVersion },
-      { key: "electronVersion", value: diagnosticsSessionContext.electronVersion },
-      { key: "isPackaged", value: diagnosticsSessionContext.isPackaged },
-      { key: "platform", value: diagnosticsSessionContext.platform }
-    ],
-    eventCode: "diagnostics.session_started",
-    level: "info",
-    operation: "start-session",
-    recoverable: true,
-    stateImpact: "none",
-    summary: "Jingle diagnostics session started"
-  })
+  diagnosticsSessionEvent ??= diagnosticsProcessSession.start(diagnosticsSessionContext).eventRef
   return diagnosticsSessionEvent
+}
+
+export function markDiagnosticsSessionCleanExit(): boolean {
+  return diagnosticsProcessSession.markCleanExit({ captureEvent: false })
+}
+
+export function markDiagnosticsSessionJsFatal(origin: unknown): boolean {
+  return diagnosticsProcessSession.markJsFatal(origin)
 }
 
 export function getDiagnosticsSupportPacketRuntimeIdentity(): DiagnosticSupportPacketRuntimeIdentity {

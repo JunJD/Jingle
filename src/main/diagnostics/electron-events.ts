@@ -11,7 +11,7 @@ import {
   waitForFatalDiagnosticWrite,
   type FatalDiagnosticWriteOutcome
 } from "./electron-failure"
-import { diagnosticsGraph, diagnosticsLogger } from "./instance"
+import { diagnosticsGraph, diagnosticsLogger, markDiagnosticsSessionJsFatal } from "./instance"
 import {
   errorFromUnhandledRejection,
   formatFatalMainProcessError,
@@ -30,6 +30,7 @@ function recordFatalMainProcessError(
   error: unknown,
   origin: string
 ): Promise<FatalDiagnosticWriteOutcome> {
+  markDiagnosticsSessionJsFatal(origin)
   captureElectronFailure(diagnosticsGraph, {
     error,
     kind: "main-process-fatal",

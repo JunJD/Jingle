@@ -16,6 +16,7 @@ import test from "node:test"
 import type { IpcMain, IpcMainInvokeEvent, WebContents } from "electron"
 import { DiagnosticsGraphRecorder } from "../../src/main/diagnostics/graph"
 import { DiagnosticsLogger } from "../../src/main/diagnostics/logger"
+import { DiagnosticsProcessSession } from "../../src/main/diagnostics/process-session"
 import {
   createDiagnosticSupportPacket,
   DiagnosticSupportPacketError,
@@ -140,6 +141,79 @@ test("support packet exports only redacted causal records and their verified evi
       assert.equal(statSync(path).nlink, 1)
       assert.equal(readdirSync(destination).length, 1)
     }
+  } finally {
+    rmSync(source.root, { force: true, recursive: true })
+    rmSync(destination, { force: true, recursive: true })
+  }
+})
+
+test("support packet carries the causal previous-session abrupt classification", async () => {
+  const source = createSource("process-session")
+  const destination = createTempDirectory("process-session-output")
+  const context = {
+    appVersion: "1.2.3",
+    electronVersion: "37.2.0",
+    isPackaged: true,
+    platform: process.platform
+  }
+  try {
+    const first = new DiagnosticsProcessSession({
+      idFactory: () => "66666666-6666-4666-8666-666666666666",
+      logDir: source.logDir,
+      now: () => new Date("2026-07-21T03:00:00.000Z"),
+      sink: source.graph
+    })
+    assert.equal(first.start(context).previousOutcome, "none")
+    const second = new DiagnosticsProcessSession({
+      idFactory: () => "77777777-7777-4777-8777-777777777777",
+      logDir: source.logDir,
+      now: () => new Date("2026-07-21T03:01:00.000Z"),
+      sink: source.graph
+    })
+    assert.equal(second.start(context).previousOutcome, "abrupt_exit_unclassified")
+    assert.equal(second.markCleanExit({ captureEvent: false }), true)
+    const third = new DiagnosticsProcessSession({
+      idFactory: () => "88888888-8888-4888-8888-888888888888",
+      logDir: source.logDir,
+      now: () => new Date("2026-07-21T03:01:30.000Z"),
+      sink: source.graph
+    })
+    assert.equal(third.start(context).previousOutcome, "clean_exit")
+    await source.graph.flush()
+
+    const result = await createDiagnosticSupportPacket({
+      destinationDirectory: destination,
+      idFactory: () => "packet-process-session",
+      now: () => new Date("2026-07-21T03:02:00.000Z"),
+      runtimeIdentity: runtimeIdentity(),
+      sourceLogDirectory: source.logDir,
+      sourceRootDirectory: source.root
+    })
+    assert.equal(result.kind, "exported")
+    const packet = readOnlyPacket(destination).packet
+    const abrupt = packet.events.find(
+      (event) => event.eventCode === "process.previous_session_abrupt_exit_unclassified"
+    )
+    const current = packet.events.find(
+      (event) =>
+        event.eventCode === "diagnostics.session_started" &&
+        event.parentEventIds.includes(abrupt?.eventId ?? "")
+    )
+    assert.ok(abrupt)
+    assert.ok(current)
+    assert.equal(abrupt.evidenceRefs.length, 0)
+    assert.deepEqual(abrupt.refs, [{ id: "main", kind: "process" }])
+    const clean = packet.events.find(
+      (event) => event.eventCode === "process.previous_session_clean_exit"
+    )
+    const afterClean = packet.events.find(
+      (event) =>
+        event.eventCode === "diagnostics.session_started" &&
+        event.parentEventIds.includes(clean?.eventId ?? "")
+    )
+    assert.ok(clean)
+    assert.ok(afterClean)
+    assert.equal(clean.evidenceRefs.length, 0)
   } finally {
     rmSync(source.root, { force: true, recursive: true })
     rmSync(destination, { force: true, recursive: true })
