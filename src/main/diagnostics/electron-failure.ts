@@ -51,6 +51,10 @@ type ElectronFailureInput =
       origin: unknown
     }
   | {
+      error: unknown
+      kind: "main-process-shutdown-failed"
+    }
+  | {
       errorCode?: unknown
       exitCode?: unknown
       kind: "renderer-window-failure"
@@ -239,6 +243,35 @@ function captureMainProcessFailure(
   })
 }
 
+function captureMainProcessShutdownFailure(
+  sink: DiagnosticGraphSink,
+  input: Extract<ElectronFailureInput, { kind: "main-process-shutdown-failed" }>
+): DiagnosticEventRef {
+  const error = readTrustedMainProcessError(input.error)
+  return sink.capture({
+    component: "electron",
+    eventCode: "process.shutdown_failed",
+    ...(error
+      ? {
+          evidence: [
+            {
+              contentType: "application/json",
+              kind: "error",
+              value: error
+            }
+          ]
+        }
+      : {}),
+    fingerprint: "process.shutdown_failed",
+    level: "error",
+    operation: "shutdown-main-process",
+    recoverable: false,
+    refs: [{ id: "main", kind: "process" }],
+    stateImpact: "shutdown_incomplete",
+    summary: "Electron main process shutdown did not complete"
+  })
+}
+
 function captureChildProcessFailure(
   sink: DiagnosticGraphSink,
   input: Extract<ElectronFailureInput, { kind: "child-process-gone" }>
@@ -410,6 +443,8 @@ export function captureElectronFailure(
     switch (input.kind) {
       case "main-process-fatal":
         return captureMainProcessFailure(sink, input)
+      case "main-process-shutdown-failed":
+        return captureMainProcessShutdownFailure(sink, input)
       case "child-process-gone":
         return captureChildProcessFailure(sink, input)
       case "renderer-window-failure":

@@ -14,7 +14,10 @@ import { registerNativeExtensionAssetProtocol } from "./native-extensions/asset-
 import { NATIVE_EXTENSION_ASSET_PROTOCOL } from "./native-extensions/assets"
 import { startNativeMinimalIsland, stopNativeMinimalIsland } from "./services/native-minimal-island"
 import { stopNativeSelectionCapture } from "./services/native-selection-capture"
-import { installProcessDiagnostics } from "./diagnostics/electron-events"
+import {
+  installProcessDiagnostics,
+  recordMainProcessShutdownFailure
+} from "./diagnostics/electron-events"
 import {
   diagnosticsGraph,
   diagnosticsLogger,
@@ -301,6 +304,9 @@ async function shutdownMainProcess(): Promise<void> {
       await closeDatabase()
       shutdownComplete = true
       cleanShutdownPrepared = true
+    } catch (error) {
+      recordMainProcessShutdownFailure(error)
+      throw error
     } finally {
       await flushDiagnosticsOnShutdown()
     }

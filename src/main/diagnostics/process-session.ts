@@ -33,6 +33,7 @@ export type PreviousProcessSessionOutcome =
   | "clean_exit"
   | "js_fatal"
   | "none"
+  | "shutdown_failed"
   | "state_unavailable"
 
 interface ActiveProcessSessionMarker {
@@ -57,10 +58,18 @@ interface FatalProcessSessionMarker extends Omit<ActiveProcessSessionMarker, "te
   }
 }
 
+interface ShutdownFailedProcessSessionMarker extends Omit<ActiveProcessSessionMarker, "terminal"> {
+  terminal: {
+    kind: "shutdown_failed"
+    recordedAt: string
+  }
+}
+
 type ProcessSessionMarker =
   | ActiveProcessSessionMarker
   | CleanProcessSessionMarker
   | FatalProcessSessionMarker
+  | ShutdownFailedProcessSessionMarker
 
 interface ProcessSessionRuntimeContext {
   appVersion: string
@@ -147,6 +156,16 @@ function parseProcessSessionMarker(value: unknown): ProcessSessionMarker {
     return {
       ...base,
       terminal: { kind: "clean_exit", recordedAt: terminal["recordedAt"] }
+    }
+  }
+  if (
+    hasExactKeys(terminal, ["kind", "recordedAt"]) &&
+    terminal["kind"] === "shutdown_failed" &&
+    isIsoTimestamp(terminal["recordedAt"])
+  ) {
+    return {
+      ...base,
+      terminal: { kind: "shutdown_failed", recordedAt: terminal["recordedAt"] }
     }
   }
   if (
@@ -334,6 +353,10 @@ export class DiagnosticsProcessSession {
     return this.markTerminal("js_fatal", normalizeFatalOrigin(origin))
   }
 
+  markShutdownFailed(): boolean {
+    return this.markTerminal("shutdown_failed")
+  }
+
   private capturePreviousOutcome(
     outcome: PreviousProcessSessionOutcome,
     previous: ProcessSessionMarker | null
@@ -373,6 +396,18 @@ export class DiagnosticsProcessSession {
         refs: [{ id: "main", kind: "process" }],
         stateImpact: "none",
         summary: "Previous Jingle process session completed cleanly"
+      })
+    }
+    if (outcome === "shutdown_failed") {
+      return this.sink.capture({
+        component: "electron",
+        eventCode: "process.previous_session_shutdown_failed",
+        level: "warn",
+        operation: "classify-previous-session",
+        recoverable: true,
+        refs: [{ id: "main", kind: "process" }],
+        stateImpact: "previous_process_shutdown_incomplete",
+        summary: "Previous Jingle process session recorded an incomplete shutdown"
       })
     }
     return null
@@ -421,7 +456,7 @@ export class DiagnosticsProcessSession {
   }
 
   private markTerminal(
-    kind: "clean_exit" | "js_fatal",
+    kind: "clean_exit" | "js_fatal" | "shutdown_failed",
     origin?: ProcessSessionFatalOrigin,
     captureEvent = true
   ): boolean {
@@ -434,11 +469,13 @@ export class DiagnosticsProcessSession {
         return false
       }
       const recordedAt = this.readTimestamp()
-      const terminal =
+      const terminal: Exclude<ProcessSessionMarker["terminal"], null> =
         kind === "js_fatal"
-          ? ({ kind, origin: origin ?? "unknown", recordedAt } as const)
-          : ({ kind, recordedAt } as const)
-      const next = { ...current, terminal } satisfies ProcessSessionMarker
+          ? { kind, origin: origin ?? "unknown", recordedAt }
+          : kind === "shutdown_failed"
+            ? { kind, recordedAt }
+            : { kind: "clean_exit", recordedAt }
+      const next: ProcessSessionMarker = { ...current, terminal }
       writeMarkerAtomically(this.markerPath, next)
       if (captureEvent) {
         this.sink.capture({
@@ -448,17 +485,26 @@ export class DiagnosticsProcessSession {
           eventCode:
             terminal.kind === "js_fatal"
               ? "process.session_js_fatal"
-              : "process.session_clean_exit",
-          level: terminal.kind === "js_fatal" ? "error" : "info",
+              : terminal.kind === "shutdown_failed"
+                ? "process.session_shutdown_failed"
+                : "process.session_clean_exit",
+          level: terminal.kind === "clean_exit" ? "info" : "error",
           operation: "settle-process-session",
           parentEvents: [this.sessionEvent],
-          recoverable: terminal.kind !== "js_fatal",
+          recoverable: terminal.kind === "clean_exit",
           refs: [{ id: "main", kind: "process" }],
-          stateImpact: terminal.kind === "js_fatal" ? "process_terminating" : "none",
+          stateImpact:
+            terminal.kind === "js_fatal"
+              ? "process_terminating"
+              : terminal.kind === "shutdown_failed"
+                ? "shutdown_incomplete"
+                : "none",
           summary:
             terminal.kind === "js_fatal"
               ? "Jingle process session recorded a JavaScript fatal error"
-              : "Jingle process session completed cleanly"
+              : terminal.kind === "shutdown_failed"
+                ? "Jingle process session recorded an incomplete shutdown"
+                : "Jingle process session completed cleanly"
         })
       }
       return true

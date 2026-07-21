@@ -11,7 +11,12 @@ import {
   waitForFatalDiagnosticWrite,
   type FatalDiagnosticWriteOutcome
 } from "./electron-failure"
-import { diagnosticsGraph, diagnosticsLogger, markDiagnosticsSessionJsFatal } from "./instance"
+import {
+  diagnosticsGraph,
+  diagnosticsLogger,
+  markDiagnosticsSessionJsFatal,
+  markDiagnosticsSessionShutdownFailed
+} from "./instance"
 import {
   errorFromUnhandledRejection,
   formatFatalMainProcessError,
@@ -110,6 +115,31 @@ export function installProcessDiagnostics(options: ProcessDiagnosticsOptions = {
     })
     diagnosticsLogger.error("Electron child process gone", details)
   })
+}
+
+export function recordMainProcessShutdownFailure(error: unknown): void {
+  try {
+    markDiagnosticsSessionShutdownFailed()
+  } catch {
+    console.error("[Diagnostics] Failed to mark main process shutdown failure.")
+  }
+  captureElectronFailure(diagnosticsGraph, {
+    error,
+    kind: "main-process-shutdown-failed"
+  })
+  try {
+    void diagnosticsLogger
+      .errorAndFlush("Main process shutdown failed", {
+        error: serializeProcessError(error),
+        eventCode: "process.shutdown_failed",
+        fingerprint: "process.shutdown_failed",
+        recoverable: false,
+        stateImpact: "shutdown_incomplete"
+      })
+      .catch(() => undefined)
+  } catch {
+    console.error("[Diagnostics] Failed to enqueue main process shutdown failure.")
+  }
 }
 
 export function attachWindowDiagnostics(

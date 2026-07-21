@@ -69,6 +69,10 @@ export function markDiagnosticsSessionJsFatal(origin: unknown): boolean {
   return diagnosticsProcessSession.markJsFatal(origin)
 }
 
+export function markDiagnosticsSessionShutdownFailed(): boolean {
+  return diagnosticsProcessSession.markShutdownFailed()
+}
+
 export function getDiagnosticsSupportPacketRuntimeIdentity(): DiagnosticSupportPacketRuntimeIdentity {
   if (!diagnosticsSessionContext) {
     throw new Error("Diagnostics must be initialized before exporting a support packet.")

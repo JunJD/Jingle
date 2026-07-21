@@ -100,7 +100,7 @@ class CapturingDiagnosticSink implements DiagnosticGraphSink {
   }
 }
 
-test("process session markers classify clean, JavaScript fatal, and unclassified exits", () => {
+test("process session markers classify clean, failed shutdown, JavaScript fatal, and unclassified exits", () => {
   const home = createTempDir("process-session-marker")
   const logDir = join(home, "logs")
   const sink = new CapturingDiagnosticSink()
@@ -110,7 +110,9 @@ test("process session markers classify clean, JavaScript fatal, and unclassified
     "2026-07-21T01:01:00.000Z",
     "2026-07-21T01:01:01.000Z",
     "2026-07-21T01:02:00.000Z",
-    "2026-07-21T01:03:00.000Z"
+    "2026-07-21T01:02:01.000Z",
+    "2026-07-21T01:03:00.000Z",
+    "2026-07-21T01:04:00.000Z"
   ]
   let timestampIndex = 0
   const now = () => new Date(timestamps[timestampIndex++] ?? "invalid")
@@ -142,16 +144,26 @@ test("process session markers classify clean, JavaScript fatal, and unclassified
     assert.equal(fatal.markCleanExit(), false, "a stale process cannot settle its replacement")
     assert.equal(clean.markCleanExit(), true)
 
-    const active = new DiagnosticsProcessSession({
+    const failedShutdown = new DiagnosticsProcessSession({
       idFactory: () => "33333333-3333-4333-8333-333333333333",
       logDir,
       now,
       sink
     })
-    assert.equal(active.start(context).previousOutcome, "clean_exit")
+    assert.equal(failedShutdown.start(context).previousOutcome, "clean_exit")
+    assert.equal(failedShutdown.markShutdownFailed(), true)
+    assert.equal(failedShutdown.markCleanExit(), false)
+
+    const active = new DiagnosticsProcessSession({
+      idFactory: () => "44444444-4444-4444-8444-444444444444",
+      logDir,
+      now,
+      sink
+    })
+    assert.equal(active.start(context).previousOutcome, "shutdown_failed")
 
     const replacement = new DiagnosticsProcessSession({
-      idFactory: () => "44444444-4444-4444-8444-444444444444",
+      idFactory: () => "55555555-5555-4555-8555-555555555555",
       logDir,
       now,
       sink
@@ -160,7 +172,7 @@ test("process session markers classify clean, JavaScript fatal, and unclassified
 
     const markerPath = join(logDir, "process-session.json")
     const marker = JSON.parse(readFileSync(markerPath, "utf8")) as Record<string, unknown>
-    assert.equal(marker["sessionId"], "44444444-4444-4444-8444-444444444444")
+    assert.equal(marker["sessionId"], "55555555-5555-4555-8555-555555555555")
     assert.equal(marker["terminal"], null)
     assert.equal(
       readdirSync(logDir).some((name) => name.endsWith(".tmp")),
@@ -179,6 +191,9 @@ test("process session markers classify clean, JavaScript fatal, and unclassified
         "diagnostics.session_started",
         "process.session_clean_exit",
         "process.previous_session_clean_exit",
+        "diagnostics.session_started",
+        "process.session_shutdown_failed",
+        "process.previous_session_shutdown_failed",
         "diagnostics.session_started",
         "process.previous_session_abrupt_exit_unclassified",
         "diagnostics.session_started"
@@ -316,6 +331,10 @@ test("Electron failure producers only attach evidence for trusted main errors", 
     origin: hostile
   })
   captureElectronFailure(sink, {
+    error: new Error(hostile),
+    kind: "main-process-shutdown-failed"
+  })
+  captureElectronFailure(sink, {
     exitCode: 9,
     kind: "child-process-gone",
     processType: hostile,
@@ -333,15 +352,21 @@ test("Electron failure producers only attach evidence for trusted main errors", 
 
   assert.deepEqual(
     sink.inputs.map(({ eventCode }) => eventCode),
-    ["process.fatal_error", "electron.child_process_gone", "electron.renderer_process_gone"]
+    [
+      "process.fatal_error",
+      "process.shutdown_failed",
+      "electron.child_process_gone",
+      "electron.renderer_process_gone"
+    ]
   )
   assert.deepEqual(sink.inputs[0].refs, [{ id: "main", kind: "process" }])
-  assert.deepEqual(sink.inputs[1].refs, [{ id: "child:unknown", kind: "process" }])
-  assert.deepEqual(sink.inputs[2].refs, [
+  assert.deepEqual(sink.inputs[1].refs, [{ id: "main", kind: "process" }])
+  assert.deepEqual(sink.inputs[2].refs, [{ id: "child:unknown", kind: "process" }])
+  assert.deepEqual(sink.inputs[3].refs, [
     { id: "7", kind: "window" },
     { id: "42", kind: "web-contents" }
   ])
-  assert.deepEqual(sink.inputs[2].dimensionEntries, [
+  assert.deepEqual(sink.inputs[3].dimensionEntries, [
     { key: "phase", value: "renderer-process" },
     { key: "windowKind", value: "unknown" },
     { key: "reason", value: "unknown" },
@@ -349,9 +374,11 @@ test("Electron failure producers only attach evidence for trusted main errors", 
   ])
   assert.equal(sink.inputs[0].evidence?.length, 1)
   assert.equal(sink.inputs[0].evidence?.[0]?.kind, "error")
-  assert.equal(sink.inputs[1].evidence, undefined)
+  assert.equal(sink.inputs[1].evidence?.length, 1)
+  assert.equal(sink.inputs[1].evidence?.[0]?.kind, "error")
   assert.equal(sink.inputs[2].evidence, undefined)
-  for (const input of sink.inputs.slice(1)) {
+  assert.equal(sink.inputs[3].evidence, undefined)
+  for (const input of sink.inputs.slice(2)) {
     assertSecretsAbsent(JSON.stringify(input))
     assert.equal(JSON.stringify(input).includes("user-authored renderer content"), false)
   }
