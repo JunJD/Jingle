@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { coffeeManifest } from "../../installable-extensions/coffee/manifest"
+import { coffeeRuntimeMetadata } from "../../installable-extensions/coffee/runtime-metadata"
 import { notionManifest } from "../../installable-extensions/notion/manifest"
 import { commandNeedsLauncherArguments } from "../../src/renderer/src/launcher-shell/command-arguments"
 import type { LauncherCommandRoute } from "../../src/renderer/src/launcher-shell/pages/types"
@@ -145,6 +146,7 @@ test("launcher argument page requires an explicit command contract", () => {
     commandNeedsLauncherArguments({
       argumentsSchema: argumentSchema,
       requiresLauncherArguments: false,
+      requiresSearchArgument: false,
       route: createRoute()
     }),
     false
@@ -153,6 +155,7 @@ test("launcher argument page requires an explicit command contract", () => {
     commandNeedsLauncherArguments({
       argumentsSchema: argumentSchema,
       requiresLauncherArguments: true,
+      requiresSearchArgument: false,
       route: createRoute()
     }),
     true
@@ -173,6 +176,7 @@ test("launcher argument page is skipped when launch props already provide input"
     commandNeedsLauncherArguments({
       argumentsSchema: argumentSchema,
       requiresLauncherArguments: true,
+      requiresSearchArgument: false,
       route: createRoute({ arguments: { duration: "30m" } })
     }),
     false
@@ -181,6 +185,45 @@ test("launcher argument page is skipped when launch props already provide input"
     commandNeedsLauncherArguments({
       argumentsSchema: argumentSchema,
       requiresLauncherArguments: true,
+      requiresSearchArgument: true,
+      route: createRoute({ fallbackText: "30m" })
+    }),
+    false
+  )
+})
+
+test("launcher fallback text satisfies only commands with typed search arguments", () => {
+  const argumentSchema = [
+    {
+      name: "duration",
+      required: true,
+      title: "Duration",
+      type: "text"
+    }
+  ]
+
+  assert.equal(
+    commandNeedsLauncherArguments({
+      argumentsSchema: argumentSchema,
+      requiresLauncherArguments: true,
+      requiresSearchArgument: false,
+      route: createRoute({ fallbackText: "30m" })
+    }),
+    true
+  )
+})
+
+test("Coffee typed search hints keep fallback text execution", () => {
+  const command = coffeeManifest.commands.find((candidate) => candidate.name === "caffeinateFor")
+  const runtimeCommand = coffeeRuntimeMetadata.commands.find(
+    (candidate) => candidate.name === "caffeinateFor"
+  )
+
+  assert.equal(
+    commandNeedsLauncherArguments({
+      argumentsSchema: command?.arguments,
+      requiresLauncherArguments: command?.requiresLauncherArguments === true,
+      requiresSearchArgument: Boolean(runtimeCommand?.search?.argumentHints?.length),
       route: createRoute({ fallbackText: "30m" })
     }),
     false

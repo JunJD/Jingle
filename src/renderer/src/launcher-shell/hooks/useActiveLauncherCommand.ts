@@ -62,6 +62,7 @@ export interface ActiveLauncherCommandState {
   activeCommandOwnerId: string | null
   activeCommandPreferences: Record<string, unknown> | null
   activeCommandRequiresLauncherArguments: boolean
+  activeCommandRequiresSearchArgument: boolean
   activeCommandSurfaceEnabled: boolean
   activeCommandThreadsEnabled: boolean
   activeViewCommand: LauncherViewCommandDefinition | null
@@ -158,6 +159,7 @@ export function useActiveLauncherCommand(
     : null
   const activeCommandRequiresLauncherArguments =
     activeManifestCommand?.requiresLauncherArguments === true
+  const activeCommandRequiresSearchArgument = activeCommand?.requiresSearchArgument === true
   const viewportHeight = !isLauncherCommandRoute(route)
     ? fallbackViewportHeight
     : (activeViewCommand?.getViewportHeight(shellConfig) ?? fallbackViewportHeight)
@@ -230,6 +232,7 @@ export function useActiveLauncherCommand(
       commandNeedsLauncherArguments({
         argumentsSchema: activeCommandArguments,
         requiresLauncherArguments: activeCommandRequiresLauncherArguments,
+        requiresSearchArgument: activeCommandRequiresSearchArgument,
         route
       })
     ) {
@@ -301,6 +304,7 @@ export function useActiveLauncherCommand(
     activeCommandOwner?.manifest.id,
     activeCommandPreferences,
     activeCommandRequiresLauncherArguments,
+    activeCommandRequiresSearchArgument,
     activeNoViewCommand,
     closeActivePlugin,
     hideLauncher,
@@ -323,6 +327,7 @@ export function useActiveLauncherCommand(
     activeCommandOwnerId,
     activeCommandPreferences,
     activeCommandRequiresLauncherArguments,
+    activeCommandRequiresSearchArgument,
     activeCommandSurfaceEnabled,
     activeCommandThreadsEnabled,
     activeViewCommand,

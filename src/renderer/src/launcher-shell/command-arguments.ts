@@ -7,12 +7,13 @@ function hasRouteArguments(route: LauncherCommandRoute): boolean {
 export function commandNeedsLauncherArguments(input: {
   argumentsSchema: readonly unknown[] | undefined | null
   requiresLauncherArguments: boolean
+  requiresSearchArgument: boolean
   route: LauncherCommandRoute
 }): boolean {
   return (
     input.requiresLauncherArguments &&
     Boolean(input.argumentsSchema?.length) &&
     !hasRouteArguments(input.route) &&
-    input.route.launchProps?.fallbackText === undefined
+    !(input.requiresSearchArgument && input.route.launchProps?.fallbackText !== undefined)
   )
 }

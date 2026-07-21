@@ -120,6 +120,7 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
     activeCommandOwner,
     activeCommandPreferences,
     activeCommandRequiresLauncherArguments,
+    activeCommandRequiresSearchArgument,
     activeCommandSurfaceEnabled,
     activeCommandThreadsEnabled,
     activeViewCommand,
@@ -156,6 +157,7 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
     commandNeedsLauncherArguments({
       argumentsSchema: activeCommandArguments,
       requiresLauncherArguments: activeCommandRequiresLauncherArguments,
+      requiresSearchArgument: activeCommandRequiresSearchArgument,
       route
     })
   ) {
