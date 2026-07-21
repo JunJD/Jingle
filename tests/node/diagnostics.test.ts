@@ -5,6 +5,11 @@ import { join } from "node:path"
 import test from "node:test"
 import { DiagnosticsLogger } from "../../src/main/diagnostics/logger"
 import {
+  diagnosticsBuildIdentity,
+  getDiagnosticsBuildSourceRevision,
+  parseDiagnosticsBuildIdentity
+} from "../../src/main/diagnostics/build-identity"
+import {
   errorFromUnhandledRejection,
   formatFatalMainProcessError,
   serializeProcessError
@@ -17,6 +22,70 @@ function createTempLogPaths(): { logDir: string; rootDir: string } {
   mkdirSync(rootDir, { recursive: true })
   return { logDir: join(rootDir, "logs"), rootDir }
 }
+
+test("diagnostics build identity accepts only exact build-declared revisions", () => {
+  assert.deepEqual(diagnosticsBuildIdentity, { kind: "untrusted" })
+  assert.deepEqual(getDiagnosticsBuildSourceRevision(), {
+    kind: "unavailable",
+    reason: "untrusted-build"
+  })
+  assert.deepEqual(
+    parseDiagnosticsBuildIdentity({
+      declaredBy: "release-workflow",
+      kind: "build-declared",
+      sourceRevision: "a".repeat(40)
+    }),
+    {
+      declaredBy: "release-workflow",
+      kind: "build-declared",
+      sourceRevision: "a".repeat(40)
+    }
+  )
+  assert.deepEqual(
+    getDiagnosticsBuildSourceRevision(
+      parseDiagnosticsBuildIdentity({
+        declaredBy: "release-workflow",
+        kind: "build-declared",
+        sourceRevision: "b".repeat(64)
+      })
+    ),
+    { kind: "available", provenance: "build-declared", value: "b".repeat(64) }
+  )
+
+  for (const invalid of [
+    { declaredBy: "release-workflow", kind: "build-declared" },
+    {
+      declaredBy: "release-workflow",
+      kind: "build-declared",
+      sourceRevision: "A".repeat(40)
+    },
+    {
+      declaredBy: "release-workflow",
+      kind: "build-declared",
+      sourceRevision: "a".repeat(39)
+    },
+    {
+      declaredBy: "release-workflow",
+      kind: "build-declared",
+      sourceRevision: "a".repeat(41)
+    },
+    {
+      declaredBy: "local-shell",
+      kind: "build-declared",
+      sourceRevision: "a".repeat(40)
+    },
+    {
+      declaredBy: "release-workflow",
+      kind: "build-declared",
+      sourceRevision: "a".repeat(40),
+      trusted: true
+    },
+    { kind: "untrusted", sourceRevision: "a".repeat(40) },
+    { kind: "development" }
+  ]) {
+    assert.throws(() => parseDiagnosticsBuildIdentity(invalid), /Invalid Jingle diagnostics/)
+  }
+})
 
 test("diagnostics logger writes structured local log records", async () => {
   const { logDir, rootDir } = createTempLogPaths()
@@ -678,8 +747,13 @@ test("diagnostics singleton requires explicit Electron bootstrap initialization"
   process.env.JINGLE_HOME = rootDir
 
   try {
-    const { diagnosticsGraph, diagnosticsLogger, initializeDiagnostics, startDiagnosticsSession } =
-      await import("../../src/main/diagnostics/instance")
+    const {
+      diagnosticsGraph,
+      diagnosticsLogger,
+      getDiagnosticsSupportPacketRuntimeIdentity,
+      initializeDiagnostics,
+      startDiagnosticsSession
+    } = await import("../../src/main/diagnostics/instance")
     const appLogPaths: string[] = []
     const initialization = {
       appVersion: "3.2.1",
@@ -697,6 +771,10 @@ test("diagnostics singleton requires explicit Electron bootstrap initialization"
     )
 
     initializeDiagnostics(initialization)
+    assert.deepEqual(getDiagnosticsSupportPacketRuntimeIdentity().sourceRevision, {
+      kind: "unavailable",
+      reason: "untrusted-build"
+    })
     assert.deepEqual(appLogPaths, [expectedLogDir])
     assert.throws(
       () => initializeDiagnostics(initialization),

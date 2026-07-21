@@ -53,7 +53,11 @@ function runtimeIdentity() {
     electronVersion: "37.2.0",
     isPackaged: true,
     platform: process.platform,
-    sourceRevision: { kind: "available", value: "a".repeat(40) }
+    sourceRevision: {
+      kind: "available",
+      provenance: "build-declared",
+      value: "a".repeat(40)
+    }
   } as const
 }
 
@@ -141,6 +145,31 @@ test("support packet exports only redacted causal records and their verified evi
       assert.equal(statSync(path).nlink, 1)
       assert.equal(readdirSync(destination).length, 1)
     }
+  } finally {
+    rmSync(source.root, { force: true, recursive: true })
+    rmSync(destination, { force: true, recursive: true })
+  }
+})
+
+test("support packet preserves an untrusted build without inventing a source revision", async () => {
+  const source = createSource("untrusted-build")
+  const destination = createTempDirectory("untrusted-build-output")
+  try {
+    const result = await createDiagnosticSupportPacket({
+      destinationDirectory: destination,
+      idFactory: () => "packet-untrusted-build",
+      runtimeIdentity: {
+        ...runtimeIdentity(),
+        sourceRevision: { kind: "unavailable", reason: "untrusted-build" }
+      },
+      sourceLogDirectory: source.logDir,
+      sourceRootDirectory: source.root
+    })
+    assert.equal(result.kind, "exported")
+    assert.deepEqual(readOnlyPacket(destination).packet.manifest.sourceRevision, {
+      kind: "unavailable",
+      reason: "untrusted-build"
+    })
   } finally {
     rmSync(source.root, { force: true, recursive: true })
     rmSync(destination, { force: true, recursive: true })
@@ -494,7 +523,11 @@ test("support packet preserves typed unavailable and invalid-revision failures",
         destinationDirectory: destination,
         runtimeIdentity: {
           ...runtimeIdentity(),
-          sourceRevision: { kind: "available", value: "not-a-revision" }
+          sourceRevision: {
+            kind: "available",
+            provenance: "build-declared",
+            value: "not-a-revision"
+          }
         },
         sourceLogDirectory: source.logDir,
         sourceRootDirectory: source.root

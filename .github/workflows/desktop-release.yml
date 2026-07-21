@@ -155,6 +155,9 @@ jobs:
     needs: preflight
     permissions:
       contents: read
+    env:
+      JINGLE_BUILD_PROVENANCE: release-workflow
+      JINGLE_BUILD_SOURCE_REVISION: ${{ needs.preflight.outputs.main_sha }}
     strategy:
       fail-fast: false
       matrix:

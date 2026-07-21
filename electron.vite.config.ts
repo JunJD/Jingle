@@ -4,8 +4,25 @@ import { defineConfig } from "electron-vite"
 import { buildSync } from "esbuild"
 import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
+import { parseDiagnosticsBuildIdentity } from "./src/main/diagnostics/build-identity"
 
 const pkg = JSON.parse(readFileSync("./package.json", "utf-8"))
+
+function resolveDiagnosticsBuildIdentity(): ReturnType<typeof parseDiagnosticsBuildIdentity> {
+  const provenance = process.env.JINGLE_BUILD_PROVENANCE
+  const sourceRevision = process.env.JINGLE_BUILD_SOURCE_REVISION
+  if (provenance === undefined && sourceRevision === undefined) {
+    return { kind: "untrusted" }
+  }
+
+  return parseDiagnosticsBuildIdentity({
+    declaredBy: provenance?.trim(),
+    kind: "build-declared",
+    sourceRevision: sourceRevision?.trim()
+  })
+}
+
+const diagnosticsBuildIdentity = resolveDiagnosticsBuildIdentity()
 
 // Plugin to copy resources to output
 function copyResources(): { name: string; closeBundle: () => void } {
@@ -89,6 +106,9 @@ function copyResources(): { name: string; closeBundle: () => void } {
 
 export default defineConfig({
   main: {
+    define: {
+      __JINGLE_DIAGNOSTICS_BUILD_IDENTITY__: JSON.stringify(diagnosticsBuildIdentity)
+    },
     resolve: {
       alias: {
         "@ai-core": resolve("src/renderer/src/ai-core"),
@@ -124,6 +144,9 @@ export default defineConfig({
       lib: {
         entry: {
           "database-bootstrap-audit": resolve("src/main/db/bootstrap-audit-entry.ts"),
+          "diagnostics-build-identity-audit": resolve(
+            "src/main/diagnostics/build-identity.ts"
+          ),
           "extension-runtime-entry": resolve("src/extension-runtime/entry.ts"),
           index: resolve("src/main/index.ts"),
           "ripgrep-executable-audit": resolve(

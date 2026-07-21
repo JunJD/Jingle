@@ -5,6 +5,7 @@ import { DiagnosticsLogger } from "./logger"
 import { DiagnosticsProcessSession } from "./process-session"
 import type { DiagnosticEventRef } from "./schema"
 import type { DiagnosticSupportPacketRuntimeIdentity } from "./support-packet"
+import { getDiagnosticsBuildSourceRevision } from "./build-identity"
 
 export interface DiagnosticsInitialization {
   appVersion: string
@@ -74,6 +75,6 @@ export function getDiagnosticsSupportPacketRuntimeIdentity(): DiagnosticSupportP
   }
   return {
     ...diagnosticsSessionContext,
-    sourceRevision: { kind: "unavailable", reason: "not-embedded" }
+    sourceRevision: getDiagnosticsBuildSourceRevision()
   }
 }

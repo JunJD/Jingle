@@ -359,6 +359,26 @@ for (const packageName of requiredPackages) {
   requireFromApp(packageName)
 }
 
+const {
+  diagnosticsBuildIdentity,
+  parseDiagnosticsBuildIdentity
+} = requireFromApp("./out/main/diagnostics-build-identity-audit.js")
+const configuredProvenance = process.env.JINGLE_BUILD_PROVENANCE
+const configuredSourceRevision = process.env.JINGLE_BUILD_SOURCE_REVISION
+const expectedBuildIdentity =
+  configuredProvenance === undefined && configuredSourceRevision === undefined
+    ? parseDiagnosticsBuildIdentity({ kind: "untrusted" })
+    : parseDiagnosticsBuildIdentity({
+        declaredBy: configuredProvenance?.trim(),
+        kind: "build-declared",
+        sourceRevision: configuredSourceRevision?.trim()
+      })
+if (JSON.stringify(diagnosticsBuildIdentity) !== JSON.stringify(expectedBuildIdentity)) {
+  throw new Error(
+    "Packaged diagnostics build identity does not match the build provenance contract."
+  )
+}
+
 const { ripgrepExecutablePath } = requireFromApp("./out/main/ripgrep-executable-audit.js")
 const unpackedRoot = join(resourcesPath, "app.asar.unpacked")
 if (!isInside(ripgrepExecutablePath, unpackedRoot)) {

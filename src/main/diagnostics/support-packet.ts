@@ -53,8 +53,8 @@ export interface DiagnosticSupportPacketRuntimeIdentity {
   isPackaged: boolean
   platform: NodeJS.Platform
   sourceRevision:
-    | { kind: "available"; value: string }
-    | { kind: "unavailable"; reason: "not-embedded" }
+    | { kind: "available"; provenance: "build-declared"; value: string }
+    | { kind: "unavailable"; reason: "untrusted-build" }
 }
 
 export interface DiagnosticSupportPacketManifestV1 {
