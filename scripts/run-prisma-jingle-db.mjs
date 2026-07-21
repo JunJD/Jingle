@@ -47,7 +47,7 @@ async function main() {
   }
 
   console.error(`[prisma] using ${databaseUrl}`)
-  await runLocalCommand("prisma", args, { env })
+  await runLocalCommand("prisma", args, { displayName: "Prisma database command", env })
 }
 
 main().catch((error) => {

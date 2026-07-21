@@ -12,13 +12,13 @@ if (!target) {
 }
 
 if (process.platform === "win32") {
-  await runLocalCommand("node", ["scripts/build-win-icon.mjs"])
+  await runLocalCommand("node", ["scripts/build-win-icon.mjs"], {
+    displayName: "Windows icon build"
+  })
 }
 
-await runLocalCommand("node", [
-  "scripts/run-electron-builder.mjs",
-  target,
-  "--dir",
-  "--publish",
-  "never"
-])
+await runLocalCommand(
+  "node",
+  ["scripts/run-electron-builder.mjs", target, "--dir", "--publish", "never"],
+  { displayName: "Electron release smoke build" }
+)

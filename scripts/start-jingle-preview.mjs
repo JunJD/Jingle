@@ -1,6 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { createRequire } from "node:module"
 import { dirname, join, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 import { runLocalCommand } from "./lib/run-local-command.mjs"
 
 const APP_DISPLAY_NAME = "Jingle"
@@ -141,6 +142,21 @@ function createJingleElectronPreviewExecutable() {
   return joinElectronDistPath(electronModuleDir, executablePath)
 }
 
+export function createJinglePreviewInvocation(previewExecutablePath, env) {
+  return {
+    args: ["scripts/run-with-dotenv.mjs", "production", "--", "electron-vite", "preview"],
+    command: "node",
+    options: {
+      displayName: "Jingle preview",
+      env: {
+        ...env,
+        ELECTRON_EXEC_PATH: previewExecutablePath,
+        JINGLE_REGISTER_DEV_PROTOCOL_CLIENT: "1"
+      }
+    }
+  }
+}
+
 async function main() {
   const previewExecutablePath = createJingleElectronPreviewExecutable()
   if (process.argv.includes("--print-executable")) {
@@ -148,27 +164,13 @@ async function main() {
     return
   }
 
-  await runLocalCommand(
-    "node",
-    [
-      "scripts/run-with-env.mjs",
-      `JINGLE_REGISTER_DEV_PROTOCOL_CLIENT=1`,
-      `ELECTRON_EXEC_PATH=${previewExecutablePath}`,
-      "--",
-      "node",
-      "scripts/run-with-dotenv.mjs",
-      "production",
-      "--",
-      "electron-vite",
-      "preview"
-    ],
-    {
-      env: process.env
-    }
-  )
+  const invocation = createJinglePreviewInvocation(previewExecutablePath, process.env)
+  await runLocalCommand(invocation.command, invocation.args, invocation.options)
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error))
-  process.exitCode = 1
-})
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exitCode = 1
+  })
+}

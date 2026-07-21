@@ -24,7 +24,7 @@ async function main() {
   const [command, ...args] = commandAndArgs
   const env = createDotenvCommandEnv(mode, process.env)
 
-  await runLocalCommand(command, args, { env })
+  await runLocalCommand(command, args, { displayName: "dotenv command", env })
 }
 
 export function createDotenvCommandEnv(mode, env) {
