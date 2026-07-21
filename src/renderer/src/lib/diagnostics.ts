@@ -14,7 +14,9 @@ function errorReportFromErrorEvent(event: ErrorEvent): DiagnosticRendererErrorRe
   }
 }
 
-function errorReportFromUnhandledRejection(event: PromiseRejectionEvent): DiagnosticRendererErrorReport {
+function errorReportFromUnhandledRejection(
+  event: PromiseRejectionEvent
+): DiagnosticRendererErrorReport {
   const reason = event.reason
   if (reason instanceof Error) {
     return {
@@ -32,10 +34,16 @@ function errorReportFromUnhandledRejection(event: PromiseRejectionEvent): Diagno
   }
 }
 
-function sendRendererErrorReport(report: DiagnosticRendererErrorReport): void {
-  void window.api.diagnostics.reportRendererError(report).catch((error) => {
-    console.error("[Diagnostics] Failed to report renderer error:", error)
-  })
+export function sendRendererErrorReport(
+  report: DiagnosticRendererErrorReport,
+  reporter: (input: DiagnosticRendererErrorReport) => Promise<void> = (input) =>
+    window.api.diagnostics.reportRendererError(input)
+): void {
+  try {
+    void Promise.resolve(reporter(report)).then(undefined, () => undefined)
+  } catch {
+    // A failed diagnostic report cannot become another global renderer error.
+  }
 }
 
 export function installRendererDiagnostics(): void {

@@ -622,12 +622,97 @@ class FakeIpcMain {
 }
 
 class FakeWebContents {
+  private static nextId = 40
+
+  readonly id = FakeWebContents.nextId++
   readonly mainFrame = {}
 
   isDestroyed(): boolean {
     return false
   }
 }
+
+test("renderer error IPC exports a redacted causal event with main-owned identity", async () => {
+  const testHome = createTempDirectory("renderer-controller-home")
+  const destination = createTempDirectory("renderer-controller-output")
+  const source = createSource("renderer-controller")
+  const originalHome = process.env.JINGLE_HOME
+  process.env.JINGLE_HOME = testHome
+  try {
+    const { registerDiagnosticsIpcHandlers } = await import("../../src/main/diagnostics/controller")
+    const ipcMain = new FakeIpcMain()
+    registerDiagnosticsIpcHandlers(ipcMain as unknown as IpcMain, {
+      exportPacket: async () => ({
+        coverage: "empty",
+        eventCount: 0,
+        evidenceCount: 0,
+        gapCount: 0,
+        kind: "exported",
+        packetId: "unused"
+      }),
+      graph: source.graph,
+      logger: source.logger,
+      selectDestinationDirectory: async () => null
+    })
+
+    const main = new FakeWebContents()
+    registerWindowIdentity(main as unknown as WebContents, {
+      kind: "main",
+      threadId: "thread-main",
+      windowId: "window-main"
+    })
+    await ipcMain.invoke("diagnostics:reportRendererError", main, main.mainFrame, {
+      kind: "unhandledrejection",
+      message: `${SECRET} ${PRIVATE_PATH}`,
+      source: `${SECRET} renderer.js`,
+      stack: `${PRIVATE_PATH}:1`,
+      windowKind: "settings"
+    })
+
+    const unregistered = new FakeWebContents()
+    await assert.rejects(
+      ipcMain.invoke("diagnostics:reportRendererError", unregistered, unregistered.mainFrame, {}),
+      /registered window main frame/
+    )
+    await assert.rejects(
+      ipcMain.invoke("diagnostics:reportRendererError", main, {}, {}),
+      /registered window main frame/
+    )
+
+    await source.graph.flush()
+    const result = await createDiagnosticSupportPacket({
+      destinationDirectory: destination,
+      idFactory: () => "packet-renderer-controller",
+      now: () => new Date("2026-07-21T00:00:00.000Z"),
+      runtimeIdentity: runtimeIdentity(),
+      sourceLogDirectory: source.logDir,
+      sourceRootDirectory: source.root
+    })
+    assert.equal(result.kind, "exported")
+    const { packet } = readOnlyPacket(destination)
+    assert.equal(packet.events.length, 1)
+    assert.equal(packet.events[0]?.eventCode, "renderer.unhandled_rejection")
+    assert.deepEqual(packet.events[0]?.dimensions, {
+      kind: "unhandledrejection",
+      windowKind: "main"
+    })
+    assert.deepEqual(packet.events[0]?.refs, [
+      { id: "window-main", kind: "window" },
+      { id: String(main.id), kind: "web-contents" }
+    ])
+    assert.equal(packet.events[0]?.evidenceRefs.length, 0)
+    const serializedPacket = JSON.stringify(packet)
+    assert.equal(serializedPacket.includes(SECRET), false)
+    assert.equal(serializedPacket.includes(PRIVATE_PATH), false)
+    assert.equal(serializedPacket.includes("settings"), false)
+  } finally {
+    if (originalHome === undefined) delete process.env.JINGLE_HOME
+    else process.env.JINGLE_HOME = originalHome
+    rmSync(testHome, { force: true, recursive: true })
+    rmSync(destination, { force: true, recursive: true })
+    rmSync(source.root, { force: true, recursive: true })
+  }
+})
 
 test("support packet IPC admits only the registered Settings main frame before the picker", async () => {
   const testHome = createTempDirectory("controller-home")

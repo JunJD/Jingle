@@ -2,13 +2,16 @@ import { BrowserWindow, dialog, type IpcMain, type IpcMainInvokeEvent } from "el
 import { z } from "zod/v4"
 import type { DiagnosticSupportPacketExportResult } from "@shared/diagnostics"
 import { registerIpcHandle, registerValidatedIpcHandle } from "../ipc/handle"
-import { getWindowIdentity } from "../windows/window-identity"
-import { diagnosticsLogger } from "./instance"
-import { normalizeRendererErrorReport } from "./renderer-report"
+import { getWindowIdentity, type WindowIdentity } from "../windows/window-identity"
+import { diagnosticsGraph, diagnosticsLogger } from "./instance"
+import { createRendererErrorDiagnostic, normalizeRendererErrorReport } from "./renderer-report"
+import type { DiagnosticGraphSink } from "./schema"
 import { readDiagnosticSupportPacketErrorCode } from "./support-packet"
 
 export interface DiagnosticsSupportPacketControllerDependencies {
   exportPacket: (destinationDirectory: string) => Promise<DiagnosticSupportPacketExportResult>
+  graph?: DiagnosticGraphSink
+  logger?: Pick<typeof diagnosticsLogger, "error">
   selectDestinationDirectory: (event: IpcMainInvokeEvent) => Promise<string | null>
 }
 
@@ -38,13 +41,34 @@ function assertSettingsMainFrame(event: IpcMainInvokeEvent): void {
   }
 }
 
+function readRegisteredMainFrameIdentity(event: IpcMainInvokeEvent): WindowIdentity {
+  const identity = getWindowIdentity(event.sender)
+  if (event.senderFrame !== event.sender.mainFrame || !identity) {
+    throw new Error("Renderer diagnostics require a registered window main frame.")
+  }
+  return identity
+}
+
 export function registerDiagnosticsIpcHandlers(
   ipcMain: IpcMain,
   dependencies: DiagnosticsSupportPacketControllerDependencies = defaultSupportPacketDependencies
 ): void {
-  registerIpcHandle(ipcMain, "diagnostics:reportRendererError", (_event, report) => {
-    const normalizedReport = normalizeRendererErrorReport(report)
-    diagnosticsLogger.error("Renderer reported error", normalizedReport)
+  const graph = dependencies.graph ?? diagnosticsGraph
+  const logger = dependencies.logger ?? diagnosticsLogger
+
+  registerIpcHandle(ipcMain, "diagnostics:reportRendererError", (event, report) => {
+    const identity = readRegisteredMainFrameIdentity(event)
+    const normalizedReport = normalizeRendererErrorReport(report, identity.kind)
+    try {
+      logger.error("Renderer reported error", normalizedReport)
+    } catch {
+      // The causal recorder remains independent from the legacy local log.
+    }
+    try {
+      graph.capture(createRendererErrorDiagnostic(normalizedReport, identity, event.sender.id))
+    } catch {
+      // Renderer error reporting is best effort and must not create a rejection loop.
+    }
   })
 
   registerValidatedIpcHandle(

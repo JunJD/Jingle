@@ -34,6 +34,7 @@ import {
   errorFromUnhandledRejection,
   serializeProcessError
 } from "../../src/main/diagnostics/process-errors"
+import { createRendererErrorDiagnostic } from "../../src/main/diagnostics/renderer-report"
 import {
   sanitizeDiagnosticValue,
   serializeDiagnosticEvidence
@@ -354,6 +355,33 @@ test("Electron failure producers only attach evidence for trusted main errors", 
     assertSecretsAbsent(JSON.stringify(input))
     assert.equal(JSON.stringify(input).includes("user-authored renderer content"), false)
   }
+})
+
+test("renderer global errors keep only main-owned identity in causal diagnostics", () => {
+  const hostile = `${SECRET_VALUES.join(" ")} renderer-controlled`
+  const input = createRendererErrorDiagnostic(
+    {
+      kind: "unhandledrejection",
+      message: hostile,
+      source: hostile,
+      stack: hostile,
+      windowKind: "settings"
+    },
+    { kind: "main", threadId: hostile, windowId: "window-main" },
+    42
+  )
+
+  assert.equal(input.eventCode, "renderer.unhandled_rejection")
+  assert.equal(input.evidence, undefined)
+  assert.deepEqual(input.dimensionEntries, [
+    { key: "kind", value: "unhandledrejection" },
+    { key: "windowKind", value: "main" }
+  ])
+  assert.deepEqual(input.refs, [
+    { id: "window-main", kind: "window" },
+    { id: "42", kind: "web-contents" }
+  ])
+  assertSecretsAbsent(JSON.stringify(input))
 })
 
 test("Electron renderer recovery events keep main-owned identity and causal refs without evidence", () => {

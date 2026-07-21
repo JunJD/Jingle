@@ -10,6 +10,7 @@ import {
   serializeProcessError
 } from "../../src/main/diagnostics/process-errors"
 import { normalizeRendererErrorReport } from "../../src/main/diagnostics/renderer-report"
+import { sendRendererErrorReport } from "../../src/renderer/src/lib/diagnostics"
 
 function createTempLogPaths(): { logDir: string; rootDir: string } {
   const rootDir = join(tmpdir(), `jingle-diagnostics-${Date.now()}-${Math.random()}`)
@@ -573,20 +574,23 @@ test("diagnostics logger keeps sealed write-lock batches inside the global recor
 
 test("renderer error reports are normalized before local logging", () => {
   assert.deepEqual(
-    normalizeRendererErrorReport({
-      kind: "unhandledrejection",
-      message: "  Failed to render  ",
-      stack: " stack ",
-      source: " app.js ",
-      windowKind: " main ",
-      extra: "ignored"
-    }),
+    normalizeRendererErrorReport(
+      {
+        kind: "unhandledrejection",
+        message: "  Failed to render  ",
+        stack: " stack ",
+        source: " app.js ",
+        windowKind: " main ",
+        extra: "ignored"
+      },
+      "thread-window"
+    ),
     {
       kind: "unhandledrejection",
       message: "Failed to render",
       source: "app.js",
       stack: "stack",
-      windowKind: "main"
+      windowKind: "thread-window"
     }
   )
 
@@ -594,6 +598,17 @@ test("renderer error reports are normalized before local logging", () => {
     kind: "error",
     message: "Renderer error"
   })
+})
+
+test("renderer diagnostic transport failures cannot recurse into unhandled rejections", async () => {
+  const report = { kind: "error", message: "render failed" } as const
+  assert.doesNotThrow(() => {
+    sendRendererErrorReport(report, () => {
+      throw new Error("sync transport failure")
+    })
+  })
+  sendRendererErrorReport(report, () => Promise.reject(new Error("async transport failure")))
+  await new Promise<void>((resolve) => setImmediate(resolve))
 })
 
 test("process diagnostics normalize fatal main process errors", () => {
