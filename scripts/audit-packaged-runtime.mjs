@@ -5,6 +5,7 @@ import {
   lstatSync,
   mkdtempSync,
   openSync,
+  readFileSync,
   readSync,
   readdirSync,
   rmSync,
@@ -333,6 +334,63 @@ function expectedNativeFormat(platform) {
   }
 }
 
+const computerUseHelperNames = {
+  darwin: "jingle-computer-use-macos",
+  linux: "jingle-computer-use-linux.py",
+  win32: "jingle-computer-use-windows.ps1"
+}
+
+export function assertPackagedComputerUseHelper(
+  { resourcesPath },
+  {
+    expectedArchitecture = process.env.JINGLE_BUILD_TARGET_ARCH ?? process.arch,
+    platform = process.platform,
+    readDescriptor = readNativeBinaryDescriptor
+  } = {}
+) {
+  const helperName = computerUseHelperNames[platform]
+  if (!helperName) {
+    throw new Error(`Unsupported packaged runtime platform: ${platform}`)
+  }
+
+  const helperPath = join(resourcesPath, "app.asar.unpacked", "out", "native", helperName)
+  if (!existsSync(helperPath) || !statSync(helperPath).isFile()) {
+    throw new Error(`Packaged Computer Use helper is missing: ${helperPath}`)
+  }
+
+  const helperStats = statSync(helperPath)
+  if (helperStats.size === 0) {
+    throw new Error(`Packaged Computer Use helper is empty: ${helperPath}`)
+  }
+
+  if (platform === "darwin") {
+    if (!(helperStats.mode & 0o111)) {
+      throw new Error(`Packaged Computer Use helper is not executable: ${helperPath}`)
+    }
+    const descriptor = readDescriptor(helperPath)
+    if (
+      !descriptor ||
+      descriptor.format !== "mach-o" ||
+      descriptor.architectures.length !== 1 ||
+      descriptor.architectures[0] !== expectedArchitecture
+    ) {
+      throw new Error(
+        `Packaged Computer Use helper must be a single-architecture ${expectedArchitecture} Mach-O: ${helperPath}`
+      )
+    }
+  }
+
+  if (platform === "linux") {
+    if (!(helperStats.mode & 0o111)) {
+      throw new Error(`Packaged Computer Use helper is not executable: ${helperPath}`)
+    }
+    const firstLine = readFileSync(helperPath, "utf8").split(/\r?\n/, 1)[0]
+    if (firstLine !== "#!/usr/bin/env python3") {
+      throw new Error(`Packaged Computer Use helper has an invalid Python shebang: ${helperPath}`)
+    }
+  }
+}
+
 export function assertPackagedNativeArchitectures(
   { executablePath, resourcesPath },
   {
@@ -652,6 +710,7 @@ function runPackagedRuntimeAudit() {
 
   for (const packagedApp of packagedApps) {
     assertForbiddenRuntimeNotPackaged(packagedApp)
+    assertPackagedComputerUseHelper(packagedApp)
     assertPackagedNativeArchitectures(packagedApp)
     assertMacNativeLinks(packagedApp)
     runPackagedRuntimeSmoke(packagedApp)

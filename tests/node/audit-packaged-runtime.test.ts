@@ -6,6 +6,7 @@ import test from "node:test"
 
 import {
   assertMacNativeLinks,
+  assertPackagedComputerUseHelper,
   assertPackagedNativeArchitectures,
   readNativeBinaryDescriptor
 } from "../../scripts/audit-packaged-runtime.mjs"
@@ -21,6 +22,93 @@ function createResourcesFixture(): {
   mkdirSync(nativeDirectory, { recursive: true })
   return { nativeDirectory, resourcesPath, root }
 }
+
+test("packaged runtime requires the platform Computer Use helper", () => {
+  const fixture = createResourcesFixture()
+  try {
+    assert.throws(
+      () =>
+        assertPackagedComputerUseHelper(
+          { resourcesPath: fixture.resourcesPath },
+          { expectedArchitecture: "arm64", platform: "darwin" }
+        ),
+      /Computer Use helper is missing/
+    )
+
+    const macHelper = join(fixture.nativeDirectory, "jingle-computer-use-macos")
+    writeMachO(macHelper, "arm64")
+    chmodSync(macHelper, 0o755)
+    assert.doesNotThrow(() =>
+      assertPackagedComputerUseHelper(
+        { resourcesPath: fixture.resourcesPath },
+        { expectedArchitecture: "arm64", platform: "darwin" }
+      )
+    )
+
+    const linuxHelper = join(fixture.nativeDirectory, "jingle-computer-use-linux.py")
+    writeFileSync(linuxHelper, "#!/usr/bin/env python3\nprint('ready')\n")
+    chmodSync(linuxHelper, 0o755)
+    assert.doesNotThrow(() =>
+      assertPackagedComputerUseHelper(
+        { resourcesPath: fixture.resourcesPath },
+        { expectedArchitecture: "x64", platform: "linux" }
+      )
+    )
+
+    const windowsHelper = join(fixture.nativeDirectory, "jingle-computer-use-windows.ps1")
+    writeFileSync(windowsHelper, "Write-Output 'ready'\n")
+    assert.doesNotThrow(() =>
+      assertPackagedComputerUseHelper(
+        { resourcesPath: fixture.resourcesPath },
+        { expectedArchitecture: "x64", platform: "win32" }
+      )
+    )
+  } finally {
+    rmSync(fixture.root, { force: true, recursive: true })
+  }
+})
+
+test("packaged runtime rejects malformed platform Computer Use helpers", () => {
+  const fixture = createResourcesFixture()
+  try {
+    const macHelper = join(fixture.nativeDirectory, "jingle-computer-use-macos")
+    writeMachO(macHelper, "x64")
+    chmodSync(macHelper, 0o755)
+    assert.throws(
+      () =>
+        assertPackagedComputerUseHelper(
+          { resourcesPath: fixture.resourcesPath },
+          { expectedArchitecture: "arm64", platform: "darwin" }
+        ),
+      /single-architecture arm64 Mach-O/
+    )
+
+    const linuxHelper = join(fixture.nativeDirectory, "jingle-computer-use-linux.py")
+    writeFileSync(linuxHelper, "#!/bin/sh\n")
+    chmodSync(linuxHelper, 0o755)
+    assert.throws(
+      () =>
+        assertPackagedComputerUseHelper(
+          { resourcesPath: fixture.resourcesPath },
+          { expectedArchitecture: "x64", platform: "linux" }
+        ),
+      /invalid Python shebang/
+    )
+
+    const windowsHelper = join(fixture.nativeDirectory, "jingle-computer-use-windows.ps1")
+    writeFileSync(windowsHelper, "")
+    assert.throws(
+      () =>
+        assertPackagedComputerUseHelper(
+          { resourcesPath: fixture.resourcesPath },
+          { expectedArchitecture: "x64", platform: "win32" }
+        ),
+      /Computer Use helper is empty/
+    )
+  } finally {
+    rmSync(fixture.root, { force: true, recursive: true })
+  }
+})
 
 function writeMachO(path: string, architecture: "arm64" | "x64"): void {
   const header = Buffer.alloc(8)
