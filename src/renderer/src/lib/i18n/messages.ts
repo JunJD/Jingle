@@ -141,6 +141,7 @@ export interface AppCopy {
     addAutomation: string
     addClipboardContext: string
     aiAddAttachment: string
+    aiAttachmentReadFailed: string
     archiveChat: string
     branchIntoLocal: string
     branchIntoNewWorktree: string
@@ -552,6 +553,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       addAutomation: "添加自动化...",
       addClipboardContext: "添加剪贴板内容",
       aiAddAttachment: "添加图片",
+      aiAttachmentReadFailed: "部分图片无法读取，请重新选择后再发送。",
       archiveChat: "归档对话",
       branchIntoLocal: "分叉到本地",
       branchIntoNewWorktree: "分叉到新 worktree",
@@ -1001,6 +1003,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       addAutomation: "Add Automation...",
       addClipboardContext: "Add clipboard content",
       aiAddAttachment: "Add image",
+      aiAttachmentReadFailed: "Some images could not be read. Select them again before sending.",
       archiveChat: "Archive Chat",
       branchIntoLocal: "Fork into Local",
       branchIntoNewWorktree: "Fork into New Worktree",

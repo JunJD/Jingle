@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ClipboardContext } from "@shared/clipboard"
 import { isAiAttachmentImagePath } from "@shared/launcher-attachments"
 import type { MessageFileSource } from "@shared/app-types"
@@ -33,6 +33,12 @@ export type LauncherAiAttachmentDraft =
       path: string
       source: "clipboard" | "picker"
     }
+
+export type LauncherAiAttachmentIngestResult =
+  | { type: "accepted" }
+  | { type: "cancelled" }
+  | { type: "empty" }
+  | { failedFileNames: string[]; type: "failed" | "partial" }
 
 type ComposerAttachmentRef = Extract<
   ComposerMessageRef,
@@ -221,9 +227,10 @@ async function toPickedAttachment(file: File): Promise<LauncherAiAttachmentDraft
 export function useAiAttachments(): {
   acceptClipboardAttachments: () => void
   attachments: LauncherAiAttachmentDraft[]
-  addSelectedFiles: (files: FileList | File[]) => Promise<void>
+  addSelectedFiles: (files: FileList | File[]) => Promise<LauncherAiAttachmentIngestResult>
   clipboardCandidateAttachments: LauncherAiAttachmentDraft[]
   clearAllAttachments: () => void
+  isAddingSelectedFiles: boolean
   messageRefs: ComposerMessageRef[]
   removeAttachment: (attachmentId: string) => void
   replaceAttachments: (refs: readonly ComposerAttachmentRef[]) => void
@@ -231,6 +238,11 @@ export function useAiAttachments(): {
   const clipboard = useAiCoreClipboard()
   const clearClipboardContext = clipboard.clearContext
   const [pickedImages, setPickedImages] = useState<LauncherAiAttachmentDraft[]>([])
+  const [pendingSelectedFileBatches, setPendingSelectedFileBatches] = useState({
+    count: 0,
+    epoch: 0
+  })
+  const attachmentEpochRef = useRef(0)
   const clipboardCandidateAttachments = useMemo(
     () => deriveLauncherAiAttachmentDrafts(clipboard.candidateContext),
     [clipboard.candidateContext]
@@ -306,21 +318,47 @@ export function useAiAttachments(): {
   ])
 
   const addSelectedFiles = useCallback(
-    async (files: FileList | File[]): Promise<void> => {
+    async (files: FileList | File[]): Promise<LauncherAiAttachmentIngestResult> => {
       const selectedFiles = Array.from(files)
       if (selectedFiles.length === 0) {
-        return
+        return { type: "empty" }
       }
 
-      const nextAttachments = (await Promise.all(selectedFiles.map(toPickedAttachment))).filter(
-        (attachment): attachment is LauncherAiAttachmentDraft => attachment !== null
+      const attachmentEpoch = attachmentEpochRef.current
+      setPendingSelectedFileBatches((current) =>
+        current.epoch === attachmentEpoch
+          ? { ...current, count: current.count + 1 }
+          : { count: 1, epoch: attachmentEpoch }
       )
+      try {
+        const settledAttachments = await Promise.allSettled(selectedFiles.map(toPickedAttachment))
+        const nextAttachments = settledAttachments.flatMap((result) =>
+          result.status === "fulfilled" && result.value ? [result.value] : []
+        )
+        const failedFileNames = settledAttachments.flatMap((result, index) =>
+          result.status === "rejected" || result.value === null ? [selectedFiles[index]!.name] : []
+        )
 
-      if (nextAttachments.length === 0) {
-        return
+        if (attachmentEpochRef.current !== attachmentEpoch) {
+          return { type: "cancelled" }
+        }
+
+        addAttachmentDrafts(nextAttachments)
+
+        if (failedFileNames.length > 0) {
+          return {
+            failedFileNames,
+            type: nextAttachments.length > 0 ? "partial" : "failed"
+          }
+        }
+        return nextAttachments.length > 0 ? { type: "accepted" } : { type: "empty" }
+      } finally {
+        setPendingSelectedFileBatches((current) =>
+          current.epoch === attachmentEpoch
+            ? { ...current, count: Math.max(0, current.count - 1) }
+            : current
+        )
       }
-
-      addAttachmentDrafts(nextAttachments)
     },
     [addAttachmentDrafts]
   )
@@ -335,6 +373,8 @@ export function useAiAttachments(): {
   }, [])
 
   const clearAllAttachments = useCallback((): void => {
+    attachmentEpochRef.current += 1
+    setPendingSelectedFileBatches({ count: 0, epoch: attachmentEpochRef.current })
     if (attachments.length === 0) {
       return
     }
@@ -347,6 +387,8 @@ export function useAiAttachments(): {
 
   const replaceAttachments = useCallback(
     (refs: readonly ComposerAttachmentRef[]): void => {
+      attachmentEpochRef.current += 1
+      setPendingSelectedFileBatches({ count: 0, epoch: attachmentEpochRef.current })
       setPickedImages(
         refs
           .map(toRestoredAttachmentDraft)
@@ -363,6 +405,7 @@ export function useAiAttachments(): {
     clipboardCandidateAttachments,
     addSelectedFiles,
     clearAllAttachments,
+    isAddingSelectedFiles: pendingSelectedFileBatches.count > 0,
     messageRefs,
     removeAttachment,
     replaceAttachments

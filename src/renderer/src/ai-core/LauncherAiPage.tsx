@@ -237,6 +237,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const [initialSeedQuery] = useState(host.seedQuery)
   const hasRunInitialActionRef = useRef(false)
   const [navigationError, setNavigationError] = useState<string | null>(null)
+  const [attachmentIngestError, setAttachmentIngestError] = useState<string | null>(null)
   const [localComposerText, setLocalComposerText] = useState(() => initialSeedQuery)
   const [composerRevision] = useState(createLauncherComposerRevisionLedger)
   const markComposerChanged = useCallback((): void => {
@@ -348,6 +349,7 @@ export function LauncherAiPage(): React.JSX.Element {
     attachments,
     clipboardCandidateAttachments,
     clearAllAttachments,
+    isAddingSelectedFiles,
     messageRefs: attachmentMessageRefs,
     removeAttachment,
     replaceAttachments
@@ -560,6 +562,7 @@ export function LauncherAiPage(): React.JSX.Element {
       setComposerHistoryCursor(createComposerHistoryCursor(composerHistoryScope, historyIndex))
       replaceAttachments(getComposerAttachmentRefs(input))
       replaceRefs(input.refs)
+      setAttachmentIngestError(null)
       setComposerText(input.text)
       setMentionQuery(null)
       if (selection && selectionContext) {
@@ -620,6 +623,7 @@ export function LauncherAiPage(): React.JSX.Element {
   )
   const clearTransientInputState = useCallback((): void => {
     setComposerHistoryCursor(createComposerHistoryCursor(composerHistoryScope))
+    setAttachmentIngestError(null)
     clearAllAttachments()
     clearAllRefs()
   }, [clearAllAttachments, clearAllRefs, composerHistoryScope])
@@ -664,7 +668,7 @@ export function LauncherAiPage(): React.JSX.Element {
     ]
   )
   const hasPendingApproval = Boolean(pendingApproval)
-  const threadError = agentError ?? navigationError
+  const threadError = agentError ?? attachmentIngestError ?? navigationError
   const composerSubmissionUnavailableReason =
     composerSubmissionAvailability.type === "unavailable"
       ? composerSubmissionAvailability.reason === "provider_file_id_unsupported"
@@ -675,6 +679,7 @@ export function LauncherAiPage(): React.JSX.Element {
       : null
   const canSubmitComposerDraft =
     !hasPendingApproval &&
+    !isAddingSelectedFiles &&
     composerSubmissionAvailability.type === "ready" &&
     hasComposerMessageInputContent(messageInput)
   const primaryActionDisabled = hasPendingCommand || !canSubmitComposerDraft
@@ -809,6 +814,17 @@ export function LauncherAiPage(): React.JSX.Element {
     setQuery,
     startFreshDraft
   } = controller
+  const clearThreadError = useCallback((): void => {
+    if (agentError) {
+      clearVisibleError()
+      return
+    }
+    if (attachmentIngestError) {
+      setAttachmentIngestError(null)
+      return
+    }
+    clearVisibleError()
+  }, [agentError, attachmentIngestError, clearVisibleError])
   const handleComposerValueChange = useCallback(
     (value: string): void => {
       setComposerHistoryCursor(createComposerHistoryCursor(composerHistoryScope))
@@ -834,9 +850,18 @@ export function LauncherAiPage(): React.JSX.Element {
     async (files: FileList | File[]): Promise<void> => {
       exitComposerHistory()
       markComposerChanged()
-      await addSelectedFiles(files)
+      setAttachmentIngestError(null)
+      const result = await addSelectedFiles(files)
+      if (result.type === "failed" || result.type === "partial") {
+        setAttachmentIngestError(copy.launcher.aiAttachmentReadFailed)
+      }
     },
-    [addSelectedFiles, exitComposerHistory, markComposerChanged]
+    [
+      addSelectedFiles,
+      copy.launcher.aiAttachmentReadFailed,
+      exitComposerHistory,
+      markComposerChanged
+    ]
   )
   const handleRemoveAttachment = useCallback(
     (attachmentId: string): void => {
@@ -933,6 +958,10 @@ export function LauncherAiPage(): React.JSX.Element {
     setShowModelPicker(true)
   }, [canSelectModel])
   const submitCurrentInput = useCallback((): void => {
+    if (isAddingSelectedFiles) {
+      return
+    }
+
     const input = getCurrentMessageInput()
     const availability = resolveJingleAgentComposerSubmissionAvailability({
       attachmentCapabilities: currentModelAttachmentCapabilities,
@@ -959,6 +988,7 @@ export function LauncherAiPage(): React.JSX.Element {
     copy.chat.messageReplayProviderFileUrlUnavailable,
     currentModelAttachmentCapabilities,
     getCurrentMessageInput,
+    isAddingSelectedFiles,
     runPrimaryAction
   ])
   const dismissSelectionContext = useCallback((): void => {
@@ -1848,7 +1878,7 @@ export function LauncherAiPage(): React.JSX.Element {
               >
                 {threadId ? (
                   <LauncherAiConversation
-                    clearError={clearVisibleError}
+                    clearError={clearThreadError}
                     error={threadError}
                     isHydrating={isHydratingThread}
                     isLoading={isBusy}
