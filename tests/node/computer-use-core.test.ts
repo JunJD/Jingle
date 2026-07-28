@@ -1,5 +1,9 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import {
+  COMPUTER_USE_NATIVE_ACTIONS,
+  getComputerUseNativeEnvironmentPolicy
+} from "../../packages/computer-use-core/native-policy.mjs"
 import * as computerUseCore from "../../packages/computer-use-core/src"
 import {
   COMPUTER_USE_NATIVE_RESPONSE_LIMITS,
@@ -254,132 +258,16 @@ function nativeOperationResponse(
 }
 
 function probedMatrix(environment: ComputerUseBackendEnvironment): ComputerUseCapabilityMatrix {
-  if (environment === "macos-quartz") {
-    return {
-      capabilities: [
-        {
-          action: "activate",
-          background: "refused",
-          foreground: "verified",
-          route: "ax_raise_activate"
-        },
-        { action: "press", background: "verified", foreground: "unavailable", route: "ax_action" },
-        {
-          action: "set_value",
-          background: "verified",
-          foreground: "unavailable",
-          route: "ax_value"
-        },
-        {
-          action: "type_text",
-          background: "verified",
-          foreground: "unavailable",
-          route: "ax_value"
-        },
-        {
-          action: "keypress",
-          background: "refused",
-          foreground: "unavailable",
-          route: "unavailable"
-        },
-        {
-          action: "scroll",
-          background: "unavailable",
-          foreground: "unavailable",
-          route: "unavailable"
-        }
-      ],
-      environment,
-      platform: "macos",
-      protocolVersion: 1
-    }
-  }
-  if (environment === "windows-win32") {
-    return {
-      capabilities: [
-        {
-          action: "activate",
-          background: "unavailable",
-          foreground: "unavailable",
-          route: "unavailable"
-        },
-        {
-          action: "press",
-          background: "unavailable",
-          foreground: "unavailable",
-          route: "uia_action"
-        },
-        {
-          action: "set_value",
-          background: "unavailable",
-          foreground: "unavailable",
-          route: "uia_value"
-        },
-        {
-          action: "type_text",
-          background: "unavailable",
-          foreground: "unavailable",
-          route: "uia_value"
-        },
-        {
-          action: "keypress",
-          background: "unavailable",
-          foreground: "unavailable",
-          route: "uia_unavailable"
-        },
-        {
-          action: "scroll",
-          background: "unavailable",
-          foreground: "unavailable",
-          route: "uia_unavailable"
-        }
-      ],
-      environment,
-      platform: "windows",
-      protocolVersion: 1
-    }
-  }
+  const policy = getComputerUseNativeEnvironmentPolicy(environment)
   return {
-    capabilities: [
-      {
-        action: "activate",
-        background: "unavailable",
-        foreground: "unavailable",
-        route: "unavailable"
-      },
-      {
-        action: "press",
-        background: "verified",
-        foreground: "unavailable",
-        route: "at_spi_action"
-      },
-      {
-        action: "set_value",
-        background: "verified",
-        foreground: "unavailable",
-        route: "at_spi_editable_text"
-      },
-      {
-        action: "type_text",
-        background: "verified",
-        foreground: "unavailable",
-        route: "at_spi_editable_text"
-      },
-      {
-        action: "keypress",
-        background: "refused",
-        foreground: "unavailable",
-        route: "unavailable"
-      },
-      {
-        action: "scroll",
-        background: "verified",
-        foreground: "unavailable",
-        route: "at_spi_action"
-      }
-    ],
+    capabilities: COMPUTER_USE_NATIVE_ACTIONS.map((action) => ({
+      action,
+      background: policy.capabilities[action].background[0]!,
+      foreground: policy.capabilities[action].foreground[0]!,
+      route: policy.capabilities[action].route
+    })),
     environment,
-    platform: "linux",
+    platform: policy.platform,
     protocolVersion: 1
   }
 }
@@ -2909,7 +2797,7 @@ test("native capability probes accept the exact policy for every environment", a
     assert.equal(backend.matrix.environment, environment)
     assert.deepEqual(
       backend.matrix.capabilities.map((capability) => capability.action),
-      ["activate", "press", "set_value", "type_text", "keypress", "scroll"]
+      COMPUTER_USE_NATIVE_ACTIONS
     )
   }
 })
@@ -3792,7 +3680,7 @@ test("native capability matrices are canonical immutable copies", async () => {
 
   assert.deepEqual(
     backend.matrix.capabilities.map((capability) => capability.action),
-    ["activate", "press", "set_value", "type_text", "keypress", "scroll"]
+    COMPUTER_USE_NATIVE_ACTIONS
   )
   assert.equal(Object.isFrozen(backend.matrix), true)
   assert.equal(Object.isFrozen(backend.matrix.capabilities), true)

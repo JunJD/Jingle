@@ -2,6 +2,11 @@ import {
   COMPUTER_USE_NATIVE_RESPONSE_LIMITS,
   JINGLE_COMPUTER_USE_PROTOCOL_VERSION
 } from "./contract"
+import {
+  COMPUTER_USE_NATIVE_ACTIONS as ACTIONS,
+  createComputerUseNativeProbeRequest,
+  validateComputerUseNativeCapabilityMatrix
+} from "../native-policy.mjs"
 import type {
   ComputerUseActionKind,
   ComputerUseBackend,
@@ -10,7 +15,6 @@ import type {
   ComputerUseBackendExecutionResult,
   ComputerUseBackendObservation,
   ComputerUseBackendStepResult,
-  ComputerUseCapability,
   ComputerUseCapabilityMatrix,
   ComputerUseElement,
   ComputerUseExecuteRequest,
@@ -58,91 +62,6 @@ export interface JingleComputerUseNativeBridge {
   invoke(request: JingleComputerUseNativeRequest, signal?: AbortSignal): Promise<unknown>
 }
 
-type ComputerUseCapabilityStatus = ComputerUseCapability["background"]
-
-interface NativeCapabilityPolicy {
-  background: readonly ComputerUseCapabilityStatus[]
-  foreground: readonly ComputerUseCapabilityStatus[]
-  route: string
-}
-
-interface NativeEnvironmentPolicy {
-  capabilities: Readonly<Record<ComputerUseActionKind, NativeCapabilityPolicy>>
-  platform: ComputerUsePlatform
-}
-
-const ACTIONS: readonly ComputerUseActionKind[] = [
-  "activate",
-  "press",
-  "set_value",
-  "type_text",
-  "keypress",
-  "scroll"
-]
-const AVAILABLE_SEMANTIC: readonly ComputerUseCapabilityStatus[] = ["verified", "unavailable"]
-const REFUSED: readonly ComputerUseCapabilityStatus[] = ["refused"]
-const UNAVAILABLE: readonly ComputerUseCapabilityStatus[] = ["unavailable"]
-
-const linuxCapabilities: NativeEnvironmentPolicy["capabilities"] = {
-  activate: { background: UNAVAILABLE, foreground: UNAVAILABLE, route: "unavailable" },
-  keypress: { background: REFUSED, foreground: UNAVAILABLE, route: "unavailable" },
-  press: {
-    background: AVAILABLE_SEMANTIC,
-    foreground: UNAVAILABLE,
-    route: "at_spi_action"
-  },
-  scroll: {
-    background: AVAILABLE_SEMANTIC,
-    foreground: UNAVAILABLE,
-    route: "at_spi_action"
-  },
-  set_value: {
-    background: AVAILABLE_SEMANTIC,
-    foreground: UNAVAILABLE,
-    route: "at_spi_editable_text"
-  },
-  type_text: {
-    background: AVAILABLE_SEMANTIC,
-    foreground: UNAVAILABLE,
-    route: "at_spi_editable_text"
-  }
-}
-
-const environmentPolicies: Readonly<
-  Record<ComputerUseBackendEnvironment, NativeEnvironmentPolicy>
-> = {
-  "linux-wayland-gnome": { capabilities: linuxCapabilities, platform: "linux" },
-  "linux-wayland-kde": { capabilities: linuxCapabilities, platform: "linux" },
-  "linux-wayland-other": { capabilities: linuxCapabilities, platform: "linux" },
-  "linux-x11": { capabilities: linuxCapabilities, platform: "linux" },
-  "macos-quartz": {
-    capabilities: {
-      activate: {
-        background: REFUSED,
-        foreground: AVAILABLE_SEMANTIC,
-        route: "ax_raise_activate"
-      },
-      keypress: { background: REFUSED, foreground: UNAVAILABLE, route: "unavailable" },
-      press: { background: AVAILABLE_SEMANTIC, foreground: UNAVAILABLE, route: "ax_action" },
-      scroll: { background: UNAVAILABLE, foreground: UNAVAILABLE, route: "unavailable" },
-      set_value: { background: AVAILABLE_SEMANTIC, foreground: UNAVAILABLE, route: "ax_value" },
-      type_text: { background: AVAILABLE_SEMANTIC, foreground: UNAVAILABLE, route: "ax_value" }
-    },
-    platform: "macos"
-  },
-  "windows-win32": {
-    capabilities: {
-      activate: { background: UNAVAILABLE, foreground: UNAVAILABLE, route: "unavailable" },
-      keypress: { background: UNAVAILABLE, foreground: UNAVAILABLE, route: "uia_unavailable" },
-      press: { background: UNAVAILABLE, foreground: UNAVAILABLE, route: "uia_action" },
-      scroll: { background: UNAVAILABLE, foreground: UNAVAILABLE, route: "uia_unavailable" },
-      set_value: { background: UNAVAILABLE, foreground: UNAVAILABLE, route: "uia_value" },
-      type_text: { background: UNAVAILABLE, foreground: UNAVAILABLE, route: "uia_value" }
-    },
-    platform: "windows"
-  }
-}
-
 export async function createJingleComputerUseNativeBackend(
   environment: ComputerUseBackendEnvironment,
   bridge: JingleComputerUseNativeBridge,
@@ -150,16 +69,14 @@ export async function createJingleComputerUseNativeBackend(
 ): Promise<ComputerUseBackend> {
   signal?.throwIfAborted()
   const rawMatrix = await bridge.invoke(
-    {
-      environment,
-      method: "probe",
-      protocolVersion: JINGLE_COMPUTER_USE_PROTOCOL_VERSION,
-      requestPermission: environment === "macos-quartz"
-    },
+    createComputerUseNativeProbeRequest(environment, environment === "macos-quartz"),
     signal
   )
   signal?.throwIfAborted()
-  return new NativeComputerUseBackend(bridge, validateProbedMatrix(environment, rawMatrix))
+  return new NativeComputerUseBackend(
+    bridge,
+    validateComputerUseNativeCapabilityMatrix(environment, rawMatrix)
+  )
 }
 
 class NativeComputerUseBackend implements ComputerUseBackend {
@@ -390,92 +307,8 @@ function projectNativeWindowIdentity(value: unknown): unknown {
   }
 }
 
-function validateProbedMatrix(
-  environment: ComputerUseBackendEnvironment,
-  value: unknown
-): ComputerUseCapabilityMatrix {
-  const policy = environmentPolicies[environment]
-  if (
-    !hasExactKeys(value, ["capabilities", "environment", "platform", "protocolVersion"]) ||
-    value.environment !== environment ||
-    value.platform !== policy.platform ||
-    value.protocolVersion !== JINGLE_COMPUTER_USE_PROTOCOL_VERSION
-  ) {
-    throw new Error(
-      "Computer-use native capability probe returned another environment or protocol."
-    )
-  }
-  if (
-    !isDenseArray(value.capabilities, ACTIONS.length) ||
-    value.capabilities.length !== ACTIONS.length
-  ) {
-    throw new Error("Computer-use native capability probe returned an invalid action set.")
-  }
-
-  const capabilities = new Map<ComputerUseActionKind, ComputerUseCapability>()
-  for (const candidate of value.capabilities) {
-    if (
-      !hasExactKeys(candidate, ["action", "background", "foreground", "route"]) ||
-      !isComputerUseActionKind(candidate.action)
-    ) {
-      throw new Error("Computer-use native capability probe returned an invalid action set.")
-    }
-    const action = candidate.action
-    if (capabilities.has(action)) {
-      throw new Error("Computer-use native capability probe returned a duplicate action.")
-    }
-    const expected = policy.capabilities[action]
-    if (
-      !isBoundedString(candidate.route, COMPUTER_USE_NATIVE_RESPONSE_LIMITS.token) ||
-      candidate.route !== expected.route
-    ) {
-      throw new Error(
-        `Computer-use native capability probe returned an untrusted route for ${action}.`
-      )
-    }
-    if (
-      (candidate.background === "verified" || candidate.foreground === "verified") &&
-      (candidate.route === "unavailable" || candidate.route === "global_input")
-    ) {
-      throw new Error(
-        `Computer-use native capability probe verified an unavailable route for ${action}.`
-      )
-    }
-    if (
-      !isCapabilityStatus(candidate.background) ||
-      !expected.background.includes(candidate.background) ||
-      !isCapabilityStatus(candidate.foreground) ||
-      !expected.foreground.includes(candidate.foreground)
-    ) {
-      throw new Error(
-        `Computer-use native capability probe returned invalid support for ${action}.`
-      )
-    }
-    capabilities.set(action, {
-      action,
-      background: candidate.background,
-      foreground: candidate.foreground,
-      route: candidate.route
-    })
-  }
-
-  if (capabilities.size !== ACTIONS.length) {
-    throw new Error("Computer-use native capability probe omitted a required action.")
-  }
-  return deepFreeze({
-    capabilities: ACTIONS.map((action) => capabilities.get(action)!),
-    environment,
-    platform: policy.platform,
-    protocolVersion: JINGLE_COMPUTER_USE_PROTOCOL_VERSION
-  })
-}
-
 function isComputerUseActionKind(value: unknown): value is ComputerUseActionKind {
   return typeof value === "string" && ACTIONS.includes(value as ComputerUseActionKind)
-}
-
-function isCapabilityStatus(value: unknown): value is ComputerUseCapabilityStatus {
-  return value === "verified" || value === "refused" || value === "unavailable"
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

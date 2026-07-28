@@ -3,12 +3,18 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
+import {
+  COMPUTER_USE_NATIVE_ACTIONS,
+  getComputerUseNativeEnvironmentPolicy
+} from "../../packages/computer-use-core/native-policy.mjs"
 
 import {
   assertMacNativeLinks,
   assertPackagedComputerUseHelper,
   assertPackagedNativeArchitectures,
-  readNativeBinaryDescriptor
+  assertWindowsComputerUseHelperProbe,
+  readNativeBinaryDescriptor,
+  runWindowsComputerUseProbe
 } from "../../scripts/audit-packaged-runtime.mjs"
 
 function createResourcesFixture(): {
@@ -21,6 +27,22 @@ function createResourcesFixture(): {
   const nativeDirectory = join(resourcesPath, "app.asar.unpacked", "out", "native")
   mkdirSync(nativeDirectory, { recursive: true })
   return { nativeDirectory, resourcesPath, root }
+}
+
+function createValidWindowsProbe() {
+  const environment = "windows-win32" as const
+  const policy = getComputerUseNativeEnvironmentPolicy(environment)
+  return {
+    capabilities: COMPUTER_USE_NATIVE_ACTIONS.map((action) => ({
+      action,
+      background: policy.capabilities[action].background[0],
+      foreground: policy.capabilities[action].foreground[0],
+      route: policy.capabilities[action].route
+    })),
+    environment,
+    platform: policy.platform,
+    protocolVersion: 1
+  }
 }
 
 test("packaged runtime requires the platform Computer Use helper", () => {
@@ -57,12 +79,21 @@ test("packaged runtime requires the platform Computer Use helper", () => {
 
     const windowsHelper = join(fixture.nativeDirectory, "jingle-computer-use-windows.ps1")
     writeFileSync(windowsHelper, "Write-Output 'ready'\n")
+    const probedPaths: string[] = []
     assert.doesNotThrow(() =>
       assertPackagedComputerUseHelper(
         { resourcesPath: fixture.resourcesPath },
-        { expectedArchitecture: "x64", platform: "win32" }
+        {
+          expectedArchitecture: "x64",
+          platform: "win32",
+          runWindowsProbe: (path: string) => {
+            probedPaths.push(path)
+            return JSON.stringify(createValidWindowsProbe())
+          }
+        }
       )
     )
+    assert.deepEqual(probedPaths, [windowsHelper])
   } finally {
     rmSync(fixture.root, { force: true, recursive: true })
   }
@@ -107,6 +138,77 @@ test("packaged runtime rejects malformed platform Computer Use helpers", () => {
     )
   } finally {
     rmSync(fixture.root, { force: true, recursive: true })
+  }
+})
+
+test("packaged runtime constructs the production Windows probe invocation", () => {
+  const helperPath =
+    "C:\\Jingle\\resources\\app.asar.unpacked\\out\\native\\jingle-computer-use-windows.ps1"
+  const calls: unknown[][] = []
+
+  runWindowsComputerUseProbe(helperPath, {
+    execute: (...args: unknown[]) => {
+      calls.push(args)
+      return JSON.stringify(createValidWindowsProbe())
+    }
+  })
+
+  assert.equal(calls.length, 1)
+  const [command, args, options] = calls[0] as [
+    string,
+    string[],
+    { encoding: string; input: string; maxBuffer: number; timeout: number; windowsHide: boolean }
+  ]
+  assert.equal(command, "powershell.exe")
+  assert.deepEqual(args, [
+    "-NoLogo",
+    "-NoProfile",
+    "-NonInteractive",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    helperPath
+  ])
+  assert.deepEqual(JSON.parse(options.input), {
+    environment: "windows-win32",
+    method: "probe",
+    protocolVersion: 1,
+    requestPermission: false
+  })
+  assert.deepEqual(
+    {
+      encoding: options.encoding,
+      maxBuffer: options.maxBuffer,
+      timeout: options.timeout,
+      windowsHide: options.windowsHide
+    },
+    { encoding: "utf8", maxBuffer: 1024 * 1024, timeout: 30_000, windowsHide: true }
+  )
+})
+
+test("packaged runtime rejects invalid Windows Computer Use probe frames", () => {
+  const helperPath =
+    "C:\\Jingle\\resources\\app.asar.unpacked\\out\\native\\jingle-computer-use-windows.ps1"
+  const validProbe = createValidWindowsProbe()
+
+  for (const [raw, pattern] of [
+    ["not-json", /invalid JSON/],
+    [JSON.stringify({ ...validProbe, protocolVersion: 2 }), /another environment or protocol/],
+    [
+      JSON.stringify({
+        ...validProbe,
+        capabilities: validProbe.capabilities.map((entry, index) =>
+          index === 1 ? { ...entry, route: "unavailable" } : entry
+        )
+      }),
+      /untrusted route for press/
+    ],
+    [`${JSON.stringify(validProbe)}\n${JSON.stringify(validProbe)}`, /invalid response frame/]
+  ] as const) {
+    assert.throws(
+      () => assertWindowsComputerUseHelperProbe(helperPath, { runProbe: () => raw }),
+      pattern
+    )
   }
 })
 

@@ -14,6 +14,10 @@ import {
 import { tmpdir } from "node:os"
 import { basename, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
+import {
+  createComputerUseNativeProbeRequest,
+  validateComputerUseNativeCapabilityMatrix
+} from "../packages/computer-use-core/native-policy.mjs"
 
 const root = resolve(process.argv[2] ?? "dist")
 const forbiddenMacLinkPrefixes = ["/opt/homebrew/", "/usr/local/opt/"]
@@ -340,12 +344,46 @@ const computerUseHelperNames = {
   win32: "jingle-computer-use-windows.ps1"
 }
 
+export function runWindowsComputerUseProbe(helperPath, { execute = execFileSync } = {}) {
+  return execute(
+    "powershell.exe",
+    ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", helperPath],
+    {
+      encoding: "utf8",
+      input: JSON.stringify(createComputerUseNativeProbeRequest("windows-win32", false)),
+      maxBuffer: 1024 * 1024,
+      timeout: 30_000,
+      windowsHide: true
+    }
+  )
+}
+
+export function assertWindowsComputerUseHelperProbe(
+  helperPath,
+  { runProbe = runWindowsComputerUseProbe } = {}
+) {
+  const raw = runProbe(helperPath).trim()
+  if (!raw || raw.includes("\n") || raw.includes("\r")) {
+    throw new Error("Packaged Computer Use Windows helper returned an invalid response frame.")
+  }
+
+  let probe
+  try {
+    probe = JSON.parse(raw)
+  } catch {
+    throw new Error("Packaged Computer Use Windows helper returned invalid JSON.")
+  }
+
+  validateComputerUseNativeCapabilityMatrix("windows-win32", probe)
+}
+
 export function assertPackagedComputerUseHelper(
   { resourcesPath },
   {
     expectedArchitecture = process.env.JINGLE_BUILD_TARGET_ARCH ?? process.arch,
     platform = process.platform,
-    readDescriptor = readNativeBinaryDescriptor
+    readDescriptor = readNativeBinaryDescriptor,
+    runWindowsProbe = runWindowsComputerUseProbe
   } = {}
 ) {
   const helperName = computerUseHelperNames[platform]
@@ -388,6 +426,10 @@ export function assertPackagedComputerUseHelper(
     if (firstLine !== "#!/usr/bin/env python3") {
       throw new Error(`Packaged Computer Use helper has an invalid Python shebang: ${helperPath}`)
     }
+  }
+
+  if (platform === "win32") {
+    assertWindowsComputerUseHelperProbe(helperPath, { runProbe: runWindowsProbe })
   }
 }
 

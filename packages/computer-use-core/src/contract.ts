@@ -1,4 +1,6 @@
-export const JINGLE_COMPUTER_USE_PROTOCOL_VERSION = 1 as const
+import { JINGLE_COMPUTER_USE_PROTOCOL_VERSION } from "../native-policy.mjs"
+
+export { JINGLE_COMPUTER_USE_PROTOCOL_VERSION }
 
 export const COMPUTER_USE_NATIVE_RESPONSE_LIMITS = Object.freeze({
   actions: 128,
