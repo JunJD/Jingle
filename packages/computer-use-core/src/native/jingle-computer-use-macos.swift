@@ -7,15 +7,27 @@ private let jingleComputerUseEnvironment = "macos-quartz"
 private let jingleComputerUseProtocolVersion = 1
 
 private struct NativeError: Error, CustomStringConvertible {
+    let code: String
     let description: String
+
+    init(description: String, code: String = "native_failed") {
+        self.code = code
+        self.description = description
+    }
 }
 
 private struct Request: Decodable {
     let environment: String?
     let method: String
     let protocolVersion: Int?
+    let requestPermission: Bool?
     let request: OperationRequest?
     let sessionId: String?
+}
+
+private struct NativeErrorResponse: Encodable {
+    let code: String
+    let message: String
 }
 
 private struct OperationRequest: Decodable {
@@ -25,6 +37,7 @@ private struct OperationRequest: Decodable {
     let authorization: AuthorizationGrant?
     let base: Observation?
     let delivery: String?
+    let target: TargetIdentity?
     let windowId: String?
 }
 
@@ -46,9 +59,15 @@ private struct WindowIdentity: Codable, Equatable {
     let platform: String
 }
 
-private struct ApplicationIdentity: Codable {
+private struct ApplicationIdentity: Codable, Equatable {
     let id: String
     let name: String
+}
+
+private struct TargetIdentity: Codable, Equatable {
+    let application: ApplicationIdentity
+    let resourceKey: String
+    let window: WindowIdentity
 }
 
 private struct ElementRecord: Codable {
@@ -68,11 +87,12 @@ private struct Observation: Codable {
     let elements: [ElementRecord]
     let epoch: Int?
     let resourceKey: String
+    let sourceTruncated: Bool
     let stateId: String?
     let window: WindowIdentity
 
     enum CodingKeys: String, CodingKey {
-        case application, capturedAt, elements, epoch, resourceKey, stateId, window
+        case application, capturedAt, elements, epoch, resourceKey, sourceTruncated, stateId, window
     }
 }
 
@@ -111,6 +131,7 @@ private struct ProbeResult: Encodable {
     init(accessibilityTrusted: Bool) {
         let semantic = accessibilityTrusted ? "verified" : "unavailable"
         capabilities = [
+            Capability(action: "activate", background: "refused", foreground: semantic, route: "ax_raise_activate"),
             Capability(action: "press", background: semantic, foreground: "unavailable", route: "ax_action"),
             Capability(action: "set_value", background: semantic, foreground: "unavailable", route: "ax_value"),
             Capability(action: "type_text", background: semantic, foreground: "unavailable", route: "ax_value"),
@@ -219,14 +240,31 @@ private func runningApplication(id: String?, name: String?, pid: pid_t? = nil) -
 
 private func requireAccessibility() throws {
     guard AXIsProcessTrusted() else {
-        throw NativeError(description: "macOS Accessibility permission is required for Computer Use.")
+        throw NativeError(
+            description: "macOS Accessibility permission is required for Computer Use.",
+            code: "accessibility_permission_required"
+        )
     }
 }
 
-private func resolveWindow(_ request: OperationRequest, expected: WindowIdentity? = nil) throws -> ResolvedWindow {
+private func probeAccessibility(requestPermission: Bool) -> Bool {
+    if !requestPermission { return AXIsProcessTrusted() }
+    let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+    return AXIsProcessTrustedWithOptions(options)
+}
+
+private func resolveWindow(
+    _ request: OperationRequest,
+    expected: WindowIdentity? = nil,
+    expectedApplicationId: String? = nil
+) throws -> ResolvedWindow {
     try requireAccessibility()
     let expectedPid = expected.map { pid_t($0.pid) }
-    guard let app = runningApplication(id: request.applicationId, name: request.applicationName, pid: expectedPid) else {
+    guard let app = runningApplication(
+        id: expectedApplicationId ?? request.applicationId,
+        name: request.applicationName,
+        pid: expectedPid
+    ) else {
         throw NativeError(description: "Target application is not running.")
     }
     let appElement = AXUIElementCreateApplication(app.processIdentifier)
@@ -264,8 +302,8 @@ private func resolveWindow(_ request: OperationRequest, expected: WindowIdentity
     return ResolvedWindow(application: app, element: resolved.0, identity: identity)
 }
 
-private func semanticActions(_ element: AXUIElement) -> [String] {
-    var result: [String] = []
+private func semanticActions(_ element: AXUIElement, isWindowRoot: Bool) -> [String] {
+    var result: [String] = isWindowRoot ? ["activate"] : []
     if actionNames(element).contains(kAXPressAction as String) { result.append("press") }
     var settable = DarwinBoolean(false)
     if AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable) == .success, settable.boolValue {
@@ -275,14 +313,20 @@ private func semanticActions(_ element: AXUIElement) -> [String] {
     return result
 }
 
-private func collectElements(window: ResolvedWindow) -> [(AXUIElement, ElementRecord)] {
+private struct ElementCollection {
+    let records: [(AXUIElement, ElementRecord)]
+    let sourceTruncated: Bool
+}
+
+private func collectElements(window: ResolvedWindow) -> ElementCollection {
     var queue: [(AXUIElement, [Int], Int)] = [(window.element, [], 0)]
     var visited = Set<CFHashCode>()
     var records: [(AXUIElement, ElementRecord)] = []
+    var sourceTruncated = false
     while !queue.isEmpty && visited.count < maxNodes && records.count < maxElements {
         let (element, path, depth) = queue.removeFirst()
         guard visited.insert(CFHash(element)).inserted else { continue }
-        let supported = semanticActions(element)
+        let supported = semanticActions(element, isWindowRoot: path.isEmpty)
         if !supported.isEmpty {
             let index = records.count
             let role = stringValue(element, kAXRoleAttribute as String) ?? "AXUnknown"
@@ -307,27 +351,61 @@ private func collectElements(window: ResolvedWindow) -> [(AXUIElement, ElementRe
                 value: stringValue(element, kAXValueAttribute as String)
             )))
         }
+        let children = elementValues(element, kAXChildrenAttribute as String)
         if depth < maxDepth {
-            queue.append(contentsOf: elementValues(element, kAXChildrenAttribute as String).enumerated().map {
+            queue.append(contentsOf: children.enumerated().map {
                 ($0.element, path + [$0.offset], depth + 1)
             })
+        } else if !children.isEmpty {
+            sourceTruncated = true
         }
     }
-    return records
+    if !queue.isEmpty { sourceTruncated = true }
+    return ElementCollection(records: records, sourceTruncated: sourceTruncated)
+}
+
+private func targetIdentity(_ window: ResolvedWindow) throws -> TargetIdentity {
+    guard let appId = normalized(window.application.bundleIdentifier) else {
+        throw NativeError(description: "Target application has no stable bundle identifier.")
+    }
+    return TargetIdentity(
+        application: ApplicationIdentity(
+            id: appId,
+            name: normalized(window.application.localizedName) ?? appId
+        ),
+        resourceKey: "macos:\(window.identity.pid):\(window.identity.nativeId):\(window.identity.generation)",
+        window: window.identity
+    )
+}
+
+private func identify(_ request: OperationRequest) throws -> TargetIdentity {
+    try targetIdentity(resolveWindow(request))
 }
 
 private func observe(_ request: OperationRequest) throws -> Observation {
-    let window = try resolveWindow(request)
-    let elements = collectElements(window: window).map(\.1)
-    let appId = normalized(window.application.bundleIdentifier) ?? "pid:\(window.application.processIdentifier)"
+    guard let expected = request.target else {
+        throw NativeError(description: "Observe requires an authorized target identity.")
+    }
+    let window = try resolveWindow(
+        request,
+        expected: expected.window,
+        expectedApplicationId: expected.application.id
+    )
+    let current = try targetIdentity(window)
+    guard current == expected else {
+        throw NativeError(description: "Target application, window, or resource identity changed before observation.")
+    }
+    let collection = collectElements(window: window)
+    let elements = collection.records.map(\.1)
     return Observation(
-        application: ApplicationIdentity(id: appId, name: normalized(window.application.localizedName) ?? appId),
+        application: current.application,
         capturedAt: Int64(Date().timeIntervalSince1970 * 1000),
         elements: elements,
         epoch: nil,
-        resourceKey: "macos:\(window.identity.pid):\(window.identity.nativeId):\(window.identity.generation)",
+        resourceKey: current.resourceKey,
+        sourceTruncated: collection.sourceTruncated,
         stateId: nil,
-        window: window.identity
+        window: current.window
     )
 }
 
@@ -349,10 +427,27 @@ private func aggregateStoppedOutcome(_ outcome: String, completedSteps: [StepRes
     return outcome
 }
 
-private func execute(_ request: OperationRequest) throws -> ExecutionResult {
-    guard request.delivery == "background" else {
-        throw NativeError(description: "macOS Computer Use helper only accepts background semantic delivery.")
+private func isFrontmost(_ application: NSRunningApplication, timeout: TimeInterval = 0.5) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if NSWorkspace.shared.frontmostApplication?.processIdentifier == application.processIdentifier {
+            return true
+        }
+        Thread.sleep(forTimeInterval: 0.02)
+    } while Date() < deadline
+    return false
+}
+
+private func activateExistingApplication(_ application: NSRunningApplication) -> Bool {
+    if #available(macOS 14.0, *) {
+        return application.activate(options: [])
     }
+    // This is NSApplicationActivateIgnoringOtherApps, used only where it still has effect.
+    let legacyIgnoringOtherApps = NSApplication.ActivationOptions(rawValue: 1 << 1)
+    return application.activate(options: legacyIgnoringOtherApps)
+}
+
+private func execute(_ request: OperationRequest) throws -> ExecutionResult {
     guard let base = request.base, let baseStateId = base.stateId, let actions = request.actions else {
         throw NativeError(description: "Execute requires base observation, stateId, and actions.")
     }
@@ -361,13 +456,42 @@ private func execute(_ request: OperationRequest) throws -> ExecutionResult {
           authorization.window == base.window else {
         throw NativeError(description: "Computer-use authorization is missing, expired, or belongs to another target resource.")
     }
-    let window = try resolveWindow(request, expected: base.window)
-    let current = collectElements(window: window)
+    let hasActivate = actions.contains(where: { $0.kind == "activate" })
+    let supportedDelivery = hasActivate
+        ? request.delivery == "foreground" && actions.allSatisfy { $0.kind == "activate" }
+        : request.delivery == "background"
+    guard supportedDelivery else {
+        return ExecutionResult(baseStateId: baseStateId, outcome: "unavailable", steps: [], stoppedAt: nil)
+    }
+    let window = try resolveWindow(
+        request,
+        expected: base.window,
+        expectedApplicationId: base.application.id
+    )
+    let expectedTarget = TargetIdentity(
+        application: base.application,
+        resourceKey: base.resourceKey,
+        window: base.window
+    )
+    guard try targetIdentity(window) == expectedTarget else {
+        throw NativeError(description: "The target resource identity is stale or no longer bound.")
+    }
+    let current = collectElements(window: window).records
     let byRef = Dictionary(uniqueKeysWithValues: current.map { ($0.1.ref, $0) })
+    guard let root = current.first, root.0 == window.element, root.1.actions.contains("activate") else {
+        throw NativeError(description: "The bound target window root is unavailable.")
+    }
     var steps: [StepResult] = []
 
     for (index, action) in actions.enumerated() {
-        let expectedRoute = action.kind == "press" ? "ax_action" : (action.kind == "set_value" || action.kind == "type_text" ? "ax_value" : "unavailable")
+        let expectedRoute = action.kind == "activate"
+            ? "ax_raise_activate"
+            : (action.kind == "press" ? "ax_action" : (action.kind == "set_value" || action.kind == "type_text" ? "ax_value" : "unavailable"))
+        if action.kind == "activate", action.ref != root.1.ref {
+            let outcome = aggregateStoppedOutcome("refused", completedSteps: steps, actionCount: actions.count)
+            steps.append(failedStep(action, route: expectedRoute, outcome: "refused", noSideEffect: true))
+            return ExecutionResult(baseStateId: baseStateId, outcome: outcome, steps: steps, stoppedAt: index)
+        }
         guard let target = byRef[action.ref], target.1.actions.contains(action.kind) else {
             let outcome = aggregateStoppedOutcome("didnt", completedSteps: steps, actionCount: actions.count)
             steps.append(failedStep(action, route: expectedRoute, outcome: "didnt", noSideEffect: true))
@@ -376,6 +500,25 @@ private func execute(_ request: OperationRequest) throws -> ExecutionResult {
         let error: AXError
         let route: String
         switch action.kind {
+        case "activate":
+            route = "ax_raise_activate"
+            guard actionNames(window.element).contains(kAXRaiseAction as String) else {
+                let outcome = aggregateStoppedOutcome("unavailable", completedSteps: steps, actionCount: actions.count)
+                steps.append(failedStep(action, route: route, outcome: "unavailable", noSideEffect: true))
+                return ExecutionResult(baseStateId: baseStateId, outcome: outcome, steps: steps, stoppedAt: index)
+            }
+            let raiseError = AXUIElementPerformAction(window.element, kAXRaiseAction as CFString)
+            guard raiseError == .success else {
+                steps.append(failedStep(action, route: route, outcome: "unknown", noSideEffect: false))
+                return ExecutionResult(baseStateId: baseStateId, outcome: "unknown", steps: steps, stoppedAt: index)
+            }
+            guard activateExistingApplication(window.application),
+                  isFrontmost(window.application) else {
+                steps.append(failedStep(action, route: route, outcome: "unknown", noSideEffect: false))
+                return ExecutionResult(baseStateId: baseStateId, outcome: "unknown", steps: steps, stoppedAt: index)
+            }
+            steps.append(failedStep(action, route: route, outcome: "worked", noSideEffect: false))
+            continue
         case "press":
             route = "ax_action"
             error = AXUIElementPerformAction(target.0, kAXPressAction as CFString)
@@ -410,8 +553,12 @@ private func execute(_ request: OperationRequest) throws -> ExecutionResult {
 }
 
 private func readRequest() throws -> Request {
-    guard CommandLine.arguments.count == 2, let data = CommandLine.arguments[1].data(using: .utf8) else {
-        throw NativeError(description: "Expected one UTF-8 JSON argv request.")
+    guard CommandLine.arguments.count == 1 else {
+        throw NativeError(description: "Computer Use accepts its request only through stdin.")
+    }
+    let data = FileHandle.standardInput.readDataToEndOfFile()
+    guard !data.isEmpty else {
+        throw NativeError(description: "Expected one UTF-8 JSON stdin request.")
     }
     return try JSONDecoder().decode(Request.self, from: data)
 }
@@ -422,6 +569,16 @@ private func write<T: Encodable>(_ value: T) throws {
     FileHandle.standardOutput.write(try encoder.encode(value))
 }
 
+private func writeError(_ error: NativeError) {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    guard let data = try? encoder.encode(NativeErrorResponse(code: error.code, message: error.description)) else {
+        return
+    }
+    FileHandle.standardError.write(data)
+    FileHandle.standardError.write(Data([0x0A]))
+}
+
 @main
 private enum JingleComputerUseMacOS {
     static func main() {
@@ -429,7 +586,27 @@ private enum JingleComputerUseMacOS {
             let command = try readRequest()
             switch command.method {
             case "probe":
-                try write(ProbeResult(accessibilityTrusted: AXIsProcessTrusted()))
+                guard command.environment == jingleComputerUseEnvironment,
+                      command.protocolVersion == jingleComputerUseProtocolVersion else {
+                    throw NativeError(description: "Probe request belongs to another environment or protocol.")
+                }
+                let accessibilityTrusted = probeAccessibility(
+                    requestPermission: command.requestPermission == true
+                )
+                if command.requestPermission == true && !accessibilityTrusted {
+                    throw NativeError(
+                        description: "Accessibility permission is required.",
+                        code: "accessibility_permission_required"
+                    )
+                }
+                try write(ProbeResult(accessibilityTrusted: accessibilityTrusted))
+            case "identify":
+                guard command.environment == jingleComputerUseEnvironment,
+                      command.protocolVersion == jingleComputerUseProtocolVersion else {
+                    throw NativeError(description: "Identify request belongs to another environment or protocol.")
+                }
+                guard let request = command.request else { throw NativeError(description: "Identify request is missing.") }
+                try write(OperationResponse(method: "identify", result: try identify(request)))
             case "observe":
                 guard command.environment == jingleComputerUseEnvironment,
                       command.protocolVersion == jingleComputerUseProtocolVersion else {
@@ -450,8 +627,11 @@ private enum JingleComputerUseMacOS {
             default:
                 throw NativeError(description: "Unsupported Computer Use method: \(command.method)")
             }
+        } catch let error as NativeError {
+            writeError(error)
+            exit(1)
         } catch {
-            fputs("\(error)\n", stderr)
+            writeError(NativeError(description: "Computer Use native helper failed."))
             exit(1)
         }
     }

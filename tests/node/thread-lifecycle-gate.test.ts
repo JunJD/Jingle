@@ -54,7 +54,12 @@ test("ThreadLifecycleGate aborts active runs and closes admission during shutdow
 test("AgentService rejects new commands after shutdown begins", async () => {
   const { AgentService } = await import("../../src/main/agent/service")
   const gate = new ThreadLifecycleGate()
-  const service = new AgentService({} as never, gate, {} as never)
+  const service = new AgentService(
+    { close: async () => undefined } as never,
+    {} as never,
+    gate,
+    {} as never
+  )
   const events: Array<{ code?: string; type: string }> = []
 
   await service.shutdown()

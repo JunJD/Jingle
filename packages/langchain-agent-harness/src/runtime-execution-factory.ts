@@ -172,7 +172,9 @@ async function resolveRuntimeHostForRun<
     environment: {
       artifactPresentation: host.environment.artifactPresentation,
       backend,
-      desktopAutomationTools: host.environment.desktopAutomationTools,
+      ...(host.environment.computerUseTools
+        ? { computerUseTools: host.environment.computerUseTools }
+        : {}),
       executeToolDescription: host.environment.executeToolDescription(thread),
       extensionAiTools: host.environment.extensionAiTools,
       filesystemSystemPrompt: host.environment.filesystemSystemPrompt(thread),

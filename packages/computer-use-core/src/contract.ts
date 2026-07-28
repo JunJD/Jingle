@@ -16,8 +16,20 @@ export type ComputerUseBackendEnvironment =
   | "linux-wayland-gnome"
   | "linux-wayland-kde"
   | "linux-wayland-other"
-export type ComputerUseActionKind = "press" | "set_value" | "type_text" | "keypress" | "scroll"
+export type ComputerUseActionKind =
+  | "activate"
+  | "press"
+  | "set_value"
+  | "type_text"
+  | "keypress"
+  | "scroll"
 export type ComputerUseDeliveryMode = "background" | "foreground"
+export type ComputerUseTraceOperation =
+  | "scheduler"
+  | "execute_background"
+  | "execute_foreground"
+  | "observe_successor"
+  | "observe_recovery"
 export type ComputerUseOutcome =
   | "worked"
   | "didnt"
@@ -25,6 +37,23 @@ export type ComputerUseOutcome =
   | "refused"
   | "unavailable"
   | "cancelled_before_dispatch"
+
+export interface ComputerUseTraceEvent {
+  dispatchOccurred: boolean
+  environment: ComputerUseBackendEnvironment
+  errorCode: string
+  kind: "operation_failed"
+  nativeCode?: string
+  operation: ComputerUseTraceOperation
+  platform: ComputerUsePlatform
+  runId: string
+  threadId: string
+  transactionId: string
+}
+
+export interface ComputerUseTraceSink {
+  record(event: ComputerUseTraceEvent): void
+}
 
 export interface ComputerUseWindowIdentity {
   generation: string
@@ -53,6 +82,7 @@ export interface ComputerUseObservation {
   elements: readonly ComputerUseElement[]
   epoch: number
   resourceKey: string
+  sourceTruncated: boolean
   stateId: string
   window: ComputerUseWindowIdentity
 }
@@ -69,6 +99,7 @@ export type ComputerUseFullViewReason =
   | "initial"
   | "low_identity_confidence"
   | "root_replacement"
+  | "source_truncated"
   | "state_evicted"
 
 export type ComputerUseIdentityReason =
@@ -90,6 +121,7 @@ export interface ComputerUseFoldedFullView {
   hasMore: boolean
   kind: "full"
   reason: ComputerUseFullViewReason
+  sourceTruncated: boolean
   stateId: string
   totalElements: number
   truncation: ComputerUseProjectionTruncation
@@ -113,6 +145,7 @@ export type ComputerUseModelObservation = ComputerUseFoldedFullView | ComputerUs
 export interface ComputerUseObservationQueryResult {
   elements: readonly ComputerUseElement[]
   hasMore: boolean
+  sourceTruncated: boolean
   stateId: string
   totalElements: number
   truncation: ComputerUseProjectionTruncation
@@ -120,11 +153,22 @@ export interface ComputerUseObservationQueryResult {
 
 export type ComputerUseBackendObservation = Omit<ComputerUseObservation, "epoch" | "stateId">
 
+export type ComputerUseTargetIdentity = Pick<
+  ComputerUseBackendObservation,
+  "application" | "resourceKey" | "window"
+>
+
 interface ComputerUseSemanticActionBase {
   ref: string
 }
 
 export type ComputerUseSemanticAction =
+  | (ComputerUseSemanticActionBase & {
+      keys?: never
+      kind: "activate"
+      scrollAmount?: never
+      value?: never
+    })
   | (ComputerUseSemanticActionBase & {
       keys?: never
       kind: "press"
@@ -171,6 +215,13 @@ export interface ComputerUseTransactionResult {
   successor?: ComputerUseObservation
 }
 
+export type ComputerUseRetryDisposition =
+  | { allowed: true; reason: "proven_no_side_effect" }
+  | {
+      allowed: false
+      reason: "cancelled" | "not_actionable" | "side_effect_possible"
+    }
+
 export type ComputerUseBackendExecutionOutcome = Exclude<
   ComputerUseOutcome,
   "cancelled_before_dispatch"
@@ -202,11 +253,16 @@ export interface ComputerUseCapabilityMatrix {
   protocolVersion: typeof JINGLE_COMPUTER_USE_PROTOCOL_VERSION
 }
 
-export interface ComputerUseObserveRequest {
-  applicationId?: string
+export interface ComputerUseIdentifyRequest {
+  applicationId: string
   applicationName?: string
   signal?: AbortSignal
   windowId?: string
+}
+
+export interface ComputerUseObserveRequest {
+  signal?: AbortSignal
+  target: ComputerUseTargetIdentity
 }
 
 export interface ComputerUseExecuteRequest {
@@ -227,6 +283,7 @@ export interface ComputerUseAuthorizationGrant {
 
 export interface ComputerUseBackend {
   readonly matrix: ComputerUseCapabilityMatrix
+  identify(request: ComputerUseIdentifyRequest): Promise<ComputerUseTargetIdentity>
   observe(request: ComputerUseObserveRequest): Promise<ComputerUseBackendObservation>
   execute(request: ComputerUseExecuteRequest): Promise<ComputerUseBackendExecutionResult>
   disposeSession(sessionId: string): Promise<void>

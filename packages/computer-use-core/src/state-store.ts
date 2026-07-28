@@ -197,6 +197,7 @@ export class ComputerUseObservationStore {
       elements: input.elements.map(exactComputerUseElement),
       epoch: input.epoch,
       resourceKey: input.resourceKey,
+      sourceTruncated: input.sourceTruncated,
       stateId,
       window: {
         generation: input.window.generation,
@@ -245,6 +246,9 @@ export class ComputerUseObservationStore {
     }
     const base = this.records.get(input.baseStateId)
     if (!base) return this.full(successor, "state_evicted")
+    if (base.sourceTruncated || successor.sourceTruncated) {
+      return this.full(successor, "source_truncated")
+    }
     if (!sameObservationRoot(base, successor)) {
       return this.full(successor, "root_replacement")
     }
@@ -349,6 +353,7 @@ export class ComputerUseObservationStore {
         hasMore: elements.length < observation.elements.length,
         kind: "full" as const,
         reason,
+        sourceTruncated: observation.sourceTruncated,
         stateId: observation.stateId,
         totalElements: observation.elements.length,
         truncation
@@ -543,6 +548,7 @@ function queryResult(
     (projected, truncation) => ({
       elements: projected,
       hasMore: truncation.omittedElements > 0,
+      sourceTruncated: observation.sourceTruncated,
       stateId: observation.stateId,
       totalElements: observation.elements.length,
       truncation

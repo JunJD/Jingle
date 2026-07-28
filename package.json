@@ -13,7 +13,6 @@
     "out/native/jingle-computer-use-linux.py",
     "out/native/jingle-computer-use-macos",
     "out/native/jingle-computer-use-windows.ps1",
-    "out/native/jingle-desktop-automation",
     "out/native/jingle-minimal-island",
     "out/native/jingle-selection-capture",
     "bin/",

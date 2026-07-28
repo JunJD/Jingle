@@ -20,8 +20,10 @@ import {
   createRuntimeThreadTerminalReferee,
   isRuntimeThreadAdmissionPersistenceError,
   isRuntimeThreadDurableFailureError,
+  isRuntimeThreadOwnershipCleanupError,
   RuntimeThreadAdmissionPersistenceError,
-  RuntimeThreadDurableFailureError
+  RuntimeThreadDurableFailureError,
+  RuntimeThreadOwnershipCleanupError
 } from "../../packages/langchain-agent-harness/src/runtime-thread-terminal"
 import type {
   RuntimeThreadOperationControl,
@@ -860,6 +862,7 @@ test("BDD RuntimeThread supports idle compact with the caller operation identity
   process.env.JINGLE_BDD_AGENT_RUNTIME = "scripted"
   try {
     const handle = createAgentRunHandle({
+      computerUseRuntime: { closeRun: async () => undefined } as never,
       runtime: {
         thread() {
           throw new Error("Checkpoint runtime must not open in scripted BDD mode.")
@@ -1294,6 +1297,67 @@ test("RuntimeThreadTerminalReferee records ignored terminal diagnostics without 
   ])
 })
 
+test("RuntimeThreadTerminalReferee retains suspended resources for an interrupted checkpoint", async () => {
+  const settlements: unknown[] = []
+  const referee = createRuntimeThreadTerminalReferee({
+    lifecycle: createLifecycleControl({
+      completeRun: async () => ({
+        facts: { contextInclusions: [], recordingRefs: [] },
+        status: "interrupted"
+      }),
+      settleRun: async (input) => {
+        settlements.push(input)
+      }
+    }),
+    observeIgnoredTerminal: () => undefined,
+    start: { recordingRefs: [], runId: "run-suspended-computer-use" }
+  })
+
+  referee.submit({
+    interrupted: true,
+    status: "completed",
+    submittedContextInclusions: []
+  })
+
+  assert.deepEqual(await referee.commit(), {
+    completion: {
+      facts: { contextInclusions: [], recordingRefs: [] },
+      status: "interrupted"
+    },
+    status: "completed"
+  })
+  assert.deepEqual(settlements, [
+    { retainSuspendedResources: true, runId: "run-suspended-computer-use" }
+  ])
+})
+
+test("RuntimeThreadTerminalReferee preserves durable completion when ownership cleanup fails", async () => {
+  const cleanupError = new Error("dispose session failed")
+  const referee = createRuntimeThreadTerminalReferee({
+    lifecycle: createLifecycleControl({
+      settleRun: async () => {
+        throw cleanupError
+      }
+    }),
+    observeIgnoredTerminal: () => undefined,
+    start: { recordingRefs: [], runId: "run-cleanup-failure" }
+  })
+  referee.submit({
+    interrupted: false,
+    status: "completed",
+    submittedContextInclusions: []
+  })
+
+  await assert.rejects(referee.commit(), (error) => {
+    assert.ok(error instanceof RuntimeThreadOwnershipCleanupError)
+    assert.equal(error.cause, cleanupError)
+    assert.equal(error.runId, "run-cleanup-failure")
+    assert.equal(error.status, "completed")
+    assert.equal(isRuntimeThreadOwnershipCleanupError(error), true)
+    return true
+  })
+})
+
 test("RuntimeThreadTerminalReferee lets a committed decline supersede an uncommitted abort", async () => {
   const events: string[] = []
   const referee = createRuntimeThreadTerminalReferee({
@@ -1497,7 +1561,7 @@ function createExecutionCapabilities(input: {
     tools: {
       artifactPresentation: () => placeholder,
       backend: (_scope, { signal }) => resolveCapability("backend", signal),
-      desktopAutomationTools: placeholder,
+      computerUseTools: placeholder,
       extensionAiTools: placeholder,
       skillSources: () => [],
       webTools: placeholder

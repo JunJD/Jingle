@@ -5,13 +5,11 @@ import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permis
 import {
   buildToolApprovalItem,
   requiresToolApproval,
+  type ComputerUseToolApprovalItem,
   type ToolApprovalItem
 } from "@shared/tool-approval"
 import { getFileMutationReview, isFileMutationToolName } from "@shared/file-mutation-review"
 import { assertExtensionAgentToolName } from "@shared/extension-sources"
-import { getAgentConfig } from "../preferences"
-import type { AgentConfig } from "../types"
-import { getDesktopAutomationPolicyDecision } from "./desktop-automation-policy"
 import type { ExtensionToolApprovalPolicyProvider } from "../extension-tools/permission"
 
 export type ToolPermissionDisposition = "allow" | "deny" | "require_approval"
@@ -33,8 +31,10 @@ export interface ToolPermissionRuntime {
 }
 
 export interface CreateToolPermissionRuntimeOptions {
+  computerUseApprovalProvider?: (
+    args: Record<string, unknown>
+  ) => Promise<ComputerUseToolApprovalItem>
   extensionToolPolicyProvider?: ExtensionToolApprovalPolicyProvider
-  getAgentConfig?: () => AgentConfig
   permissionMode?: PermissionModeName
 }
 
@@ -165,6 +165,38 @@ async function evaluateExecuteTool(
   return requireApproval(args, await buildApprovalReview(toolName, args), policy.reason)
 }
 
+async function evaluateComputerUseTool(
+  toolName: string,
+  args: unknown,
+  permissionMode: PermissionModeName,
+  approvalProvider: CreateToolPermissionRuntimeOptions["computerUseApprovalProvider"]
+): Promise<ToolPermissionDecision | null> {
+  if (toolName !== "computer_use_action") return null
+  if (!isRecord(args)) {
+    throw new Error("[ToolPermissionRuntime] Computer Use action args must be an object.")
+  }
+  if (!approvalProvider) {
+    return deny(args, "Computer Use is unavailable without an authorized runtime session.")
+  }
+  const review = await approvalProvider(args)
+  const canonicalArgs: Record<string, unknown> = {
+    actions: review.actions,
+    sessionId: review.sessionId,
+    stateId: review.stateId
+  }
+  if (permissionMode === "explore") {
+    return deny(canonicalArgs, "Explore mode does not allow Computer Use actions.")
+  }
+  if (permissionMode === "auto") {
+    return allow(canonicalArgs, "Auto mode allows Computer Use actions.")
+  }
+  return requireApproval(
+    canonicalArgs,
+    review,
+    "Confirm mode requires approval before Computer Use can dispatch an action."
+  )
+}
+
 function isExtensionAgentToolName(toolName: string): boolean {
   try {
     assertExtensionAgentToolName(toolName)
@@ -177,26 +209,11 @@ function isExtensionAgentToolName(toolName: string): boolean {
 export function createToolPermissionRuntime(
   options: CreateToolPermissionRuntimeOptions = {}
 ): ToolPermissionRuntime {
-  const readAgentConfig = options.getAgentConfig ?? getAgentConfig
   const permissionMode = options.permissionMode ?? DEFAULT_PERMISSION_MODE
 
   return {
     async evaluate(request) {
       const toolArgs = isRecord(request.args) ? request.args : {}
-
-      const desktopAutomationDecision = getDesktopAutomationPolicyDecision(
-        request.toolName,
-        toolArgs,
-        readAgentConfig()
-      )
-
-      if (desktopAutomationDecision?.disposition === "allow") {
-        return allow(toolArgs, desktopAutomationDecision.reason)
-      }
-
-      if (desktopAutomationDecision?.disposition === "deny") {
-        return deny(toolArgs, desktopAutomationDecision.reason)
-      }
 
       const executeDecision = await evaluateExecuteTool(
         request.toolName,
@@ -206,6 +223,14 @@ export function createToolPermissionRuntime(
       if (executeDecision) {
         return executeDecision
       }
+
+      const computerUseDecision = await evaluateComputerUseTool(
+        request.toolName,
+        request.args,
+        permissionMode,
+        options.computerUseApprovalProvider
+      )
+      if (computerUseDecision) return computerUseDecision
 
       if (request.toolName === "callExtension") {
         const extensionToolPolicyProvider = options.extensionToolPolicyProvider

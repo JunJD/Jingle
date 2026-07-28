@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test, { mock } from "node:test"
 import type { IpcMain, IpcMainInvokeEvent, WebContents } from "electron"
 import { AgentController } from "../../src/main/agent/controller"
+import type { DurableWindowCallerLease } from "../../src/main/windows/window-identity"
 import { parseAgentConnectThreadEventsResult } from "../../src/shared/agent-thread-contract"
 import { parseSerializedIpcErrorMessage } from "../../src/shared/ipc-error"
 
@@ -52,8 +53,17 @@ function createInvokeEvent(input?: {
 }
 
 const launcherSenderIdentity: ConstructorParameters<typeof AgentController>[3] = {
-  getMainWindowThreadId: () => null,
+  getDurableCallerLease: () => null,
   isLauncher: () => true
+}
+
+function createDurableCallerLease(threadId: string): DurableWindowCallerLease {
+  return Object.freeze({
+    incarnation: 1,
+    signal: new AbortController().signal,
+    threadId,
+    window: Object.freeze({ kind: "main" as const, windowId: `main:${threadId}` })
+  })
 }
 
 class FakeIpcMain {
@@ -470,7 +480,7 @@ test("AgentController rejects every agent IPC channel outside trusted main frame
     {} as ConstructorParameters<typeof AgentController>[1],
     { error: () => undefined, warn: () => undefined },
     {
-      getMainWindowThreadId: () => null,
+      getDurableCallerLease: () => null,
       isLauncher: () => false
     }
   )
@@ -515,7 +525,7 @@ test("AgentController rejects every agent IPC channel outside trusted main frame
     {} as ConstructorParameters<typeof AgentController>[1],
     { error: () => undefined, warn: () => undefined },
     {
-      getMainWindowThreadId: () => "thread-ambiguous",
+      getDurableCallerLease: () => createDurableCallerLease("thread-ambiguous"),
       isLauncher: () => true
     }
   )
@@ -548,12 +558,12 @@ test("AgentController derives subscription surfaces from trusted window identity
     runner as unknown as ConstructorParameters<typeof AgentController>[1],
     { error: () => undefined, warn: () => undefined },
     {
-      getMainWindowThreadId: (sender) => {
+      getDurableCallerLease: (sender) => {
         if (sender.id === 2) {
-          return "thread-pinned"
+          return createDurableCallerLease("thread-pinned")
         }
         if (sender.id === 3) {
-          return "thread-pinned-derived"
+          return createDurableCallerLease("thread-pinned-derived")
         }
         return null
       },
@@ -616,7 +626,7 @@ test("AgentController rejects every main-window command targeting another thread
     ) as ConstructorParameters<typeof AgentController>[1],
     { error: () => undefined, warn: () => undefined },
     {
-      getMainWindowThreadId: () => "thread-bound",
+      getDurableCallerLease: () => createDurableCallerLease("thread-bound"),
       isLauncher: () => false
     }
   )
@@ -779,7 +789,8 @@ test("AgentController restores Launcher events after a Main window changes threa
     runner as unknown as ConstructorParameters<typeof AgentController>[1],
     { error: () => undefined, warn: () => undefined },
     {
-      getMainWindowThreadId: (sender) => (sender.id === 2 ? mainThreadId : null),
+      getDurableCallerLease: (sender) =>
+        sender.id === 2 ? createDurableCallerLease(mainThreadId) : null,
       isLauncher: (sender) => sender.id === 1
     }
   )
@@ -856,7 +867,7 @@ test("AgentController discards a stale Main subscription that resolves after ret
     runner as unknown as ConstructorParameters<typeof AgentController>[1],
     { error: () => undefined, warn: () => undefined },
     {
-      getMainWindowThreadId: () => mainThreadId,
+      getDurableCallerLease: () => createDurableCallerLease(mainThreadId),
       isLauncher: () => false
     }
   )
@@ -922,7 +933,8 @@ test("AgentController preserves Launcher ownership across Main reconnects", asyn
     runner as unknown as ConstructorParameters<typeof AgentController>[1],
     { error: () => undefined, warn: () => undefined },
     {
-      getMainWindowThreadId: (sender) => (sender.id === 2 ? "thread-a" : null),
+      getDurableCallerLease: (sender) =>
+        sender.id === 2 ? createDurableCallerLease("thread-a") : null,
       isLauncher: (sender) => sender.id === 1
     }
   )
@@ -1072,7 +1084,8 @@ test("AgentController keeps Launcher events active until a Main subscription con
     runner as unknown as ConstructorParameters<typeof AgentController>[1],
     { error: () => undefined, warn: () => undefined },
     {
-      getMainWindowThreadId: (sender) => (sender.id === 2 ? "thread-a" : null),
+      getDurableCallerLease: (sender) =>
+        sender.id === 2 ? createDurableCallerLease("thread-a") : null,
       isLauncher: (sender) => sender.id === 1
     }
   )
@@ -1136,7 +1149,8 @@ test("AgentController preserves a pending Launcher subscription through Main han
     runner as unknown as ConstructorParameters<typeof AgentController>[1],
     { error: () => undefined, warn: () => undefined },
     {
-      getMainWindowThreadId: (sender) => (sender.id === 2 ? "thread-a" : null),
+      getDurableCallerLease: (sender) =>
+        sender.id === 2 ? createDurableCallerLease("thread-a") : null,
       isLauncher: (sender) => sender.id === 1
     }
   )

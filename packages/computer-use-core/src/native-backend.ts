@@ -14,9 +14,11 @@ import type {
   ComputerUseCapabilityMatrix,
   ComputerUseElement,
   ComputerUseExecuteRequest,
+  ComputerUseIdentifyRequest,
   ComputerUseObserveRequest,
   ComputerUsePlatform,
   ComputerUseSemanticAction,
+  ComputerUseTargetIdentity,
   ComputerUseWindowIdentity
 } from "./contract"
 import {
@@ -30,6 +32,13 @@ export type JingleComputerUseNativeRequest =
       environment: ComputerUseBackendEnvironment
       method: "probe"
       protocolVersion: typeof JINGLE_COMPUTER_USE_PROTOCOL_VERSION
+      requestPermission: boolean
+    }
+  | {
+      environment: ComputerUseBackendEnvironment
+      method: "identify"
+      protocolVersion: typeof JINGLE_COMPUTER_USE_PROTOCOL_VERSION
+      request: Omit<ComputerUseIdentifyRequest, "signal">
     }
   | {
       environment: ComputerUseBackendEnvironment
@@ -63,6 +72,7 @@ interface NativeEnvironmentPolicy {
 }
 
 const ACTIONS: readonly ComputerUseActionKind[] = [
+  "activate",
   "press",
   "set_value",
   "type_text",
@@ -74,6 +84,7 @@ const REFUSED: readonly ComputerUseCapabilityStatus[] = ["refused"]
 const UNAVAILABLE: readonly ComputerUseCapabilityStatus[] = ["unavailable"]
 
 const linuxCapabilities: NativeEnvironmentPolicy["capabilities"] = {
+  activate: { background: UNAVAILABLE, foreground: UNAVAILABLE, route: "unavailable" },
   keypress: { background: REFUSED, foreground: UNAVAILABLE, route: "unavailable" },
   press: {
     background: AVAILABLE_SEMANTIC,
@@ -106,6 +117,11 @@ const environmentPolicies: Readonly<
   "linux-x11": { capabilities: linuxCapabilities, platform: "linux" },
   "macos-quartz": {
     capabilities: {
+      activate: {
+        background: REFUSED,
+        foreground: AVAILABLE_SEMANTIC,
+        route: "ax_raise_activate"
+      },
       keypress: { background: REFUSED, foreground: UNAVAILABLE, route: "unavailable" },
       press: { background: AVAILABLE_SEMANTIC, foreground: UNAVAILABLE, route: "ax_action" },
       scroll: { background: UNAVAILABLE, foreground: UNAVAILABLE, route: "unavailable" },
@@ -116,6 +132,7 @@ const environmentPolicies: Readonly<
   },
   "windows-win32": {
     capabilities: {
+      activate: { background: UNAVAILABLE, foreground: UNAVAILABLE, route: "unavailable" },
       keypress: { background: UNAVAILABLE, foreground: UNAVAILABLE, route: "uia_unavailable" },
       press: { background: UNAVAILABLE, foreground: UNAVAILABLE, route: "uia_action" },
       scroll: { background: UNAVAILABLE, foreground: UNAVAILABLE, route: "uia_unavailable" },
@@ -133,7 +150,12 @@ export async function createJingleComputerUseNativeBackend(
 ): Promise<ComputerUseBackend> {
   signal?.throwIfAborted()
   const rawMatrix = await bridge.invoke(
-    { environment, method: "probe", protocolVersion: JINGLE_COMPUTER_USE_PROTOCOL_VERSION },
+    {
+      environment,
+      method: "probe",
+      protocolVersion: JINGLE_COMPUTER_USE_PROTOCOL_VERSION,
+      requestPermission: environment === "macos-quartz"
+    },
     signal
   )
   signal?.throwIfAborted()
@@ -145,6 +167,25 @@ class NativeComputerUseBackend implements ComputerUseBackend {
     private readonly bridge: JingleComputerUseNativeBridge,
     readonly matrix: ComputerUseCapabilityMatrix
   ) {}
+
+  async identify(request: ComputerUseIdentifyRequest): Promise<ComputerUseTargetIdentity> {
+    request.signal?.throwIfAborted()
+    const signal = request.signal
+    const result = await this.bridge.invoke(
+      {
+        environment: this.matrix.environment,
+        method: "identify",
+        protocolVersion: JINGLE_COMPUTER_USE_PROTOCOL_VERSION,
+        request: encodeNativeIdentifyRequest(request)
+      },
+      signal
+    )
+    signal?.throwIfAborted()
+    return decodeNativeTargetIdentity(
+      this.matrix.platform,
+      decodeNativeOperationResponse(this.matrix.environment, "identify", result)
+    )
+  }
 
   async observe(request: ComputerUseObserveRequest): Promise<ComputerUseBackendObservation> {
     request.signal?.throwIfAborted()
@@ -209,25 +250,35 @@ class NativeComputerUseBackend implements ComputerUseBackend {
 function encodeNativeObserveRequest(
   request: ComputerUseObserveRequest
 ): Omit<ComputerUseObserveRequest, "signal"> {
-  const result: Omit<ComputerUseObserveRequest, "signal"> = {}
-  if (request.applicationId !== undefined) {
-    result.applicationId = readString(
+  return deepFreeze({
+    target: decodeNativeTargetIdentity(
+      request.target.window.platform,
+      projectNativeTargetIdentity(request.target)
+    )
+  })
+}
+
+function encodeNativeIdentifyRequest(
+  request: ComputerUseIdentifyRequest
+): Omit<ComputerUseIdentifyRequest, "signal"> {
+  const result: Omit<ComputerUseIdentifyRequest, "signal"> = {
+    applicationId: readString(
       request.applicationId,
-      "observe.applicationId",
+      "identify.applicationId",
       COMPUTER_USE_NATIVE_RESPONSE_LIMITS.token
     )
   }
   if (request.applicationName !== undefined) {
     result.applicationName = readString(
       request.applicationName,
-      "observe.applicationName",
+      "identify.applicationName",
       COMPUTER_USE_NATIVE_RESPONSE_LIMITS.text
     )
   }
   if (request.windowId !== undefined) {
     result.windowId = readString(
       request.windowId,
-      "observe.windowId",
+      "identify.windowId",
       COMPUTER_USE_NATIVE_RESPONSE_LIMITS.token
     )
   }
@@ -299,6 +350,15 @@ function projectNativeObservation(value: Record<string, unknown>): Record<string
     application: { id: application.id, name: application.name },
     capturedAt: value.capturedAt,
     elements,
+    resourceKey: value.resourceKey,
+    sourceTruncated: value.sourceTruncated,
+    window: projectNativeWindowIdentity(value.window)
+  }
+}
+
+function projectNativeTargetIdentity(value: ComputerUseTargetIdentity): Record<string, unknown> {
+  return {
+    application: { id: value.application.id, name: value.application.name },
     resourceKey: value.resourceKey,
     window: projectNativeWindowIdentity(value.window)
   }
@@ -435,7 +495,7 @@ function hasExactKeys(
 
 function decodeNativeOperationResponse(
   environment: ComputerUseBackendEnvironment,
-  method: "execute" | "observe",
+  method: "execute" | "identify" | "observe",
   value: unknown
 ): unknown {
   if (
@@ -455,47 +515,85 @@ function decodeNativeObservation(
   platform: ComputerUsePlatform,
   value: unknown
 ): ComputerUseBackendObservation {
-  if (!hasExactKeys(value, ["application", "capturedAt", "elements", "resourceKey", "window"])) {
+  if (
+    !hasExactKeys(value, [
+      "application",
+      "capturedAt",
+      "elements",
+      "resourceKey",
+      "sourceTruncated",
+      "window"
+    ])
+  ) {
     throw new Error("Computer-use native observation has an invalid envelope.")
   }
-  if (!hasExactKeys(value.application, ["id", "name"])) {
-    throw new Error("Computer-use native observation has an invalid application identity.")
+  if (typeof value.sourceTruncated !== "boolean") {
+    throw new Error("Computer-use native observation has invalid source completeness.")
   }
-  const application = {
-    id: readString(
-      value.application.id,
-      "application.id",
-      COMPUTER_USE_NATIVE_RESPONSE_LIMITS.token
-    ),
-    name: readString(
-      value.application.name,
-      "application.name",
-      COMPUTER_USE_NATIVE_RESPONSE_LIMITS.text
-    )
-  }
-  const capturedAt = readNonNegativeInteger(value.capturedAt, "capturedAt")
-  const resourceKey = readString(
-    value.resourceKey,
-    "resourceKey",
-    COMPUTER_USE_NATIVE_RESPONSE_LIMITS.token
+  const presentationState = { sourceTruncated: value.sourceTruncated }
+  const target = decodeNativeTargetIdentity(
+    platform,
+    {
+      application: value.application,
+      resourceKey: value.resourceKey,
+      window: value.window
+    },
+    presentationState
   )
-  const window = decodeNativeWindowIdentity(value.window, platform)
+  const capturedAt = readNonNegativeInteger(value.capturedAt, "capturedAt")
   if (!isDenseArray(value.elements, COMPUTER_USE_NATIVE_RESPONSE_LIMITS.elements)) {
     throw new Error("Computer-use native observation has an invalid element count.")
   }
   const refs = new Set<string>()
   const elements = value.elements.map((candidate, index) => {
-    const element = decodeNativeElement(candidate, index)
+    const element = decodeNativeElement(candidate, index, presentationState)
     if (element.index !== index) {
       throw new Error("Computer-use native observation element indexes are not canonical.")
     }
     if (refs.has(element.ref)) {
       throw new Error("Computer-use native observation contains duplicate semantic refs.")
     }
+    if (element.actions.includes("activate") && (platform !== "macos" || index !== 0)) {
+      throw new Error("Computer-use native observation exposes activate outside the macOS root.")
+    }
     refs.add(element.ref)
     return element
   })
-  return deepFreeze({ application, capturedAt, elements, resourceKey, window })
+  return deepFreeze({
+    ...target,
+    capturedAt,
+    elements,
+    sourceTruncated: presentationState.sourceTruncated
+  })
+}
+
+function decodeNativeTargetIdentity(
+  platform: ComputerUsePlatform,
+  value: unknown,
+  presentationState?: { sourceTruncated: boolean }
+): ComputerUseTargetIdentity {
+  if (!hasExactKeys(value, ["application", "resourceKey", "window"])) {
+    throw new Error("Computer-use native target identity has an invalid envelope.")
+  }
+  if (!hasExactKeys(value.application, ["id", "name"])) {
+    throw new Error("Computer-use native target has an invalid application identity.")
+  }
+  return deepFreeze({
+    application: {
+      id: readString(
+        value.application.id,
+        "application.id",
+        COMPUTER_USE_NATIVE_RESPONSE_LIMITS.token
+      ),
+      name: readPresentationString(value.application.name, "application.name", presentationState)
+    },
+    resourceKey: readString(
+      value.resourceKey,
+      "resourceKey",
+      COMPUTER_USE_NATIVE_RESPONSE_LIMITS.token
+    ),
+    window: decodeNativeWindowIdentity(value.window, platform)
+  })
 }
 
 function decodeNativeWindowIdentity(
@@ -526,7 +624,11 @@ function decodeNativeWindowIdentity(
   }
 }
 
-function decodeNativeElement(value: unknown, offset: number): ComputerUseElement {
+function decodeNativeElement(
+  value: unknown,
+  offset: number,
+  presentationState: { sourceTruncated: boolean }
+): ComputerUseElement {
   if (
     !hasExactKeys(
       value,
@@ -550,7 +652,11 @@ function decodeNativeElement(value: unknown, offset: number): ComputerUseElement
   }
   return {
     actions,
-    ...readOptionalTextFields(value, ["description", "identifier", "title", "value"]),
+    ...readOptionalTextFields(
+      value,
+      ["description", "identifier", "title", "value"],
+      presentationState
+    ),
     index: readNonNegativeInteger(value.index, `elements[${offset}].index`),
     ref: readString(
       value.ref,
@@ -742,13 +848,16 @@ function isVerification(value: unknown): value is "verified" | "failed" | "unver
 
 function readOptionalTextFields(
   value: Record<string, unknown>,
-  keys: readonly ("description" | "identifier" | "title" | "value")[]
+  keys: readonly ("description" | "identifier" | "title" | "value")[],
+  presentationState: { sourceTruncated: boolean }
 ): Partial<Pick<ComputerUseElement, "description" | "identifier" | "title" | "value">> {
   const result: Partial<
     Pick<ComputerUseElement, "description" | "identifier" | "title" | "value">
   > = {}
   for (const key of keys) {
-    if (Object.hasOwn(value, key)) result[key] = readText(value[key], `element.${key}`)
+    if (Object.hasOwn(value, key)) {
+      result[key] = readPresentationText(value[key], `element.${key}`, presentationState)
+    }
   }
   return result
 }
@@ -781,11 +890,35 @@ function readString(value: unknown, path: string, maximum: number): string {
   return value
 }
 
-function readText(value: unknown, path: string): string {
-  if (typeof value !== "string" || value.length > COMPUTER_USE_NATIVE_RESPONSE_LIMITS.text) {
-    throw new Error(`Computer-use native ${path} must be a bounded string.`)
+function readPresentationString(
+  value: unknown,
+  path: string,
+  state?: { sourceTruncated: boolean }
+): string {
+  if (typeof value !== "string" || value.length === 0 || value.trim().length === 0) {
+    throw new Error(`Computer-use native ${path} must be a non-empty string.`)
   }
-  return value
+  return boundPresentationText(value, state)
+}
+
+function readPresentationText(
+  value: unknown,
+  path: string,
+  state: { sourceTruncated: boolean }
+): string {
+  if (typeof value !== "string") {
+    throw new Error(`Computer-use native ${path} must be a string.`)
+  }
+  return boundPresentationText(value, state)
+}
+
+function boundPresentationText(value: string, state?: { sourceTruncated: boolean }): string {
+  if (value.length <= COMPUTER_USE_NATIVE_RESPONSE_LIMITS.text) return value
+  if (state) state.sourceTruncated = true
+  let bounded = value.slice(0, COMPUTER_USE_NATIVE_RESPONSE_LIMITS.text)
+  const lastCodeUnit = bounded.charCodeAt(bounded.length - 1)
+  if (lastCodeUnit >= 0xd800 && lastCodeUnit <= 0xdbff) bounded = bounded.slice(0, -1)
+  return bounded
 }
 
 function isBoundedString(value: unknown, maximum: number): value is string {

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Jingle-owned Linux semantic computer-use backend.
 
-The process accepts one JSON request from argv[1] or stdin. Successful requests
+The process accepts one JSON request from stdin. Successful requests
 write one raw JSON response; errors write one JSON diagnostic to stderr and exit
 nonzero. It intentionally has no coordinate, XTest, portal, or global-input path.
 X11 targets are bound to a real XID; Wayland is accepted only when the AT-SPI
@@ -99,6 +99,18 @@ def _process_start(pid: int) -> str:
         raise BackendError("unavailable", f"Cannot bind process generation for pid {pid}.") from error
 
 
+def _application_executable_id(pid: int) -> str:
+    try:
+        executable = os.path.realpath(f"/proc/{pid}/exe")
+    except OSError as error:
+        raise BackendError(
+            "unavailable", f"Cannot resolve the executable owner for pid {pid}."
+        ) from error
+    if not executable or not os.path.isabs(executable) or not os.path.exists(executable):
+        raise BackendError("unavailable", f"Cannot bind an executable owner for pid {pid}.")
+    return f"linux-exe:{executable}"
+
+
 def _application_pid(application: Any) -> int:
     candidates = [application]
     get_application = getattr(application, "getApplication", None)
@@ -130,18 +142,29 @@ def _application_pid(application: Any) -> int:
     return 0
 
 
-def _children(accessible: Any) -> Iterable[tuple[int, Any]]:
+def _children_with_completeness(accessible: Any) -> tuple[list[tuple[int, Any]], bool]:
     try:
-        count = min(int(accessible.childCount), MAX_ELEMENTS)
+        raw_count = max(0, int(accessible.childCount))
     except Exception:
-        return
-    for index in range(max(0, count)):
+        return [], False
+    children: list[tuple[int, Any]] = []
+    complete = raw_count <= MAX_ELEMENTS
+    for index in range(min(raw_count, MAX_ELEMENTS)):
         try:
             child = accessible.getChildAtIndex(index)
         except Exception:
+            complete = False
             continue
         if child is not None:
-            yield index, child
+            children.append((index, child))
+        else:
+            complete = False
+    return children, complete
+
+
+def _children(accessible: Any) -> Iterable[tuple[int, Any]]:
+    children, _ = _children_with_completeness(accessible)
+    return iter(children)
 
 
 def _role(accessible: Any) -> str:
@@ -276,7 +299,7 @@ def _x11_window(pid: int, title: str, requested_id: str | None) -> tuple[str, st
         x11.close()
 
 
-def _select_target(request: dict[str, Any]) -> Target:
+def _select_target(request: dict[str, Any], expected_pid: int | None = None) -> Target:
     try:
         import pyatspi  # type: ignore
     except ImportError as error:
@@ -286,21 +309,23 @@ def _select_target(request: dict[str, Any]) -> Target:
     requested_app_id = _text(request.get("applicationId"))
     requested_app_name = _text(request.get("applicationName"))
     requested_window_id = _text(request.get("windowId")) or None
-    matches: list[tuple[Any, Any, int]] = []
+    matches: list[tuple[Any, Any, int, str]] = []
     for _, application in _children(desktop):
         app_name = _text(getattr(application, "name", ""))
-        attrs = _attributes(application)
-        app_id = attrs.get("application-id", "") or attrs.get("id", "") or app_name
-        if requested_app_id and requested_app_id not in {app_id, app_name}:
+        pid = _application_pid(application)
+        if pid <= 0 or (expected_pid is not None and pid != expected_pid):
+            continue
+        try:
+            app_id = _application_executable_id(pid)
+        except BackendError:
+            continue
+        if requested_app_id and requested_app_id != app_id:
             continue
         if requested_app_name and requested_app_name.casefold() not in app_name.casefold():
             continue
-        pid = _application_pid(application)
-        if pid <= 0:
-            continue
         for _, window in _children(application):
             if _role(window) in {"frame", "window", "dialog", "alert"}:
-                matches.append((application, window, pid))
+                matches.append((application, window, pid, app_id))
     if not matches:
         raise BackendError(
             "unavailable",
@@ -310,10 +335,10 @@ def _select_target(request: dict[str, Any]) -> Target:
     if session_type not in {"", "x11", "wayland"}:
         raise BackendError("unavailable", f"Unsupported Linux session type: {session_type}.")
     bound: list[Target] = []
-    for application, window, pid in matches:
+    for application, window, pid, app_id in matches:
         app_name = _text(getattr(application, "name", ""))
         attrs = _attributes(application)
-        app_id = attrs.get("application-id", "") or attrs.get("id", "") or app_name
+        atspi_app_id = attrs.get("application-id", "") or attrs.get("id", "")
         title = _text(getattr(window, "name", ""))
         try:
             if session_type == "wayland":
@@ -327,7 +352,7 @@ def _select_target(request: dict[str, Any]) -> Target:
         # Titles and values are mutable UI state. Resource generation may only
         # use process/native-handle ownership plus stable AT-SPI identity.
         accessible_fingerprint = "\0".join(
-            (app_id, app_name, _role(window), _accessible_path(window))
+            (app_id, atspi_app_id, app_name, _role(window), _accessible_path(window))
         )
         bound.append(
             Target(
@@ -390,10 +415,11 @@ def _element_actions(accessible: Any) -> list[str]:
     return actions
 
 
-def _semantic_tree(target: Target) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def _semantic_tree(target: Target) -> tuple[list[dict[str, Any]], dict[str, Any], bool]:
     elements: list[dict[str, Any]] = []
     resolved: dict[str, Any] = {}
     stack: list[tuple[Any, tuple[int, ...], int]] = [(target.window, (), 0)]
+    source_truncated = False
     while stack and len(elements) < MAX_ELEMENTS:
         accessible, path, depth = stack.pop()
         actions = _element_actions(accessible)
@@ -418,21 +444,23 @@ def _semantic_tree(target: Target) -> tuple[list[dict[str, Any]], dict[str, Any]
                 element["value"] = value
             elements.append(element)
             resolved[ref] = accessible
+        children, children_complete = _children_with_completeness(accessible)
+        if not children_complete:
+            source_truncated = True
         if depth >= MAX_DEPTH:
+            if children:
+                source_truncated = True
             continue
-        children = list(_children(accessible))
         for index, child in reversed(children):
             stack.append((child, path + (index,), depth + 1))
-    return elements, resolved
+    if stack:
+        source_truncated = True
+    return elements, resolved, source_truncated
 
 
-def _observe(request: dict[str, Any]) -> dict[str, Any]:
-    target = _select_target(request)
-    elements, _ = _semantic_tree(target)
+def _target_identity(target: Target) -> dict[str, Any]:
     return {
         "application": {"id": target.application_id, "name": target.application_name},
-        "capturedAt": int(time.time() * 1000),
-        "elements": elements,
         "resourceKey": target.resource_key,
         "window": {
             "generation": target.generation,
@@ -440,6 +468,67 @@ def _observe(request: dict[str, Any]) -> dict[str, Any]:
             "pid": target.pid,
             "platform": "linux",
         },
+    }
+
+
+def _require_target_identity(request: dict[str, Any]) -> dict[str, Any]:
+    target = request.get("target")
+    if not isinstance(target, dict) or set(target) != {"application", "resourceKey", "window"}:
+        raise BackendError("refused", "Observe requires an authorized target identity.")
+    application = target.get("application")
+    window = target.get("window")
+    if (
+        not isinstance(application, dict)
+        or set(application) != {"id", "name"}
+        or not isinstance(application.get("id"), str)
+        or not application["id"]
+        or not isinstance(application.get("name"), str)
+        or not application["name"]
+        or not isinstance(target.get("resourceKey"), str)
+        or not target["resourceKey"]
+        or not isinstance(window, dict)
+        or set(window) != {"generation", "nativeId", "pid", "platform"}
+        or not isinstance(window.get("generation"), str)
+        or not window["generation"]
+        or not isinstance(window.get("nativeId"), str)
+        or not window["nativeId"]
+        or type(window.get("pid")) is not int
+        or window["pid"] <= 0
+        or window.get("platform") != "linux"
+    ):
+        raise BackendError("refused", "Observe requires an authorized target identity.")
+    return target
+
+
+def _identify(request: dict[str, Any]) -> dict[str, Any]:
+    return _target_identity(_select_target(request))
+
+
+def _observe(request: dict[str, Any]) -> dict[str, Any]:
+    expected = _require_target_identity(request)
+    expected_application = expected["application"]
+    expected_window = expected["window"]
+    target = _select_target(
+        {
+            "applicationId": expected_application["id"],
+            "windowId": expected_window["nativeId"],
+        },
+        expected_pid=expected_window["pid"],
+    )
+    current = _target_identity(target)
+    if current != expected:
+        raise BackendError(
+            "refused",
+            "Target application, window, or resource identity changed before observation.",
+        )
+    elements, _, source_truncated = _semantic_tree(target)
+    return {
+        "application": current["application"],
+        "capturedAt": int(time.time() * 1000),
+        "elements": elements,
+        "resourceKey": current["resourceKey"],
+        "sourceTruncated": source_truncated,
+        "window": current["window"],
     }
 
 
@@ -533,7 +622,7 @@ def _execute(request: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(actions, list) or not actions:
         raise BackendError("refused", "A non-empty semantic action list is required.")
 
-    _, resolved = _semantic_tree(target)
+    _, resolved, _ = _semantic_tree(target)
     steps: list[dict[str, Any]] = []
     aggregate = "worked"
     stopped_at: int | None = None
@@ -566,6 +655,7 @@ def _capability_matrix(environment: str, available: bool) -> dict[str, Any]:
         "platform": "linux",
         "protocolVersion": PROTOCOL_VERSION,
         "capabilities": [
+            {"action": "activate", "background": "unavailable", "foreground": "unavailable", "route": "unavailable"},
             {"action": "press", "background": semantic, "foreground": "unavailable", "route": "at_spi_action"},
             {"action": "set_value", "background": semantic, "foreground": "unavailable", "route": "at_spi_editable_text"},
             {"action": "type_text", "background": semantic, "foreground": "unavailable", "route": "at_spi_editable_text"},
@@ -649,6 +739,9 @@ def _dispatch(payload: dict[str, Any]) -> Any:
     method = payload.get("method")
     if method == "probe":
         return _probe(payload)
+    if method == "identify":
+        environment = _operation_environment(payload)
+        return _operation_response(environment, "identify", _identify(payload.get("request") or {}))
     if method == "observe":
         environment = _operation_environment(payload)
         return _operation_response(environment, "observe", _observe(payload.get("request") or {}))
@@ -662,7 +755,9 @@ def _dispatch(payload: dict[str, Any]) -> Any:
 
 def main() -> int:
     try:
-        raw = sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read()
+        if len(sys.argv) > 1:
+            raise BackendError("invalid_request", "Computer Use requests must use stdin.")
+        raw = sys.stdin.read()
         payload = json.loads(raw)
         if not isinstance(payload, dict):
             raise BackendError("refused", "Request must be a JSON object.")

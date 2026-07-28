@@ -88,6 +88,31 @@ export class RuntimeThreadAdmissionPersistenceError extends AggregateError {
   }
 }
 
+export class RuntimeThreadOwnershipCleanupError extends Error {
+  readonly durableFailure: unknown | null
+  readonly runId: string
+  readonly status: RuntimeThreadTerminalStatus
+  readonly type = "runtime_thread_ownership_cleanup_failure" as const
+
+  constructor(input: {
+    cause: unknown
+    durableFailure?: unknown
+    runId: string
+    status: RuntimeThreadTerminalStatus
+  }) {
+    super(
+      `Run "${input.runId}" reached durable ${input.status} state but ownership cleanup failed.`,
+      {
+        cause: input.cause
+      }
+    )
+    this.name = "RuntimeThreadOwnershipCleanupError"
+    this.durableFailure = input.durableFailure ?? null
+    this.runId = input.runId
+    this.status = input.status
+  }
+}
+
 const MISSING_RUNTIME_ERROR_FIELD = Symbol("missing-runtime-error-field")
 
 function readOwnRuntimeErrorField(value: object, key: PropertyKey): unknown {
@@ -125,6 +150,26 @@ export function isRuntimeThreadAdmissionPersistenceError(
       readOwnRuntimeErrorField(value, "type") === "runtime_thread_admission_persistence_failure" &&
       typeof readOwnRuntimeErrorField(value, "runId") === "string" &&
       Array.isArray(readOwnRuntimeErrorField(value, "errors"))
+    )
+  } catch {
+    return false
+  }
+}
+
+export function isRuntimeThreadOwnershipCleanupError(
+  value: unknown
+): value is RuntimeThreadOwnershipCleanupError {
+  try {
+    const status = value instanceof Error ? readOwnRuntimeErrorField(value, "status") : null
+    return (
+      value instanceof Error &&
+      readOwnRuntimeErrorField(value, "name") === "RuntimeThreadOwnershipCleanupError" &&
+      readOwnRuntimeErrorField(value, "type") === "runtime_thread_ownership_cleanup_failure" &&
+      typeof readOwnRuntimeErrorField(value, "runId") === "string" &&
+      (status === "aborted" ||
+        status === "cancelled" ||
+        status === "completed" ||
+        status === "failed")
     )
   } catch {
     return false
@@ -211,8 +256,15 @@ async function commitRuntimeThreadTerminal<TContextInclusion>(input: {
   const persistence = await captureResult(() =>
     persistRuntimeThreadTerminal(input.lifecycle, input.start, input.intent)
   )
+  const retainSuspendedResources =
+    persistence.ok &&
+    persistence.value.status === "completed" &&
+    persistence.value.completion.status === "interrupted"
   const settlement = await captureResult(() =>
-    input.lifecycle.settleRun({ runId: input.start.runId })
+    input.lifecycle.settleRun({
+      ...(retainSuspendedResources ? { retainSuspendedResources: true } : {}),
+      runId: input.start.runId
+    })
   )
 
   if (!persistence.ok) {
@@ -226,17 +278,14 @@ async function commitRuntimeThreadTerminal<TContextInclusion>(input: {
   }
 
   if (!settlement.ok) {
-    if (persistence.value.status === "failed") {
-      throw new RuntimeThreadDurableFailureError({
-        cause: new AggregateError(
-          [persistence.value.error, settlement.error],
-          `Run "${input.start.runId}" failed and ownership cleanup also failed.`
-        ),
-        durableFailure: persistence.value.durableFailure,
-        runId: input.start.runId
-      })
-    }
-    throw settlement.error
+    throw new RuntimeThreadOwnershipCleanupError({
+      cause: settlement.error,
+      ...(persistence.value.status === "failed"
+        ? { durableFailure: persistence.value.durableFailure }
+        : {}),
+      runId: input.start.runId,
+      status: persistence.value.status
+    })
   }
 
   return persistence.value

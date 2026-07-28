@@ -12,15 +12,36 @@ import {
 } from "../preferences"
 import { updateThemeTitleBarOverlay } from "../windows/title-bar-overlay"
 import { getWindowIdentity, isDurableWindowIdentity } from "../windows/window-identity"
+import { ComputerUseRuntime } from "../computer-use/runtime"
+import { diagnosticsGraph } from "../diagnostics/instance"
 
 export class SettingsService {
+  constructor(private readonly computerUseRuntime: ComputerUseRuntime) {}
+
   getAgentConfig(): AgentConfig {
     return getAgentConfig()
   }
 
-  setAgentConfig(updates: Partial<AgentConfig>): AgentConfig {
+  async setAgentConfig(updates: Partial<AgentConfig>): Promise<AgentConfig> {
     const config = setAgentConfig(updates)
-    this.emitAgentConfigChanged(config)
+    try {
+      await this.computerUseRuntime.applyAgentConfig(config)
+    } catch (error) {
+      diagnosticsGraph.capture({
+        component: "settings-service",
+        dimensionEntries: [{ key: "errorType", value: readDiagnosticErrorType(error) }],
+        eventCode: "computer_use.settings_apply_failed",
+        fingerprint: "computer_use.settings_apply_failed",
+        level: "error",
+        operation: "apply-computer-use-settings",
+        recoverable: true,
+        stateImpact: "desired-settings-persisted-runtime-apply-retry-required",
+        summary: "Computer Use settings were saved but could not be applied to the live runtime."
+      })
+      throw error
+    } finally {
+      this.emitAgentConfigChanged(config)
+    }
     return config
   }
 
@@ -74,4 +95,10 @@ export class SettingsService {
       }
     }
   }
+}
+
+function readDiagnosticErrorType(error: unknown): string {
+  if (!(error instanceof Error)) return "unknown"
+  const name = error.name.trim()
+  return /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(name) ? name : "Error"
 }

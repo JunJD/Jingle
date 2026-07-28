@@ -14,6 +14,7 @@ import { createRuntimeGraphEngine } from "../../packages/langchain-agent-harness
 import { resolveFileMutationChangeType } from "../../src/main/agent/tool-permission-runtime"
 import {
   createToolPermissionRuntime,
+  type CreateToolPermissionRuntimeOptions,
   type ToolPermissionRuntime
 } from "../../src/main/agent/tool-permission-runtime"
 import { createDynamicExtensionToolApprovalPolicyProvider } from "../../src/main/extension-tools/permission"
@@ -24,15 +25,14 @@ import type {
   ResolvedExtensionAiCapability
 } from "../../src/shared/extension-sources"
 import { getDefaultHitlAllowedDecisions } from "../../src/shared/hitl"
-import type { AgentConfig } from "../../src/main/types"
 import type { ToolApprovalItem } from "../../src/shared/tool-approval"
 import type { ExtensionToolApprovalPolicyProvider } from "../../src/main/extension-tools/permission"
 import { z } from "../../src/main/agent/tool-input-schema"
 
 function createToolApprovalHarnessMiddleware(
   options: {
+    computerUseApprovalProvider?: CreateToolPermissionRuntimeOptions["computerUseApprovalProvider"]
     extensionToolPolicyProvider?: ExtensionToolApprovalPolicyProvider
-    getAgentConfig?: () => AgentConfig
     permissionMode?: PermissionModeName
     permissionRuntime?: ToolPermissionRuntime
     requestToolApproval?: HumanApprovalRequester<ToolApprovalItem>
@@ -44,8 +44,8 @@ function createToolApprovalHarnessMiddleware(
     policyRuntime:
       options.permissionRuntime ??
       createToolPermissionRuntime({
+        computerUseApprovalProvider: options.computerUseApprovalProvider,
         extensionToolPolicyProvider: options.extensionToolPolicyProvider,
-        getAgentConfig: options.getAgentConfig,
         permissionMode: options.permissionMode
       }),
     requestApproval: options.requestToolApproval
@@ -242,75 +242,49 @@ test("explore mode denies predictable mutating execute commands", async () => {
   assert.equal(decision.disposition, "deny")
 })
 
-test("allowlisted desktop automation tools bypass approval and continue to the handler", async () => {
-  const middleware = createToolApprovalHarnessMiddleware({
-    getAgentConfig: () => ({
-      desktopAutomationAllowlist: ["com.apple.finder"],
-      followUpMode: "queue",
-      locale: "zh-CN",
-      skillSources: []
-    })
-  })
-
-  let handlerCalls = 0
+test("Computer Use action permission follows explore, ask-to-edit, and auto modes", async () => {
   const request = {
-    toolCall: {
-      args: {
-        bundleId: "com.apple.finder"
-      },
-      id: "tool-call-allowlisted",
-      name: "open_application",
-      type: "tool_call"
-    }
+    args: {
+      actions: [{ kind: "press", ref: "@save" }],
+      sessionId: "session-1",
+      stateId: "state-1"
+    },
+    toolName: "computer_use_action"
   }
-
-  const result = (await middleware.wrapToolCall!(request as never, async () => {
-    handlerCalls += 1
-    return new ToolMessage({
-      content: "finder opened",
-      name: "open_application",
-      tool_call_id: "tool-call-allowlisted"
-    })
-  })) as ToolMessage
-
-  assert.equal(handlerCalls, 1)
-  assert.equal(result.content, "finder opened")
-})
-
-test("non-allowlisted desktop automation tools return an error without approval", async () => {
-  const middleware = createToolApprovalHarnessMiddleware({
-    getAgentConfig: () => ({
-      desktopAutomationAllowlist: ["com.apple.finder"],
-      followUpMode: "queue",
-      locale: "zh-CN",
-      skillSources: []
-    })
-  })
-
-  let handlerCalls = 0
-  const request = {
-    toolCall: {
-      args: {
-        bundleId: "com.netease.163music"
-      },
-      id: "tool-call-denied",
-      name: "open_application",
-      type: "tool_call"
-    }
+  const review = {
+    actions: [{ kind: "press" as const, ref: "@save" }],
+    kind: "computer_use_action" as const,
+    sessionId: "session-1",
+    stateId: "state-1",
+    target: {
+      application: { id: "com.example.editor", name: "Editor" },
+      elements: [{ ref: "@save", role: "button", title: "Save" }],
+      window: { nativeId: "window-1", platform: "macos" as const }
+    },
+    toolName: "computer_use_action" as const
   }
+  const computerUseApprovalProvider = async () => review
+  const explore = await createToolPermissionRuntime({
+    computerUseApprovalProvider,
+    permissionMode: "explore"
+  }).evaluate(request)
+  const confirm = await createToolPermissionRuntime({
+    computerUseApprovalProvider,
+    permissionMode: "ask-to-edit"
+  }).evaluate(request)
+  const auto = await createToolPermissionRuntime({
+    computerUseApprovalProvider,
+    permissionMode: "auto"
+  }).evaluate(request)
 
-  const result = (await middleware.wrapToolCall!(request as never, async () => {
-    handlerCalls += 1
-    return new ToolMessage({
-      content: "should not run",
-      name: "open_application",
-      tool_call_id: "tool-call-denied"
-    })
-  })) as ToolMessage
-
-  assert.equal(handlerCalls, 0)
-  assert.equal(readToolResult(result).status, "error")
-  assert.match(String(readToolResult(result).content), /not allowlisted/i)
+  assert.equal(explore.disposition, "deny")
+  assert.equal(confirm.disposition, "require_approval")
+  assert.deepEqual(confirm.review, review)
+  assert.equal(auto.disposition, "allow")
+  assert.equal(
+    (await createToolPermissionRuntime({ permissionMode: "auto" }).evaluate(request)).disposition,
+    "deny"
+  )
 })
 
 test("corrected approval returns typed feedback without replaying the tool", async () => {
@@ -611,42 +585,6 @@ test("explore-mode callExtension write calls return an error without reaching th
   assert.match(String(readToolResult(result).content), /read-only extension tools only/i)
 })
 
-test("app-targeted desktop route calls require target metadata for allowlist checks", async () => {
-  const middleware = createToolApprovalHarnessMiddleware({
-    getAgentConfig: () => ({
-      desktopAutomationAllowlist: ["com.netease.163music"],
-      followUpMode: "queue",
-      locale: "zh-CN",
-      skillSources: []
-    })
-  })
-
-  let handlerCalls = 0
-  const request = {
-    toolCall: {
-      args: {
-        url: "orpheus://songrcmd?autoplay=1"
-      },
-      id: "tool-call-route-without-target",
-      name: "open_desktop_route",
-      type: "tool_call"
-    }
-  }
-
-  const result = (await middleware.wrapToolCall!(request as never, async () => {
-    handlerCalls += 1
-    return new ToolMessage({
-      content: "should not run",
-      name: "open_desktop_route",
-      tool_call_id: "tool-call-route-without-target"
-    })
-  })) as ToolMessage
-
-  assert.equal(handlerCalls, 0)
-  assert.equal(readToolResult(result).status, "error")
-  assert.match(String(readToolResult(result).content), /requires a target application/i)
-})
-
 test("denied execute commands do not reach the handler", async () => {
   let handlerCalls = 0
   const request = {
@@ -840,43 +778,6 @@ test("explore mode denies file mutation tools without approval", async () => {
   })
 
   assert.equal(decision.disposition, "deny")
-})
-
-test("click_screen_point requires an allowlisted target application", async () => {
-  const middleware = createToolApprovalHarnessMiddleware({
-    getAgentConfig: () => ({
-      desktopAutomationAllowlist: ["com.netease.163music"],
-      followUpMode: "queue",
-      locale: "zh-CN",
-      skillSources: []
-    })
-  })
-
-  let handlerCalls = 0
-  const request = {
-    toolCall: {
-      args: {
-        x: 100,
-        y: 200
-      },
-      id: "tool-call-click-without-target",
-      name: "click_screen_point",
-      type: "tool_call"
-    }
-  }
-
-  const result = (await middleware.wrapToolCall!(request as never, async () => {
-    handlerCalls += 1
-    return new ToolMessage({
-      content: "should not run",
-      name: "click_screen_point",
-      tool_call_id: "tool-call-click-without-target"
-    })
-  })) as ToolMessage
-
-  assert.equal(handlerCalls, 0)
-  assert.equal(readToolResult(result).status, "error")
-  assert.match(String(readToolResult(result).content), /requires a target application/i)
 })
 
 test("resolveFileMutationChangeType marks missing write_file targets as create", async () => {

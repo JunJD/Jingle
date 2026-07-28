@@ -27,8 +27,10 @@ interface SettingsCopy {
     showSecret: string
   }
   general: {
-    desktopAutomationAllowlistDescription: string
-    desktopAutomationAllowlistTitle: string
+    computerUseAllowlist: string
+    computerUseDescription: string
+    computerUseEnabled: string
+    computerUseTitle: string
     title: string
     workspaceTitle: string
     workspaceDescription: string
@@ -56,6 +58,7 @@ interface SettingsCopy {
     nativeExtensionsDescription: string
     noNativeExtensions: string
     useEnvironmentFallback: string
+    saveFailed: string
     saved: string
     workspaceHint: string
   }
@@ -267,9 +270,11 @@ const zhCN: SettingsCopy = {
     showSecret: "显示密钥"
   },
   general: {
-    desktopAutomationAllowlistDescription:
-      "每行一个 bundle id 或应用名。白名单内的桌面自动化会直接执行，不再弹审批。",
-    desktopAutomationAllowlistTitle: "Desktop Automation 白名单",
+    computerUseAllowlist: "允许的稳定应用标识",
+    computerUseDescription:
+      "启用后，金果只能观察和操作下面逐行列出的稳定应用标识。该能力仅在主窗口或独立线程窗口中可用；保存设置会立即撤销现有桌面会话。",
+    computerUseEnabled: "启用 Computer Use",
+    computerUseTitle: "Computer Use",
     title: "金果基础设置",
     workspaceTitle: "默认 Workspace",
     workspaceDescription: "Launcher 和新建线程会优先使用这个全局 workspace。",
@@ -298,6 +303,7 @@ const zhCN: SettingsCopy = {
     nativeExtensionsDescription: "管理金果内置 extension 的偏好设置。",
     noNativeExtensions: "当前没有带设置项的 native extension。",
     useEnvironmentFallback: "跟随环境变量 / 默认值",
+    saveFailed: "设置已保存，但 Computer Use 未能应用。请再次保存以重试。",
     saved: "已保存",
     workspaceHint: "线程级 workspace 仍然可以覆盖这里的默认值。"
   },
@@ -511,9 +517,11 @@ const enUS: SettingsCopy = {
     showSecret: "Show secret"
   },
   general: {
-    desktopAutomationAllowlistDescription:
-      "One bundle id or app name per line. Allowlisted desktop automation runs directly without HITL approval.",
-    desktopAutomationAllowlistTitle: "Desktop Automation Allowlist",
+    computerUseAllowlist: "Allowed stable application identifiers",
+    computerUseDescription:
+      "When enabled, Jingle can observe and operate only the stable application identifiers listed below. Computer Use is available only in Main or separate thread windows; saving changes immediately revokes active desktop sessions.",
+    computerUseEnabled: "Enable Computer Use",
+    computerUseTitle: "Computer Use",
     title: "Jingle Foundation",
     workspaceTitle: "Default Workspace",
     workspaceDescription: "Launcher and new threads use this global workspace by default.",
@@ -543,6 +551,7 @@ const enUS: SettingsCopy = {
     nativeExtensionsDescription: "Manage preferences for built-in Jingle extensions.",
     noNativeExtensions: "No native extensions expose preferences yet.",
     useEnvironmentFallback: "Use env var / fallback default",
+    saveFailed: "Settings were saved, but Computer Use could not be applied. Save again to retry.",
     saved: "Saved",
     workspaceHint: "Thread-level workspace can still override this global default."
   },

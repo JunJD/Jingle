@@ -278,8 +278,8 @@ export interface RuntimeThreadRunLifecycleControl<
     input: RuntimeThreadCompleteInput<TContextInclusion>
   ): Promise<CompleteJingleAgentRunResult<TContextInclusion>>
   failRun(input: RuntimeThreadFailInput): Promise<unknown>
-  /** Releases run-scoped runtime ownership after the terminal persistence attempt. */
-  settleRun(input: { runId: string }): Promise<void>
+  /** Releases execution ownership while optionally retaining resources needed by a suspended run. */
+  settleRun(input: { retainSuspendedResources?: boolean; runId: string }): Promise<void>
 }
 
 export interface RuntimeThreadStreamControl {

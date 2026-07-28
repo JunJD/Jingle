@@ -28,9 +28,12 @@ import {
   syncRunFromLatestCheckpointFacts
 } from "./persistence"
 import { toAgentRunFailure } from "./errors"
+import type { DurableWindowCallerLease } from "../windows/window-identity"
+import type { ComputerUseRuntime } from "../computer-use/runtime"
 
 export interface JingleInvokeRunLifecycleInput {
   aiCapabilities: ResolvedExtensionAiCapability[]
+  computerUseCallerLease: DurableWindowCallerLease | null
   extensionAiRuntime: ReturnType<typeof createExtensionAiRuntime>
   jingleMemoryContextPack: JingleMemoryContextPack | null
   jingleMemoryContextSnapshot: JingleMemoryContextSnapshot | null
@@ -49,6 +52,7 @@ export interface JingleInvokeRunLifecycleInput {
 
 export interface JingleResumeRunLifecycleInput {
   aiCapabilities: ResolvedExtensionAiCapability[]
+  computerUseCallerLease: DurableWindowCallerLease | null
   decision: HITLDecision & { request_id: string; tool_call_id: string }
   extensionAiRuntime: ReturnType<typeof createExtensionAiRuntime>
   jingleMemoryContextPack: JingleMemoryContextPack | null
@@ -112,6 +116,7 @@ export async function commitTerminalAgentResumeDecision(input: {
 }
 
 export function createRuntimeRunLifecycleController(input: {
+  computerUseRuntime: ComputerUseRuntime
   jingleMemoryService?: JingleMemoryService | null
 }): JingleRuntimeRunLifecycleController {
   const jingleMemoryService = input.jingleMemoryService ?? null
@@ -245,7 +250,8 @@ export function createRuntimeRunLifecycleController(input: {
       void enqueueAssistantContentProjection({ runId: event.runId })
     },
     recordRunInterrupted,
-    settleRun: () => undefined,
+    settleRun: ({ retainSuspendedResources, runId }) =>
+      retainSuspendedResources ? undefined : input.computerUseRuntime.closeRun(runId),
     syncRunFromLatestCheckpoint: async ({
       expectedMessageId,
       interrupted,

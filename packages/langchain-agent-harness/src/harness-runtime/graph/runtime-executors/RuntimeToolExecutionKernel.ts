@@ -34,7 +34,8 @@ function defaultHandleToolErrors(error, toolCall) {
     return new ToolMessage({
       content: error.message,
       tool_call_id: toolCall.id,
-      name: toolCall.name
+      name: toolCall.name,
+      status: "error"
     })
   /**
    * Catch all other tool errors and convert to ToolMessage
@@ -42,7 +43,8 @@ function defaultHandleToolErrors(error, toolCall) {
   return new ToolMessage({
     content: `${error}\n Please fix your mistakes.`,
     tool_call_id: toolCall.id,
-    name: toolCall.name
+    name: toolCall.name,
+    status: "error"
   })
 }
 /**
@@ -110,7 +112,8 @@ class RuntimeToolExecutionKernel extends RunnableCallable {
       return new ToolMessage({
         name: call.name,
         content: `${error}\n Please fix your mistakes.`,
-        tool_call_id: call.id
+        tool_call_id: call.id,
+        status: "error"
       })
     throw error
   }

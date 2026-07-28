@@ -42,7 +42,8 @@ export interface Run {
 }
 
 export interface AgentConfig {
-  desktopAutomationAllowlist: string[]
+  computerUseApplicationAllowlist: string[]
+  computerUseEnabled: boolean
   skillSources: string[]
   locale: AppLocale
 }

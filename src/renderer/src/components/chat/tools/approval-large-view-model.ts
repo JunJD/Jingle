@@ -125,6 +125,58 @@ function buildFileMutationLargeApprovalViewModel(
   }
 }
 
+function formatComputerUseAction(
+  action: Extract<ToolApprovalItem, { kind: "computer_use_action" }>["actions"][number]
+): string {
+  if (action.kind === "keypress") return `${action.kind} ${action.ref} ${action.keys.join("+")}`
+  if (action.kind === "scroll") return `${action.kind} ${action.ref} ${action.scrollAmount}`
+  if (action.kind === "set_value" || action.kind === "type_text") {
+    return `${action.kind} ${action.ref} ${JSON.stringify(action.value)}`
+  }
+  return `${action.kind} ${action.ref}`
+}
+
+function buildComputerUseLargeApprovalViewModel(
+  copy: AppCopy,
+  approvalItem: Extract<ToolApprovalItem, { kind: "computer_use_action" }>
+): LargeApprovalViewModel {
+  return {
+    action: {
+      detail: approvalItem.actions.map(formatComputerUseAction).join("\n"),
+      presentation: "command",
+      title: getActionTitle(copy, approvalItem)
+    },
+    confirmation: null,
+    fileMutation: null,
+    impact: [],
+    parameters: [
+      { label: "Session", presentation: "mono", value: approvalItem.sessionId },
+      { label: "State", presentation: "mono", value: approvalItem.stateId }
+    ],
+    target: [
+      {
+        label: "Application",
+        value: `${approvalItem.target.application.name} (${approvalItem.target.application.id})`
+      },
+      {
+        label: "Window",
+        presentation: "mono",
+        value: `${approvalItem.target.window.platform}:${approvalItem.target.window.nativeId}`
+      },
+      {
+        label: "Elements",
+        presentation: "preview",
+        value: approvalItem.target.elements
+          .map(
+            (element) =>
+              `${element.ref} [${element.role}]${element.title ? ` ${element.title}` : ""}${element.description ? ` - ${element.description}` : ""}`
+          )
+          .join("\n")
+      }
+    ]
+  }
+}
+
 function buildExtensionLargeApprovalViewModel(
   copy: AppCopy,
   approvalItem: Extract<ToolApprovalItem, { kind: "extension_tool" }>
@@ -187,6 +239,10 @@ export function buildLargeApprovalViewModel(
 
   if (approvalItem.kind === "file_mutation") {
     return buildFileMutationLargeApprovalViewModel(approvalItem, toolCallId)
+  }
+
+  if (approvalItem.kind === "computer_use_action") {
+    return buildComputerUseLargeApprovalViewModel(copy, approvalItem)
   }
 
   return buildExtensionLargeApprovalViewModel(copy, approvalItem)

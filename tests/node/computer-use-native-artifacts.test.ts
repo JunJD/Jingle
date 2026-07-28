@@ -21,7 +21,7 @@ interface NativeCapabilityMatrix {
 
 interface NativeOperationResponse {
   environment: string
-  method: "execute" | "observe"
+  method: "execute" | "identify" | "observe"
   protocolVersion: number
   result: unknown
 }
@@ -34,9 +34,13 @@ function runJson(
   args: readonly string[],
   environment: NodeJS.ProcessEnv = process.env
 ): unknown {
-  const result = spawnSync(executable, args, {
+  const request = args.at(-1)
+  assert.ok(request)
+  JSON.parse(request)
+  const result = spawnSync(executable, args.slice(0, -1), {
     encoding: "utf8",
-    env: environment
+    env: environment,
+    input: request
   })
   assert.equal(result.status, 0, result.stderr || result.error?.message)
   assert.equal(result.stderr, "")
@@ -48,9 +52,13 @@ function runJsonFailure(
   args: readonly string[],
   environment: NodeJS.ProcessEnv = process.env
 ): string {
-  const result = spawnSync(executable, args, {
+  const request = args.at(-1)
+  assert.ok(request)
+  JSON.parse(request)
+  const result = spawnSync(executable, args.slice(0, -1), {
     encoding: "utf8",
-    env: environment
+    env: environment,
+    input: request
   })
   assert.notEqual(result.status, 0)
   assert.equal(result.stdout, "")
@@ -70,7 +78,7 @@ function assertRawCapabilityMatrix(
   assert.equal(matrix.protocolVersion, 1)
   assert.deepEqual(
     matrix.capabilities.map((capability) => capability.action),
-    ["press", "set_value", "type_text", "keypress", "scroll"]
+    ["activate", "press", "set_value", "type_text", "keypress", "scroll"]
   )
 }
 
@@ -91,7 +99,7 @@ function assertRawOperationResponse(
   assert.equal(response.protocolVersion, 1)
 }
 
-test("native artifact packaging is additive and retains the legacy helper", () => {
+test("native artifact packaging contains only the Computer Use helpers", () => {
   const packageJson = JSON.parse(readFileSync(resolve(repositoryRoot, "package.json"), "utf8")) as {
     files: string[]
   }
@@ -103,7 +111,7 @@ test("native artifact packaging is additive and retains the legacy helper", () =
   for (const artifact of artifacts) {
     assert.ok(packageJson.files.includes(artifact), `missing package artifact ${artifact}`)
   }
-  assert.ok(packageJson.files.includes("out/native/jingle-desktop-automation"))
+  assert.equal(packageJson.files.includes("out/native/jingle-desktop-automation"), false)
 
   const buildScript = readFileSync(
     resolve(repositoryRoot, "scripts/build-native-island.mjs"),
@@ -112,6 +120,19 @@ test("native artifact packaging is additive and retains the legacy helper", () =
   for (const artifact of artifacts) {
     assert.ok(buildScript.includes(artifact.replace("out/native/", "")))
   }
+  assert.equal(buildScript.includes("jingle-desktop-automation"), false)
+})
+
+test("native helpers reject request payloads passed through argv", () => {
+  const request = JSON.stringify({ environment: "linux-x11", method: "probe" })
+  const linux = spawnSync(
+    process.env.PYTHON ?? "python3",
+    [resolve(nativeSourceDirectory, "jingle-computer-use-linux.py"), request],
+    { encoding: "utf8" }
+  )
+  assert.notEqual(linux.status, 0)
+  assert.equal(linux.stdout, "")
+  assert.match(linux.stderr, /stdin/i)
 })
 
 test("Linux probes are raw, environment-bound, and fail closed", () => {
@@ -274,7 +295,12 @@ test(
       assert.equal(compile.status, 0, compile.stderr || compile.error?.message)
 
       const probe = runJson(binaryPath, [
-        JSON.stringify({ environment: "macos-quartz", method: "probe" })
+        JSON.stringify({
+          environment: "macos-quartz",
+          method: "probe",
+          protocolVersion: 1,
+          requestPermission: false
+        })
       ])
       assertRawCapabilityMatrix(probe, {
         environment: "macos-quartz",
@@ -282,7 +308,7 @@ test(
       })
       assert.deepEqual(
         probe.capabilities.map((capability) => capability.route),
-        ["ax_action", "ax_value", "ax_value", "unavailable", "unavailable"]
+        ["ax_raise_activate", "ax_action", "ax_value", "ax_value", "unavailable", "unavailable"]
       )
       assert.equal(
         runJson(binaryPath, [

@@ -5,6 +5,7 @@ import {
 } from "./contract"
 
 const ACTION_KEYS: Readonly<Record<ComputerUseActionKind, readonly string[]>> = {
+  activate: ["kind", "ref"],
   keypress: ["keys", "kind", "ref"],
   press: ["kind", "ref"],
   scroll: ["kind", "ref", "scrollAmount"],
@@ -19,9 +20,13 @@ export function parseComputerUseSemanticActions(
   if (!isDenseArray(value, COMPUTER_USE_NATIVE_RESPONSE_LIMITS.actions) || value.length === 0) {
     throw new Error(`Computer-use ${path} must be a bounded non-empty action list.`)
   }
-  return Object.freeze(
-    value.map((action, index) => parseComputerUseSemanticAction(action, `${path}[${index}]`))
+  const actions = value.map((action, index) =>
+    parseComputerUseSemanticAction(action, `${path}[${index}]`)
   )
+  if (actions.some((action) => action.kind === "activate") && actions.length !== 1) {
+    throw new Error(`Computer-use ${path} may contain activate only as a single action.`)
+  }
+  return Object.freeze(actions)
 }
 
 export function parseComputerUseSemanticAction(
@@ -67,7 +72,7 @@ export function parseComputerUseSemanticAction(
     }
     return Object.freeze({ keys: Object.freeze(keys), kind: "keypress", ref })
   }
-  return Object.freeze({ kind: "press", ref })
+  return Object.freeze({ kind: value.kind, ref })
 }
 
 export function sameComputerUseSemanticAction(
@@ -89,6 +94,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isComputerUseActionKind(value: unknown): value is ComputerUseActionKind {
   return (
+    value === "activate" ||
     value === "keypress" ||
     value === "press" ||
     value === "scroll" ||

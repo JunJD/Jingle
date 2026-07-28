@@ -2,10 +2,21 @@ import { createHash, randomUUID } from "crypto"
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "fs"
 import { dirname, join, resolve } from "path"
 import { Prisma } from "@prisma/client"
+import { type AgentRunFailure } from "../../shared/agent-run-failure"
+import { createComputerUseTransactionId } from "../computer-use/transaction-identity"
 import { getDbPath } from "../storage"
 import { closePrismaClient, getPrismaClient } from "./client"
-import { flushAgentTraceProjection } from "./agent-events"
+import {
+  commitAgentEventProjectionState,
+  flushAgentTraceProjection,
+  type AppendAgentEventInput
+} from "./agent-events"
 import { flushAssistantContentProjection } from "../content-cards/projection-queue"
+import {
+  decodeComputerUseAttempt,
+  settleInterruptedComputerUseAttemptInTransaction
+} from "./computer-use-action-ledger"
+import { commitRunFailureTerminalInTransaction } from "./run-failure-terminal"
 
 const REQUIRED_TABLES = [
   "_prisma_migrations",
@@ -355,33 +366,147 @@ async function applyPendingPrismaMigrations(): Promise<void> {
   }
 }
 
+const COMPUTER_USE_RESTART_BEFORE_DISPATCH_FAILURE: AgentRunFailure = {
+  ipcCode: "UNAVAILABLE",
+  kind: "transport_interrupted",
+  message:
+    "Computer Use was interrupted before desktop dispatch. No desktop action was dispatched. Observe the application again before retrying.",
+  schemaVersion: 1,
+  status: 503
+}
+
+const COMPUTER_USE_RESTART_AFTER_DISPATCH_FAILURE: AgentRunFailure = {
+  ipcCode: "UNAVAILABLE",
+  kind: "transport_interrupted",
+  message:
+    "Computer Use was interrupted after desktop dispatch, so the action outcome is unknown. Observe the application before deciding whether to retry.",
+  schemaVersion: 1,
+  status: 503
+}
+
 async function recoverIncompleteAgentRuns(): Promise<void> {
   const prisma = getPrismaClient()
   const now = BigInt(Date.now())
-  const [runs, threads] = await prisma.$transaction([
-    prisma.run.updateMany({
-      data: {
-        status: "interrupted",
-        updatedAt: now
+  const recovery = await prisma.$transaction(async (tx) => {
+    const running = await tx.run.findMany({
+      select: {
+        computerUseAttempts: true,
+        hitlRequests: {
+          select: {
+            toolCallId: true
+          },
+          where: { status: "approved", toolName: "computer_use_action" }
+        },
+        metadata: true,
+        runId: true,
+        threadId: true
       },
-      where: {
-        status: "running"
+      where: { status: "running" }
+    })
+    let failedComputerUseRuns = 0
+    const failedComputerUseRunIds = new Set<string>()
+    const failedComputerUseThreadIds = new Set<string>()
+    const terminalEvents: AppendAgentEventInput[] = []
+    for (const run of running) {
+      const attempts = run.computerUseAttempts.map((row) => ({
+        attempt: decodeComputerUseAttempt(row),
+        row
+      }))
+      const attemptsById = new Map(attempts.map((entry) => [entry.attempt.attemptId, entry]))
+      let approvedWithoutAttempt = false
+      for (const request of run.hitlRequests) {
+        if (!request.toolCallId) {
+          throw new Error(
+            `Approved Computer Use request for run ${run.runId} has no tool-call owner.`
+          )
+        }
+        const attemptId = createComputerUseTransactionId({
+          runId: run.runId,
+          toolCallId: request.toolCallId
+        })
+        if (!attemptsById.has(attemptId)) approvedWithoutAttempt = true
       }
-    }),
-    prisma.thread.updateMany({
+      const nonterminalAttempts = attempts.filter(({ attempt }) => attempt.phase !== "settled")
+      if (!approvedWithoutAttempt && nonterminalAttempts.length === 0) continue
+
+      const latestLifecycleEvent = await tx.agentEvent.findFirst({
+        orderBy: { seq: "desc" },
+        select: { type: true },
+        where: {
+          runId: run.runId,
+          type: { in: ["run.started", "run.resumed", "run.finished"] }
+        }
+      })
+      if (latestLifecycleEvent?.type === "run.finished") {
+        throw new Error(
+          `Computer-use run ${run.runId} has a terminal event but remains marked running.`
+        )
+      }
+
+      let dispatchPossible = false
+      for (const { row } of nonterminalAttempts) {
+        const settled = await settleInterruptedComputerUseAttemptInTransaction(tx, row, Number(now))
+        dispatchPossible ||= settled.dispatchPossible
+      }
+      const pendingHitlCount = await tx.hitlRequest.count({
+        where: { runId: run.runId, status: "pending", threadId: run.threadId }
+      })
+      const status = pendingHitlCount > 0 ? "interrupted" : "error"
+      const event = await commitRunFailureTerminalInTransaction(
+        tx,
+        {
+          expectedRunStatus: "running",
+          failure: dispatchPossible
+            ? COMPUTER_USE_RESTART_AFTER_DISPATCH_FAILURE
+            : COMPUTER_USE_RESTART_BEFORE_DISPATCH_FAILURE,
+          runId: run.runId,
+          runMetadata: run.metadata,
+          status,
+          threadId: run.threadId
+        },
+        now
+      )
+      if (!event) {
+        throw new Error(`Computer-use run ${run.runId} changed during startup recovery.`)
+      }
+      terminalEvents.push(event)
+      failedComputerUseRuns += 1
+      failedComputerUseRunIds.add(run.runId)
+      failedComputerUseThreadIds.add(run.threadId)
+    }
+
+    const runs = await tx.run.updateMany({
       data: {
         status: "interrupted",
         updatedAt: now
       },
       where: {
-        status: "busy"
+        status: "running",
+        ...(failedComputerUseRunIds.size > 0
+          ? { runId: { notIn: [...failedComputerUseRunIds] } }
+          : {})
       }
     })
-  ])
+    const threads = await tx.thread.updateMany({
+      data: {
+        status: "interrupted",
+        updatedAt: now
+      },
+      where: {
+        status: "busy",
+        ...(failedComputerUseThreadIds.size > 0
+          ? { threadId: { notIn: [...failedComputerUseThreadIds] } }
+          : {})
+      }
+    })
+    return { failedComputerUseRuns, runs: runs.count, terminalEvents, threads: threads.count }
+  })
 
-  if (runs.count > 0 || threads.count > 0) {
+  commitAgentEventProjectionState(recovery.terminalEvents)
+
+  if (recovery.failedComputerUseRuns > 0 || recovery.runs > 0 || recovery.threads > 0) {
     console.warn(
-      `[DB] Recovered incomplete agent state: interrupted ${runs.count} run(s), ${threads.count} thread(s).`
+      `[DB] Recovered incomplete agent state: failed ${recovery.failedComputerUseRuns} approved Computer Use run(s); interrupted ${recovery.runs} other run(s), ${recovery.threads} thread(s).`
     )
   }
 }

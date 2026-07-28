@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { AlertTriangle, ArrowUpRight, FileDiff, Terminal } from "lucide-react"
+import { AlertTriangle, ArrowUpRight, FileDiff, MousePointerClick, Terminal } from "lucide-react"
 import { getHitlRequestDisplaySize } from "@shared/hitl"
 import type { AppCopy } from "@/lib/i18n/messages"
 import { useI18n } from "@/lib/i18n"
@@ -76,9 +76,11 @@ export function ComposerApprovalPrompt(props: {
   const Icon =
     request.review?.kind === "execute_command"
       ? Terminal
-      : request.review?.kind === "extension_tool"
-        ? ArrowUpRight
-        : FileDiff
+      : request.review?.kind === "computer_use_action"
+        ? MousePointerClick
+        : request.review?.kind === "extension_tool"
+          ? ArrowUpRight
+          : FileDiff
   const approveLabel = getApproveLabel(copy, request)
   const trimmedFeedback = usesExternalCorrection ? (correction ?? "").trim() : feedback.trim()
   const displaySize = getHitlRequestDisplaySize(request)

@@ -1,35 +1,22 @@
 import type {
   ComputerUseBackend,
   ComputerUseBackendExecutionResult,
+  ComputerUseIdentifyRequest,
   ComputerUseObservation,
   ComputerUseObserveRequest,
   ComputerUseSemanticAction,
+  ComputerUseTraceEvent,
+  ComputerUseTraceOperation,
+  ComputerUseTraceSink,
   ComputerUseTransactionResult
 } from "./contract"
 import { sameComputerUseWindowIdentity } from "./authorization"
 import { ComputerUseActionLedger, type ComputerUseActionAttemptClaim } from "./action-ledger"
 import { parseComputerUseSemanticActions, sameComputerUseSemanticAction } from "./semantic-action"
+import { computerUseResultAllowsForegroundRetry } from "./retry-disposition"
 import { ComputerUseResourceScheduler } from "./scheduler"
 import { ComputerUseSessionManager } from "./session-manager"
 import { ComputerUseObservationStore } from "./state-store"
-
-function mayRetryForeground(
-  result: ComputerUseBackendExecutionResult,
-  actions: readonly ComputerUseSemanticAction[]
-): boolean {
-  return (
-    result.outcome === "didnt" &&
-    result.steps.length === actions.length &&
-    (result.stoppedAt === undefined || result.stoppedAt === result.steps.length - 1) &&
-    result.steps.every(
-      (step, index) =>
-        sameComputerUseSemanticAction(step.action, actions[index]!) &&
-        step.outcome === "didnt" &&
-        step.evidence.noSideEffectProof &&
-        step.evidence.verification === "failed"
-    )
-  )
-}
 
 export class ComputerUseTransactionCoordinator {
   constructor(
@@ -37,20 +24,26 @@ export class ComputerUseTransactionCoordinator {
     private readonly scheduler: ComputerUseResourceScheduler,
     private readonly sessions: ComputerUseSessionManager,
     private readonly ledger: ComputerUseActionLedger,
-    private readonly observations = new ComputerUseObservationStore()
+    private readonly observations = new ComputerUseObservationStore(),
+    private readonly traceSink: ComputerUseTraceSink = { record: () => undefined }
   ) {}
+
+  async identify(request: ComputerUseIdentifyRequest) {
+    request.signal?.throwIfAborted()
+    return this.backend.identify(request)
+  }
 
   async observe(request: ComputerUseObserveRequest): Promise<ComputerUseObservation> {
     request.signal?.throwIfAborted()
-    const discovery = await this.backend.observe(request)
     return this.scheduler.read(
-      discovery.resourceKey,
+      request.target.resourceKey,
       async (epoch) => {
         request.signal?.throwIfAborted()
         const current = await this.backend.observe(request)
         if (
-          current.resourceKey !== discovery.resourceKey ||
-          !sameComputerUseWindowIdentity(current.window, discovery.window)
+          current.application.id !== request.target.application.id ||
+          current.resourceKey !== request.target.resourceKey ||
+          !sameComputerUseWindowIdentity(current.window, request.target.window)
         ) {
           throw new Error("Computer-use target changed while it was being observed.")
         }
@@ -112,11 +105,13 @@ export class ComputerUseTransactionCoordinator {
     if (signal.aborted) {
       return this.ledger.cancel(attempt.attemptId)
     }
-    const unsupported = this.preflight(actions, base.stateId, "background")
+    const initialDelivery = actions[0]?.kind === "activate" ? "foreground" : "background"
+    const unsupported = this.preflight(actions, base.stateId, initialDelivery)
     if (unsupported) {
       return this.ledger.settle(attempt.attemptId, unsupported)
     }
     let execution: ComputerUseBackendExecutionResult | undefined
+    let operation: ComputerUseTraceOperation = "scheduler"
 
     try {
       return await this.scheduler.write({
@@ -127,7 +122,7 @@ export class ComputerUseTransactionCoordinator {
         resourceKey: base.resourceKey,
         signal,
         work: async (commit) => {
-          const backgroundAuthorization = this.sessions.assertAuthorized({
+          const initialAuthorization = this.sessions.assertAuthorized({
             observation: base,
             runId: input.runId,
             sessionId: input.sessionId,
@@ -144,19 +139,23 @@ export class ComputerUseTransactionCoordinator {
             )
           }
           const nextEpoch = commit()
+          operation = initialDelivery === "background" ? "execute_background" : "execute_foreground"
           execution = this.validateExecution(
             await this.backend.execute({
               actions,
-              authorization: backgroundAuthorization,
+              authorization: initialAuthorization,
               base,
-              delivery: "background",
+              delivery: initialDelivery,
               signal
             }),
             actions,
-            "background",
+            initialDelivery,
             base.stateId
           )
-          if (mayRetryForeground(execution, actions)) {
+          if (
+            initialDelivery === "background" &&
+            computerUseResultAllowsForegroundRetry(execution, actions)
+          ) {
             const foregroundUnavailable = this.preflight(actions, base.stateId, "foreground")
             if (!foregroundUnavailable) {
               signal.throwIfAborted()
@@ -166,6 +165,7 @@ export class ComputerUseTransactionCoordinator {
                 sessionId: input.sessionId,
                 threadId: input.threadId
               })
+              operation = "execute_foreground"
               execution = this.validateExecution(
                 await this.backend.execute({
                   actions,
@@ -180,11 +180,14 @@ export class ComputerUseTransactionCoordinator {
               )
             }
           }
+          operation = "observe_successor"
           const successor = await this.backend.observe({
-            applicationId: base.application.id,
-            applicationName: base.application.name,
             signal,
-            windowId: base.window.nativeId
+            target: {
+              application: base.application,
+              resourceKey: base.resourceKey,
+              window: base.window
+            }
           })
           const identityChanged =
             successor.resourceKey !== base.resourceKey ||
@@ -200,6 +203,14 @@ export class ComputerUseTransactionCoordinator {
       })
     } catch (error) {
       const current = this.ledger.get(attempt.attemptId)
+      this.recordFailure({
+        dispatchOccurred: current?.phase === "dispatched",
+        error,
+        operation,
+        runId: input.runId,
+        threadId: input.threadId,
+        transactionId: input.transactionId
+      })
       const cancelled =
         signal.aborted || (error instanceof DOMException && error.name === "AbortError")
       if (!cancelled && current?.phase === "queued") {
@@ -211,7 +222,11 @@ export class ComputerUseTransactionCoordinator {
         throw error
       }
       if (current?.phase === "queued") return this.ledger.cancel(attempt.attemptId)
-      const successor = await this.observeAfterUnknown(base)
+      const successor = await this.observeAfterUnknown(base, {
+        runId: input.runId,
+        threadId: input.threadId,
+        transactionId: input.transactionId
+      })
       return this.ledger.settle(attempt.attemptId, {
         baseStateId: base.stateId,
         outcome: "unknown",
@@ -263,14 +278,17 @@ export class ComputerUseTransactionCoordinator {
   }
 
   private async observeAfterUnknown(
-    base: ComputerUseObservation
+    base: ComputerUseObservation,
+    trace: { runId: string; threadId: string; transactionId: string }
   ): Promise<ComputerUseObservation | undefined> {
     try {
       return await this.scheduler.read(base.resourceKey, async (epoch) => {
         const successor = await this.backend.observe({
-          applicationId: base.application.id,
-          applicationName: base.application.name,
-          windowId: base.window.nativeId
+          target: {
+            application: base.application,
+            resourceKey: base.resourceKey,
+            window: base.window
+          }
         })
         if (
           successor.resourceKey !== base.resourceKey ||
@@ -280,8 +298,43 @@ export class ComputerUseTransactionCoordinator {
         }
         return this.observations.create({ ...successor, epoch })
       })
-    } catch {
+    } catch (error) {
+      this.recordFailure({
+        dispatchOccurred: true,
+        error,
+        operation: "observe_recovery",
+        ...trace
+      })
       return undefined
+    }
+  }
+
+  private recordFailure(input: {
+    dispatchOccurred: boolean
+    error: unknown
+    operation: ComputerUseTraceOperation
+    runId: string
+    threadId: string
+    transactionId: string
+  }): void {
+    const event: ComputerUseTraceEvent = {
+      dispatchOccurred: input.dispatchOccurred,
+      environment: this.backend.matrix.environment,
+      errorCode: readDiagnosticCode(input.error, "code") ?? readErrorName(input.error),
+      kind: "operation_failed",
+      ...(readDiagnosticCode(input.error, "nativeCode")
+        ? { nativeCode: readDiagnosticCode(input.error, "nativeCode")! }
+        : {}),
+      operation: input.operation,
+      platform: this.backend.matrix.platform,
+      runId: input.runId,
+      threadId: input.threadId,
+      transactionId: input.transactionId
+    }
+    try {
+      this.traceSink.record(Object.freeze(event))
+    } catch {
+      // Diagnostics must never replace the canonical ledger outcome.
     }
   }
 
@@ -310,6 +363,16 @@ export class ComputerUseTransactionCoordinator {
     base: ComputerUseObservation
   ): void {
     if (actions.length === 0) throw new Error("Computer-use transaction requires actions.")
+    const activation = actions.find((action) => action.kind === "activate")
+    if (activation) {
+      if (actions.length !== 1) {
+        throw new Error("Computer-use activate must be a single-action transaction.")
+      }
+      const roots = base.elements.filter((element) => element.index === 0)
+      if (roots.length !== 1 || roots[0]?.ref !== activation.ref) {
+        throw new Error("Computer-use activate ref must identify the current window root.")
+      }
+    }
     const elements = new Map(base.elements.map((element) => [element.ref, element]))
     for (const action of actions) {
       const element = elements.get(action.ref)
@@ -419,15 +482,19 @@ export class ComputerUseTransactionCoordinator {
   }
 }
 
+function readDiagnosticCode(error: unknown, key: "code" | "nativeCode"): string | null {
+  if (!error || typeof error !== "object") return null
+  const value = (error as Record<string, unknown>)[key]
+  return typeof value === "string" && /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(value) ? value : null
+}
+
+function readErrorName(error: unknown): string {
+  if (!(error instanceof Error)) return "unknown"
+  return /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(error.name) ? error.name : "Error"
+}
+
 function freeze<T>(value: T): T {
   if (!value || typeof value !== "object" || Object.isFrozen(value)) return value
   for (const nested of Object.values(value as Record<string, unknown>)) freeze(nested)
   return Object.freeze(value)
-}
-
-export function computerUseResultAllowsForegroundRetry(
-  result: ComputerUseBackendExecutionResult,
-  actions: readonly ComputerUseSemanticAction[] = result.steps.map((step) => step.action)
-): boolean {
-  return mayRetryForeground(result, actions)
 }

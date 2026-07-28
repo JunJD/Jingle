@@ -183,7 +183,9 @@ function createRuntimeHost<
     environment: {
       artifactPresentation: contribution.tools.artifactPresentation,
       backend: contribution.tools.backend,
-      desktopAutomationTools: contribution.tools.desktopAutomationTools,
+      ...(contribution.tools.computerUseTools
+        ? { computerUseTools: contribution.tools.computerUseTools }
+        : {}),
       executeToolDescription: contribution.prompt.executeToolDescription,
       extensionAiTools: contribution.tools.extensionAiTools,
       filesystemSystemPrompt: contribution.prompt.filesystemSystemPrompt,

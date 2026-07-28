@@ -5,11 +5,7 @@ import {
   readRunModelRuntimeSelection,
   withModelRuntimeSelection
 } from "@shared/model-runtime-selection"
-import {
-  AGENT_RUN_FAILURE_METADATA_KEY,
-  encodeAgentRunFailure,
-  type AgentRunFailure
-} from "@shared/agent-run-failure"
+import { AGENT_RUN_FAILURE_METADATA_KEY, type AgentRunFailure } from "@shared/agent-run-failure"
 import {
   buildJingleCheckpointLookupConfig,
   resolveJingleCheckpointRunStatus
@@ -32,6 +28,7 @@ import { getThread, updateThread } from "../db/threads"
 import { parsePersistedHitlAllowedDecisions } from "../db/hitl"
 import { getCheckpointer } from "../checkpointer/runtime-checkpointer-manager"
 import { JingleIpcError } from "../ipc/error"
+import { commitRunFailureTerminalInTransaction } from "../db/run-failure-terminal"
 import { extractThreadFactsFromCheckpoint } from "./runtime-state"
 import { listCanonicalMainThreadMessages } from "../db/message-state"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
@@ -329,16 +326,6 @@ function mergeRunExtensionAiCapabilitiesSnapshotMetadata(
   })
 }
 
-function mergeRunFailureMetadata(
-  run: ExistingRun,
-  failure: AgentRunFailure
-): Record<string, unknown> {
-  return {
-    ...removeRunFailureMetadata(mergeRunMetadata(run, {})),
-    [AGENT_RUN_FAILURE_METADATA_KEY]: encodeAgentRunFailure(failure)
-  }
-}
-
 export async function commitAgentResumeDecision(
   threadId: string,
   runId: string,
@@ -630,36 +617,21 @@ export async function markRunFailed(
       }
 
       const status: "error" | "interrupted" = pendingHitlCount > 0 ? "interrupted" : "error"
-      const now = BigInt(Date.now())
-      const event = createRunFinishedEventInput({
-        error: failure,
+      const event = await commitRunFailureTerminalInTransaction(transaction, {
+        expectedRunStatus: existing.status!,
+        failure,
         runId,
+        runMetadata: existing.metadata,
         status,
         threadId
       })
-      const runTransition = await transaction.run.updateMany({
-        data: {
-          metadata: serializeJsonValue(mergeRunFailureMetadata(existing, failure)),
-          status,
-          updatedAt: now
-        },
-        where: {
-          runId,
-          status: existing.status
-        }
-      })
-      if (runTransition.count !== 1) {
+      if (!event) {
         throw new JingleIpcError({
           channel: "agent:runtime",
           code: "CONFLICT",
           message: `[Agent] Run "${runId}" reached another terminal state before failure commit.`
         })
       }
-      await transaction.thread.update({
-        data: { status, updatedAt: now },
-        where: { threadId }
-      })
-      await appendAgentEventsInTransaction(transaction, [event], { now })
       return { event, status }
     })
   })

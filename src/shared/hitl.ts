@@ -43,6 +43,10 @@ export function getToolApprovalDisplaySize(review: ToolApprovalItem | null): HIT
     return "large"
   }
 
+  if (review.kind === "computer_use_action") {
+    return "large"
+  }
+
   if (review.kind === "execute_command") {
     return review.changes.length > 0 || review.profile === "unknown_command" ? "large" : "small"
   }

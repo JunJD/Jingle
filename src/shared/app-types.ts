@@ -287,7 +287,8 @@ export interface ModelProviderPaths {
 }
 
 export interface AgentConfig {
-  desktopAutomationAllowlist: string[]
+  computerUseApplicationAllowlist: string[]
+  computerUseEnabled: boolean
   followUpMode: AgentFollowUpMode
   skillSources: string[]
   locale: AppLocale

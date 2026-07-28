@@ -1,5 +1,5 @@
 import { createArtifactToolsMiddleware } from "./artifact-tools-middleware"
-import { createJingleDesktopAutomationToolsMiddleware } from "./desktop-automation-tools"
+import { createJingleComputerUseToolsMiddleware } from "./computer-use-tools"
 import { createExtensionAiToolsMiddleware } from "./extension-ai-tools-middleware"
 import { createFilesystemToolErrorMiddleware } from "./filesystem-tool-error-middleware"
 import { createJinglePatchToolCallsMiddleware } from "./harness-runtime/patch-tool-calls"
@@ -51,7 +51,9 @@ export function createRuntimeToolEntries(
     input.core.filesystemEntry,
     createArtifactToolsMiddleware(environment.artifactPresentation(input.thread)),
     createJingleWebToolsMiddleware(environment.webTools),
-    createJingleDesktopAutomationToolsMiddleware(environment.desktopAutomationTools),
+    ...(environment.computerUseTools
+      ? [createJingleComputerUseToolsMiddleware(environment.computerUseTools)]
+      : []),
     createExtensionAiToolsMiddleware(environment.extensionAiTools(input.runContext)),
     createJinglePatchToolCallsMiddleware(),
     input.core.skillsEntry

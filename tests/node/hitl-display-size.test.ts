@@ -61,6 +61,24 @@ test("classifies file-impacting approvals as large", () => {
   )
 })
 
+test("classifies Computer Use actions as large", () => {
+  assert.equal(
+    getToolApprovalDisplaySize({
+      actions: [{ kind: "press", ref: "@save" }],
+      kind: "computer_use_action",
+      sessionId: "session-1",
+      stateId: "state-1",
+      target: {
+        application: { id: "com.example.editor", name: "Editor" },
+        elements: [{ ref: "@save", role: "button", title: "Save" }],
+        window: { nativeId: "window-1", platform: "macos" }
+      },
+      toolName: "computer_use_action"
+    }),
+    "large"
+  )
+})
+
 test("classifies extension approvals by access and argument density", () => {
   const base = {
     capabilityDisplayName: "Apple Reminders",

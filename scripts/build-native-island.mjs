@@ -31,12 +31,6 @@ const targets = [
   },
   {
     frameworks: ["AppKit", "ApplicationServices"],
-    label: "desktop-automation",
-    outputPath: resolve("out/native/jingle-desktop-automation"),
-    sourcePath: resolve("src/native/jingle-desktop-automation.swift")
-  },
-  {
-    frameworks: ["AppKit", "ApplicationServices"],
     label: "selection-capture",
     outputPath: resolve("out/native/jingle-selection-capture"),
     sourcePath: resolve("src/native/jingle-selection-capture.swift")

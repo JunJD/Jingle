@@ -46,6 +46,7 @@ import {
 import {
   isRuntimeThreadAdmissionPersistenceError,
   isRuntimeThreadDurableFailureError,
+  isRuntimeThreadOwnershipCleanupError,
   type RuntimeThreadRun
 } from "@jingle/langchain-agent-harness"
 import {
@@ -100,6 +101,9 @@ import type {
   HITLDecision
 } from "../types"
 import type { AgentCommandOutcome } from "@shared/agent-command"
+import type { DurableWindowCallerLease } from "../windows/window-identity"
+import type { ComputerUseActionApprovalAdmission } from "../computer-use/runtime"
+import { ComputerUseRuntime } from "../computer-use/runtime"
 
 export type AgentStreamPayload =
   | { type: "done" }
@@ -256,6 +260,7 @@ type ResolvedHitlDecision = Record<string, unknown> &
 
 interface AgentRunOptions<TAccepted = void> {
   channel?: AgentInvokeChannel
+  computerUseCallerLease?: DurableWindowCallerLease | null
   getMessageIdsToRemove?: () => Promise<string[]>
   onCoreAdmitted?: () => void
   onCommandOutcome?: (outcome: AgentCommandOutcome) => void
@@ -395,6 +400,65 @@ interface ResumeTarget {
   requestId: string
   runId: string
   toolCallId: string
+  toolArgs: Record<string, unknown>
+  toolName: string
+}
+
+function bindRunToComputerUseCallerLease(
+  controller: AbortController,
+  callerLease: DurableWindowCallerLease | null | undefined
+): () => void {
+  if (!callerLease) return () => undefined
+  const abort = (): void => {
+    controller.abort(
+      callerLease.signal.reason ??
+        new DOMException("The Computer Use window authorization ended.", "AbortError")
+    )
+  }
+  callerLease.signal.addEventListener("abort", abort, { once: true })
+  if (callerLease.signal.aborted) abort()
+  return () => callerLease.signal.removeEventListener("abort", abort)
+}
+
+function createAgentCancellationReporter(sink: AgentStreamSink): {
+  send: () => void
+  sendIfComputerUseCallerLeaseRevoked: (
+    callerLease: DurableWindowCallerLease | null | undefined
+  ) => void
+} {
+  let sent = false
+  const send = (): void => {
+    if (sent) return
+    sent = true
+    sink.send({ type: "cancelled" })
+  }
+  return {
+    send,
+    sendIfComputerUseCallerLeaseRevoked: (callerLease) => {
+      if (callerLease?.signal.aborted) send()
+    }
+  }
+}
+
+function parseResumeToolArgs(requestId: string, value: string): Record<string, unknown> {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value) as unknown
+  } catch {
+    throw new JingleIpcError({
+      channel: "agent:resume",
+      code: "FAILED_PRECONDITION",
+      message: `[Agent] HITL request "${requestId}" has invalid tool arguments.`
+    })
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new JingleIpcError({
+      channel: "agent:resume",
+      code: "FAILED_PRECONDITION",
+      message: `[Agent] HITL request "${requestId}" has invalid tool arguments.`
+    })
+  }
+  return parsed as Record<string, unknown>
 }
 
 function readJingleMemoryContextSnapshot(
@@ -508,7 +572,12 @@ async function resolveResumeTarget(
   return {
     requestId: request.request_id,
     runId: request.run_id,
-    toolCallId: request.tool_call_id
+    toolArgs:
+      decision?.type === "approve" && request.tool_name === "computer_use_action"
+        ? parseResumeToolArgs(request.request_id, request.tool_args)
+        : {},
+    toolCallId: request.tool_call_id,
+    toolName: request.tool_name
   }
 }
 
@@ -547,10 +616,34 @@ function reportAgentRuntimeError(input: {
   error: unknown
   label: string
   markRecoveryRequired: () => void
+  reportCancelled: () => void
   runId: string
   sink: AgentStreamSink
   threadId: string
 }): boolean {
+  if (isRuntimeThreadOwnershipCleanupError(input.error)) {
+    recordOwnershipCleanupFailure({
+      error: input.error.cause ?? input.error,
+      runId: input.error.runId,
+      status: input.error.status,
+      threadId: input.threadId
+    })
+    if (input.error.status === "completed") {
+      input.sink.send({ type: "done" })
+      return true
+    }
+    if (input.error.status === "aborted" || input.error.status === "cancelled") {
+      input.reportCancelled()
+      return true
+    }
+    if (input.error.status !== "failed") return true
+    const terminal = parseAgentRunFailureTerminalFact(input.error.durableFailure)
+    if (terminal) {
+      input.sink.send({ type: "error", failure: terminal.failure, status: terminal.status })
+      return true
+    }
+    return true
+  }
   if (!isRuntimeThreadDurableFailureError(input.error)) {
     recordTerminalPersistenceFailure(input)
     input.markRecoveryRequired()
@@ -576,6 +669,32 @@ function reportAgentRuntimeError(input: {
     status
   })
   return true
+}
+
+function recordOwnershipCleanupFailure(input: {
+  error: unknown
+  runId: string
+  status: string
+  threadId: string
+}): void {
+  diagnosticsGraph.capture({
+    component: "agent-service",
+    dimensionEntries: [
+      { key: "errorType", value: readBoundedDiagnosticErrorType(input.error) },
+      { key: "terminalStatus", value: input.status }
+    ],
+    eventCode: "agent.ownership_cleanup_failed",
+    fingerprint: "agent.ownership_cleanup_failed",
+    level: "error",
+    operation: "release-run-ownership",
+    recoverable: true,
+    refs: [
+      { id: input.threadId, kind: "agent-thread" },
+      { id: input.runId, kind: "agent-run" }
+    ],
+    stateImpact: "terminal-state-known-cleanup-retry-required",
+    summary: "Agent terminal state is durable, but run ownership cleanup must be retried."
+  })
 }
 
 function readDurableAdmissionRunId(error: unknown): string | null {
@@ -702,12 +821,14 @@ export class AgentService {
   private readonly agentRuntime: ReturnType<typeof createAgentRuntime>
 
   constructor(
+    private readonly computerUseRuntime: ComputerUseRuntime,
     private readonly jingleMemoryService: JingleMemoryService,
     private readonly threadLifecycleGate: ThreadLifecycleGate,
     private readonly workspaceService: WorkspaceService,
     private readonly extensionRegistryReader: AgentExtensionRegistryReader = DEFAULT_AGENT_EXTENSION_REGISTRY_READER
   ) {
     this.agentRuntime = createAgentRuntime({
+      computerUseRuntime,
       jingleMemoryService,
       workspaceService
     })
@@ -909,7 +1030,11 @@ export class AgentService {
   }
 
   async shutdown(): Promise<void> {
-    await this.threadLifecycleGate.shutdown()
+    try {
+      await this.threadLifecycleGate.shutdown()
+    } finally {
+      await this.computerUseRuntime.close()
+    }
   }
 
   async editLastUserMessageAndInvoke(
@@ -941,6 +1066,7 @@ export class AgentService {
   ): Promise<void> {
     const channel = options?.channel ?? "agent:invoke"
     const commandOutcome = createAgentCommandOutcomeReporter(options?.onCommandOutcome)
+    const cancellationReporter = createAgentCancellationReporter(sink)
     const messagePreview = summarizeMessageContent(message.content)
 
     console.log("[Agent] Received invoke request:", {
@@ -957,6 +1083,10 @@ export class AgentService {
       return
     }
     const abortController = lease.abortController
+    const removeComputerUseCallerLeaseAbortListener = bindRunToComputerUseCallerLease(
+      abortController,
+      options?.computerUseCallerLease
+    )
     const activeRun = createActiveAgentServiceRun({
       controller: abortController,
       steeringBuffer: createAgentRunSteeringBuffer({
@@ -1113,6 +1243,7 @@ export class AgentService {
 
       abortController.signal.throwIfAborted()
       const runHandle = createAgentRunHandle({
+        computerUseRuntime: this.computerUseRuntime,
         jingleMemoryService: this.jingleMemoryService,
         runtime: this.agentRuntime,
         threadId,
@@ -1126,6 +1257,7 @@ export class AgentService {
 
       const run = await runHandle.thread.startInvoke({
         aiCapabilities,
+        computerUseCallerLease: options?.computerUseCallerLease ?? null,
         extensionAiRuntime,
         jingleMemoryContextPack,
         jingleMemoryContextSnapshot:
@@ -1147,8 +1279,12 @@ export class AgentService {
       activeRun.run = run
       const { runId } = run
       if (abortController.signal.aborted) {
+        options?.onRunAccepted?.()
+        commandOutcome.report(claim.outcome)
         activeRun.markPreparationSettled()
+        sink.send({ type: "run_started", runId })
         await run.abort()
+        cancellationReporter.sendIfComputerUseCallerLeaseRevoked(options?.computerUseCallerLease)
         return
       }
       const providedInclusions = jingleMemoryContextPack
@@ -1227,6 +1363,8 @@ export class AgentService {
 
       if (result.status === "completed") {
         sink.send({ type: "done" })
+      } else if (result.status === "cancelled") {
+        cancellationReporter.send()
       }
     } catch (error) {
       activeRun.steeringBuffer.close()
@@ -1265,6 +1403,7 @@ export class AgentService {
           error: reportableError,
           label: "[Agent] Error:",
           markRecoveryRequired: () => this.threadLifecycleGate.requireRecovery(threadId),
+          reportCancelled: cancellationReporter.send,
           runId: activeRun.run.runId,
           threadId,
           sink
@@ -1291,6 +1430,7 @@ export class AgentService {
                 error,
                 label: "[Agent] Abort persistence error:",
                 markRecoveryRequired: () => this.threadLifecycleGate.requireRecovery(threadId),
+                reportCancelled: cancellationReporter.send,
                 runId: activeRun.run.runId,
                 threadId,
                 sink
@@ -1299,6 +1439,7 @@ export class AgentService {
           }
         }
       } finally {
+        removeComputerUseCallerLeaseAbortListener()
         if (this.activeRuns.get(threadId) === activeRun) {
           this.activeRuns.delete(threadId)
         }
@@ -1306,6 +1447,11 @@ export class AgentService {
           lease.complete()
         } finally {
           activeRun.markSettled()
+          if (commandOutcome.wasAccepted()) {
+            cancellationReporter.sendIfComputerUseCallerLeaseRevoked(
+              options?.computerUseCallerLease
+            )
+          }
           if (!commandOutcome.hasReported() && commandRejectionError !== null) {
             commandOutcome.reject(channel, commandRejectionError)
           }
@@ -1321,6 +1467,7 @@ export class AgentService {
   ): Promise<void> {
     const channel = "agent:resume" as const
     const commandOutcome = createAgentCommandOutcomeReporter(options?.onCommandOutcome)
+    const cancellationReporter = createAgentCancellationReporter(sink)
     console.log("[Agent] Received resume request:", {
       threadId,
       decision
@@ -1333,6 +1480,10 @@ export class AgentService {
       return
     }
     const abortController = lease.abortController
+    const removeComputerUseCallerLeaseAbortListener = bindRunToComputerUseCallerLease(
+      abortController,
+      options?.computerUseCallerLease
+    )
     const activeRun = createActiveAgentServiceRun({
       controller: abortController,
       steeringBuffer: createAgentRunSteeringBuffer({
@@ -1343,6 +1494,8 @@ export class AgentService {
     let commandRejectionError: unknown = null
     let didReportRuntimeError = false
     let durableResumeDecision: ResolvedHitlDecision | null = null
+    let computerUseApprovalAdmission: ComputerUseActionApprovalAdmission | null = null
+    let removeComputerUseApprovalAbortListener: (() => void) | null = null
     let runExecutionStarted = false
     this.activeRuns.set(threadId, activeRun)
     try {
@@ -1369,6 +1522,16 @@ export class AgentService {
         sink.send({ type: "run_started", runId: terminal.runId })
         commandOutcome.report(claim.outcome)
         sink.send({ type: "cancelled" })
+        try {
+          await this.computerUseRuntime.closeRun(terminal.runId)
+        } catch (error) {
+          recordOwnershipCleanupFailure({
+            error,
+            runId: terminal.runId,
+            status: "cancelled",
+            threadId
+          })
+        }
         return
       }
 
@@ -1389,6 +1552,34 @@ export class AgentService {
       const resumeTarget = await awaitAbortableSetupRead(abortController.signal, () =>
         resolveResumeTarget(threadId, decision)
       )
+      if (decision.type === "approve" && resumeTarget.toolName === "computer_use_action") {
+        try {
+          computerUseApprovalAdmission = await this.computerUseRuntime.prepareActionApproval(
+            resumeTarget.toolArgs,
+            { runId: resumeTarget.runId, threadId },
+            options?.computerUseCallerLease ?? null
+          )
+          const abortComputerUseResume = (): void => {
+            abortController.abort(computerUseApprovalAdmission?.signal.reason)
+          }
+          computerUseApprovalAdmission.signal.addEventListener("abort", abortComputerUseResume, {
+            once: true
+          })
+          removeComputerUseApprovalAbortListener = () =>
+            computerUseApprovalAdmission?.signal.removeEventListener(
+              "abort",
+              abortComputerUseResume
+            )
+          if (computerUseApprovalAdmission.signal.aborted) abortComputerUseResume()
+        } catch {
+          throw new JingleIpcError({
+            channel,
+            code: "FAILED_PRECONDITION",
+            message:
+              "Computer Use approval requires the original live durable window and authorized session."
+          })
+        }
+      }
       const resolvedHitlDecision: ResolvedHitlDecision =
         decision.type === "corrected"
           ? {
@@ -1509,6 +1700,7 @@ export class AgentService {
       })
       abortController.signal.throwIfAborted()
       const runHandle = createAgentRunHandle({
+        computerUseRuntime: this.computerUseRuntime,
         jingleMemoryService: this.jingleMemoryService,
         runtime: this.agentRuntime,
         threadId,
@@ -1522,6 +1714,7 @@ export class AgentService {
 
       const run = await runHandle.thread.startResume({
         aiCapabilities: runtimeAiCapabilities,
+        computerUseCallerLease: options?.computerUseCallerLease ?? null,
         decision: resolvedHitlDecision,
         extensionAiRuntime,
         jingleMemoryContextPack,
@@ -1548,8 +1741,10 @@ export class AgentService {
         commandOutcome.report(claim.outcome)
       }
       if (abortController.signal.aborted) {
+        acceptCommittedResumeDecision()
         activeRun.markPreparationSettled()
         await run.abort()
+        cancellationReporter.sendIfComputerUseCallerLeaseRevoked(options?.computerUseCallerLease)
         return
       }
 
@@ -1602,7 +1797,7 @@ export class AgentService {
         sink.send({ type: "done" })
       } else if (result.status === "cancelled") {
         sendResumedRunStarted()
-        sink.send({ type: "cancelled" })
+        cancellationReporter.send()
       }
     } catch (error) {
       activeRun.steeringBuffer.close()
@@ -1631,6 +1826,7 @@ export class AgentService {
           error: reportableError,
           label: "[Agent] Resume admission error:",
           markRecoveryRequired: () => this.threadLifecycleGate.requireRecovery(threadId),
+          reportCancelled: cancellationReporter.send,
           runId: durableAdmissionRunId,
           threadId,
           sink
@@ -1643,12 +1839,15 @@ export class AgentService {
           error: reportableError,
           label: "[Agent] Resume error:",
           markRecoveryRequired: () => this.threadLifecycleGate.requireRecovery(threadId),
+          reportCancelled: cancellationReporter.send,
           runId: activeRun.run.runId,
           threadId,
           sink
         })
       }
     } finally {
+      removeComputerUseCallerLeaseAbortListener()
+      removeComputerUseApprovalAbortListener?.()
       activeRun.steeringBuffer.close()
       activeRun.markPreparationSettled()
       if (
@@ -1669,6 +1868,7 @@ export class AgentService {
                 error,
                 label: "[Agent] Resume abort persistence error:",
                 markRecoveryRequired: () => this.threadLifecycleGate.requireRecovery(threadId),
+                reportCancelled: cancellationReporter.send,
                 runId: activeRun.run.runId,
                 threadId,
                 sink
@@ -1684,6 +1884,11 @@ export class AgentService {
           lease.complete()
         } finally {
           activeRun.markSettled()
+          if (commandOutcome.wasAccepted()) {
+            cancellationReporter.sendIfComputerUseCallerLeaseRevoked(
+              options?.computerUseCallerLease
+            )
+          }
           if (!commandOutcome.hasReported() && commandRejectionError !== null) {
             commandOutcome.reject(channel, commandRejectionError)
           }
@@ -1707,7 +1912,17 @@ export class AgentService {
     try {
       await activeRun.preparationSettled
       if (activeRun.run) {
-        didAbort = await activeRun.run.abort()
+        try {
+          didAbort = await activeRun.run.abort()
+        } catch (error) {
+          if (
+            !isRuntimeThreadOwnershipCleanupError(error) ||
+            (error.status !== "aborted" && error.status !== "cancelled")
+          ) {
+            throw error
+          }
+          didAbort = true
+        }
       }
     } finally {
       await activeRun.settled

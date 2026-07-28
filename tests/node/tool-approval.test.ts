@@ -2,7 +2,12 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { withExecuteCommandPolicy } from "../../src/shared/execute-command-policy"
 import { withMutationPrediction } from "../../src/shared/mutation-prediction"
-import { buildToolApprovalItem, requiresToolApproval } from "../../src/shared/tool-approval"
+import {
+  buildToolApprovalItem,
+  parseComputerUseToolApprovalInput,
+  parseToolApprovalItem,
+  requiresToolApproval
+} from "../../src/shared/tool-approval"
 
 test("buildToolApprovalItem maps execute predictions to upcoming file changes", () => {
   const args = withMutationPrediction(
@@ -130,11 +135,88 @@ test("buildToolApprovalItem marks existing write_file targets as upcoming modifi
   })
 })
 
-test("requiresToolApproval does not gate desktop automation tools once allowlist policy owns them", () => {
-  assert.equal(requiresToolApproval("open_application"), false)
-  assert.equal(requiresToolApproval("open_desktop_route"), false)
-  assert.equal(requiresToolApproval("find_ax_elements"), false)
-  assert.equal(requiresToolApproval("press_ax_element"), false)
-  assert.equal(requiresToolApproval("click_screen_point"), false)
+test("Computer Use approval input parser preserves canonical semantic actions", () => {
+  assert.deepEqual(
+    parseComputerUseToolApprovalInput({
+      actions: [
+        { kind: "press", ref: "@save" },
+        { keys: ["META", "S"], kind: "keypress", ref: "@editor" }
+      ],
+      sessionId: "session-1",
+      stateId: "state-1"
+    }),
+    {
+      actions: [
+        { kind: "press", ref: "@save" },
+        { keys: ["META", "S"], kind: "keypress", ref: "@editor" }
+      ],
+      sessionId: "session-1",
+      stateId: "state-1"
+    }
+  )
+  assert.equal(
+    parseComputerUseToolApprovalInput({
+      actions: [{ kind: "press", ref: "@save" }],
+      extra: true,
+      sessionId: "session-1",
+      stateId: "state-1"
+    }),
+    null
+  )
+})
+
+test("Computer Use persisted approval requires the exact canonical target", () => {
+  const review = {
+    actions: [
+      { kind: "press", ref: "@save" },
+      { kind: "type_text", ref: "@editor", value: "Hello" }
+    ],
+    kind: "computer_use_action",
+    sessionId: "session-1",
+    stateId: "state-1",
+    target: {
+      application: { id: "com.example.editor", name: "Editor" },
+      elements: [
+        { ref: "@save", role: "button", title: "Save" },
+        {
+          description: "Document body",
+          ref: "@editor",
+          role: "text_area",
+          title: "Editor"
+        }
+      ],
+      window: { nativeId: "window-1", platform: "macos" }
+    },
+    toolName: "computer_use_action"
+  }
+
+  assert.deepEqual(parseToolApprovalItem(review), review)
+  assert.equal(parseToolApprovalItem({ ...review, target: undefined }), null)
+  assert.equal(
+    parseToolApprovalItem({
+      ...review,
+      target: { ...review.target, extra: true }
+    }),
+    null
+  )
+  assert.equal(
+    parseToolApprovalItem({
+      ...review,
+      target: {
+        ...review.target,
+        elements: review.target.elements.slice().reverse()
+      }
+    }),
+    null
+  )
+  assert.equal(buildToolApprovalItem("computer_use_action", review), null)
+})
+
+test("requiresToolApproval delegates only Computer Use actions to HITL policy", () => {
+  assert.equal(requiresToolApproval("computer_use_observe"), false)
+  assert.equal(requiresToolApproval("computer_use_action"), true)
+  assert.equal(requiresToolApproval("computer_use_search"), false)
+  assert.equal(requiresToolApproval("computer_use_expand"), false)
+  assert.equal(requiresToolApproval("computer_use_inspect"), false)
   assert.equal(requiresToolApproval("web_search"), false)
 })

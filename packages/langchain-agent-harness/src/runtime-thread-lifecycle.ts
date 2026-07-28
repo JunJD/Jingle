@@ -222,9 +222,10 @@ export function createRuntimeThreadRunLifecycleControlFromController<
         runId: failInput.runId,
         threadId: thread.threadId
       }),
-    settleRun: async ({ runId }) => {
+    settleRun: async ({ retainSuspendedResources, runId }) => {
       try {
         await lifecycle.settleRun({
+          ...(retainSuspendedResources ? { retainSuspendedResources: true } : {}),
           runId,
           threadId: thread.threadId
         })

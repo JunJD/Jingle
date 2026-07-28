@@ -24,7 +24,8 @@ import {
   settingsPageHeaderClassName,
   settingsPageTitleClassName,
   SettingsRow,
-  SettingsSelect
+  SettingsSelect,
+  SettingsSwitch
 } from "./settings-ui"
 
 function parseLineList(value: string): string[] {
@@ -81,7 +82,7 @@ function getSupportPacketExportStatus(
 
 interface GeneralTabState {
   agentConfig: AgentConfig | null
-  desktopAutomationAllowlistDraft: string
+  computerUseApplicationAllowlistDraft: string
   globalWorkspacePath: string | null
   launcherSettings: LauncherSettings | null
   skillSourcesDraft: string
@@ -98,9 +99,11 @@ type GeneralTabAction =
       launcherSettings: LauncherSettings
     }
   | { type: "agent-config-saved"; agentConfig: AgentConfig; status: string }
-  | { type: "desktop-automation-allowlist-changed"; value: string }
+  | { type: "computer-use-allowlist-changed"; value: string }
+  | { type: "computer-use-enabled-changed"; value: boolean }
   | { type: "launcher-settings-changed"; launcherSettings: LauncherSettings }
   | { type: "skill-sources-changed"; value: string }
+  | { type: "status-changed"; status: string }
   | { type: "status-cleared" }
   | { type: "support-packet-export-finished"; status: string }
   | { type: "support-packet-export-started" }
@@ -109,7 +112,7 @@ type GeneralTabAction =
 
 const initialGeneralTabState: GeneralTabState = {
   agentConfig: null,
-  desktopAutomationAllowlistDraft: "",
+  computerUseApplicationAllowlistDraft: "",
   globalWorkspacePath: null,
   launcherSettings: null,
   skillSourcesDraft: "",
@@ -124,7 +127,8 @@ function generalTabReducer(state: GeneralTabState, action: GeneralTabAction): Ge
       return {
         ...state,
         agentConfig: action.agentConfig,
-        desktopAutomationAllowlistDraft: action.agentConfig.desktopAutomationAllowlist.join("\n"),
+        computerUseApplicationAllowlistDraft:
+          action.agentConfig.computerUseApplicationAllowlist.join("\n"),
         globalWorkspacePath: action.globalWorkspacePath,
         launcherSettings: action.launcherSettings,
         skillSourcesDraft: action.agentConfig.skillSources.join("\n")
@@ -133,14 +137,25 @@ function generalTabReducer(state: GeneralTabState, action: GeneralTabAction): Ge
       return {
         ...state,
         agentConfig: action.agentConfig,
+        computerUseApplicationAllowlistDraft:
+          action.agentConfig.computerUseApplicationAllowlist.join("\n"),
         status: action.status
       }
-    case "desktop-automation-allowlist-changed":
-      return { ...state, desktopAutomationAllowlistDraft: action.value }
+    case "computer-use-allowlist-changed":
+      return { ...state, computerUseApplicationAllowlistDraft: action.value }
+    case "computer-use-enabled-changed":
+      return state.agentConfig
+        ? {
+            ...state,
+            agentConfig: { ...state.agentConfig, computerUseEnabled: action.value }
+          }
+        : state
     case "launcher-settings-changed":
       return { ...state, launcherSettings: action.launcherSettings }
     case "skill-sources-changed":
       return { ...state, skillSourcesDraft: action.value }
+    case "status-changed":
+      return { ...state, status: action.status }
     case "status-cleared":
       if (!state.status) {
         return state
@@ -165,7 +180,7 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
   const [state, dispatch] = useReducer(generalTabReducer, initialGeneralTabState)
   const {
     agentConfig,
-    desktopAutomationAllowlistDraft,
+    computerUseApplicationAllowlistDraft,
     globalWorkspacePath,
     launcherSettings,
     skillSourcesDraft,
@@ -208,11 +223,25 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
   }, [supportPacketStatus])
 
   const saveAgentConfig = async (): Promise<void> => {
-    const nextConfig = await window.api.settings.setAgentConfig({
-      desktopAutomationAllowlist: parseLineList(desktopAutomationAllowlistDraft),
-      skillSources: parseLineList(skillSourcesDraft)
-    })
-    dispatch({ type: "agent-config-saved", agentConfig: nextConfig, status: copy.general.saved })
+    try {
+      const nextConfig = await window.api.settings.setAgentConfig({
+        computerUseApplicationAllowlist: parseLineList(computerUseApplicationAllowlistDraft),
+        computerUseEnabled: agentConfig?.computerUseEnabled === true,
+        skillSources: parseLineList(skillSourcesDraft)
+      })
+      dispatch({ type: "agent-config-saved", agentConfig: nextConfig, status: copy.general.saved })
+    } catch {
+      try {
+        const persistedConfig = await window.api.settings.getAgentConfig()
+        dispatch({
+          type: "agent-config-saved",
+          agentConfig: persistedConfig,
+          status: copy.general.saveFailed
+        })
+      } catch {
+        dispatch({ type: "status-changed", status: copy.general.saveFailed })
+      }
+    }
   }
 
   const handleWorkspaceSelect = async (): Promise<void> => {
@@ -394,17 +423,29 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
 
         <SettingsRow
           icon={<Layers2 className="h-[var(--jingle-icon-action)] w-[var(--jingle-icon-action)]" />}
-          title={copy.general.desktopAutomationAllowlistTitle}
-          description={copy.general.desktopAutomationAllowlistDescription}
+          title={copy.general.computerUseTitle}
+          description={copy.general.computerUseDescription}
         >
           <div className="space-y-[var(--jingle-space-3)]">
+            <div className="flex items-center justify-between gap-[var(--jingle-gap-md)]">
+              <span className="[font-size:var(--jingle-font-body)] text-foreground">
+                {copy.general.computerUseEnabled}
+              </span>
+              <SettingsSwitch
+                checked={agentConfig.computerUseEnabled}
+                label={copy.general.computerUseEnabled}
+                onCheckedChange={(value) => {
+                  dispatch({ type: "computer-use-enabled-changed", value })
+                }}
+              />
+            </div>
             <textarea
-              aria-label={copy.general.desktopAutomationAllowlistTitle}
+              aria-label={copy.general.computerUseAllowlist}
               className={`${inputClassName} min-h-[var(--jingle-settings-textarea-min-h)] resize-y`}
-              value={desktopAutomationAllowlistDraft}
+              value={computerUseApplicationAllowlistDraft}
               onChange={(event) => {
                 dispatch({
-                  type: "desktop-automation-allowlist-changed",
+                  type: "computer-use-allowlist-changed",
                   value: event.target.value
                 })
               }}

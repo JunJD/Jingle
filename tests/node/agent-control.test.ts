@@ -285,7 +285,8 @@ function installWindowApiStub(input?: {
         },
         settings: {
           getAgentConfig: async () => ({
-            desktopAutomationAllowlist: [],
+            computerUseApplicationAllowlist: [],
+            computerUseEnabled: false,
             followUpMode: input?.followUpMode ?? "steer",
             locale: "zh-CN",
             skillSources: []

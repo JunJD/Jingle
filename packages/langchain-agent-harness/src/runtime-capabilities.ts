@@ -33,7 +33,7 @@ import type {
   RuntimeWorkspaceFileContextProviderContract,
   RuntimeWorkspaceFileContextRequest
 } from "./runtime-context"
-import type { JingleDesktopAutomationToolHandlers } from "./desktop-automation-tools"
+import type { JingleComputerUseToolHandlers } from "./computer-use-tools"
 import type { RuntimeObservationCapabilities } from "./runtime-observation"
 import type {
   RuntimeArtifactPresentationConfig,
@@ -96,7 +96,7 @@ export type { RuntimeExtensionToolStateUpdateResult }
 export type { RuntimeLoadExtensionToolInput }
 export type RuntimeExtensionToolsProvider = RuntimeExtensionToolsProviderContract
 export type RuntimeArtifactPresentationProvider = RuntimeArtifactPresentationProviderContract
-export type RuntimeDesktopAutomationTools = JingleDesktopAutomationToolHandlers
+export type RuntimeComputerUseTools = JingleComputerUseToolHandlers
 export type RuntimeWebTools = JingleWebToolHandlers
 export type RuntimeApprovalController = RuntimeApprovalControllerContract
 export type RuntimePauseController<TReview = unknown> = RuntimePauseControllerContract<TReview>
@@ -123,7 +123,7 @@ export interface RuntimeCheckpointCapability {
 export interface RuntimeToolCapabilities {
   artifactPresentation: RuntimeArtifactPresentationProvider
   backend: RuntimeBackendProvider
-  desktopAutomationTools: RuntimeDesktopAutomationTools
+  computerUseTools?: RuntimeComputerUseTools
   extensionAiTools: RuntimeExtensionToolsProvider
   skillSources: RuntimeSkillSourcesProvider
   webTools: RuntimeWebTools

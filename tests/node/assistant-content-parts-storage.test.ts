@@ -615,7 +615,9 @@ test("cancelled runs remain eligible for terminal assistant content projection",
     version: "1"
   })
 
-  await createRuntimeRunLifecycleController({}).recordRunFinished({
+  await createRuntimeRunLifecycleController({
+    computerUseRuntime: { closeRun: async () => undefined } as never
+  }).recordRunFinished({
     completionReason: "user_declined",
     runId: "run-content-projection-cancelled",
     status: "cancelled",
@@ -655,7 +657,9 @@ test("atomic run failure schedules assistant content projection after its termin
     version: "1"
   })
 
-  await createRuntimeRunLifecycleController({}).markRunFailed({
+  await createRuntimeRunLifecycleController({
+    computerUseRuntime: { closeRun: async () => undefined } as never
+  }).markRunFailed({
     error: new Error("terminal failure"),
     runId: "run-content-projection-error-terminal",
     threadId: "thread-content-projection-error-terminal"

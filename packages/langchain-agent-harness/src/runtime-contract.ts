@@ -13,7 +13,7 @@ import type {
   JingleHitlReviewParser,
   JinglePendingHitlRequestUpserter
 } from "./langgraph-hitl-reader"
-import type { JingleDesktopAutomationToolHandlers } from "./desktop-automation-tools"
+import type { JingleComputerUseToolHandlers } from "./computer-use-tools"
 import type { JingleWebToolHandlers } from "./web-tools"
 import type { JingleFilesystemMiddlewareOptions } from "./harness-runtime/filesystem"
 import type { JingleSkillsMiddlewareOptions } from "./harness-runtime/skills"
@@ -168,7 +168,11 @@ export interface RuntimeRunLifecycleControllerContract<
     status: "interrupted"
     threadId: string
   }) => Promise<void> | void
-  settleRun: (input: { runId: string; threadId: string }) => Promise<void> | void
+  settleRun: (input: {
+    retainSuspendedResources?: boolean
+    runId: string
+    threadId: string
+  }) => Promise<void> | void
   syncRunFromLatestCheckpoint: (
     input: {
       expectedMessageId?: string
@@ -202,7 +206,7 @@ export interface RuntimeResolvedCheckpointHostContract {
 export interface RuntimeEnvironmentHostContract {
   artifactPresentation: RuntimeArtifactPresentationProviderContract
   backend: RuntimeBackendProvider
-  desktopAutomationTools: JingleDesktopAutomationToolHandlers
+  computerUseTools?: JingleComputerUseToolHandlers
   executeToolDescription: RuntimePromptTextProvider
   extensionAiTools: RuntimeExtensionToolsProviderContract
   filesystemSystemPrompt: RuntimePromptTextProvider
@@ -213,7 +217,7 @@ export interface RuntimeEnvironmentHostContract {
 export interface RuntimeResolvedEnvironmentHostContract {
   artifactPresentation: RuntimeArtifactPresentationProviderContract
   backend: RuntimeBackendContract
-  desktopAutomationTools: JingleDesktopAutomationToolHandlers
+  computerUseTools?: JingleComputerUseToolHandlers
   executeToolDescription: string
   extensionAiTools: RuntimeExtensionToolsProviderContract
   filesystemSystemPrompt: string

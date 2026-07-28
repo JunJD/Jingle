@@ -6,6 +6,7 @@ import {
 import {
   parseComputerUseActionAttempt,
   type ComputerUseActionAttempt,
+  type ComputerUseOutcome,
   type ComputerUseActionLedgerPort,
   type ComputerUseActionLedgerPortTransition
 } from "@jingle/computer-use-core"
@@ -84,6 +85,53 @@ export function createPrismaComputerUseActionLedgerPort(): ComputerUseActionLedg
   return new PrismaComputerUseActionLedgerPort()
 }
 
+export async function settleInterruptedComputerUseAttemptInTransaction(
+  transaction: Prisma.TransactionClient,
+  row: ComputerUseAttemptRow,
+  now = Date.now()
+): Promise<{ dispatchPossible: boolean; outcome: ComputerUseOutcome }> {
+  const current = decodeComputerUseAttempt(row)
+  if (current.phase === "settled") {
+    throw new Error(`Computer-use action attempt ${current.attemptId} is already settled.`)
+  }
+  const dispatchPossible = current.phase === "dispatched"
+  const outcome: ComputerUseOutcome = dispatchPossible ? "unknown" : "cancelled_before_dispatch"
+  const next = parseComputerUseActionAttempt(
+    {
+      ...current,
+      phase: "settled",
+      result: {
+        baseStateId: current.baseStateId,
+        outcome,
+        steps: []
+      },
+      revision: current.revision + 1,
+      settledAt: now
+    },
+    current.attemptId
+  )
+  const transition = await transaction.computerUseAttempt.updateMany({
+    data: {
+      payloadJson: JSON.stringify(next),
+      phase: next.phase,
+      revision: next.revision
+    },
+    where: {
+      attemptId: current.attemptId,
+      phase: current.phase,
+      revision: current.revision,
+      runId: current.authorization.runId,
+      threadId: current.authorization.threadId
+    }
+  })
+  if (transition.count !== 1) {
+    throw new Error(
+      `Computer-use action attempt ${current.attemptId} changed during startup recovery.`
+    )
+  }
+  return { dispatchPossible, outcome }
+}
+
 function encodeComputerUseAttempt(attempt: ComputerUseActionAttempt): ComputerUseAttemptRow {
   return {
     attemptId: attempt.attemptId,
@@ -95,7 +143,7 @@ function encodeComputerUseAttempt(attempt: ComputerUseActionAttempt): ComputerUs
   }
 }
 
-function decodeComputerUseAttempt(row: ComputerUseAttemptRow): ComputerUseActionAttempt {
+export function decodeComputerUseAttempt(row: ComputerUseAttemptRow): ComputerUseActionAttempt {
   try {
     const attempt = parseComputerUseActionAttempt(JSON.parse(row.payloadJson), row.attemptId)
     if (

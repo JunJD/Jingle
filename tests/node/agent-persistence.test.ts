@@ -118,6 +118,7 @@ async function createWorkspaceServiceForTest() {
 
 async function createAgentServiceForTest(
   input: {
+    computerUseRuntime?: unknown
     extensionRegistryReader?: unknown
     jingleMemoryService?: unknown
     threadLifecycleGate?: unknown
@@ -125,19 +126,27 @@ async function createAgentServiceForTest(
   } = {}
 ) {
   const { AgentService } = await import("../../src/main/agent/service")
+  const { ComputerUseRuntime } = await import("../../src/main/computer-use/runtime")
   const { JingleMemoryService } = await import("../../src/main/jingle-memory/service")
   const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
 
   return new AgentService(
+    (input.computerUseRuntime ??
+      new ComputerUseRuntime({
+        createService: async () => {
+          throw new Error("Computer Use must remain disabled in AgentService persistence tests.")
+        },
+        initialConfig: { computerUseApplicationAllowlist: [], computerUseEnabled: false }
+      })) as ConstructorParameters<typeof AgentService>[0],
     (input.jingleMemoryService ?? new JingleMemoryService()) as ConstructorParameters<
       typeof AgentService
-    >[0],
+    >[1],
     (input.threadLifecycleGate ?? new ThreadLifecycleGate()) as ConstructorParameters<
       typeof AgentService
-    >[1],
+    >[2],
     (input.workspaceService ?? (await createWorkspaceServiceForTest())) as ConstructorParameters<
       typeof AgentService
-    >[2],
+    >[3],
     (input.extensionRegistryReader ?? {
       listManifests: () => [],
       readMainDefinitionSnapshot: () => ({
@@ -146,7 +155,7 @@ async function createAgentServiceForTest(
         pendingExtensionNames: [],
         revision: 1
       })
-    }) as ConstructorParameters<typeof AgentService>[3]
+    }) as ConstructorParameters<typeof AgentService>[4]
   )
 }
 
@@ -877,6 +886,230 @@ test("database startup interrupts agent state left active by a previous process"
   }
 })
 
+test("database startup fails approved Computer Use that cannot retain its native state", async () => {
+  const {
+    closeDatabase,
+    createRun,
+    createThread,
+    getRun,
+    getThread,
+    initializeDatabase,
+    resolveHitlRequest,
+    updateThread,
+    upsertHitlRequest
+  } = await loadDbModules()
+  const consoleWarn = mock.method(console, "warn", () => {})
+  const threadId = "thread-startup-computer-use-approved"
+  const runId = "run-startup-computer-use-approved"
+  const requestId = "request-startup-computer-use-approved"
+  const toolCallId = "tool-startup-computer-use-approved"
+
+  try {
+    await createThread(threadId)
+    await bindThreadWorkspace(threadId, repoRoot)
+    await createRun(runId, threadId, {
+      metadata: createTestRunMetadata(),
+      status: "running"
+    })
+    await updateThread(threadId, { status: "busy" })
+    await upsertHitlRequest({
+      allowed_decisions: ["approve"],
+      request_id: requestId,
+      run_id: runId,
+      status: "pending",
+      thread_id: threadId,
+      tool_args: {
+        actions: [{ kind: "press", ref: "@save" }],
+        sessionId: "session-before-restart",
+        stateId: "state-before-restart"
+      },
+      tool_call_id: toolCallId,
+      tool_name: "computer_use_action"
+    })
+    await resolveHitlRequest(requestId, "approved", {
+      request_id: requestId,
+      tool_call_id: toolCallId,
+      type: "approve"
+    })
+
+    await closeDatabase()
+    await initializeDatabase()
+
+    const run = await getRun(runId)
+    const thread = await getThread(threadId)
+    const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+    const failure = parseAgentRunFailure(metadata[AGENT_RUN_FAILURE_METADATA_KEY])
+    const snapshot = await (await createThreadsServiceForTest()).getAgentThreadData(threadId)
+    assert.equal(run?.status, "error")
+    assert.equal(thread?.status, "error")
+    assert.equal(failure?.kind, "transport_interrupted")
+    assert.equal(failure?.ipcCode, "UNAVAILABLE")
+    assert.match(failure?.message ?? "", /No desktop action was dispatched/)
+    assert.equal(snapshot.runState.pendingApproval, null)
+    assert.equal(snapshot.runState.error?.message, failure?.message)
+    const terminalEvents = await (await loadDbModules()).getPrismaClient().agentEvent.findMany({
+      where: { runId, type: "run.finished" }
+    })
+    assert.equal(terminalEvents.length, 1)
+    assert.equal(JSON.parse(terminalEvents[0]?.payload ?? "{}").status, "error")
+    assert.equal(consoleWarn.mock.callCount(), 1)
+  } finally {
+    consoleWarn.mock.restore()
+  }
+})
+
+test("database startup preserves settled Computer Use before interrupting later Agent work", async () => {
+  const {
+    closeDatabase,
+    createRun,
+    createThread,
+    getRun,
+    getThread,
+    initializeDatabase,
+    resolveHitlRequest,
+    updateThread,
+    upsertHitlRequest
+  } = await loadDbModules()
+  const { ComputerUseActionLedger } = await import("@jingle/computer-use-core")
+  const { createPrismaComputerUseActionLedgerPort } =
+    await import("../../src/main/db/computer-use-action-ledger")
+  const { createComputerUseTransactionId } =
+    await import("../../src/main/computer-use/transaction-identity")
+  const threadId = "thread-startup-computer-use-settled"
+  const runId = "run-startup-computer-use-settled"
+  const requestId = "request-startup-computer-use-settled"
+  const toolCallId = "tool-startup-computer-use-settled"
+  const attemptId = createComputerUseTransactionId({ runId, toolCallId })
+
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+  await createRun(runId, threadId, { metadata: createTestRunMetadata(), status: "running" })
+  await updateThread(threadId, { status: "busy" })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve"],
+    request_id: requestId,
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {
+      actions: [{ kind: "press", ref: "@save" }],
+      sessionId: "session-settled",
+      stateId: "state-settled"
+    },
+    tool_call_id: toolCallId,
+    tool_name: "computer_use_action"
+  })
+  await resolveHitlRequest(requestId, "approved", {
+    request_id: requestId,
+    tool_call_id: toolCallId,
+    type: "approve"
+  })
+  const ledger = new ComputerUseActionLedger(createPrismaComputerUseActionLedgerPort())
+  const { attempt } = await ledger.begin({
+    actions: [{ kind: "press", ref: "@save" }],
+    authorization: {
+      expiresAt: Date.now() + 60_000,
+      runId,
+      sessionId: "session-settled",
+      threadId,
+      window: { generation: "g1", nativeId: "w1", pid: 42, platform: "macos" }
+    },
+    baseStateId: "state-settled",
+    target: {
+      applicationId: "com.example.editor",
+      resourceKey: "desktop-pid:42",
+      window: { generation: "g1", nativeId: "w1", pid: 42, platform: "macos" }
+    },
+    transactionId: attemptId
+  })
+  await ledger.dispatched(attempt.attemptId)
+  await ledger.settle(attempt.attemptId, {
+    baseStateId: "state-settled",
+    outcome: "worked",
+    steps: [
+      {
+        action: { kind: "press", ref: "@save" },
+        evidence: {
+          delivery: "semantic",
+          noSideEffectProof: false,
+          route: "ax_action",
+          verification: "verified"
+        },
+        outcome: "worked"
+      }
+    ],
+    successor: {
+      application: { id: "com.example.editor", name: "Editor" },
+      capturedAt: Date.now(),
+      elements: [{ actions: ["press"], index: 0, ref: "@save", role: "button" }],
+      epoch: 1,
+      resourceKey: "desktop-pid:42",
+      sourceTruncated: false,
+      stateId: "state-settled-successor",
+      window: { generation: "g1", nativeId: "w1", pid: 42, platform: "macos" }
+    }
+  })
+
+  await closeDatabase()
+  await initializeDatabase()
+
+  assert.equal((await getRun(runId))?.status, "interrupted")
+  assert.equal((await getThread(threadId))?.status, "interrupted")
+  const recovered = await createPrismaComputerUseActionLedgerPort().read(attemptId)
+  assert.equal(recovered?.phase, "settled")
+  assert.equal(recovered?.result?.outcome, "worked")
+})
+
+test("database startup settles dispatched Computer Use as unknown before failing its run", async () => {
+  const { closeDatabase, createRun, createThread, getPrismaClient, getRun, initializeDatabase } =
+    await loadDbModules()
+  const { ComputerUseActionLedger } = await import("@jingle/computer-use-core")
+  const { createPrismaComputerUseActionLedgerPort } =
+    await import("../../src/main/db/computer-use-action-ledger")
+  const threadId = "thread-startup-computer-use-dispatched"
+  const runId = "run-startup-computer-use-dispatched"
+  const attemptId = "attempt-startup-computer-use-dispatched"
+
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+  await createRun(runId, threadId, { metadata: "{malformed", status: "running" })
+  const ledger = new ComputerUseActionLedger(createPrismaComputerUseActionLedgerPort())
+  const { attempt } = await ledger.begin({
+    actions: [{ kind: "press", ref: "@save" }],
+    authorization: {
+      expiresAt: Date.now() + 60_000,
+      runId,
+      sessionId: "session-dispatched",
+      threadId,
+      window: { generation: "g1", nativeId: "w1", pid: 42, platform: "macos" }
+    },
+    baseStateId: "state-dispatched",
+    target: {
+      applicationId: "com.example.editor",
+      resourceKey: "desktop-pid:42",
+      window: { generation: "g1", nativeId: "w1", pid: 42, platform: "macos" }
+    },
+    transactionId: attemptId
+  })
+  await ledger.dispatched(attempt.attemptId)
+
+  await closeDatabase()
+  await initializeDatabase()
+
+  const run = await getRun(runId)
+  const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+  const failure = parseAgentRunFailure(metadata[AGENT_RUN_FAILURE_METADATA_KEY])
+  const recovered = await createPrismaComputerUseActionLedgerPort().read(attemptId)
+  assert.equal(run?.status, "error")
+  assert.match(failure?.message ?? "", /action outcome is unknown/)
+  assert.equal(recovered?.phase, "settled")
+  assert.equal(recovered?.result?.outcome, "unknown")
+  assert.equal(
+    await getPrismaClient().agentEvent.count({ where: { runId, type: "run.finished" } }),
+    1
+  )
+})
+
 test.after(async () => {
   const { closeDatabase } = await loadDbModules()
   await closeDatabase()
@@ -1170,11 +1403,22 @@ test("user_declined bypasses corrupt run metadata and execution setup", async ()
     run_id: runId,
     status: "pending",
     thread_id: threadId,
-    tool_args: {},
+    tool_args: {
+      actions: [{ kind: "press", ref: "@save" }],
+      sessionId: "session-decline-cleanup",
+      stateId: "state-decline-cleanup"
+    },
     tool_call_id: toolCallId,
-    tool_name: "write_file"
+    tool_name: "computer_use_action"
   })
+  let cleanupCalls = 0
   const service = await createAgentServiceForTest({
+    computerUseRuntime: {
+      closeRun: async () => {
+        cleanupCalls += 1
+        throw new Error("simulated decline cleanup failure")
+      }
+    },
     workspaceService: {
       getWorkspacePath: async () => {
         throw new Error("terminal decline must not read workspace execution state")
@@ -1201,6 +1445,7 @@ test("user_declined bypasses corrupt run metadata and execution setup", async ()
   assert.equal(coreAdmissions, 1)
   assert.equal((await getHitlRequest(requestId))?.status, "user_declined")
   assert.equal((await getRun(runId))?.status, "cancelled")
+  assert.equal(cleanupCalls, 1)
   assert.deepEqual(
     events.map((event) => event.type),
     ["run_started", "cancelled"]
@@ -1214,6 +1459,140 @@ test("user_declined bypasses corrupt run metadata and execution setup", async ()
     ).map((event) => event.type),
     ["approval.resolved", "run.finished"]
   )
+})
+
+test("Computer Use approval without a durable window fails before resume CAS", async () => {
+  const { createRun, createThread, getHitlRequest, getRun, upsertHitlRequest } =
+    await loadDbModules()
+  const threadId = "thread-cua-launcher-approval"
+  const runId = "run-cua-launcher-approval"
+  const requestId = "request-cua-launcher-approval"
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+  await createRun(runId, threadId, {
+    metadata: { modelId: "deepseek:deepseek-v4-pro" },
+    status: "interrupted"
+  })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve", "user_declined", "corrected"],
+    request_id: requestId,
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {
+      actions: [{ kind: "press", ref: "@save" }],
+      sessionId: "session-1",
+      stateId: "state-1"
+    },
+    tool_call_id: "tool-call-cua-launcher-approval",
+    tool_name: "computer_use_action"
+  })
+
+  const outcome = await (
+    await createAgentServiceForTest()
+  ).dispatchResume(
+    {
+      decision: {
+        request_id: requestId,
+        tool_call_id: "tool-call-cua-launcher-approval",
+        type: "approve"
+      },
+      runModelRuntimeSelectionRecovery: createTestModelRuntimeSelection("deepseek:deepseek-v4-pro"),
+      threadId
+    },
+    { send: () => undefined }
+  )
+
+  assert.equal(outcome.type, "rejected")
+  assert.equal(outcome.type === "rejected" ? outcome.error.code : null, "FAILED_PRECONDITION")
+  assert.equal((await getHitlRequest(requestId))?.status, "pending")
+  assert.equal((await getRun(runId))?.status, "interrupted")
+})
+
+test("Computer Use lease revocation after review preserves the pending approval", async () => {
+  const { createRun, createThread, getHitlRequest, getRun, upsertHitlRequest } =
+    await loadDbModules()
+  const threadId = "thread-cua-revoked-approval"
+  const runId = "run-cua-revoked-approval"
+  const requestId = "request-cua-revoked-approval"
+  const leaseController = new AbortController()
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+  await createRun(runId, threadId, {
+    metadata: { modelId: "deepseek:deepseek-v4-pro" },
+    status: "interrupted"
+  })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve", "user_declined", "corrected"],
+    request_id: requestId,
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {
+      actions: [{ kind: "press", ref: "@save" }],
+      sessionId: "session-1",
+      stateId: "state-1"
+    },
+    tool_call_id: "tool-call-cua-revoked-approval",
+    tool_name: "computer_use_action"
+  })
+
+  const service = await createAgentServiceForTest({
+    computerUseRuntime: {
+      prepareActionApproval: async () => ({ review: {}, signal: leaseController.signal })
+    }
+  })
+  const outcome = await service.dispatchResume(
+    {
+      decision: {
+        request_id: requestId,
+        tool_call_id: "tool-call-cua-revoked-approval",
+        type: "approve"
+      },
+      runModelRuntimeSelectionRecovery: createTestModelRuntimeSelection("deepseek:deepseek-v4-pro"),
+      threadId
+    },
+    { send: () => undefined },
+    {
+      computerUseCallerLease: {
+        incarnation: 1,
+        signal: leaseController.signal,
+        threadId,
+        window: { kind: "main", windowId: "main" }
+      },
+      onCoreAdmitted: () => leaseController.abort(new Error("window closed"))
+    }
+  )
+
+  assert.equal(outcome.type, "rejected")
+  assert.equal((await getHitlRequest(requestId))?.status, "pending")
+  assert.equal((await getRun(runId))?.status, "interrupted")
+})
+
+test("interrupted runtime settlement retains Computer Use until the final terminal state", async () => {
+  const { createRuntimeRunLifecycleController } =
+    await import("../../src/main/agent/run-lifecycle-controller")
+  const closedRuns: string[] = []
+  const controller = createRuntimeRunLifecycleController({
+    computerUseRuntime: {
+      closeRun: async (runId: string) => {
+        closedRuns.push(runId)
+      }
+    } as never
+  })
+
+  await controller.settleRun({
+    retainSuspendedResources: true,
+    runId: "run-cua-suspended",
+    threadId: "thread-cua-suspended"
+  })
+  assert.deepEqual(closedRuns, [])
+
+  await controller.settleRun({
+    runId: "run-cua-suspended",
+    threadId: "thread-cua-suspended"
+  })
+  assert.deepEqual(closedRuns, ["run-cua-suspended"])
 })
 
 test("HITL resume admission accepts exactly one decision and one event batch", async () => {
@@ -1242,7 +1621,9 @@ test("HITL resume admission accepts exactly one decision and one event batch", a
     tool_name: "write_file"
   })
 
-  const controller = createRuntimeRunLifecycleController({})
+  const controller = createRuntimeRunLifecycleController({
+    computerUseRuntime: { closeRun: async () => undefined } as never
+  })
   const createStart = (type: "approve" | "user_declined") =>
     controller.beginResumeRun({
       resume: {
@@ -3675,6 +4056,7 @@ test("resume admission atomically records decision and resume events", async () 
 
 test("agent cancel records one aborted lifecycle for an active run", async () => {
   const { createThread, getPrismaClient, getRun } = await loadDbModules()
+  const { ComputerUseRuntime } = await import("../../src/main/computer-use/runtime")
   const consoleLog = mock.method(console, "log", () => {})
   const previousRuntimeMode = process.env.JINGLE_BDD_AGENT_RUNTIME
 
@@ -3685,7 +4067,24 @@ test("agent cancel records one aborted lifecycle for an active run", async () =>
 
   let runId: string | null = null
   let valuesSeen = false
-  const agentService = await createAgentServiceForTest()
+  const streamEvents: string[] = []
+  const diagnostics: unknown[] = []
+  const capture = mock.method(testDiagnosticsGraph, "capture", (input) => {
+    diagnostics.push(input)
+    return { eventId: "diag:cleanup:1", sequence: 1, sessionId: "test" }
+  })
+  const computerUseRuntime = new ComputerUseRuntime({
+    createService: async () => {
+      throw new Error("Computer Use remains disabled in the cancellation fixture.")
+    },
+    initialConfig: { computerUseApplicationAllowlist: [], computerUseEnabled: false }
+  })
+  let cleanupCalls = 0
+  const closeRun = mock.method(computerUseRuntime, "closeRun", async () => {
+    cleanupCalls += 1
+    throw new Error("simulated Computer Use cleanup failure")
+  })
+  const agentService = await createAgentServiceForTest({ computerUseRuntime })
   const invoke = agentService.invoke(
     {
       message: {
@@ -3696,6 +4095,7 @@ test("agent cancel records one aborted lifecycle for an active run", async () =>
     },
     {
       send: (event) => {
+        streamEvents.push(event.type)
         if (event.type === "run_started") {
           runId = event.runId
         }
@@ -3716,6 +4116,15 @@ test("agent cancel records one aborted lifecycle for an active run", async () =>
 
     const run = await getRun(runId)
     assert.equal(run?.status, "interrupted")
+    assert.equal(cleanupCalls, 1)
+    assert.equal(streamEvents.filter((event) => event === "cancelled").length, 1)
+    assert.equal(
+      diagnostics.some(
+        (diagnostic) =>
+          (diagnostic as { eventCode?: string }).eventCode === "agent.ownership_cleanup_failed"
+      ),
+      true
+    )
 
     const lifecycleEvents = await getPrismaClient().agentEvent.findMany({
       orderBy: { seq: "asc" },
@@ -3765,6 +4174,74 @@ test("agent cancel records one aborted lifecycle for an active run", async () =>
         }
       ]
     )
+  } finally {
+    if (previousRuntimeMode === undefined) {
+      delete process.env.JINGLE_BDD_AGENT_RUNTIME
+    } else {
+      process.env.JINGLE_BDD_AGENT_RUNTIME = previousRuntimeMode
+    }
+    capture.mock.restore()
+    closeRun.mock.restore()
+    consoleLog.mock.restore()
+  }
+})
+
+test("Computer Use caller lease revocation aborts one accepted Agent run", async () => {
+  const { createThread, getPrismaClient, getRun } = await loadDbModules()
+  const consoleLog = mock.method(console, "log", () => {})
+  const previousRuntimeMode = process.env.JINGLE_BDD_AGENT_RUNTIME
+  const threadId = "thread-computer-use-caller-revocation"
+  const caller = new AbortController()
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+  process.env.JINGLE_BDD_AGENT_RUNTIME = "scripted"
+
+  let runId: string | null = null
+  let valuesSeen = false
+  let accepted = false
+  const events: string[] = []
+  const agentService = await createAgentServiceForTest()
+  const invoke = agentService.invoke(
+    {
+      message: { content: "bdd:long", id: "message-computer-use-caller-revocation" },
+      threadId
+    },
+    {
+      send: (event) => {
+        events.push(event.type)
+        if (event.type === "run_started") runId = event.runId
+        if (event.type === "stream" && event.mode === "values") valuesSeen = true
+      }
+    },
+    {
+      computerUseCallerLease: {
+        incarnation: 1,
+        signal: caller.signal,
+        threadId,
+        window: { kind: "main", windowId: "main" }
+      },
+      onCommandOutcome: (outcome) => {
+        accepted = outcome.type === "accepted"
+      }
+    }
+  )
+
+  try {
+    while (!runId || !valuesSeen) {
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
+    caller.abort(new DOMException("durable window closed", "AbortError"))
+    await invoke
+
+    assert.equal(accepted, true)
+    assert.equal((await getRun(runId))?.status, "interrupted")
+    assert.equal(events.filter((event) => event === "run_started").length, 1)
+    assert.equal(events.filter((event) => event === "cancelled").length, 1)
+    const terminalEvents = await getPrismaClient().agentEvent.findMany({
+      where: { runId, type: "run.finished" }
+    })
+    assert.equal(terminalEvents.length, 1)
+    assert.equal(JSON.parse(terminalEvents[0]?.payload ?? "{}").completionReason, "aborted")
   } finally {
     if (previousRuntimeMode === undefined) {
       delete process.env.JINGLE_BDD_AGENT_RUNTIME

@@ -8,6 +8,7 @@ import {
   getToolApprovalPresentationMeta
 } from "../../src/renderer/src/components/chat/tools/tool-approval-presentation"
 import type {
+  ComputerUseToolApprovalItem,
   ExtensionToolApprovalItem,
   FileMutationToolApprovalItem
 } from "../../src/shared/tool-approval"
@@ -43,6 +44,39 @@ test("approval presentation consumes typed extension review facts without raw to
   assert.deepEqual(viewModel.parameters, [])
   assert.doesNotMatch(JSON.stringify(viewModel), /Quarterly review/)
   assert.doesNotMatch(JSON.stringify(viewModel), /ext__appleReminders__createReminder/)
+})
+
+test("Computer Use approval presents canonical application, window, and referenced elements", () => {
+  const review: ComputerUseToolApprovalItem = {
+    actions: [
+      { kind: "press", ref: "@save" },
+      { kind: "type_text", ref: "@editor", value: "Hello" }
+    ],
+    kind: "computer_use_action",
+    sessionId: "session-1",
+    stateId: "state-1",
+    target: {
+      application: { id: "com.example.editor", name: "Editor" },
+      elements: [
+        { ref: "@save", role: "button", title: "Save" },
+        { description: "Document body", ref: "@editor", role: "text_area" }
+      ],
+      window: { nativeId: "window-1", platform: "macos" }
+    },
+    toolName: "computer_use_action"
+  }
+
+  const viewModel = buildLargeApprovalViewModel(copy, review, "tool-call-1")
+  assert.deepEqual(viewModel.target, [
+    { label: "Application", value: "Editor (com.example.editor)" },
+    { label: "Window", presentation: "mono", value: "macos:window-1" },
+    {
+      label: "Elements",
+      presentation: "preview",
+      value: "@save [button] Save\n@editor [text_area] - Document body"
+    }
+  ])
+  assert.doesNotMatch(JSON.stringify(viewModel), /raw args/i)
 })
 
 test("approval presentation fails closed when a built-in review has no registered label", () => {

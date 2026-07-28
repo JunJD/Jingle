@@ -6,6 +6,7 @@ import { AgentThreadRunner } from "./agent/agent-thread-runner"
 import { AgentController } from "./agent/controller"
 import { registerAgentIpcHandlers, registerAgentModule } from "./agent/module"
 import { AgentService } from "./agent/service"
+import { registerComputerUseModule } from "./computer-use/module"
 import { registerMainWindowIpcHandlers, registerMainWindowModule } from "./main-window/module"
 import { PrimaryMainWindowService, type PrimaryMainWindowRuntime } from "./main-window/service"
 import { ThreadWindowService, type ThreadWindowRuntime } from "./thread-window/service"
@@ -302,6 +303,7 @@ export function createMainCompositionRoot(
   const nativeExtensionNames = nativeExtensionManifests.map((manifest) => manifest.name)
 
   childContainer.registerInstance<MainCompositionContext>(MAIN_COMPOSITION_CONTEXT_TOKEN, context)
+  registerComputerUseModule(childContainer)
   registerAgentModule(childContainer)
   registerMainWindowModule(childContainer, {
     createMainWindow: context.createMainWindow,

@@ -2,11 +2,12 @@ import type { IpcMain } from "electron"
 import { instanceCachingFactory, type DependencyContainer } from "tsyringe"
 import { SettingsController } from "./controller"
 import { SettingsService } from "./service"
+import { ComputerUseRuntime } from "../computer-use/runtime"
 
 export function registerSettingsModule(container: DependencyContainer): void {
   container.register(SettingsService, {
-    useFactory: instanceCachingFactory(() => {
-      return new SettingsService()
+    useFactory: instanceCachingFactory((dependencyContainer) => {
+      return new SettingsService(dependencyContainer.resolve(ComputerUseRuntime))
     })
   })
   container.register(SettingsController, {

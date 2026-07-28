@@ -4,6 +4,17 @@ import { truncateMiddle } from "./shared"
 import { buildChangeListFileMutationViewModel } from "./file-mutation-view-model"
 import { PierreFileMutationView } from "./PierreFileMutationView"
 
+function formatComputerUseAction(
+  action: Extract<ToolApprovalItem, { kind: "computer_use_action" }>["actions"][number]
+): string {
+  if (action.kind === "keypress") return `${action.kind} ${action.ref} ${action.keys.join("+")}`
+  if (action.kind === "scroll") return `${action.kind} ${action.ref} ${action.scrollAmount}`
+  if (action.kind === "set_value" || action.kind === "type_text") {
+    return `${action.kind} ${action.ref} ${JSON.stringify(action.value)}`
+  }
+  return `${action.kind} ${action.ref}`
+}
+
 export interface ToolApprovalPresentationMeta {
   subtitle: string | null
   title: string
@@ -34,6 +45,13 @@ export function getToolApprovalPresentationMeta(
     }
   }
 
+  if (approvalItem.kind === "computer_use_action") {
+    return {
+      subtitle: approvalItem.stateId,
+      title
+    }
+  }
+
   if (approvalItem.kind === "extension_tool") {
     return {
       subtitle: approvalItem.capabilityDisplayName,
@@ -48,7 +66,7 @@ export function getToolApprovalPresentationMeta(
 }
 
 function getChangeSummary(copy: AppCopy, approvalItem: ToolApprovalItem): string | null {
-  if (approvalItem.kind === "extension_tool") {
+  if (approvalItem.kind === "extension_tool" || approvalItem.kind === "computer_use_action") {
     return null
   }
 
@@ -79,6 +97,8 @@ function getTargetLabel(approvalItem: ToolApprovalItem): string | null {
   if (approvalItem.kind === "file_mutation") {
     return approvalItem.path
   }
+
+  if (approvalItem.kind === "computer_use_action") return approvalItem.stateId
 
   return approvalItem.capabilityDisplayName
 }
@@ -112,6 +132,14 @@ export function renderCompactToolApprovalDetail(
       <div className="rounded-[var(--jingle-radius-md)] bg-background-secondary/42 px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)] [font-size:var(--jingle-font-meta)] leading-[var(--jingle-line-body)] text-muted-foreground">
         {approvalItem.reason}
       </div>
+    )
+  }
+
+  if (approvalItem.kind === "computer_use_action") {
+    return (
+      <pre className="min-w-0 overflow-auto rounded-[var(--jingle-radius-md)] bg-background-secondary/42 px-[var(--jingle-space-2-5)] py-[var(--jingle-space-2)] font-mono [font-size:var(--jingle-font-code)] leading-[var(--jingle-line-code)] text-foreground/80">
+        {approvalItem.actions.map(formatComputerUseAction).join("\n")}
+      </pre>
     )
   }
 

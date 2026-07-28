@@ -17,6 +17,7 @@ function observationInput(input: {
     elements: input.elements,
     epoch: input.epoch,
     resourceKey: "desktop-pid:42",
+    sourceTruncated: false,
     window: { generation: "g1", nativeId: "w1", pid: 42, platform: "macos" }
   }
 }

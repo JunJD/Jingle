@@ -42,6 +42,7 @@ import type {
 import { buildIpcErrorPayload, JingleIpcError } from "../ipc/error"
 import { registerIpcHandle } from "../ipc/handle"
 import { serializeProcessError } from "../diagnostics/process-errors"
+import type { DurableWindowCallerLease } from "../windows/window-identity"
 
 interface AgentControllerDiagnostics {
   error(message: string, metadata: Record<string, unknown>): void
@@ -49,11 +50,13 @@ interface AgentControllerDiagnostics {
 }
 
 interface AgentControllerSenderIdentity {
-  getMainWindowThreadId(sender: WebContents): string | null
+  getDurableCallerLease(sender: WebContents): DurableWindowCallerLease | null
   isLauncher(sender: WebContents): boolean
 }
 
-type AgentControllerSender = { surface: "launcher" } | { surface: "main"; threadId: string }
+type AgentControllerSender =
+  | { surface: "launcher" }
+  | { lease: DurableWindowCallerLease; surface: "main"; threadId: string }
 
 export class AgentController {
   private readonly eventSubscriptionCleanups = new Map<string, () => void>()
@@ -200,9 +203,8 @@ export class AgentController {
     }
 
     const isLauncher = this.senderIdentity.isLauncher(event.sender)
-    const mainThreadId = this.senderIdentity.getMainWindowThreadId(event.sender)
     if (isLauncher) {
-      if (mainThreadId !== null) {
+      if (this.senderIdentity.getDurableCallerLease(event.sender) !== null) {
         throw new JingleIpcError({
           channel,
           code: "PERMISSION_DENIED",
@@ -211,14 +213,15 @@ export class AgentController {
       }
       return { surface: "launcher" }
     }
-    if (mainThreadId === null) {
+    const lease = this.senderIdentity.getDurableCallerLease(event.sender)
+    if (!lease || lease.signal.aborted || lease.threadId === null) {
       throw new JingleIpcError({
         channel,
         code: "PERMISSION_DENIED",
         message: "Agent commands can only be invoked by the Launcher or a Main window."
       })
     }
-    return { surface: "main", threadId: mainThreadId }
+    return { lease, surface: "main", threadId: lease.threadId }
   }
 
   private assertAgentThreadAccess(
@@ -248,6 +251,7 @@ export class AgentController {
     }
 
     return this.agentService.dispatchInvoke(params, this.createStreamSink(params.threadId), {
+      computerUseCallerLease: senderIdentity.surface === "main" ? senderIdentity.lease : null,
       onCoreAdmitted: () => {
         this.sendCommandLifecycleEvent(sender, {
           commandId: params.message.id,
@@ -288,6 +292,7 @@ export class AgentController {
       params,
       this.createStreamSink(params.threadId),
       {
+        computerUseCallerLease: senderIdentity.surface === "main" ? senderIdentity.lease : null,
         onCoreAdmitted: () => {
           this.sendCommandLifecycleEvent(sender, {
             commandId: params.message.id,
@@ -325,6 +330,7 @@ export class AgentController {
     this.assertAgentThreadAccess(senderIdentity, params.threadId, "agent:resume")
 
     return this.agentService.dispatchResume(params, this.createStreamSink(params.threadId), {
+      computerUseCallerLease: senderIdentity.surface === "main" ? senderIdentity.lease : null,
       onCoreAdmitted: () => {
         this.sendCommandLifecycleEvent(sender, {
           commandId: params.decision.request_id,
@@ -643,7 +649,7 @@ export class AgentController {
 
     const isCurrentGeneration = this.eventSubscriptionGenerations.get(generationKey) === generation
     const isCurrentMainThread =
-      options.surface !== "main" || this.senderIdentity.getMainWindowThreadId(sender) === threadId
+      options.surface !== "main" || this.getLiveDurableThreadId(sender) === threadId
     if (sender.isDestroyed() || !isCurrentGeneration || !isCurrentMainThread) {
       this.agentThreadRunner.disconnectThreadEvents(threadId, subscriberId)
       restorePreviousSubscription()
@@ -692,7 +698,7 @@ export class AgentController {
     }
 
     if (subscription.surface === "main") {
-      return this.senderIdentity.getMainWindowThreadId(subscription.sender) === threadId
+      return this.getLiveDurableThreadId(subscription.sender) === threadId
     }
 
     for (const [candidateKey, candidate] of this.eventSubscriptions) {
@@ -701,7 +707,7 @@ export class AgentController {
         candidate.threadId === threadId &&
         candidate.surface === "main" &&
         candidate.suppressesLauncher &&
-        this.senderIdentity.getMainWindowThreadId(candidate.sender) === threadId &&
+        this.getLiveDurableThreadId(candidate.sender) === threadId &&
         !candidate.sender.isDestroyed()
       ) {
         return false
@@ -709,6 +715,11 @@ export class AgentController {
     }
 
     return true
+  }
+
+  private getLiveDurableThreadId(sender: WebContents): string | null {
+    const lease = this.senderIdentity.getDurableCallerLease(sender)
+    return lease && !lease.signal.aborted ? lease.threadId : null
   }
 
   private removeAllSubscriptionsForSender(senderId: number): void {

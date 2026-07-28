@@ -171,7 +171,7 @@ export {
   readRuntimeCompactionCommitMetadata
 } from "./runtime-checkpoint-compaction"
 export { JINGLE_CONTEXT_COMPACTION_SUMMARY_PREFIX } from "./harness-runtime/summarization"
-export { createJingleDesktopAutomationToolsMiddleware } from "./desktop-automation-tools"
+export { createJingleComputerUseToolsMiddleware } from "./computer-use-tools"
 export { createJingleWebToolsMiddleware } from "./web-tools"
 export {
   AgentRunSteeringBuffer,

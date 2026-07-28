@@ -23,6 +23,7 @@ function observation(value: string): ComputerUseBackendObservation {
       }
     ],
     resourceKey: "macos:42:window-1",
+    sourceTruncated: false,
     window: {
       generation: "generation-1",
       nativeId: "window-1",
@@ -58,6 +59,7 @@ test("post-dispatch cancellation settles durable unknown and restart does not re
   const dispatchEntered = deferred()
   let dispatches = 0
   let observations = 0
+  const identifyKeys: string[][] = []
   const observeKeys: string[][] = []
   const backend: ComputerUseBackend = {
     matrix: {
@@ -86,10 +88,15 @@ test("post-dispatch cancellation settles durable unknown and restart does not re
         else signal?.addEventListener("abort", rejectAborted, { once: true })
       })
     },
+    async identify(request) {
+      identifyKeys.push(Object.keys(request).sort())
+      const { capturedAt: _capturedAt, elements: _elements, ...target } = observation("before")
+      return target
+    },
     async observe(request) {
       observeKeys.push(Object.keys(request).sort())
       observations += 1
-      return observation(observations > 2 ? "after" : "before")
+      return observation(observations > 1 ? "after" : "before")
     }
   }
 
@@ -117,9 +124,12 @@ test("post-dispatch cancellation settles durable unknown and restart does not re
       runId: "run-cua",
       threadId: "thread-cua"
     })
-    assert.equal(observeKeys[0]?.includes("applicationId"), true)
+    assert.equal(identifyKeys[0]?.includes("applicationId"), true)
+    assert.deepEqual(observeKeys[0], ["signal", "target"])
     assert.deepEqual(
-      observeKeys.flat().filter((key) => ["runId", "threadId", "ttlMs"].includes(key)),
+      [...identifyKeys, ...observeKeys]
+        .flat()
+        .filter((key) => ["runId", "threadId", "ttlMs"].includes(key)),
       []
     )
     const actions = [{ kind: "type_text", ref: "@editor", value: "hello" }] as const

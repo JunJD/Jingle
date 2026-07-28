@@ -1,3 +1,7 @@
+import {
+  parseComputerUseSemanticActions,
+  type ComputerUseSemanticAction
+} from "@jingle/computer-use-core"
 import type { ExecuteCommandProfile } from "./execute-command-policy"
 import { getExecuteCommandPolicy } from "./execute-command-policy"
 import type { ExtensionToolAccess } from "./extension-sources"
@@ -65,7 +69,42 @@ export interface ExtensionToolApprovalItem {
   toolTitle: string
 }
 
+export interface ComputerUseToolApprovalItem {
+  actions: readonly ComputerUseSemanticAction[]
+  kind: "computer_use_action"
+  sessionId: string
+  stateId: string
+  target: ComputerUseToolApprovalTarget
+  toolName: "computer_use_action"
+}
+
+export interface ComputerUseToolApprovalInput {
+  actions: readonly ComputerUseSemanticAction[]
+  sessionId: string
+  stateId: string
+}
+
+export interface ComputerUseToolApprovalElement {
+  description?: string
+  ref: string
+  role: string
+  title?: string
+}
+
+export interface ComputerUseToolApprovalTarget {
+  application: {
+    id: string
+    name: string
+  }
+  elements: readonly ComputerUseToolApprovalElement[]
+  window: {
+    nativeId: string
+    platform: "macos" | "windows" | "linux"
+  }
+}
+
 export type ToolApprovalItem =
+  | ComputerUseToolApprovalItem
   | ExecuteToolApprovalItem
   | FileMutationToolApprovalItem
   | ExtensionToolApprovalItem
@@ -74,10 +113,20 @@ export interface BuildToolApprovalItemOptions {
   fileMutationChangeType?: MutationChangeType
 }
 
-const APPROVAL_REQUIRED_TOOL_NAMES = new Set<string>()
+const APPROVAL_REQUIRED_TOOL_NAMES = new Set<string>(["computer_use_action"])
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  required: readonly string[],
+  optional: readonly string[] = []
+): boolean {
+  const allowed = new Set([...required, ...optional])
+  const keys = Object.keys(value)
+  return required.every((key) => Object.hasOwn(value, key)) && keys.every((key) => allowed.has(key))
 }
 
 function isMutationChangeType(value: unknown): value is MutationChangeType {
@@ -127,6 +176,121 @@ function readRequiredString(value: unknown): string | null {
 
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
+}
+
+function readCanonicalIdentifier(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0 || value.trim() !== value) {
+    return null
+  }
+  return new TextEncoder().encode(value).byteLength <= 16 * 1024 ? value : null
+}
+
+function readBoundedComputerUseText(value: unknown, requireContent: boolean): string | null {
+  if (typeof value !== "string" || new TextEncoder().encode(value).byteLength > 16 * 1024) {
+    return null
+  }
+  return requireContent && value.trim().length === 0 ? null : value
+}
+
+function isComputerUsePlatform(
+  value: unknown
+): value is ComputerUseToolApprovalTarget["window"]["platform"] {
+  return value === "macos" || value === "windows" || value === "linux"
+}
+
+function parseComputerUseToolApprovalTarget(
+  value: unknown,
+  actions: readonly ComputerUseSemanticAction[]
+): ComputerUseToolApprovalTarget | null {
+  if (!isRecord(value) || !hasExactKeys(value, ["application", "elements", "window"])) {
+    return null
+  }
+  if (
+    !isRecord(value.application) ||
+    !hasExactKeys(value.application, ["id", "name"]) ||
+    !isRecord(value.window) ||
+    !hasExactKeys(value.window, ["nativeId", "platform"]) ||
+    !Array.isArray(value.elements)
+  ) {
+    return null
+  }
+
+  const applicationId = readCanonicalIdentifier(value.application.id)
+  const applicationName = readBoundedComputerUseText(value.application.name, true)
+  const nativeId = readCanonicalIdentifier(value.window.nativeId)
+  if (
+    !applicationId ||
+    !applicationName ||
+    !nativeId ||
+    !isComputerUsePlatform(value.window.platform)
+  ) {
+    return null
+  }
+
+  const referencedRefs = [...new Set(actions.map((action) => action.ref))]
+  if (value.elements.length !== referencedRefs.length) {
+    return null
+  }
+
+  const elements: ComputerUseToolApprovalElement[] = []
+  for (let index = 0; index < value.elements.length; index += 1) {
+    if (!Object.hasOwn(value.elements, index)) return null
+    const element = value.elements[index]
+    if (!isRecord(element) || !hasExactKeys(element, ["ref", "role"], ["description", "title"])) {
+      return null
+    }
+    const ref = readCanonicalIdentifier(element.ref)
+    const role = readCanonicalIdentifier(element.role)
+    let description: string | undefined
+    if (element.description !== undefined) {
+      const parsed = readBoundedComputerUseText(element.description, false)
+      if (parsed === null) return null
+      description = parsed
+    }
+    let title: string | undefined
+    if (element.title !== undefined) {
+      const parsed = readBoundedComputerUseText(element.title, false)
+      if (parsed === null) return null
+      title = parsed
+    }
+    if (!ref || !role || ref !== referencedRefs[index]) {
+      return null
+    }
+    elements.push(
+      Object.freeze({
+        ...(description === undefined ? {} : { description }),
+        ref,
+        role,
+        ...(title === undefined ? {} : { title })
+      })
+    )
+  }
+
+  return Object.freeze({
+    application: Object.freeze({ id: applicationId, name: applicationName }),
+    elements: Object.freeze(elements),
+    window: Object.freeze({ nativeId, platform: value.window.platform })
+  })
+}
+
+export function parseComputerUseToolApprovalInput(
+  value: unknown
+): ComputerUseToolApprovalInput | null {
+  if (!isRecord(value) || !hasExactKeys(value, ["actions", "sessionId", "stateId"])) {
+    return null
+  }
+  const sessionId = readCanonicalIdentifier(value.sessionId)
+  const stateId = readCanonicalIdentifier(value.stateId)
+  if (!sessionId || !stateId) return null
+  try {
+    return Object.freeze({
+      actions: parseComputerUseSemanticActions(value.actions, "computer-use approval actions"),
+      sessionId,
+      stateId
+    })
+  } catch {
+    return null
+  }
 }
 
 function readOptionalBoolean(value: unknown): boolean | undefined {
@@ -223,6 +387,27 @@ export function parseToolApprovalItem(value: unknown): ToolApprovalItem | null {
     }
   }
 
+  if (value.kind === "computer_use_action" && value.toolName === "computer_use_action") {
+    if (!hasExactKeys(value, ["actions", "kind", "sessionId", "stateId", "target", "toolName"])) {
+      return null
+    }
+    const input = parseComputerUseToolApprovalInput({
+      actions: value.actions,
+      sessionId: value.sessionId,
+      stateId: value.stateId
+    })
+    if (!input) return null
+    const target = parseComputerUseToolApprovalTarget(value.target, input.actions)
+    return target
+      ? {
+          ...input,
+          kind: "computer_use_action",
+          target,
+          toolName: "computer_use_action"
+        }
+      : null
+  }
+
   if (value.kind === "file_mutation" && isFileMutationToolName(value.toolName)) {
     const changes = parseToolApprovalChanges(value.changes)
     if (!Array.isArray(value.changes) || changes.length !== value.changes.length) {
@@ -297,6 +482,10 @@ export function buildToolApprovalItem(
   args: Record<string, unknown>,
   options?: BuildToolApprovalItemOptions
 ): ToolApprovalItem | null {
+  if (toolName === "computer_use_action") {
+    return null
+  }
+
   if (toolName === "execute") {
     const policy = getExecuteCommandPolicy(args)
     const prediction = getMutationPrediction(args)

@@ -26,6 +26,10 @@ export type {
   RuntimeToolApprovalDecisionType
 } from "./runtime-operation"
 export type { RuntimeRunContextScope, RuntimeThreadScope } from "./runtime-scope"
+export type {
+  JingleComputerUseToolContext,
+  JingleComputerUseToolHandlers
+} from "./computer-use-tools"
 
 export type {
   RuntimeApproval,
@@ -75,7 +79,7 @@ export type {
   RuntimeContextRetrievalProvider,
   RuntimeContextRetrievalResult,
   RuntimeContextRetrievalToolContext,
-  RuntimeDesktopAutomationTools,
+  RuntimeComputerUseTools,
   RuntimeExtensionToolCallUi,
   RuntimeExtensionToolContentResult,
   RuntimeExtensionToolContext,
@@ -124,6 +128,8 @@ export { RUNTIME_THREAD_BOUNDARY } from "./runtime-thread"
 export {
   isRuntimeThreadAdmissionPersistenceError,
   isRuntimeThreadDurableFailureError,
+  isRuntimeThreadOwnershipCleanupError,
   RuntimeThreadAdmissionPersistenceError,
-  RuntimeThreadDurableFailureError
+  RuntimeThreadDurableFailureError,
+  RuntimeThreadOwnershipCleanupError
 } from "./runtime-thread-terminal"

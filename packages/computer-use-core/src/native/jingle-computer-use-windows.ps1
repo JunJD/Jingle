@@ -1,5 +1,5 @@
 # Jingle-owned Windows computer-use backend.
-# Reads one JSON request from argv[0] or stdin and writes one JSON response.
+# Reads one JSON request from stdin and writes one JSON response.
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version 2.0
@@ -109,13 +109,17 @@ function Resolve-Window {
         $candidates = [JingleComputerUseWin32]::TopLevelWindows()
     }
 
+    $resolvedWindows = New-Object Collections.Generic.List[object]
     foreach ($hwnd in $candidates) {
         $pid = [int][JingleComputerUseWin32]::ProcessId($hwnd)
         if ($pid -le 0 -or ($requestedPid -gt 0 -and $pid -ne $requestedPid)) { continue }
         try { $process = [Diagnostics.Process]::GetProcessById($pid) } catch { continue }
-        if ($applicationId -and
-            $process.ProcessName -ne $applicationId -and
-            $process.Id.ToString() -ne $applicationId) { continue }
+        try {
+            $executablePath = [IO.Path]::GetFullPath($process.MainModule.FileName)
+        } catch { continue }
+        if (-not $executablePath) { continue }
+        $stableApplicationId = "win32-exe:$($executablePath.ToLowerInvariant())"
+        if ($applicationId -and $stableApplicationId -ne $applicationId.ToLowerInvariant()) { continue }
         if ($applicationName -and
             $process.ProcessName.IndexOf($applicationName, [StringComparison]::OrdinalIgnoreCase) -lt 0 -and
             [JingleComputerUseWin32]::WindowTitle($hwnd).IndexOf($applicationName, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
@@ -125,15 +129,50 @@ function Resolve-Window {
             $expectedGeneration = [string](Get-OptionalProperty $ExpectedIdentity "generation")
             if ($expectedGeneration -and $generation -ne $expectedGeneration) { continue }
         }
-        return [pscustomobject]@{
+        $resolvedWindows.Add([pscustomobject]@{
             Hwnd = $hwnd
             NativeId = $hwnd.ToInt64().ToString([Globalization.CultureInfo]::InvariantCulture)
             Pid = $pid
             Process = $process
+            ApplicationId = $stableApplicationId
             Generation = $generation
+        })
+    }
+    if ($resolvedWindows.Count -eq 1) { return $resolvedWindows[0] }
+    return $null
+}
+
+function New-TargetIdentity {
+    param([object]$Window)
+    return [pscustomobject]@{
+        application = [pscustomobject]@{
+            id = $Window.ApplicationId
+            name = $Window.Process.ProcessName
+        }
+        resourceKey = "windows:$($Window.Pid):$($Window.Generation):$($Window.NativeId)"
+        window = [pscustomobject]@{
+            generation = $Window.Generation
+            nativeId = $Window.NativeId
+            pid = $Window.Pid
+            platform = "windows"
         }
     }
-    return $null
+}
+
+function Assert-ExactTargetIdentity {
+    param([object]$Expected, [object]$Actual)
+    $expectedApplication = Get-OptionalProperty $Expected "application"
+    $expectedWindow = Get-OptionalProperty $Expected "window"
+    if ($null -eq $expectedApplication -or $null -eq $expectedWindow -or
+        [string](Get-OptionalProperty $Expected "resourceKey") -cne [string]$Actual.resourceKey -or
+        [string](Get-OptionalProperty $expectedApplication "id") -cne [string]$Actual.application.id -or
+        [string](Get-OptionalProperty $expectedApplication "name") -cne [string]$Actual.application.name -or
+        [string](Get-OptionalProperty $expectedWindow "generation") -cne [string]$Actual.window.generation -or
+        [string](Get-OptionalProperty $expectedWindow "nativeId") -cne [string]$Actual.window.nativeId -or
+        [int](Get-OptionalProperty $expectedWindow "pid") -ne [int]$Actual.window.pid -or
+        [string](Get-OptionalProperty $expectedWindow "platform") -cne [string]$Actual.window.platform) {
+        throw "Target application, window, or resource identity changed before observation."
+    }
 }
 
 function Get-Pattern {
@@ -193,6 +232,7 @@ function Get-BoundedTree {
     $queue.Enqueue([pscustomobject]@{ Element = $Root; Depth = 0 })
     $records = New-Object Collections.Generic.List[object]
     $elementsByRef = @{}
+    $sourceTruncated = $false
     while ($queue.Count -gt 0 -and $records.Count -lt $script:MaxElements) {
         $entry = $queue.Dequeue()
         $element = [Windows.Automation.AutomationElement]$entry.Element
@@ -201,17 +241,25 @@ function Get-BoundedTree {
             $record = Get-ElementRecord $element $NativeId $records.Count
             $records.Add($record)
             $elementsByRef[$ref] = $element
-            if ([int]$entry.Depth -ge $script:MaxDepth) { continue }
+            if ([int]$entry.Depth -ge $script:MaxDepth) {
+                if ($null -ne $walker.GetFirstChild($element)) { $sourceTruncated = $true }
+                continue
+            }
             $child = $walker.GetFirstChild($element)
             while ($null -ne $child) {
                 $queue.Enqueue([pscustomobject]@{ Element = $child; Depth = ([int]$entry.Depth + 1) })
                 $child = $walker.GetNextSibling($child)
             }
         } catch [Windows.Automation.ElementNotAvailableException] {
+            $sourceTruncated = $true
             continue
         }
     }
-    return [pscustomobject]@{ Records = [object[]]$records; ElementsByRef = $elementsByRef }
+    return [pscustomobject]@{
+        Records = [object[]]$records
+        ElementsByRef = $elementsByRef
+        SourceTruncated = $sourceTruncated -or $queue.Count -gt 0
+    }
 }
 
 function New-UnavailableStep {
@@ -288,26 +336,39 @@ function Invoke-SemanticAction {
     }
 }
 
-function Invoke-Observe {
+function Invoke-Identify {
     param([object]$Request)
     $window = Resolve-Window $Request $null
     if ($null -eq $window) { throw "No matching Windows top-level window is available." }
+    return New-TargetIdentity $window
+}
+
+function Invoke-Observe {
+    param([object]$Request)
+    $target = Get-OptionalProperty $Request "target"
+    if ($null -eq $target) { throw "Observe requires an authorized target identity." }
+    $application = Get-OptionalProperty $target "application"
+    $expectedWindow = Get-OptionalProperty $target "window"
+    if ($null -eq $application -or $null -eq $expectedWindow) {
+        throw "Observe requires an authorized target identity."
+    }
+    $selector = [pscustomobject]@{
+        applicationId = Get-OptionalProperty $application "id"
+        windowId = Get-OptionalProperty $expectedWindow "nativeId"
+    }
+    $window = Resolve-Window $selector $expectedWindow
+    if ($null -eq $window) { throw "The authorized Windows target is stale or unavailable." }
+    $identity = New-TargetIdentity $window
+    Assert-ExactTargetIdentity $target $identity
     $root = [Windows.Automation.AutomationElement]::FromHandle($window.Hwnd)
     $tree = Get-BoundedTree $root $window.NativeId
     return [pscustomobject]@{
-        application = [pscustomobject]@{
-            id = $window.Process.ProcessName
-            name = $(if ($window.Process.MainWindowTitle) { $window.Process.MainWindowTitle } else { $window.Process.ProcessName })
-        }
+        application = $identity.application
         capturedAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
         elements = $tree.Records
-        resourceKey = "windows:$($window.Pid):$($window.Generation):$($window.NativeId)"
-        window = [pscustomobject]@{
-            generation = $window.Generation
-            nativeId = $window.NativeId
-            pid = $window.Pid
-            platform = "windows"
-        }
+        resourceKey = $identity.resourceKey
+        sourceTruncated = [bool]$tree.SourceTruncated
+        window = $identity.window
     }
 }
 
@@ -366,6 +427,7 @@ function Invoke-Probe {
         platform = "windows"
         protocolVersion = $JingleComputerUseProtocolVersion
         capabilities = @(
+            [pscustomobject]@{ action = "activate"; background = "unavailable"; foreground = "unavailable"; route = "unavailable" },
             [pscustomobject]@{ action = "press"; background = "unavailable"; foreground = "unavailable"; route = "uia_action" },
             [pscustomobject]@{ action = "set_value"; background = "unavailable"; foreground = "unavailable"; route = "uia_value" },
             [pscustomobject]@{ action = "type_text"; background = "unavailable"; foreground = "unavailable"; route = "uia_value" },
@@ -404,7 +466,8 @@ function Assert-OperationProtocol {
 }
 
 try {
-    $json = if ($args.Count -gt 0 -and $args[0]) { $args[0] } else { [Console]::In.ReadToEnd() }
+    if ($args.Count -gt 0) { throw "Computer Use requests must use stdin." }
+    $json = [Console]::In.ReadToEnd()
     if (-not $json) { throw "A JSON request is required." }
     $envelope = $json | ConvertFrom-Json
     $methodProperty = $envelope.PSObject.Properties["method"]
@@ -413,6 +476,10 @@ try {
     if ($method -isnot [string]) { throw "Computer-use method must be a string." }
     switch -CaseSensitive ($method) {
         "probe" { $result = Invoke-Probe }
+        "identify" {
+            Assert-OperationProtocol $envelope
+            $result = New-OperationResponse "identify" (Invoke-Identify (Get-OptionalProperty $envelope "request"))
+        }
         "observe" {
             Assert-OperationProtocol $envelope
             $result = New-OperationResponse "observe" (Invoke-Observe (Get-OptionalProperty $envelope "request"))
@@ -426,6 +493,9 @@ try {
     }
     [Console]::Out.WriteLine((ConvertTo-Json -InputObject $result -Compress -Depth 24))
 } catch {
-    [Console]::Error.WriteLine($_.Exception.Message)
+    [Console]::Error.WriteLine((ConvertTo-Json -Compress -InputObject ([ordered]@{
+        code = "native_failed"
+        message = $_.Exception.Message
+    })))
     exit 1
 }

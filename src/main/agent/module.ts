@@ -8,7 +8,8 @@ import { AgentThreadRunner } from "./agent-thread-runner"
 import { AgentController } from "./controller"
 import { AgentService } from "./service"
 import { ThreadLifecycleGate } from "./thread-lifecycle-gate"
-import { getWindowIdentity } from "../windows/window-identity"
+import { getDurableWindowCallerLease, getWindowIdentity } from "../windows/window-identity"
+import { ComputerUseRuntime } from "../computer-use/runtime"
 
 export function registerAgentModule(container: DependencyContainer): void {
   container.register(ThreadLifecycleGate, {
@@ -19,6 +20,7 @@ export function registerAgentModule(container: DependencyContainer): void {
   container.register(AgentService, {
     useFactory: instanceCachingFactory((dependencyContainer) => {
       return new AgentService(
+        dependencyContainer.resolve(ComputerUseRuntime),
         dependencyContainer.resolve(JingleMemoryService),
         dependencyContainer.resolve(ThreadLifecycleGate),
         dependencyContainer.resolve(WorkspaceService)
@@ -37,10 +39,7 @@ export function registerAgentModule(container: DependencyContainer): void {
         dependencyContainer.resolve(AgentThreadRunner),
         diagnosticsLogger,
         {
-          getMainWindowThreadId: (sender) => {
-            const identity = getWindowIdentity(sender)
-            return identity?.kind === "main" || identity?.kind === "thread-window" ? identity.threadId : null
-          },
+          getDurableCallerLease: (sender) => getDurableWindowCallerLease(sender),
           isLauncher: (sender) => getWindowIdentity(sender)?.kind === "launcher"
         }
       )

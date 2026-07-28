@@ -16,6 +16,7 @@ import {
 } from "./semantic-action"
 
 const ACTION_KINDS = new Set<ComputerUseActionKind>([
+  "activate",
   "keypress",
   "press",
   "scroll",
@@ -96,7 +97,9 @@ export function parseComputerUseActionAttempt(
 export class ComputerUseActionLedger {
   private readonly attempts = new Map<string, ComputerUseActionAttempt>()
   private readonly attemptSources = new Map<string, ComputerUseActionAttemptSource>()
+  private readonly releasedRuns = new Set<string>()
   private readonly reservations = new Map<string, Promise<ComputerUseActionAttemptClaim>>()
+  private readonly reservationRuns = new Map<string, string>()
 
   constructor(private readonly port: ComputerUseActionLedgerPort) {}
 
@@ -146,10 +149,17 @@ export class ComputerUseActionLedger {
     }
     const reservation = this.reserve({ ...input, transactionId: attemptId })
     this.reservations.set(attemptId, reservation)
+    this.reservationRuns.set(attemptId, normalizeId(input.authorization.runId, "runId"))
     try {
       return await reservation
     } finally {
       this.reservations.delete(attemptId)
+      const runId = this.reservationRuns.get(attemptId)
+      this.reservationRuns.delete(attemptId)
+      if (runId) {
+        this.pruneReleasedSettledAttempt(attemptId, runId)
+        this.finishReleasedRunIfIdle(runId)
+      }
     }
   }
 
@@ -219,6 +229,18 @@ export class ComputerUseActionLedger {
     return this.attempts.get(attemptId)
   }
 
+  releaseRun(runId: string): void {
+    const normalizedRunId = normalizeId(runId, "runId")
+    this.releasedRuns.add(normalizedRunId)
+    for (const [attemptId, attempt] of this.attempts) {
+      if (attempt.authorization.runId === normalizedRunId && attempt.phase === "settled") {
+        this.attempts.delete(attemptId)
+        this.attemptSources.delete(attemptId)
+      }
+    }
+    this.finishReleasedRunIfIdle(normalizedRunId)
+  }
+
   private async reserve(input: {
     actions: readonly ComputerUseSemanticAction[]
     authorization: ComputerUseAuthorizationGrant
@@ -268,8 +290,14 @@ export class ComputerUseActionLedger {
       expectedRevision: previous.revision
     })
     if (transition.status === "applied") {
-      this.attempts.set(normalized.attemptId, normalized)
-      this.attemptSources.set(normalized.attemptId, "local")
+      if (normalized.phase === "settled" && this.releasedRuns.has(normalized.authorization.runId)) {
+        this.attempts.delete(normalized.attemptId)
+        this.attemptSources.delete(normalized.attemptId)
+        this.finishReleasedRunIfIdle(normalized.authorization.runId)
+      } else {
+        this.attempts.set(normalized.attemptId, normalized)
+        this.attemptSources.set(normalized.attemptId, "local")
+      }
       return { attempt: normalized, status: "applied" }
     }
     const current = normalizeAttempt(transition.current, previous.attemptId)
@@ -281,9 +309,33 @@ export class ComputerUseActionLedger {
     if (current.revision <= previous.revision) {
       throw new Error("Computer-use durable transition conflict did not advance its revision.")
     }
-    this.attempts.set(current.attemptId, current)
-    this.attemptSources.set(current.attemptId, "durable")
+    if (current.phase === "settled" && this.releasedRuns.has(current.authorization.runId)) {
+      this.attempts.delete(current.attemptId)
+      this.attemptSources.delete(current.attemptId)
+      this.finishReleasedRunIfIdle(current.authorization.runId)
+    } else {
+      this.attempts.set(current.attemptId, current)
+      this.attemptSources.set(current.attemptId, "durable")
+    }
     return { attempt: current, status: "conflict" }
+  }
+
+  private pruneReleasedSettledAttempt(attemptId: string, runId: string): void {
+    if (!this.releasedRuns.has(runId)) return
+    const attempt = this.attempts.get(attemptId)
+    if (attempt?.authorization.runId !== runId || attempt.phase !== "settled") return
+    this.attempts.delete(attemptId)
+    this.attemptSources.delete(attemptId)
+  }
+
+  private finishReleasedRunIfIdle(runId: string): void {
+    const hasPendingAttempt = [...this.attempts.values()].some(
+      (attempt) => attempt.authorization.runId === runId && attempt.phase !== "settled"
+    )
+    const hasPendingReservation = [...this.reservationRuns.values()].some(
+      (reservationRunId) => reservationRunId === runId
+    )
+    if (!hasPendingAttempt && !hasPendingReservation) this.releasedRuns.delete(runId)
   }
 }
 
@@ -568,6 +620,9 @@ function assertObservation(observation: ComputerUseObservation, path: string): v
   if (!Number.isFinite(observation.capturedAt) || !Number.isInteger(observation.epoch)) {
     throw new Error(`Computer-use ${path} has invalid time or epoch facts.`)
   }
+  if (typeof observation.sourceTruncated !== "boolean") {
+    throw new Error(`Computer-use ${path} has invalid source completeness.`)
+  }
   assertWindowIdentity(observation.window, `${path}.window`)
   if (!Array.isArray(observation.elements)) {
     throw new Error(`Computer-use ${path}.elements must be an array.`)
@@ -579,13 +634,16 @@ function assertObservation(observation: ComputerUseObservation, path: string): v
     }
     const ref = normalizeId(element.ref, `${path}.elements[${index}].ref`)
     normalizeId(element.role, `${path}.elements[${index}].role`)
-    if (!Number.isInteger(element.index) || element.index < 0 || !Array.isArray(element.actions)) {
+    if (element.index !== index || !Array.isArray(element.actions)) {
       throw new Error(`Computer-use ${path}.elements[${index}] has invalid index or actions.`)
     }
     for (const action of element.actions) {
       if (!ACTION_KINDS.has(action)) {
         throw new Error(`Computer-use ${path}.elements[${index}] has an invalid action.`)
       }
+    }
+    if (element.actions.includes("activate") && index !== 0) {
+      throw new Error(`Computer-use ${path}.elements[${index}] exposes activate outside the root.`)
     }
     if (refs.has(ref)) throw new Error(`Computer-use ${path} contains duplicate semantic refs.`)
     refs.add(ref)

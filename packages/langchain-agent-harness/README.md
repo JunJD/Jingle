@@ -21,7 +21,7 @@ Current runtime owner:
 - explicit `MemoryRecordingProjectionNode` on the normal run terminal path, projecting provided memory inclusions into checkpoint recording refs after remaining `afterAgent` behavior; compact operations bypass this projection because `RuntimeThread.compact` is the sole durable owner
 - Jingle-owned LangGraph state contract for `title`, `contextInclusions`, and `artifacts` schemas/reducers; artifact state stores manifests and presentation receipts only, while durable artifact content stays in the host artifact service
 - web search LangChain tool shell for the `web_search` name, JSON schema, description, query validation, and middleware registration, with search execution injected by the host
-- desktop automation LangChain tool shell for tool names, JSON schemas, descriptions, and middleware registration, with native parser/runner handlers injected by the host
+- Computer Use LangChain tool shell for semantic state, action, and progressive-query contracts, with authorized host handlers injected by the application runtime
 - generic human-approval middleware for LangGraph interrupt/resume and approval gating
 - LangGraph HITL interrupt reader for checkpoint/values state, values interrupt request-id projection, and values-stream HITL persistence orchestration, with product review parsing and persistence ports injected by the host
 - raw LangGraph stream reader for message chunks, stream message display context / metadata hints, tool-call/tool-call-chunk normalization, streaming tool-call chunk accumulation, values snapshots, values/messages current-turn assistant selector, host stream-frame projection, values host projection with canonical HITL request-id overlay, and values state shape validation
@@ -38,7 +38,7 @@ Jingle-specific services, policy, message display/metadata, and Prisma schema ow
 
 Delegated-work spawning is intentionally not part of the current low-level runtime. Future multi-session and parent-child session work should enter through the Jingle work item / session coordination model first, then inject the minimal execution ports this package needs. The old task-tool projection, middleware insertion point, and read-only guardrail have been removed until that product model is explicit.
 
-Desktop automation keeps the same boundary: the harness owns the LangChain `tool()` declarations and middleware registration, while `src/main/agent/runtime.ts` injects handlers backed by the main-owned parsers, native runner, service calls, app allowlist behavior, and platform failure semantics.
+Computer Use keeps the same dependency direction: the harness owns only the LangChain `tool()` declarations and middleware registration, while the main application runtime injects run/window-bound handlers backed by the Jingle transaction core, canonical application authorization, durable ledger, and native backend.
 
 Web search keeps the same boundary: the harness owns the LangChain `web_search` declaration and input contract, while `src/main/agent/runtime.ts` injects the Jingle web search service handler. Provider configuration, Tavily calls, URL safety, result normalization, logging, and failure behavior stay in `src/main/services/web-tools`.
 

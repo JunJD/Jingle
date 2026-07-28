@@ -41,6 +41,9 @@
       "@jingle/extension-api": [
         "packages/extension-api/src/index.ts"
       ],
+      "@jingle/computer-use-core": [
+        "packages/computer-use-core/src/model-contract.ts"
+      ],
       "@jingle/extension-api/host-runtime": [
         "packages/extension-api/src/host-runtime.ts"
       ],

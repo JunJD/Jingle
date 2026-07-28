@@ -20,21 +20,6 @@ import { createArtifactPresentationHandler } from "./artifact-presentation-handl
 import { createAgentContextInclusionToolHandlers } from "./context-retrieval-tool-handlers"
 import { createToolPermissionRuntime } from "./tool-permission-runtime"
 import { createWorkspaceFileContextResolver } from "./workspace-file-context-resolver"
-import { createDesktopAutomationRunner } from "../services/desktop-automation-native"
-import {
-  clickScreenPoint,
-  findAxElements,
-  openApplication,
-  openDesktopRoute,
-  pressAxElement
-} from "../services/desktop-automation"
-import {
-  parseClickScreenPointRequest,
-  parseFindAxElementsRequest,
-  parseOpenApplicationRequest,
-  parseOpenDesktopRouteRequest,
-  parsePressAxElementRequest
-} from "../services/desktop-automation-parser"
 import { searchWeb } from "../services/web-tools/search"
 import type { WorkspaceService } from "../workspace/service"
 import { getAgentConfig } from "../preferences"
@@ -63,10 +48,9 @@ import { getCheckpointer } from "../checkpointer/runtime-checkpointer-manager"
 import { createCheckpointCompactionStore } from "../checkpointer/checkpoint-compaction-store"
 import { LocalSandbox } from "./local-sandbox"
 import { diagnosticsGraph } from "../diagnostics/instance"
+import type { ComputerUseRuntime } from "../computer-use/runtime"
 
 const TITLE_GENERATION_TIMEOUT_MS = 2_500
-const desktopAutomationRunner = createDesktopAutomationRunner()
-
 type JingleRuntimeInput = CreateRuntimeInput<
   AgentContextInclusion,
   ExecuteCommandGuardrailMetadata,
@@ -82,6 +66,7 @@ type JingleRuntime = Runtime<
 >
 
 export interface CreateAgentRuntimeInput {
+  computerUseRuntime: ComputerUseRuntime
   jingleMemoryService: JingleMemoryService
   workspaceService: WorkspaceService
 }
@@ -95,6 +80,7 @@ export function createAgentRuntime(input: CreateAgentRuntimeInput): JingleRuntim
 
 function createAgentRuntimeInput(input: CreateAgentRuntimeInput): JingleRuntimeInput {
   const runLifecycleController = createRuntimeRunLifecycleController({
+    computerUseRuntime: input.computerUseRuntime,
     jingleMemoryService: input.jingleMemoryService
   })
   const bindExecution: JingleRuntimeInput["bindExecution"] = {
@@ -180,28 +166,9 @@ function createAgentExecutionCapabilities(
           timeout: 120_000,
           maxOutputBytes: 100_000
         }),
-      desktopAutomationTools: {
-        clickScreenPoint: async (toolInput) => {
-          const request = parseClickScreenPointRequest(toolInput)
-          return clickScreenPoint(request, desktopAutomationRunner)
-        },
-        findAxElements: async (toolInput) => {
-          const request = parseFindAxElementsRequest(toolInput)
-          return findAxElements(request, desktopAutomationRunner)
-        },
-        openApplication: async (toolInput) => {
-          const request = parseOpenApplicationRequest(toolInput)
-          return openApplication(request, desktopAutomationRunner)
-        },
-        openDesktopRoute: async (toolInput) => {
-          const request = parseOpenDesktopRouteRequest(toolInput)
-          return openDesktopRoute(request, desktopAutomationRunner)
-        },
-        pressAxElement: async (toolInput) => {
-          const request = parsePressAxElementRequest(toolInput)
-          return pressAxElement(request, desktopAutomationRunner)
-        }
-      },
+      computerUseTools: input.computerUseRuntime.createToolHandlers(
+        executionInput.computerUseCallerLease
+      ),
       extensionAiTools: (run) =>
         extensionAiRuntime.createToolsOptions({
           runId: run.runId,
@@ -252,9 +219,15 @@ function createAgentExecutionCapabilities(
       })
     },
     control: {
-      approvalController: () => ({
+      approvalController: (scope) => ({
         allowedDecisions: getDefaultHitlAllowedDecisions(),
         policyRuntime: createToolPermissionRuntime({
+          computerUseApprovalProvider: (args) =>
+            input.computerUseRuntime.getActionApprovalReview(
+              args,
+              { runId: scope.runId, threadId: scope.threadId },
+              executionInput.computerUseCallerLease
+            ),
           extensionToolPolicyProvider: extensionAiRuntime.approvalPolicyProvider,
           permissionMode
         })

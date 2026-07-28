@@ -18,6 +18,7 @@ import type {
 } from "@jingle/langchain-agent-harness"
 import type { AgentContextInclusion } from "@shared/jingle-memory"
 import type { JingleMemoryService } from "../jingle-memory/service"
+import type { ComputerUseRuntime } from "../computer-use/runtime"
 
 export interface CreateAgentRunHandleOptions {
   /** Thread ID - REQUIRED for per-thread checkpointing */
@@ -28,6 +29,7 @@ export interface CreateAgentRunHandleOptions {
     JingleResumeRunLifecycleInput
   >
   jingleMemoryService?: JingleMemoryService
+  computerUseRuntime: ComputerUseRuntime
   steeringBuffer?: AgentRunSteeringBufferPort
   /** Workspace path - REQUIRED for agent to operate on files */
   workspacePath: string
@@ -82,6 +84,7 @@ export function createAgentRunHandle(options: CreateAgentRunHandleOptions): Agen
     const agent = createBddAgentRuntime({ threadId, workspacePath }) as unknown as BddAgentRuntime
     const thread = createBddHarnessThread({
       agent,
+      computerUseRuntime: options.computerUseRuntime,
       jingleMemoryService: options.jingleMemoryService,
       threadId,
       workspacePath
@@ -101,6 +104,7 @@ export function createAgentRunHandle(options: CreateAgentRunHandleOptions): Agen
 
 function createBddHarnessThread(input: {
   agent: BddAgentRuntime
+  computerUseRuntime: ComputerUseRuntime
   jingleMemoryService?: JingleMemoryService
   threadId: string
   workspacePath: string
@@ -146,6 +150,7 @@ function createBddHarnessThread(input: {
       input.agent.stream(streamInput, { signal: options.signal })
   })
   const lifecycle = createRuntimeRunLifecycleController({
+    computerUseRuntime: input.computerUseRuntime,
     jingleMemoryService: input.jingleMemoryService
   })
   const pauseController = createRuntimePauseController()

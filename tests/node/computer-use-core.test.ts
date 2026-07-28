@@ -21,6 +21,8 @@ import {
   type ComputerUseObservation,
   type ComputerUseBackendExecutionResult,
   type ComputerUseSemanticAction,
+  type ComputerUseTargetIdentity,
+  type ComputerUseTraceEvent,
   type ComputerUseTransactionResult,
   type JingleComputerUseNativeBridge,
   type JingleComputerUseNativeRequest
@@ -33,6 +35,7 @@ function observation(overrides: Partial<ComputerUseObservation> = {}): ComputerU
     elements: [],
     epoch: 0,
     resourceKey: "desktop-pid:42",
+    sourceTruncated: false,
     stateId: "state-0",
     window: { generation: "g1", nativeId: "w1", pid: 42, platform: "macos" },
     ...overrides
@@ -57,6 +60,46 @@ function typeTextObservation(): ComputerUseObservation {
       }
     ]
   })
+}
+
+function activationObservation(
+  overrides: Partial<ComputerUseObservation> = {}
+): ComputerUseObservation {
+  return observation({
+    elements: [
+      {
+        actions: ["activate"],
+        index: 0,
+        ref: "@root",
+        role: "window",
+        title: "Fixture"
+      }
+    ],
+    ...overrides
+  })
+}
+
+function targetIdentity(value: ComputerUseObservation = observation()): ComputerUseTargetIdentity {
+  return {
+    application: value.application,
+    resourceKey: value.resourceKey,
+    window: value.window
+  }
+}
+
+function backendObservation(
+  value: ComputerUseObservation = observation()
+): Omit<ComputerUseObservation, "epoch" | "stateId"> {
+  const { epoch: _epoch, stateId: _stateId, ...result } = value
+  return result
+}
+
+async function identifyAndObserve(
+  coordinator: ComputerUseTransactionCoordinator,
+  applicationId = "com.example.fixture"
+): Promise<ComputerUseObservation> {
+  const target = await coordinator.identify({ applicationId })
+  return coordinator.observe({ target })
 }
 
 function resolvedVoid(): Promise<void> {
@@ -154,6 +197,9 @@ function unreachableComputerUseBackend(calls: {
       calls.execute += 1
       return Promise.reject(new Error("durable recovery must not execute the backend"))
     },
+    identify() {
+      return Promise.reject(new Error("durable recovery must not identify the backend"))
+    },
     observe() {
       calls.observe += 1
       return Promise.reject(new Error("durable recovery must not observe the backend"))
@@ -168,7 +214,7 @@ interface RecordedNativeInvocation {
 
 interface NativeOperationResponse {
   environment: ComputerUseBackendEnvironment
-  method: "execute" | "observe"
+  method: "execute" | "identify" | "observe"
   protocolVersion: number
   result: unknown
 }
@@ -195,7 +241,7 @@ function recordingNativeBridge(
 }
 
 function nativeOperationResponse(
-  method: "execute" | "observe",
+  method: "execute" | "identify" | "observe",
   result: unknown,
   environment: ComputerUseBackendEnvironment = "macos-quartz"
 ): NativeOperationResponse {
@@ -211,6 +257,12 @@ function probedMatrix(environment: ComputerUseBackendEnvironment): ComputerUseCa
   if (environment === "macos-quartz") {
     return {
       capabilities: [
+        {
+          action: "activate",
+          background: "refused",
+          foreground: "verified",
+          route: "ax_raise_activate"
+        },
         { action: "press", background: "verified", foreground: "unavailable", route: "ax_action" },
         {
           action: "set_value",
@@ -245,6 +297,12 @@ function probedMatrix(environment: ComputerUseBackendEnvironment): ComputerUseCa
   if (environment === "windows-win32") {
     return {
       capabilities: [
+        {
+          action: "activate",
+          background: "unavailable",
+          foreground: "unavailable",
+          route: "unavailable"
+        },
         {
           action: "press",
           background: "unavailable",
@@ -283,6 +341,12 @@ function probedMatrix(environment: ComputerUseBackendEnvironment): ComputerUseCa
   }
   return {
     capabilities: [
+      {
+        action: "activate",
+        background: "unavailable",
+        foreground: "unavailable",
+        route: "unavailable"
+      },
       {
         action: "press",
         background: "verified",
@@ -452,6 +516,228 @@ test("authorization is bound to run, session, and window generation", () => {
   )
 })
 
+test("coordinator identifies before observing the exact native target", async () => {
+  const raw = typeTextObservation()
+  const target = targetIdentity(raw)
+  const calls: string[] = []
+  const backend: ComputerUseBackend = {
+    matrix: probedMatrix("macos-quartz"),
+    disposeSession: resolvedVoid,
+    async execute() {
+      throw new Error("unused")
+    },
+    async identify(request) {
+      calls.push(`identify:${request.applicationId}`)
+      return target
+    },
+    async observe(request) {
+      calls.push(`observe:${request.target.resourceKey}`)
+      assert.deepEqual(request.target, target)
+      return backendObservation(raw)
+    }
+  }
+  const coordinator = new ComputerUseTransactionCoordinator(
+    backend,
+    new ComputerUseResourceScheduler(),
+    new ComputerUseSessionManager(backend),
+    new ComputerUseActionLedger(actionLedgerPort())
+  )
+
+  const result = await identifyAndObserve(coordinator, raw.application.id)
+
+  assert.equal(result.application.id, raw.application.id)
+  assert.deepEqual(calls, [`identify:${raw.application.id}`, `observe:${raw.resourceKey}`])
+})
+
+test("coordinator rejects an observation whose target changed after identification", async () => {
+  const raw = typeTextObservation()
+  const backend: ComputerUseBackend = {
+    matrix: probedMatrix("macos-quartz"),
+    disposeSession: resolvedVoid,
+    async execute() {
+      throw new Error("unused")
+    },
+    async identify() {
+      return targetIdentity(raw)
+    },
+    async observe() {
+      return backendObservation({
+        ...raw,
+        application: { id: "com.example.replacement", name: "Replacement" }
+      })
+    }
+  }
+  const coordinator = new ComputerUseTransactionCoordinator(
+    backend,
+    new ComputerUseResourceScheduler(),
+    new ComputerUseSessionManager(backend),
+    new ComputerUseActionLedger(actionLedgerPort())
+  )
+
+  await assert.rejects(identifyAndObserve(coordinator, raw.application.id), /target changed/)
+})
+
+test("activate dispatches once in foreground and observes before durable settlement", async () => {
+  const raw = activationObservation()
+  const events: string[] = []
+  let observeCalls = 0
+  const backend: ComputerUseBackend = {
+    matrix: probedMatrix("macos-quartz"),
+    disposeSession: resolvedVoid,
+    async execute(request) {
+      events.push(`execute:${request.delivery}`)
+      assert.deepEqual(request.actions, [{ kind: "activate", ref: "@root" }])
+      return {
+        baseStateId: request.base.stateId,
+        outcome: "worked",
+        steps: [
+          {
+            action: request.actions[0]!,
+            evidence: {
+              delivery: "semantic",
+              noSideEffectProof: false,
+              route: "ax_raise_activate",
+              verification: "verified"
+            },
+            outcome: "worked"
+          }
+        ]
+      }
+    },
+    async identify() {
+      return targetIdentity(raw)
+    },
+    async observe() {
+      observeCalls += 1
+      if (observeCalls > 1) events.push("observe:successor")
+      return backendObservation({ ...raw, capturedAt: observeCalls })
+    }
+  }
+  const sessions = new ComputerUseSessionManager(backend)
+  const coordinator = new ComputerUseTransactionCoordinator(
+    backend,
+    new ComputerUseResourceScheduler(),
+    sessions,
+    new ComputerUseActionLedger(
+      actionLedgerPort({
+        onReserve(attempt) {
+          events.push(attempt.phase)
+        },
+        onWrite(attempt) {
+          events.push(attempt.phase)
+        }
+      })
+    )
+  )
+  const base = await identifyAndObserve(coordinator)
+  await sessions.setEnabled(true)
+  const grant = sessions.openSession({ observation: base, runId: "run", threadId: "thread" })
+
+  const result = await coordinator.execute({
+    actions: [{ kind: "activate", ref: "@root" }],
+    baseStateId: base.stateId,
+    runId: "run",
+    sessionId: grant.sessionId,
+    threadId: "thread",
+    transactionId: "activate-window"
+  })
+
+  assert.deepEqual(events, [
+    "queued",
+    "dispatched",
+    "execute:foreground",
+    "observe:successor",
+    "settled"
+  ])
+  assert.equal(result.outcome, "worked")
+  assert.equal(result.successor?.epoch, 1)
+  assert.equal(result.successor?.capturedAt, 2)
+})
+
+test("activate must be the advertised single action on the current root", async () => {
+  const cases: readonly {
+    actions: readonly ComputerUseSemanticAction[]
+    pattern: RegExp
+    raw: ComputerUseObservation
+  }[] = [
+    {
+      actions: [
+        { kind: "activate", ref: "@root" },
+        { kind: "press", ref: "@root" }
+      ],
+      pattern: /activate only as a single action/,
+      raw: activationObservation({
+        elements: [
+          {
+            actions: ["activate", "press"],
+            index: 0,
+            ref: "@root",
+            role: "window"
+          }
+        ]
+      })
+    },
+    {
+      actions: [{ kind: "activate", ref: "@child" }],
+      pattern: /activate ref must identify the current window root/,
+      raw: activationObservation({
+        elements: [
+          { actions: ["press"], index: 0, ref: "@root", role: "window" },
+          { actions: ["activate"], index: 1, ref: "@child", role: "button" }
+        ]
+      })
+    },
+    {
+      actions: [{ kind: "activate", ref: "@root" }],
+      pattern: /does not support activate/,
+      raw: activationObservation({
+        elements: [{ actions: ["press"], index: 0, ref: "@root", role: "window" }]
+      })
+    }
+  ]
+
+  for (const fixture of cases) {
+    let backendDispatches = 0
+    const backend: ComputerUseBackend = {
+      matrix: probedMatrix("macos-quartz"),
+      disposeSession: resolvedVoid,
+      async execute() {
+        backendDispatches += 1
+        throw new Error("invalid activate action must not dispatch")
+      },
+      async identify() {
+        return targetIdentity(fixture.raw)
+      },
+      async observe() {
+        return backendObservation(fixture.raw)
+      }
+    }
+    const sessions = new ComputerUseSessionManager(backend)
+    const coordinator = new ComputerUseTransactionCoordinator(
+      backend,
+      new ComputerUseResourceScheduler(),
+      sessions,
+      new ComputerUseActionLedger(actionLedgerPort())
+    )
+    const base = await identifyAndObserve(coordinator)
+    await sessions.setEnabled(true)
+    const grant = sessions.openSession({ observation: base, runId: "run", threadId: "thread" })
+
+    await assert.rejects(
+      coordinator.execute({
+        actions: fixture.actions,
+        baseStateId: base.stateId,
+        runId: "run",
+        sessionId: grant.sessionId,
+        threadId: "thread",
+        transactionId: `invalid-activate-${fixture.raw.elements.length}-${fixture.actions.length}`
+      }),
+      fixture.pattern
+    )
+    assert.equal(backendDispatches, 0)
+  }
+})
+
 test("coordinator never replays an ambiguous background outcome", async () => {
   const calls: string[] = []
   const result: ComputerUseBackendExecutionResult = {
@@ -485,6 +771,9 @@ test("coordinator never replays an ambiguous background outcome", async () => {
       protocolVersion: 1
     },
     disposeSession: resolvedVoid,
+    identify() {
+      return Promise.resolve(targetIdentity(typeTextObservation()))
+    },
     async execute(request) {
       calls.push(request.delivery)
       return result
@@ -502,7 +791,7 @@ test("coordinator never replays an ambiguous background outcome", async () => {
     sessions,
     ledger
   )
-  const baseObservation = await coordinator.observe({ applicationId: "com.example.fixture" })
+  const baseObservation = await identifyAndObserve(coordinator)
   await sessions.setEnabled(true)
   const grant = sessions.openSession({
     observation: baseObservation,
@@ -536,6 +825,9 @@ test("a complete side-effect-free didnt prefix remains eligible for foreground r
       ]
     },
     disposeSession: resolvedVoid,
+    identify() {
+      return Promise.resolve(targetIdentity(raw))
+    },
     execute(request) {
       calls.push(request.delivery)
       return Promise.resolve({
@@ -568,7 +860,7 @@ test("a complete side-effect-free didnt prefix remains eligible for foreground r
     sessions,
     new ComputerUseActionLedger(actionLedgerPort())
   )
-  const base = await coordinator.observe({ applicationId: raw.application.id })
+  const base = await identifyAndObserve(coordinator, raw.application.id)
   await sessions.setEnabled(true)
   const grant = sessions.openSession({
     observation: base,
@@ -598,6 +890,9 @@ test("coordinator rejects noncanonical actions before durable or scheduler admis
   const backend: ComputerUseBackend = {
     matrix: probedMatrix("macos-quartz"),
     disposeSession: resolvedVoid,
+    identify() {
+      return Promise.resolve(targetIdentity(base))
+    },
     execute() {
       executeCalls += 1
       return Promise.reject(new Error("invalid actions must not reach the backend"))
@@ -620,7 +915,7 @@ test("coordinator rejects noncanonical actions before durable or scheduler admis
     })
   )
   const coordinator = new ComputerUseTransactionCoordinator(backend, scheduler, sessions, ledger)
-  const canonicalBase = await coordinator.observe({ applicationId: base.application.id })
+  const canonicalBase = await identifyAndObserve(coordinator, base.application.id)
   await sessions.setEnabled(true)
   const grant = sessions.openSession({
     observation: canonicalBase,
@@ -872,6 +1167,27 @@ test("observation projection re-anchors at every unsafe incremental boundary", (
     stateId: byteSuccessor.stateId
   })
   assert.equal(byteOverBudget.kind === "full" ? byteOverBudget.reason : null, "diff_over_budget")
+
+  const truncatedStore = new ComputerUseObservationStore(
+    8,
+    {},
+    { refMatcher: confirmedStableRefMatcher }
+  )
+  const complete = createState(truncatedStore, 0, ["stable"])
+  const incomplete = createState(truncatedStore, 1, ["stable"], { sourceTruncated: true })
+  const truncatedProjection = truncatedStore.project({
+    baseStateId: complete.stateId,
+    stateId: incomplete.stateId
+  })
+  assert.equal(
+    truncatedProjection.kind === "full" ? truncatedProjection.reason : null,
+    "source_truncated"
+  )
+  assert.equal(truncatedProjection.kind === "full" && truncatedProjection.sourceTruncated, true)
+  assert.equal(
+    truncatedStore.search({ query: "stable", stateId: incomplete.stateId }).sourceTruncated,
+    true
+  )
 })
 
 test("observation store rejects noncanonical indexes and missing query states", () => {
@@ -950,6 +1266,7 @@ test("model observations are exact-shaped and byte-bounded", () => {
     "hasMore",
     "kind",
     "reason",
+    "sourceTruncated",
     "stateId",
     "totalElements",
     "truncation"
@@ -1177,6 +1494,9 @@ test("settings off revokes sessions before backend disposal completes", async ()
     async disposeSession(sessionId) {
       disposed.push(sessionId)
     },
+    async identify() {
+      throw new Error("unused")
+    },
     async execute() {
       throw new Error("unused")
     },
@@ -1185,7 +1505,9 @@ test("settings off revokes sessions before backend disposal completes", async ()
     }
   }
   const manager = new ComputerUseSessionManager(backend)
-  assert.throws(() => manager.openSession({ observation: observation(), runId: "r", threadId: "t" }))
+  assert.throws(() =>
+    manager.openSession({ observation: observation(), runId: "r", threadId: "t" })
+  )
   await manager.setEnabled(true)
   const grant = manager.openSession({ observation: observation(), runId: "r", threadId: "t" })
   await manager.setEnabled(false)
@@ -1233,6 +1555,9 @@ test("settings off aborts a queued transaction before native dispatch", async ()
       protocolVersion: 1
     },
     disposeSession: resolvedVoid,
+    identify() {
+      return Promise.resolve(targetIdentity(base))
+    },
     async execute() {
       nativeDispatches += 1
       return {
@@ -1250,14 +1575,16 @@ test("settings off aborts a queued transaction before native dispatch", async ()
   const sessions = new ComputerUseSessionManager(backend)
   const ledger = new ComputerUseActionLedger(actionLedgerPort())
   const coordinator = new ComputerUseTransactionCoordinator(backend, scheduler, sessions, ledger)
-  const canonicalBase = await coordinator.observe({ applicationId: "com.example.fixture" })
+  const canonicalBase = await identifyAndObserve(coordinator)
   await sessions.setEnabled(true)
   const grant = sessions.openSession({ observation: canonicalBase, runId: "r", threadId: "t" })
   let release!: () => void
-  const blocker = scheduler.read(base.resourceKey, async () =>
-    new Promise<void>((resolve) => {
-      release = resolve
-    })
+  const blocker = scheduler.read(
+    base.resourceKey,
+    async () =>
+      new Promise<void>((resolve) => {
+        release = resolve
+      })
   )
   const queued = coordinator.execute({
     actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
@@ -1753,6 +2080,9 @@ test("cancelled CAS winner prevents a stale coordinator from dispatching", async
       protocolVersion: 1
     },
     disposeSession: resolvedVoid,
+    identify() {
+      return Promise.resolve(targetIdentity(raw))
+    },
     execute(request) {
       backendDispatches += 1
       return Promise.resolve({
@@ -1785,7 +2115,7 @@ test("cancelled CAS winner prevents a stale coordinator from dispatching", async
     sessions,
     primaryLedger
   )
-  const base = await coordinator.observe({})
+  const base = await identifyAndObserve(coordinator)
   await sessions.setEnabled(true)
   const grant = sessions.openSession({ observation: base, runId: "run", threadId: "thread" })
 
@@ -1927,7 +2257,9 @@ test("cancellation while waiting for physical input does not advance epoch", asy
     resourceKey: "window:a",
     work: async (commit) => {
       commit()
-      return new Promise<void>((resolve) => { release = resolve })
+      return new Promise<void>((resolve) => {
+        release = resolve
+      })
     }
   })
   while (!release) await Promise.resolve()
@@ -1981,6 +2313,9 @@ test("latest settings-off wins while session disposal is pending", async () => {
       disposeCalls += 1
       await disposeGate
     },
+    async identify() {
+      throw new Error("unused")
+    },
     async execute() {
       throw new Error("unused")
     },
@@ -2012,6 +2347,9 @@ test("enable retries failed session cleanup before accepting new work", async ()
     async disposeSession() {
       disposeCalls += 1
       if (disposeCalls === 1) throw new Error("dispose failed")
+    },
+    async identify() {
+      throw new Error("unused")
     },
     async execute() {
       throw new Error("unused")
@@ -2131,6 +2469,9 @@ test("backend cannot report pre-dispatch cancellation after dispatch", async () 
       protocolVersion: 1
     },
     disposeSession: resolvedVoid,
+    identify() {
+      return Promise.resolve(targetIdentity(raw))
+    },
     async execute(request) {
       return {
         baseStateId: request.base.stateId,
@@ -2156,7 +2497,7 @@ test("backend cannot report pre-dispatch cancellation after dispatch", async () 
       })
     )
   )
-  const base = await coordinator.observe({})
+  const base = await identifyAndObserve(coordinator)
   await sessions.setEnabled(true)
   const grant = sessions.openSession({ observation: base, runId: "run", threadId: "thread" })
 
@@ -2171,6 +2512,97 @@ test("backend cannot report pre-dispatch cancellation after dispatch", async () 
 
   assert.equal(result.outcome, "unknown")
   assert.equal(writes.at(-1), "settled:unknown")
+})
+
+test("coordinator reports bounded causal diagnostics without action content", async () => {
+  const base = typeTextObservation()
+  const traces: ComputerUseTraceEvent[] = []
+  let observeCalls = 0
+  const backend: ComputerUseBackend = {
+    matrix: {
+      capabilities: [
+        {
+          action: "type_text",
+          background: "verified",
+          foreground: "unavailable",
+          route: "ax_value"
+        }
+      ],
+      environment: "macos-quartz",
+      platform: "macos",
+      protocolVersion: 1
+    },
+    disposeSession: resolvedVoid,
+    identify() {
+      return Promise.resolve(targetIdentity(base))
+    },
+    async execute() {
+      throw Object.assign(new Error("secret action value must never be recorded"), {
+        code: "helper_failed",
+        nativeCode: "accessibility_permission_denied"
+      })
+    },
+    async observe() {
+      observeCalls += 1
+      if (observeCalls > 1) {
+        throw Object.assign(new Error("secret observed title must never be recorded"), {
+          code: "observation_failed"
+        })
+      }
+      return backendObservation(base)
+    }
+  }
+  const sessions = new ComputerUseSessionManager(backend)
+  const coordinator = new ComputerUseTransactionCoordinator(
+    backend,
+    new ComputerUseResourceScheduler(),
+    sessions,
+    new ComputerUseActionLedger(actionLedgerPort()),
+    new ComputerUseObservationStore(),
+    { record: (event) => traces.push(event) }
+  )
+  const canonicalBase = await identifyAndObserve(coordinator)
+  await sessions.setEnabled(true)
+  const grant = sessions.openSession({
+    observation: canonicalBase,
+    runId: "run-trace",
+    threadId: "thread-trace"
+  })
+
+  const result = await coordinator.execute({
+    actions: [{ kind: "type_text", ref: "@e1", value: "top-secret-input" }],
+    baseStateId: canonicalBase.stateId,
+    runId: "run-trace",
+    sessionId: grant.sessionId,
+    threadId: "thread-trace",
+    transactionId: "transaction-trace"
+  })
+
+  assert.equal(result.outcome, "unknown")
+  assert.deepEqual(
+    traces.map(({ dispatchOccurred, errorCode, nativeCode, operation }) => ({
+      dispatchOccurred,
+      errorCode,
+      nativeCode,
+      operation
+    })),
+    [
+      {
+        dispatchOccurred: true,
+        errorCode: "helper_failed",
+        nativeCode: "accessibility_permission_denied",
+        operation: "execute_background"
+      },
+      {
+        dispatchOccurred: true,
+        errorCode: "observation_failed",
+        nativeCode: undefined,
+        operation: "observe_recovery"
+      }
+    ]
+  )
+  assert.equal(JSON.stringify(traces).includes("secret"), false)
+  assert.equal(JSON.stringify(traces).includes("top-secret-input"), false)
 })
 
 test("successor identity changes never publish an observation with the old epoch", async () => {
@@ -2192,6 +2624,9 @@ test("successor identity changes never publish an observation with the old epoch
         protocolVersion: 1
       },
       disposeSession: resolvedVoid,
+      identify() {
+        return Promise.resolve(targetIdentity(baseRaw))
+      },
       async execute(request) {
         return {
           baseStateId: request.base.stateId,
@@ -2212,7 +2647,7 @@ test("successor identity changes never publish an observation with the old epoch
       },
       async observe() {
         observeCalls += 1
-        const source = observeCalls <= 2 ? baseRaw : replacement
+        const source = observeCalls === 1 ? baseRaw : replacement
         const { epoch: _epoch, stateId: _stateId, ...value } = source
         return value
       }
@@ -2225,7 +2660,7 @@ test("successor identity changes never publish an observation with the old epoch
       sessions,
       new ComputerUseActionLedger(actionLedgerPort())
     )
-    const base = await coordinator.observe({})
+    const base = await identifyAndObserve(coordinator)
     await sessions.setEnabled(true)
     const grant = sessions.openSession({ observation: base, runId: "run", threadId: "thread" })
     const result = await coordinator.execute({
@@ -2279,6 +2714,9 @@ test("coordinator preserves typed stale-state failure before dispatch", async ()
       protocolVersion: 1
     },
     disposeSession: resolvedVoid,
+    identify() {
+      return Promise.resolve(targetIdentity(raw))
+    },
     async execute(request) {
       return {
         baseStateId: request.base.stateId,
@@ -2315,7 +2753,7 @@ test("coordinator preserves typed stale-state failure before dispatch", async ()
       })
     )
   )
-  const base = await coordinator.observe({})
+  const base = await identifyAndObserve(coordinator)
   await sessions.setEnabled(true)
   const grant = sessions.openSession({ observation: base, runId: "run", threadId: "thread" })
   const input = {
@@ -2339,6 +2777,9 @@ test("session TTL must be finite and bounded", async () => {
   const backend: ComputerUseBackend = {
     matrix: probedMatrix("macos-quartz"),
     disposeSession: resolvedVoid,
+    async identify() {
+      throw new Error("unused")
+    },
     async execute() {
       throw new Error("unused")
     },
@@ -2388,6 +2829,9 @@ test("backend actions are compared by fields rather than object property order",
       protocolVersion: 1
     },
     disposeSession: resolvedVoid,
+    identify() {
+      return Promise.resolve(targetIdentity(raw))
+    },
     async execute(request) {
       const source = request.actions[0]!
       if (source.kind !== "type_text") throw new Error("expected type_text fixture action")
@@ -2420,7 +2864,7 @@ test("backend actions are compared by fields rather than object property order",
     sessions,
     new ComputerUseActionLedger(actionLedgerPort())
   )
-  const base = await coordinator.observe({})
+  const base = await identifyAndObserve(coordinator)
   await sessions.setEnabled(true)
   const grant = sessions.openSession({ observation: base, runId: "run", threadId: "thread" })
 
@@ -2456,11 +2900,16 @@ test("native capability probes accept the exact policy for every environment", a
     const backend = await createJingleComputerUseNativeBackend(environment, bridge)
 
     assert.equal(calls.length, 1)
-    assert.deepEqual(calls[0]?.request, { environment, method: "probe", protocolVersion: 1 })
+    assert.deepEqual(calls[0]?.request, {
+      environment,
+      method: "probe",
+      protocolVersion: 1,
+      requestPermission: environment === "macos-quartz"
+    })
     assert.equal(backend.matrix.environment, environment)
     assert.deepEqual(
       backend.matrix.capabilities.map((capability) => capability.action),
-      ["press", "set_value", "type_text", "keypress", "scroll"]
+      ["activate", "press", "set_value", "type_text", "keypress", "scroll"]
     )
   }
 })
@@ -2521,12 +2970,15 @@ test("native capability probes reject invalid support and action-route combinati
   }
 })
 
-test("native bridge keeps signals out of probe, observe, and execute JSON payloads", async () => {
+test("native bridge keeps signals out of identify, observe, and execute JSON payloads", async () => {
   const base = typeTextObservation()
   const { epoch: _epoch, stateId: _stateId, ...backendObservation } = base
   const controller = new AbortController()
   const { bridge, calls } = recordingNativeBridge((request) => {
     if (request.method === "probe") return probedMatrix("macos-quartz")
+    if (request.method === "identify") {
+      return nativeOperationResponse("identify", targetIdentity(base))
+    }
     if (request.method === "observe") {
       return nativeOperationResponse("observe", backendObservation)
     }
@@ -2555,7 +3007,11 @@ test("native bridge keeps signals out of probe, observe, and execute JSON payloa
     bridge,
     controller.signal
   )
-  await backend.observe({ applicationId: base.application.id, signal: controller.signal })
+  const target = await backend.identify({
+    applicationId: base.application.id,
+    signal: controller.signal
+  })
+  await backend.observe({ signal: controller.signal, target })
   await backend.execute({
     actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
     authorization: {
@@ -2572,7 +3028,7 @@ test("native bridge keeps signals out of probe, observe, and execute JSON payloa
 
   assert.deepEqual(
     calls.map((call) => call.request.method),
-    ["probe", "observe", "execute"]
+    ["probe", "identify", "observe", "execute"]
   )
   for (const call of calls) {
     assert.equal(call.signal, controller.signal)
@@ -2581,7 +3037,11 @@ test("native bridge keeps signals out of probe, observe, and execute JSON payloa
       assert.equal(call.request.environment, "macos-quartz")
       assert.equal(call.request.protocolVersion, 1)
     }
-    if (call.request.method === "observe" || call.request.method === "execute") {
+    if (
+      call.request.method === "identify" ||
+      call.request.method === "observe" ||
+      call.request.method === "execute"
+    ) {
       assert.equal(Object.hasOwn(call.request.request, "signal"), false)
     }
     if (call.request.method === "execute") {
@@ -2707,7 +3167,10 @@ test("native operation responses reject missing or mismatched wire discriminator
       request.method === "probe" ? probedMatrix("macos-quartz") : response
     )
     const backend = await createJingleComputerUseNativeBackend("macos-quartz", bridge)
-    await assert.rejects(backend.observe({}), /another environment or protocol/)
+    await assert.rejects(
+      backend.observe({ target: targetIdentity(base) }),
+      /another environment or protocol/
+    )
   }
 
   const invalidExecuteResponses: unknown[] = [
@@ -2744,7 +3207,7 @@ test("native observations are strictly decoded into bounded immutable facts", as
     return undefined
   })
   const backend = await createJingleComputerUseNativeBackend("macos-quartz", bridge)
-  const result = await backend.observe({})
+  const result = await backend.observe({ target: targetIdentity(base) })
 
   assert.deepEqual(result, validObservation)
   assert.equal(Object.isFrozen(result), true)
@@ -2804,13 +3267,6 @@ test("native observations are strictly decoded into bounded immutable facts", as
     },
     {
       ...validObservation,
-      application: {
-        ...validObservation.application,
-        name: "x".repeat(COMPUTER_USE_NATIVE_RESPONSE_LIMITS.text + 1)
-      }
-    },
-    {
-      ...validObservation,
       elements: Array.from(
         { length: COMPUTER_USE_NATIVE_RESPONSE_LIMITS.elements + 1 },
         (_, index) => ({
@@ -2833,8 +3289,37 @@ test("native observations are strictly decoded into bounded immutable facts", as
       "macos-quartz",
       invalid.bridge
     )
-    await assert.rejects(invalidBackend.observe({}), /Computer-use native/)
+    await assert.rejects(
+      invalidBackend.observe({ target: targetIdentity(base) }),
+      /Computer-use native/
+    )
   }
+
+  const oversized = recordingNativeBridge((request) =>
+    request.method === "probe"
+      ? probedMatrix("macos-quartz")
+      : nativeOperationResponse("observe", {
+          ...validObservation,
+          application: {
+            ...validObservation.application,
+            name: "a".repeat(COMPUTER_USE_NATIVE_RESPONSE_LIMITS.text + 1)
+          },
+          elements: [
+            {
+              ...validObservation.elements[0],
+              title: `${"x".repeat(COMPUTER_USE_NATIVE_RESPONSE_LIMITS.text - 1)}😀`
+            }
+          ]
+        })
+  )
+  const oversizedBackend = await createJingleComputerUseNativeBackend(
+    "macos-quartz",
+    oversized.bridge
+  )
+  const bounded = await oversizedBackend.observe({ target: targetIdentity(base) })
+  assert.equal(bounded.sourceTruncated, true)
+  assert.equal(bounded.application.name.length, COMPUTER_USE_NATIVE_RESPONSE_LIMITS.text)
+  assert.equal(bounded.elements[0]?.title?.length, COMPUTER_USE_NATIVE_RESPONSE_LIMITS.text - 1)
 })
 
 test("native execution results reject malformed action, status, route, and evidence facts", async () => {
@@ -3181,7 +3666,17 @@ test("pre-aborted native calls never invoke the bridge", async () => {
   operationController.abort()
   const base = typeTextObservation()
 
-  await assert.rejects(backend.observe({ signal: operationController.signal }), /aborted/i)
+  await assert.rejects(
+    backend.identify({
+      applicationId: base.application.id,
+      signal: operationController.signal
+    }),
+    /aborted/i
+  )
+  await assert.rejects(
+    backend.observe({ signal: operationController.signal, target: targetIdentity(base) }),
+    /aborted/i
+  )
   await assert.rejects(
     backend.execute({
       actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
@@ -3245,6 +3740,50 @@ test("native backend returns an empty typed refusal before invoking unsupported 
   assert.equal(calls.length, 0)
 })
 
+test("non-macOS activate returns unavailable without native dispatch", async () => {
+  const environments = [
+    { environment: "windows-win32", platform: "windows" },
+    { environment: "linux-x11", platform: "linux" }
+  ] as const
+
+  for (const fixture of environments) {
+    const base = activationObservation({
+      window: {
+        generation: "g1",
+        nativeId: "w1",
+        pid: 42,
+        platform: fixture.platform
+      }
+    })
+    const { bridge, calls } = recordingNativeBridge((request) => {
+      if (request.method === "probe") return probedMatrix(fixture.environment)
+      throw new Error("unavailable activate must not invoke the native bridge")
+    })
+    const backend = await createJingleComputerUseNativeBackend(fixture.environment, bridge)
+    calls.length = 0
+
+    const result = await backend.execute({
+      actions: [{ kind: "activate", ref: "@root" }],
+      authorization: {
+        expiresAt: Date.now() + 1_000,
+        runId: "run",
+        sessionId: "session",
+        threadId: "thread",
+        window: base.window
+      },
+      base,
+      delivery: "foreground"
+    })
+
+    assert.deepEqual(result, {
+      baseStateId: base.stateId,
+      outcome: "unavailable",
+      steps: []
+    })
+    assert.equal(calls.length, 0)
+  }
+})
+
 test("native capability matrices are canonical immutable copies", async () => {
   const matrix = probedMatrix("linux-x11")
   const { bridge } = recordingNativeBridge(() => matrix)
@@ -3253,7 +3792,7 @@ test("native capability matrices are canonical immutable copies", async () => {
 
   assert.deepEqual(
     backend.matrix.capabilities.map((capability) => capability.action),
-    ["press", "set_value", "type_text", "keypress", "scroll"]
+    ["activate", "press", "set_value", "type_text", "keypress", "scroll"]
   )
   assert.equal(Object.isFrozen(backend.matrix), true)
   assert.equal(Object.isFrozen(backend.matrix.capabilities), true)
@@ -3302,6 +3841,9 @@ test("coordinator preflight settles first and later unsupported actions without 
       protocolVersion: 1
     },
     disposeSession: resolvedVoid,
+    identify() {
+      return Promise.resolve(targetIdentity(raw))
+    },
     async execute() {
       backendDispatches += 1
       throw new Error("unsupported coordinator actions must not dispatch")
@@ -3324,7 +3866,7 @@ test("coordinator preflight settles first and later unsupported actions without 
   const scheduler = new ComputerUseResourceScheduler()
   const sessions = new ComputerUseSessionManager(backend)
   const coordinator = new ComputerUseTransactionCoordinator(backend, scheduler, sessions, ledger)
-  const base = await coordinator.observe({})
+  const base = await identifyAndObserve(coordinator)
   await sessions.setEnabled(true)
   const grant = sessions.openSession({ observation: base, runId: "run", threadId: "thread" })
   const input = {
@@ -3396,6 +3938,9 @@ test("pre-aborted unsupported transactions settle as cancelled before dispatch",
       protocolVersion: 1
     },
     disposeSession: resolvedVoid,
+    identify() {
+      return Promise.resolve(targetIdentity(raw))
+    },
     async execute() {
       backendDispatches += 1
       throw new Error("pre-aborted unsupported actions must not dispatch")
@@ -3422,7 +3967,7 @@ test("pre-aborted unsupported transactions settle as cancelled before dispatch",
     sessions,
     ledger
   )
-  const base = await coordinator.observe({})
+  const base = await identifyAndObserve(coordinator)
   await sessions.setEnabled(true)
   const grant = sessions.openSession({ observation: base, runId: "run", threadId: "thread" })
   const controller = new AbortController()
@@ -3445,4 +3990,67 @@ test("pre-aborted unsupported transactions settle as cancelled before dispatch",
   })
   assert.equal(backendDispatches, 0)
   assert.deepEqual(ledgerWrites, ["pre-aborted-unsupported:settled:cancelled_before_dispatch"])
+})
+
+test("run release remains active while a durable reservation is pending", async () => {
+  let resolveReservation!: (value: { status: "reserved" }) => void
+  const reservation = new Promise<{ status: "reserved" }>((resolve) => {
+    resolveReservation = resolve
+  })
+  const attempts = new Map<string, ComputerUseActionAttempt>()
+  const ledger = new ComputerUseActionLedger({
+    read: async () => undefined,
+    reserve: async (attempt) => {
+      attempts.set(attempt.attemptId, attempt)
+      return reservation
+    },
+    transition: async ({ attempt, expectedPhase, expectedRevision }) => {
+      const current = attempts.get(attempt.attemptId)
+      assert.equal(current?.phase, expectedPhase)
+      assert.equal(current?.revision, expectedRevision)
+      attempts.set(attempt.attemptId, attempt)
+      return { status: "applied" }
+    }
+  })
+
+  const begin = ledger.begin(actionAttemptInput("release-during-reserve"))
+  ledger.releaseRun("run-1")
+  resolveReservation({ status: "reserved" })
+  const claim = await begin
+  assert.equal(claim.attempt.phase, "queued")
+  assert.equal((await ledger.cancel(claim.attempt.attemptId)).outcome, "cancelled_before_dispatch")
+  assert.equal(ledger.get(claim.attempt.attemptId), undefined)
+})
+
+test("run release prunes a settled durable replay that arrives from a pending reservation", async () => {
+  const attemptInput = actionAttemptInput("released-durable-replay")
+  const durableAttempts = new Map<string, ComputerUseActionAttempt>()
+  const durableLedger = new ComputerUseActionLedger(actionLedgerPort({ attempts: durableAttempts }))
+  const durableClaim = await durableLedger.begin(attemptInput)
+  await durableLedger.cancel(durableClaim.attempt.attemptId)
+  const durableAttempt = durableAttempts.get(durableClaim.attempt.attemptId)
+  assert.equal(durableAttempt?.phase, "settled")
+
+  let resolveReservation!: (value: { attempt: ComputerUseActionAttempt; status: "exists" }) => void
+  const reservation = new Promise<{
+    attempt: ComputerUseActionAttempt
+    status: "exists"
+  }>((resolve) => {
+    resolveReservation = resolve
+  })
+  const replayLedger = new ComputerUseActionLedger({
+    read: async () => undefined,
+    reserve: async () => reservation,
+    transition: async () => {
+      throw new Error("settled replay must not transition")
+    }
+  })
+
+  const begin = replayLedger.begin(attemptInput)
+  replayLedger.releaseRun("run-1")
+  resolveReservation({ attempt: durableAttempt!, status: "exists" })
+  const replay = await begin
+
+  assert.equal(replay.attempt.result?.outcome, "cancelled_before_dispatch")
+  assert.equal(replayLedger.get(replay.attempt.attemptId), undefined)
 })

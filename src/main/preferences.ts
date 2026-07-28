@@ -149,7 +149,8 @@ export interface NativeExtensionConfigurationCommit<TValue> {
 }
 
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
-  desktopAutomationAllowlist: [],
+  computerUseApplicationAllowlist: [],
+  computerUseEnabled: false,
   followUpMode: DEFAULT_AGENT_FOLLOW_UP_MODE,
   skillSources: [],
   locale: DEFAULT_APP_LOCALE
@@ -255,20 +256,20 @@ function normalizeThreadWindowRestoreState(value: unknown): ThreadWindowRestoreS
   return { version: 1, windows }
 }
 
-function normalizeDesktopAutomationAllowlist(value: unknown): string[] {
+function normalizeComputerUseApplicationAllowlist(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return []
   }
 
-  const bundleIds = value.flatMap((entry) => {
+  const applicationIdentifiers = value.flatMap((entry) => {
     if (typeof entry !== "string") {
       return []
     }
 
-    const bundleId = entry.trim()
-    return bundleId ? [bundleId] : []
+    const identifier = entry.trim()
+    return identifier && Buffer.byteLength(identifier, "utf8") <= 1_024 ? [identifier] : []
   })
-  return Array.from(new Set(bundleIds))
+  return Array.from(new Set(applicationIdentifiers)).slice(0, 128)
 }
 
 function normalizePreferenceRecord(value: unknown): Record<string, unknown> {
@@ -809,9 +810,10 @@ export function getAgentConfig(): AgentConfig {
     | undefined
 
   return {
-    desktopAutomationAllowlist: normalizeDesktopAutomationAllowlist(
-      stored?.desktopAutomationAllowlist
+    computerUseApplicationAllowlist: normalizeComputerUseApplicationAllowlist(
+      stored?.computerUseApplicationAllowlist
     ),
+    computerUseEnabled: stored?.computerUseEnabled === true,
     followUpMode: normalizeAgentFollowUpMode(stored?.followUpMode),
     skillSources: normalizePathList(stored?.skillSources),
     locale: normalizeAppLocale(stored?.locale)
@@ -821,12 +823,15 @@ export function getAgentConfig(): AgentConfig {
 export function setAgentConfig(updates: Partial<AgentConfig>): AgentConfig {
   const nextConfig: AgentConfig = {
     ...getAgentConfig(),
-    ...(updates.desktopAutomationAllowlist !== undefined
+    ...(updates.computerUseApplicationAllowlist !== undefined
       ? {
-          desktopAutomationAllowlist: normalizeDesktopAutomationAllowlist(
-            updates.desktopAutomationAllowlist
+          computerUseApplicationAllowlist: normalizeComputerUseApplicationAllowlist(
+            updates.computerUseApplicationAllowlist
           )
         }
+      : {}),
+    ...(updates.computerUseEnabled !== undefined
+      ? { computerUseEnabled: updates.computerUseEnabled === true }
       : {}),
     ...(updates.followUpMode
       ? { followUpMode: normalizeAgentFollowUpMode(updates.followUpMode) }
