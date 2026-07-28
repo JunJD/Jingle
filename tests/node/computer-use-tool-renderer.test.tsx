@@ -2,6 +2,8 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { Children, isValidElement, type ElementType, type ReactNode } from "react"
 import { appCopy } from "../../src/renderer/src/lib/i18n/messages"
+import "../../src/renderer/src/components/chat/tools/ComputerUseTool"
+import { getToolComponent } from "../../src/renderer/src/components/chat/tools/registry-core"
 import { ToolContractNotice } from "../../src/renderer/src/components/chat/tools/shared-components"
 
 function containsElementType(node: ReactNode, type: ElementType): boolean {
@@ -11,10 +13,7 @@ function containsElementType(node: ReactNode, type: ElementType): boolean {
   return Children.toArray(children).some((child) => containsElementType(child, type))
 }
 
-test("Computer Use renderer registers every semantic tool and rejects mismatched state facts", async () => {
-  await import("../../src/renderer/src/components/chat/tools/ComputerUseTool")
-  const { getToolComponent } =
-    await import("../../src/renderer/src/components/chat/tools/registry-core")
+test("Computer Use renderer registers every semantic tool and rejects mismatched state facts", () => {
   const names = [
     "computer_use_observe",
     "computer_use_action",
