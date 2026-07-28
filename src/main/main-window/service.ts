@@ -95,6 +95,9 @@ export class PrimaryMainWindowService {
   }
 
   bindSenderThread(sender: WebContents, threadId: string): MainWindowThreadBindingSnapshot {
+    if (this.restoreGate.isApplicationQuitting()) {
+      throw new Error("Cannot update Main window thread binding after application quit begins.")
+    }
     if (!this.window || this.window.webContents !== sender) {
       throw new Error("Main window thread binding requires the registered Main window.")
     }

@@ -140,6 +140,7 @@ describe("PrimaryMainWindowService", () => {
     let state = { version: 1 as const, lastActiveThreadId: null as string | null }
     let windowThreadId: string | null = null
     const window = new FakeWindow()
+    const restoreGate = new DurableWindowRestoreGate()
     const service = new PrimaryMainWindowService(
       {
         createMainWindow: (threadId) => {
@@ -159,13 +160,21 @@ describe("PrimaryMainWindowService", () => {
         }
       },
       new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) }),
-      new DurableWindowRestoreGate()
+      restoreGate
     )
     service.open()
     assert.throws(() => service.bindSenderThread({} as never, "thread-a"), /registered Main window/)
     const snapshot = service.bindSenderThread(window.webContents as never, "thread-a")
     assert.equal(state.lastActiveThreadId, "thread-a")
     assert.deepEqual(snapshot, { revision: 2, threadId: "thread-a" })
+
+    restoreGate.markApplicationQuitting()
+    assert.throws(
+      () => service.bindSenderThread(window.webContents as never, "thread-b"),
+      /after application quit begins/
+    )
+    assert.equal(windowThreadId, "thread-a")
+    assert.equal(state.lastActiveThreadId, "thread-a")
   })
 
   it("advances the binding revision when a new Main window incarnation is created", () => {

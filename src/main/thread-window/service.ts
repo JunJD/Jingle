@@ -58,6 +58,9 @@ export class ThreadWindowService {
   ) {}
 
   openNew(params: PinThreadWindowParams = {}): PinThreadWindowResult {
+    if (this.restoreGate.isApplicationQuitting()) {
+      throw new Error("Cannot create a Thread window after application quit begins.")
+    }
     if (this.windows.size >= this.resourceLimit) {
       const refusal = { current: this.windows.size, limit: this.resourceLimit }
       this.runtime.recordResourceRefusal(refusal)
@@ -69,6 +72,9 @@ export class ThreadWindowService {
   }
 
   bindSenderThread(sender: WebContents, threadId: string): void {
+    if (this.restoreGate.isApplicationQuitting()) {
+      throw new Error("Cannot update Thread window binding after application quit begins.")
+    }
     const entry = [...this.windows.entries()].find(([, window]) => window.webContents === sender)
     if (!entry) throw new Error("Thread window binding requires a registered window sender.")
     this.bindThread(entry[0], entry[1], threadId)

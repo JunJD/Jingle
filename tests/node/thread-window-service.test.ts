@@ -101,6 +101,7 @@ function createService(
     activations,
     events,
     refusals,
+    getWindowThreadId: (window: FakeWindow) => windowBindings.get(window)?.threadId,
     rendererFailureCallbacks,
     restore: () => restoreState,
     restoreFailures,
@@ -551,6 +552,26 @@ describe("ThreadWindowService", () => {
       restore().windows.map(({ windowId }) => windowId),
       ["window-a"]
     )
+  })
+
+  it("rejects new windows and thread rebinding after application quit begins", () => {
+    const { getWindowThreadId, restore, service, windows } = createService()
+    assert.equal(service.openNew({ threadId: "thread-a" }).ok, true)
+    service.markApplicationQuitting()
+    const stateAtQuit = restore()
+
+    assert.throws(
+      () => service.openNew({ threadId: "thread-new" }),
+      /after application quit begins/
+    )
+    assert.throws(
+      () => service.bindSenderThread(windows[0]!.webContents as never, "thread-rebound"),
+      /after application quit begins/
+    )
+    assert.equal(windows.length, 1)
+    assert.equal(getWindowThreadId(windows[0]!), "thread-a")
+    assert.equal(restore(), stateAtQuit)
+    assert.equal(restore().windows[0]?.threadId, "thread-a")
   })
 })
 
