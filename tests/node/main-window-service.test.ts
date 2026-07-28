@@ -19,12 +19,23 @@ import {
   DurableWindowRestoreGate,
   DurableWindowRestorePolicy
 } from "../../src/main/durable-window/restore-policy"
+import { parseSerializedIpcErrorMessage } from "../../src/shared/ipc-error"
 
 class FakeIpcMain {
-  handlers = new Map<string, (event: IpcMainInvokeEvent, params?: unknown) => unknown>()
-  handle(channel: string, handler: (event: IpcMainInvokeEvent, params?: unknown) => unknown): void {
+  handlers = new Map<string, (event: IpcMainInvokeEvent, ...params: unknown[]) => unknown>()
+  handle(
+    channel: string,
+    handler: (event: IpcMainInvokeEvent, ...params: unknown[]) => unknown
+  ): void {
     this.handlers.set(channel, handler)
   }
+}
+
+async function assertInvalidArgument(promise: Promise<unknown>): Promise<void> {
+  await assert.rejects(promise, (error: unknown) => {
+    assert.ok(error instanceof Error)
+    return parseSerializedIpcErrorMessage(error.message)?.code === "INVALID_ARGUMENT"
+  })
 }
 
 class FakeWindow extends EventEmitter {
@@ -703,6 +714,81 @@ it("durable-window open IPC admits only registered Launcher and durable main fra
   await assert.rejects(invoke("settings"), /Only the Launcher or a durable window/)
   await assert.rejects(invoke("launcher", false), /Only the Launcher or a durable window/)
   assert.equal(openCount, 2)
+})
+
+it("durable-window IPC validates canonical action tuples before service admission", async () => {
+  const mainFrame = {}
+  const mainSender = { isDestroyed: () => false, mainFrame } as unknown as WebContents
+  registerWindowIdentity(mainSender, {
+    kind: "main",
+    threadId: "thread-current",
+    windowId: "primary-main"
+  })
+  const opened: unknown[] = []
+  const pinned: unknown[] = []
+  const mainBindings: string[] = []
+  const snapshot = { revision: 1, threadId: "thread-current" } as const
+  const controller = new DurableWindowController(
+    {
+      bindSenderThread: (_sender: WebContents, threadId: string) => {
+        mainBindings.push(threadId)
+        return snapshot
+      },
+      getSenderThreadBinding: () => snapshot,
+      isSender: (sender: WebContents) => sender === mainSender,
+      open: (params: unknown) => opened.push(params)
+    } as never,
+    {
+      bindSenderThread: () => {},
+      isSender: () => false,
+      openNew: (params: unknown) => {
+        pinned.push(params)
+        return { ok: true, windowId: "thread-window-a" }
+      }
+    } as never
+  )
+  const ipcMain = new FakeIpcMain()
+  controller.register(ipcMain as unknown as IpcMain)
+  const event = { sender: mainSender, senderFrame: mainFrame } as IpcMainInvokeEvent
+  const getBinding = ipcMain.handlers.get(MAIN_WINDOW_THREAD_BINDING_GET_CHANNEL)
+  const openPrimary = ipcMain.handlers.get("durable-window:openPrimary")
+  const pinNew = ipcMain.handlers.get("durable-window:pinNew")
+  const setThread = ipcMain.handlers.get("durable-window:setThread")
+  assert.ok(getBinding)
+  assert.ok(openPrimary)
+  assert.ok(pinNew)
+  assert.ok(setThread)
+
+  assert.deepEqual(await getBinding(event), snapshot)
+  await openPrimary(event)
+  await openPrimary(event, undefined)
+  await openPrimary(event, { threadId: " thread-open " })
+  await pinNew(event)
+  await pinNew(event, undefined)
+  await pinNew(event, { threadId: " thread-pin " })
+  assert.deepEqual(await setThread(event, { threadId: " thread-next " }), snapshot)
+  assert.deepEqual(opened, [undefined, undefined, { threadId: "thread-open" }])
+  assert.deepEqual(pinned, [undefined, undefined, { threadId: "thread-pin" }])
+  assert.deepEqual(mainBindings, ["thread-next"])
+
+  for (const invocation of [
+    () => getBinding(event, {}),
+    () => openPrimary(event, null),
+    () => openPrimary(event, { threadId: "" }),
+    () => openPrimary(event, { unexpected: true }),
+    () => openPrimary(event, {}, {}),
+    () => pinNew(event, []),
+    () => pinNew(event, { threadId: "   " }),
+    () => setThread(event, undefined),
+    () => setThread(event, {}),
+    () => setThread(event, { threadId: "thread-next", unexpected: true })
+  ]) {
+    await assertInvalidArgument(Promise.resolve(invocation()))
+  }
+
+  assert.deepEqual(opened, [undefined, undefined, { threadId: "thread-open" }])
+  assert.deepEqual(pinned, [undefined, undefined, { threadId: "thread-pin" }])
+  assert.deepEqual(mainBindings, ["thread-next"])
 })
 
 it("durable-window binding snapshot belongs only to the registered Main main frame", async () => {
