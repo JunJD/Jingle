@@ -9,6 +9,7 @@ export type {
   ComputerUseSemanticAction,
   ComputerUseTransactionResult
 } from "./contract"
+export { COMPUTER_USE_NATIVE_RESPONSE_LIMITS } from "./contract"
 export { getComputerUseRetryDisposition } from "./retry-disposition"
 export {
   parseComputerUseSemanticAction,
