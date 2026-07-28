@@ -92,6 +92,15 @@ async function loadNativeExtensionRuntimePackage(
   if (!modulePromise) {
     modulePromise = loadVerifiedRuntimeModule(runtimeRef, expectedRevision)
     loadedRuntimeModules.set(moduleKey, modulePromise)
+    void modulePromise.catch((error: unknown) => {
+      if (
+        error instanceof ExtensionRuntimeArtifactLoadError &&
+        error.code === "runtime_artifact_read_failed" &&
+        loadedRuntimeModules.get(moduleKey) === modulePromise
+      ) {
+        loadedRuntimeModules.delete(moduleKey)
+      }
+    })
   }
 
   return modulePromise

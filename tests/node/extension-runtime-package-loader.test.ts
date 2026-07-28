@@ -101,6 +101,90 @@ test("installed runtime artifact mismatch fails before top-level evaluation", as
   }
 })
 
+test("installed runtime retries a transient artifact read failure without restarting", async () => {
+  const root = await mkdtemp(join(tmpdir(), "jingle-runtime-loader-retry-"))
+  const modulePath = join(root, "runtime.mjs")
+  const extensionName = `retry-runtime-${Date.now()}`
+  const source = createRuntimeSource(extensionName, "recovered")
+  const runtimeRef = {
+    expectedRuntimeArtifactRevision: createRevision(source),
+    extensionName,
+    kind: "module" as const,
+    modulePath,
+    version: "1.0.0"
+  }
+
+  try {
+    await assert.rejects(
+      loadNativeExtensionRuntimeCommand(runtimeRef, {
+        commandName: "execute",
+        extensionName
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof ExtensionRuntimeArtifactLoadError)
+        assert.equal(error.code, "runtime_artifact_read_failed")
+        return true
+      }
+    )
+
+    await writeFile(modulePath, source)
+    const command = await loadNativeExtensionRuntimeCommand(runtimeRef, {
+      commandName: "execute",
+      extensionName
+    })
+    assert.equal(command.mode, "no-view")
+    if (command.mode !== "no-view") {
+      throw new Error("Expected no-view command")
+    }
+    assert.equal((await command.run({} as never)) as unknown, "recovered")
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
+test("installed runtime does not repeat top-level effects after evaluation fails", async () => {
+  const root = await mkdtemp(join(tmpdir(), "jingle-runtime-loader-evaluation-"))
+  const modulePath = join(root, "runtime.mjs")
+  const extensionName = `evaluation-runtime-${Date.now()}`
+  const marker = `evaluation-failure-${Date.now()}`
+  const source = [
+    `globalThis.__jingleVerifiedRuntimeMarkers ??= [];`,
+    `globalThis.__jingleVerifiedRuntimeMarkers.push(${JSON.stringify(marker)});`,
+    `throw new Error("evaluation failed");`
+  ].join("\n")
+  const runtimeRef = {
+    expectedRuntimeArtifactRevision: createRevision(source),
+    extensionName,
+    kind: "module" as const,
+    modulePath,
+    version: "1.0.0"
+  }
+  await writeFile(modulePath, source)
+
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await assert.rejects(
+        loadNativeExtensionRuntimeCommand(runtimeRef, {
+          commandName: "execute",
+          extensionName
+        }),
+        (error: unknown) => {
+          assert.ok(error instanceof ExtensionRuntimeArtifactLoadError)
+          assert.equal(error.code, "runtime_artifact_evaluation_failed")
+          return true
+        }
+      )
+    }
+    const markers =
+      ((globalThis as Record<string, unknown>).__jingleVerifiedRuntimeMarkers as
+        | string[]
+        | undefined) ?? []
+    assert.equal(markers.filter((value) => value === marker).length, 1)
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
 test("installed runtime evaluates verified bytes and keys its module cache by revision", async () => {
   const root = await mkdtemp(join(tmpdir(), "jingle-runtime-loader-verified-"))
   const modulePath = join(root, "runtime.mjs")
