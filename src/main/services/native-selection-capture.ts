@@ -3,7 +3,9 @@ import { existsSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { app } from "electron"
 import type { LauncherSelectionCapturePayload } from "@shared/launcher-selection"
+import { recordNativeHelperStdinFailure } from "../diagnostics/electron-events"
 import { resolveNativeBinaryPath } from "./native-binary-path"
+import { attachNativeHelperStdinErrorHandler } from "./native-helper-stdin"
 
 export interface NativeSelectionCaptureHandlers {
   activateSelection: (payload: LauncherSelectionCapturePayload) => void
@@ -159,6 +161,13 @@ export function startNativeSelectionCapture(handlers: NativeSelectionCaptureHand
     })
 
     child.stdout?.on("data", consumeSelectionCaptureStdout)
+    attachNativeHelperStdinErrorHandler(child.stdin, {
+      isCurrent: () => nativeSelectionProcess === child,
+      onUnexpectedError: (error) => {
+        recordNativeHelperStdinFailure("selection-capture", error)
+        child.stdin?.destroy()
+      }
+    })
 
     child.on("exit", () => {
       if (nativeSelectionProcess === child) {

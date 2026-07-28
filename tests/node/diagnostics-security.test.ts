@@ -394,6 +394,11 @@ test("Electron failure producers only attach evidence for trusted main errors", 
     kind: "main-process-shutdown-failed"
   })
   captureElectronFailure(sink, {
+    error: Object.assign(new Error(hostile), { code: "EPIPE" }),
+    helper: "minimal-island",
+    kind: "native-helper-stdin-failed"
+  })
+  captureElectronFailure(sink, {
     exitCode: 9,
     kind: "child-process-gone",
     processType: hostile,
@@ -414,18 +419,24 @@ test("Electron failure producers only attach evidence for trusted main errors", 
     [
       "process.fatal_error",
       "process.shutdown_failed",
+      "native.helper_stdin_failed",
       "electron.child_process_gone",
       "electron.renderer_process_gone"
     ]
   )
   assert.deepEqual(sink.inputs[0].refs, [{ id: "main", kind: "process" }])
   assert.deepEqual(sink.inputs[1].refs, [{ id: "main", kind: "process" }])
-  assert.deepEqual(sink.inputs[2].refs, [{ id: "child:unknown", kind: "process" }])
-  assert.deepEqual(sink.inputs[3].refs, [
+  assert.deepEqual(sink.inputs[2].refs, [{ id: "minimal-island", kind: "native-helper" }])
+  assert.deepEqual(sink.inputs[2].dimensionEntries, [
+    { key: "errorCode", value: "EPIPE" },
+    { key: "helper", value: "minimal-island" }
+  ])
+  assert.deepEqual(sink.inputs[3].refs, [{ id: "child:unknown", kind: "process" }])
+  assert.deepEqual(sink.inputs[4].refs, [
     { id: "7", kind: "window" },
     { id: "42", kind: "web-contents" }
   ])
-  assert.deepEqual(sink.inputs[3].dimensionEntries, [
+  assert.deepEqual(sink.inputs[4].dimensionEntries, [
     { key: "phase", value: "renderer-process" },
     { key: "windowKind", value: "unknown" },
     { key: "reason", value: "unknown" },

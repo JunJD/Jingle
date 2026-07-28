@@ -37,6 +37,7 @@ const CHILD_PROCESS_TYPES = new Map([
   ["Utility", "utility"],
   ["Zygote", "zygote"]
 ])
+const NATIVE_HELPER_STDIN_ERROR_CODES = new Set(["ECONNRESET", "EPIPE", "ERR_STREAM_DESTROYED"])
 
 type ElectronFailureInput =
   | {
@@ -53,6 +54,11 @@ type ElectronFailureInput =
   | {
       error: unknown
       kind: "main-process-shutdown-failed"
+    }
+  | {
+      error: unknown
+      helper: "minimal-island" | "selection-capture"
+      kind: "native-helper-stdin-failed"
     }
   | {
       errorCode?: unknown
@@ -193,6 +199,20 @@ function readTrustedMainProcessError(value: unknown): Error | null {
   }
 }
 
+function normalizeNativeHelperStdinErrorCode(error: Error | null): string {
+  if (!error) {
+    return "unknown"
+  }
+  try {
+    const code = Object.getOwnPropertyDescriptor(error, "code")
+    return code && "value" in code && NATIVE_HELPER_STDIN_ERROR_CODES.has(code.value)
+      ? String(code.value)
+      : "unknown"
+  } catch {
+    return "unknown"
+  }
+}
+
 function toPositiveIntegerRef(kind: string, value: unknown): DiagnosticResourceRef | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0
     ? { id: String(value), kind }
@@ -296,6 +316,32 @@ function captureChildProcessFailure(
     refs: [{ id: `child:${processType}`, kind: "process" }],
     stateImpact: "child_process_lost",
     summary: "Electron child process exited unexpectedly"
+  })
+}
+
+function captureNativeHelperStdinFailure(
+  sink: DiagnosticGraphSink,
+  input: Extract<ElectronFailureInput, { kind: "native-helper-stdin-failed" }>
+): DiagnosticEventRef {
+  const helper =
+    input.helper === "minimal-island" || input.helper === "selection-capture"
+      ? input.helper
+      : "unknown"
+  const error = readTrustedMainProcessError(input.error)
+  return sink.capture({
+    component: "native",
+    dimensionEntries: [
+      { key: "errorCode", value: normalizeNativeHelperStdinErrorCode(error) },
+      { key: "helper", value: helper }
+    ],
+    eventCode: "native.helper_stdin_failed",
+    fingerprint: `native.helper_stdin_failed:${helper}`,
+    level: "error",
+    operation: "write-helper-stdin",
+    recoverable: true,
+    refs: [{ id: helper, kind: "native-helper" }],
+    stateImpact: "native_helper_unavailable",
+    summary: "Native helper stdin transport failed"
   })
 }
 
@@ -445,6 +491,8 @@ export function captureElectronFailure(
         return captureMainProcessFailure(sink, input)
       case "main-process-shutdown-failed":
         return captureMainProcessShutdownFailure(sink, input)
+      case "native-helper-stdin-failed":
+        return captureNativeHelperStdinFailure(sink, input)
       case "child-process-gone":
         return captureChildProcessFailure(sink, input)
       case "renderer-window-failure":

@@ -2,6 +2,8 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import { existsSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { app } from "electron"
+import { recordNativeHelperStdinFailure } from "../diagnostics/electron-events"
+import { attachNativeHelperStdinErrorHandler } from "./native-helper-stdin"
 import { resolveNativeBinaryPath } from "./native-binary-path"
 
 export type NativeMinimalIslandState = "idle" | "working" | "approval"
@@ -145,6 +147,13 @@ export function startNativeMinimalIsland(handlers: NativeMinimalIslandActionHand
     })
 
     child.stdout?.on("data", consumeNativeIslandStdout)
+    attachNativeHelperStdinErrorHandler(child.stdin, {
+      isCurrent: () => nativeIslandProcess === child,
+      onUnexpectedError: (error) => {
+        recordNativeHelperStdinFailure("minimal-island", error)
+        child.stdin?.destroy()
+      }
+    })
 
     child.on("exit", () => {
       if (nativeIslandProcess === child) {

@@ -28,6 +28,8 @@ interface ProcessDiagnosticsOptions {
   handleFatalErrors?: boolean
 }
 
+export type NativeHelperDiagnosticIdentity = "minimal-island" | "selection-capture"
+
 const FATAL_DIAGNOSTICS_TIMEOUT_MS = 1_500
 
 function recordFatalMainProcessError(
@@ -139,6 +141,29 @@ export function recordMainProcessShutdownFailure(error: unknown): void {
       .catch(() => undefined)
   } catch {
     console.error("[Diagnostics] Failed to enqueue main process shutdown failure.")
+  }
+}
+
+export function recordNativeHelperStdinFailure(
+  helper: NativeHelperDiagnosticIdentity,
+  error: unknown
+): void {
+  captureElectronFailure(diagnosticsGraph, {
+    error,
+    helper,
+    kind: "native-helper-stdin-failed"
+  })
+  try {
+    diagnosticsLogger.error("Native helper stdin transport failed", {
+      error: serializeProcessError(error),
+      eventCode: "native.helper_stdin_failed",
+      fingerprint: `native.helper_stdin_failed:${helper}`,
+      recoverable: true,
+      serviceName: helper,
+      stateImpact: "native_helper_unavailable"
+    })
+  } catch {
+    console.error("[Diagnostics] Failed to record native helper stdin transport failure.")
   }
 }
 
