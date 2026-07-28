@@ -482,7 +482,8 @@ export async function setProviderCredentialsForUI(
 
   adapter.saveCredentials(normalizedCredentials)
   setProviderModelListSuccess(adapter.definition.id, models)
-  markProviderConfigured(adapter.definition.id, models[0]?.model)
+  const storedProvider = getJingleModelProviderConfig().providers[adapter.definition.id]
+  markProviderConfigured(adapter.definition.id, storedProvider ? undefined : models[0]?.model)
 }
 
 export function getProviderCredentialsForUI(provider: string): Record<string, string> | null {
