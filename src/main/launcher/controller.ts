@@ -5,7 +5,10 @@ import {
   launcherSearchCancellationArgsSchema,
   launcherSearchInvocationArgsSchema
 } from "@shared/launcher-search"
-import { launcherPresentArgsSchema } from "@shared/launcher-presentation"
+import {
+  launcherPresentArgsSchema,
+  launcherSetViewportHeightArgsSchema
+} from "@shared/launcher-presentation"
 import {
   presentLauncherWindow,
   setLauncherWindowViewportHeight,
@@ -112,15 +115,20 @@ export class LauncherController {
       showLauncherWindow(currentWindow)
     })
 
-    registerIpcHandle(ipcMain, "launcher:setViewportHeight", (event, height: number) => {
-      this.assertLauncherSender(event)
-      const currentWindow = BrowserWindow.fromWebContents(event.sender)
-      if (!currentWindow) {
-        return
-      }
+    registerValidatedIpcHandle(
+      ipcMain,
+      "launcher:setViewportHeight",
+      launcherSetViewportHeightArgsSchema,
+      (event, height) => {
+        this.assertLauncherSender(event)
+        const currentWindow = BrowserWindow.fromWebContents(event.sender)
+        if (!currentWindow) {
+          return
+        }
 
-      setLauncherWindowViewportHeight(currentWindow, height)
-    })
+        setLauncherWindowViewportHeight(currentWindow, height)
+      }
+    )
 
     registerValidatedIpcHandle(
       ipcMain,
