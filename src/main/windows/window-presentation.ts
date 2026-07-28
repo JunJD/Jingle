@@ -6,8 +6,17 @@ interface WindowPresentationState {
 }
 
 const windowPresentationStates = new WeakMap<BrowserWindow, WindowPresentationState>()
+let windowPresentationShutdownStarted = false
+
+export function beginWindowPresentationShutdown(): void {
+  windowPresentationShutdownStarted = true
+}
 
 function presentIfReady(window: BrowserWindow, state: WindowPresentationState): void {
+  if (windowPresentationShutdownStarted) {
+    state.presentationRequest = null
+    return
+  }
   const presentationRequest = state.presentationRequest
   if (!presentationRequest || !state.rendererReady || window.isDestroyed()) {
     return

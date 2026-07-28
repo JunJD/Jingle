@@ -689,7 +689,23 @@ describe("renderer window load lifecycle", () => {
     } satisfies RenderProcessGoneDetails)
     assert.equal(deferredWindow.loadFileCount, 1)
 
+    const pendingActivePresentationWindow = new FakeBrowserWindow()
+    pendingActivePresentationWindow.minimized = true
+    installWindowPresentation(asBrowserWindow(pendingActivePresentationWindow))
+    requestWindowPresentation(asBrowserWindow(pendingActivePresentationWindow))
+    const pendingInactivePresentationWindow = new FakeBrowserWindow()
+    installWindowPresentation(asBrowserWindow(pendingInactivePresentationWindow))
+    requestWindowPresentation(asBrowserWindow(pendingInactivePresentationWindow), {
+      activate: false
+    })
+
     beginRendererWindowShutdown()
+    pendingActivePresentationWindow.emit("ready-to-show")
+    pendingInactivePresentationWindow.emit("ready-to-show")
+    requestWindowPresentation(asBrowserWindow(pendingActivePresentationWindow))
+    requestWindowPresentation(asBrowserWindow(pendingInactivePresentationWindow), {
+      activate: false
+    })
     resolveRecoverySplash()
     deferredWindow.webContents.emit("preload-error", {}, "preload.js", new Error("shutdown"))
     deferredWindow.webContents.emit("render-process-gone", {}, {
@@ -704,5 +720,14 @@ describe("renderer window load lifecycle", () => {
     assert.equal(deferredWindow.destroyCount, 0)
     assert.equal(deferredWindow.loadFileCount, 1)
     assert.deepEqual(deferredLogger.errorMessages, ["Renderer process gone"])
+    assert.deepEqual(
+      [
+        pendingActivePresentationWindow.showCount,
+        pendingActivePresentationWindow.focusCount,
+        pendingActivePresentationWindow.restoreCount,
+        pendingInactivePresentationWindow.showInactiveCount
+      ],
+      [0, 0, 0, 0]
+    )
   })
 })

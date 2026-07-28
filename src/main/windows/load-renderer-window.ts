@@ -5,6 +5,7 @@ import { APP_THEME_RENDERER_QUERY_KEY, serializeJingleThemeV1 } from "@shared/ap
 import type { DurableWindowKind } from "@shared/durable-window"
 import type { DiagnosticEventRef } from "../diagnostics/schema"
 import { getAppThemeSettings } from "../preferences"
+import { beginWindowPresentationShutdown } from "./window-presentation"
 
 export type AppWindowKind =
   | "main"
@@ -158,6 +159,7 @@ async function loadRendererWindow(
 
 export function beginRendererWindowShutdown(): void {
   rendererWindowShutdownStarted = true
+  beginWindowPresentationShutdown()
 }
 
 export function startRendererWindowLoad(
