@@ -332,6 +332,50 @@ test("RuntimeThreadRun abort waits for stream work before persisting the termina
   assert.deepEqual(events, ["chunk-finished", "abort", "settle"])
 })
 
+test("RuntimeThreadRun returns true only to the abort call that wins terminal ownership", async () => {
+  const abortStarted = createDeferred<void>()
+  const releaseAbort = createDeferred<void>()
+  let abortCount = 0
+  let settleCount = 0
+  const run = createRuntimeThreadInvokeRun({
+    controls: {
+      lifecycle: createLifecycleControl({
+        abortRun: async () => {
+          abortCount += 1
+          abortStarted.resolve()
+          await releaseAbort.promise
+        },
+        settleRun: async () => {
+          settleCount += 1
+        }
+      }),
+      operations: createOperationControl(),
+      stream: {
+        drainRunStream: async () => ({ interrupted: false })
+      }
+    },
+    start: { modelId: "model-1", recordingRefs: [], runId: "run-repeat-abort" }
+  })
+
+  const firstAbort = run.abort()
+  const concurrentAbort = run.abort()
+  await abortStarted.promise
+  let concurrentSettled = false
+  void concurrentAbort.then(() => {
+    concurrentSettled = true
+  })
+  await Promise.resolve()
+  assert.equal(concurrentSettled, false)
+
+  releaseAbort.resolve()
+  const [first, concurrent] = await Promise.all([firstAbort, concurrentAbort])
+  assert.equal(first, true)
+  assert.equal(concurrent, false)
+  assert.equal(await run.abort(), false)
+  assert.equal(abortCount, 1)
+  assert.equal(settleCount, 1)
+})
+
 test("RuntimeThread stream does not call the host after cancellation during pending HITL persistence", async () => {
   const persistenceStarted = createDeferred<void>()
   const releasePersistence = createDeferred<void>()

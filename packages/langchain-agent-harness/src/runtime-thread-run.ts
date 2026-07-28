@@ -184,16 +184,15 @@ function createRuntimeThreadRunBase<TContextInclusion>(
   }
   return {
     abort: async () => {
-      const winnerStatus = terminal.winnerStatus()
-      if (winnerStatus) {
+      if (terminal.winnerStatus()) {
         await executionSettled
         await terminal.commit()
-        return winnerStatus === "aborted"
+        return false
       }
       const submission = requestAbort()
       await executionSettled
-      await terminal.commit()
-      return terminal.winnerStatus() === submission.status
+      const result = await terminal.commit()
+      return terminal.owns(submission) && result.status === "aborted"
     },
     execute: (activation, operation) => {
       assertRuntimeThreadRunNotExecuted(executionStarted, start.runId)
