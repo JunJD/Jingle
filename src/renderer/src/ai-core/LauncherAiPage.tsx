@@ -1893,7 +1893,7 @@ export function LauncherAiPage(): React.JSX.Element {
                 ) : isHydratingThread ? (
                   <LauncherAiThreadLoadingState reason={threadLoadingReason} />
                 ) : (
-                  <LauncherAiEmptyState error={threadError} />
+                  <LauncherAiEmptyState clearError={clearThreadError} error={threadError} />
                 )}
                 <form
                   className="launcher-ai-composer-footer shrink-0 px-[var(--launcher-ai-composer-page-x)] pb-[var(--jingle-space-2)]"

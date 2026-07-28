@@ -267,9 +267,12 @@ const LauncherAiFooter = memo(function LauncherAiFooter(props: {
   )
 })
 
-export function LauncherAiEmptyState(props: { error?: string | null }): React.JSX.Element {
+export function LauncherAiEmptyState(props: {
+  clearError?: () => void
+  error?: string | null
+}): React.JSX.Element {
   const { copy } = useI18n()
-  const { error } = props
+  const { clearError, error } = props
 
   return (
     <div className="relative flex flex-1 items-center justify-center overflow-hidden px-[var(--launcher-ai-content-x)]">
@@ -284,7 +287,13 @@ export function LauncherAiEmptyState(props: { error?: string | null }): React.JS
         <p className="mt-[var(--jingle-space-3)] max-w-[var(--launcher-ai-empty-copy-max-width)] [font-size:var(--jingle-font-body)] leading-[var(--jingle-line-chat)] text-muted-foreground">
           {copy.launcher.aiHeroDescription}
         </p>
-        {error ? <AgentErrorNotice className="mt-[var(--jingle-space-6)]" error={error} /> : null}
+        {error ? (
+          <AgentErrorNotice
+            className="mt-[var(--jingle-space-6)]"
+            error={error}
+            onDismiss={clearError}
+          />
+        ) : null}
       </div>
     </div>
   )
