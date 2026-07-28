@@ -23,12 +23,14 @@ const thinkingEffortValueSchema = z.enum([
   "max"
 ])
 const thinkingEffortSchema = thinkingEffortValueSchema.nullable()
+const attachmentModalitySchema = z.enum(["audio", "document", "video", "vision"])
 
 const customProviderModelSchema = z.union([
   nonEmptyTrimmedStringSchema,
   z
     .object({
       name: nonEmptyTrimmedStringSchema,
+      attachmentModalities: z.array(attachmentModalitySchema).min(1).optional(),
       reasoningEfforts: z.array(thinkingEffortValueSchema).min(1).optional()
     })
     .strict()

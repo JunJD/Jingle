@@ -265,28 +265,47 @@ test("custom provider settings project explicit model capabilities and can clear
     projectCustomProviderModelInputs({
       engine: "openai",
       modelEfforts: { "vendor-reasoner": ["minimal", "high"] },
+      modelModalities: { "vendor-reasoner": ["vision"] },
       modelNames: ["vendor-reasoner", "plain-model"]
     }),
     [
-      { name: "vendor-reasoner", reasoningEfforts: ["minimal", "high"] },
-      { name: "plain-model", reasoningEfforts: undefined }
+      {
+        attachmentModalities: ["vision"],
+        name: "vendor-reasoner",
+        reasoningEfforts: ["minimal", "high"]
+      },
+      { attachmentModalities: undefined, name: "plain-model", reasoningEfforts: undefined }
     ]
   )
   assert.deepEqual(
     projectCustomProviderModelInputs({
       engine: "openai",
       modelEfforts: { "vendor-reasoner": [] },
+      modelModalities: { "vendor-reasoner": [] },
       modelNames: ["vendor-reasoner"]
     }),
-    [{ name: "vendor-reasoner", reasoningEfforts: undefined }]
+    [
+      {
+        attachmentModalities: undefined,
+        name: "vendor-reasoner",
+        reasoningEfforts: undefined
+      }
+    ]
   )
   assert.deepEqual(
     projectCustomProviderModelInputs({
       engine: "anthropic",
       modelEfforts: { "vendor-reasoner": ["high"] },
+      modelModalities: { "vendor-reasoner": ["document"] },
       modelNames: ["vendor-reasoner"]
     }),
-    [{ name: "vendor-reasoner", reasoningEfforts: undefined }]
+    [
+      {
+        attachmentModalities: ["document"],
+        name: "vendor-reasoner",
+        reasoningEfforts: undefined
+      }
+    ]
   )
 })
 

@@ -71,36 +71,43 @@ test("composer history keeps the latest durable user inputs with full refs", () 
     })
   ]
 
-  assert.deepEqual(projectComposerHistory(messages, 2), [
-    {
-      refs: [
-        {
-          name: "spec.md",
-          path: "/workspace/spec.md",
-          type: "file"
-        },
-        {
-          name: "diagram",
-          type: "image",
-          url: "data:image/png;base64,AA=="
-        },
-        {
-          extensionName: "github",
-          name: "GitHub",
-          sourceId: "github",
-          type: "extension-source"
-        },
-        {
-          selectedText: "Keep this invariant",
-          sourceMessageId: "assistant-1",
-          sourceThreadId: "thread-a",
-          type: "assistant-message-selection"
-        }
-      ],
-      text: "latest"
-    },
-    { refs: [], text: "duplicate" }
-  ])
+  assert.deepEqual(
+    projectComposerHistory(messages, 2, {
+      supportedFileSourceKinds: [],
+      supportedImageSourceKinds: ["data"],
+      supportedModalities: ["vision"]
+    }),
+    [
+      {
+        refs: [
+          {
+            name: "spec.md",
+            path: "/workspace/spec.md",
+            type: "file"
+          },
+          {
+            name: "diagram",
+            type: "image",
+            url: "data:image/png;base64,AA=="
+          },
+          {
+            extensionName: "github",
+            name: "GitHub",
+            sourceId: "github",
+            type: "extension-source"
+          },
+          {
+            selectedText: "Keep this invariant",
+            sourceMessageId: "assistant-1",
+            sourceThreadId: "thread-a",
+            type: "assistant-message-selection"
+          }
+        ],
+        text: "latest"
+      },
+      { refs: [], text: "duplicate" }
+    ]
+  )
 })
 
 test("apply and current composer channels round-trip refs without reference text", () => {
@@ -293,12 +300,16 @@ test("composer history retains a typed reason for provider-unsupported attachmen
 
   assert.deepEqual(
     projectComposerHistory(messages, 100, {
-      supportedFileSourceKinds: ["data", "text", "url"]
+      supportedFileSourceKinds: ["data", "text", "url"],
+      supportedImageSourceKinds: ["data", "url"],
+      supportedModalities: ["document"]
     }),
     []
   )
   const unavailableEntries = projectComposerHistoryEntries(messages, 100, {
-    supportedFileSourceKinds: ["data", "text", "url"]
+    supportedFileSourceKinds: ["data", "text", "url"],
+    supportedImageSourceKinds: ["data", "url"],
+    supportedModalities: ["document"]
   })
   assert.deepEqual(unavailableEntries, [
     {
@@ -320,7 +331,9 @@ test("composer history retains a typed reason for provider-unsupported attachmen
   )
   assert.deepEqual(
     projectComposerHistory(messages, 100, {
-      supportedFileSourceKinds: ["data", "file-id", "text", "url"]
+      supportedFileSourceKinds: ["data", "file-id", "text", "url"],
+      supportedImageSourceKinds: ["data", "url"],
+      supportedModalities: ["document"]
     }),
     [{ refs: [ref], text: "Review" }]
   )

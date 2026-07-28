@@ -68,6 +68,7 @@ export type JingleAgentSteerFailureReason =
   | "provider_file_id_unsupported"
   | "provider_file_text_unsupported"
   | "provider_file_url_unsupported"
+  | "model_attachment_modality_unsupported"
   | "queue_item_not_found"
 
 export type JingleAgentComposerSubmissionUnavailableReason =
@@ -76,9 +77,12 @@ export type JingleAgentComposerSubmissionUnavailableReason =
   | "provider_file_id_unsupported"
   | "provider_file_text_unsupported"
   | "provider_file_url_unsupported"
+  | "model_attachment_modality_unsupported"
 
 export interface JingleAgentComposerAttachmentCapabilities {
   supportedFileSourceKinds: ReadonlyArray<JingleAgentMessageFileSource["kind"]>
+  supportedImageSourceKinds: ReadonlyArray<"data" | "url">
+  supportedModalities: ReadonlyArray<"audio" | "document" | "video" | "vision">
 }
 
 export type JingleAgentComposerSubmissionAvailability =
@@ -119,6 +123,7 @@ export function shouldSurfaceJingleSteerRejection(reason: JingleAgentSteerFailur
     case "provider_file_id_unsupported":
     case "provider_file_text_unsupported":
     case "provider_file_url_unsupported":
+    case "model_attachment_modality_unsupported":
       return true
     case "no_active_run":
     case "queue_item_not_found":
@@ -143,6 +148,7 @@ export function getJingleAgentSteerRejectionMessage(reason: JingleAgentSteerFail
     case "provider_file_id_unsupported":
     case "provider_file_text_unsupported":
     case "provider_file_url_unsupported":
+    case "model_attachment_modality_unsupported":
       return getJingleAgentComposerSubmissionUnavailableMessage(reason)
   }
 }
@@ -161,6 +167,8 @@ export function getJingleAgentComposerSubmissionUnavailableMessage(
       return "The selected model provider cannot submit text file attachments"
     case "provider_file_url_unsupported":
       return "The selected model provider cannot submit URL file attachments"
+    case "model_attachment_modality_unsupported":
+      return "The selected model cannot accept this attachment modality"
   }
 }
 
@@ -168,10 +176,24 @@ export function resolveJingleAgentComposerSubmissionAvailability(input: {
   attachmentCapabilities: JingleAgentComposerAttachmentCapabilities | null
   messageInput: JingleAgentComposerMessageInput
 }): JingleAgentComposerSubmissionAvailability {
-  const sourceKinds = input.messageInput.refs.flatMap((ref) =>
-    ref.type === "file-attachment" ? [ref.source.kind] : []
-  )
-  if (sourceKinds.length === 0) {
+  const attachments: ComposerAttachmentAdmission[] = []
+  for (const ref of input.messageInput.refs) {
+    if (ref.type === "file-attachment") {
+      attachments.push({
+        kind: "file",
+        modality: resolveAttachmentModality(ref.source),
+        sourceKind: ref.source.kind
+      })
+    }
+    if (ref.type === "image") {
+      attachments.push({
+        kind: "image",
+        modality: "vision",
+        sourceKind: resolveImageSourceKind(ref.url)
+      })
+    }
+  }
+  if (attachments.length === 0) {
     return { type: "ready" }
   }
 
@@ -180,9 +202,14 @@ export function resolveJingleAgentComposerSubmissionAvailability(input: {
     return { reason: "provider_attachment_capability_unavailable", type: "unavailable" }
   }
 
-  const unsupportedSourceKind = sourceKinds.find(
-    (sourceKind) => !attachmentCapabilities.supportedFileSourceKinds.includes(sourceKind)
-  )
+  const unsupportedSourceKind = attachments.find(({ kind, sourceKind }) => {
+    if (sourceKind === null) {
+      return true
+    }
+    return kind === "image"
+      ? !attachmentCapabilities.supportedImageSourceKinds.includes(sourceKind)
+      : !attachmentCapabilities.supportedFileSourceKinds.includes(sourceKind)
+  })?.sourceKind
   switch (unsupportedSourceKind) {
     case "data":
       return { reason: "provider_file_data_unsupported", type: "unavailable" }
@@ -192,9 +219,64 @@ export function resolveJingleAgentComposerSubmissionAvailability(input: {
       return { reason: "provider_file_text_unsupported", type: "unavailable" }
     case "url":
       return { reason: "provider_file_url_unsupported", type: "unavailable" }
+    case null:
+      return { reason: "provider_attachment_capability_unavailable", type: "unavailable" }
     case undefined:
-      return { type: "ready" }
+      break
   }
+
+  const hasUnsupportedModality = attachments.some(({ modality }) => {
+    return modality === null || !attachmentCapabilities.supportedModalities.includes(modality)
+  })
+  return hasUnsupportedModality
+    ? { reason: "model_attachment_modality_unsupported", type: "unavailable" }
+    : { type: "ready" }
+}
+
+type ComposerAttachmentAdmission =
+  | {
+      kind: "file"
+      modality: "audio" | "document" | "video" | "vision" | null
+      sourceKind: JingleAgentMessageFileSource["kind"]
+    }
+  | {
+      kind: "image"
+      modality: "vision"
+      sourceKind: "data" | "url" | null
+    }
+
+function resolveImageSourceKind(url: string): "data" | "url" | null {
+  try {
+    const protocol = new URL(url).protocol
+    if (protocol === "data:") {
+      return "data"
+    }
+    if (protocol === "http:" || protocol === "https:") {
+      return "url"
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function resolveAttachmentModality(
+  source: JingleAgentMessageFileSource
+): "audio" | "document" | "video" | "vision" | null {
+  const mimeType = source.mimeType?.split(";", 1)[0]?.trim().toLowerCase()
+  if (!mimeType) {
+    return source.kind === "text" ? "document" : null
+  }
+  if (mimeType.startsWith("image/")) {
+    return "vision"
+  }
+  if (mimeType.startsWith("audio/")) {
+    return "audio"
+  }
+  if (mimeType.startsWith("video/")) {
+    return "video"
+  }
+  return "document"
 }
 
 export function summarizeJingleAgentFollowUpQueue(

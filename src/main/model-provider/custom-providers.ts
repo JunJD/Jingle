@@ -89,6 +89,7 @@ export function listCustomProviderModels(): ModelConfig[] {
       description: provider.description,
       contextLimit: model.context_limit,
       fetchFrom: "customizable-model" as const,
+      features: model.attachment_modalities,
       id: `${provider.name}:${model.name}`,
       maxOutputTokens: model.max_output_tokens,
       model: model.name,
@@ -126,17 +127,27 @@ export function upsertCustomProvider(input: CustomProviderInput): CustomProvider
     models: input.models.reduce<CustomProviderConfig["models"]>((models, model) => {
       const name = (typeof model === "string" ? model : model.name).trim()
       if (name) {
+        const existingModel = existingConfig?.models.find(
+          (existingModel) => existingModel.name === name
+        )
         const reasoningEfforts =
           typeof model === "string"
-            ? existingConfig?.models.find((existingModel) => existingModel.name === name)
-                ?.reasoning_efforts
+            ? existingModel?.reasoning_efforts
             : normalizeReasoningEfforts(model.reasoningEfforts)
+        const attachmentModalities =
+          typeof model === "string"
+            ? existingModel?.attachment_modalities
+            : normalizeAttachmentModalities(model.attachmentModalities)
         if (reasoningEfforts && input.engine !== "openai") {
           throw new Error(
             "Reasoning effort capability declarations require an OpenAI-compatible custom provider."
           )
         }
-        models.push({ name, reasoning_efforts: reasoningEfforts })
+        models.push({
+          attachment_modalities: attachmentModalities,
+          name,
+          reasoning_efforts: reasoningEfforts
+        })
       }
       return models
     }, []),
@@ -230,6 +241,31 @@ function normalizeCustomProviderConfig(value: unknown): CustomProviderConfig {
   }
 }
 
+function normalizeAttachmentModalities(
+  value: unknown
+): CustomProviderConfig["models"][number]["attachment_modalities"] {
+  if (value === undefined) {
+    return undefined
+  }
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error("Custom provider attachment_modalities must be a non-empty array.")
+  }
+  const allowed = new Set(["audio", "document", "video", "vision"] as const)
+  const modalities = value.map((item) => {
+    if (
+      typeof item !== "string" ||
+      !allowed.has(item as "audio" | "document" | "video" | "vision")
+    ) {
+      throw new Error(`Custom provider attachment modality is not supported: ${String(item)}`)
+    }
+    return item as "audio" | "document" | "video" | "vision"
+  })
+  if (new Set(modalities).size !== modalities.length) {
+    throw new Error("Custom provider attachment_modalities must not contain duplicates.")
+  }
+  return modalities
+}
+
 function normalizeCustomProviderEnvVars(value: unknown): CustomProviderConfig["env_vars"] {
   if (!Array.isArray(value)) {
     return undefined
@@ -270,6 +306,7 @@ function normalizeCustomProviderModel(value: unknown): CustomProviderConfig["mod
   }
 
   return {
+    attachment_modalities: normalizeAttachmentModalities(value["attachment_modalities"]),
     context_limit: typeof value["context_limit"] === "number" ? value["context_limit"] : undefined,
     max_output_tokens:
       typeof value["max_output_tokens"] === "number" ? value["max_output_tokens"] : undefined,

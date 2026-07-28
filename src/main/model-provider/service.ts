@@ -662,7 +662,7 @@ function toProviderState(
       : undefined
 
   return {
-    attachmentCapabilities: adapter.attachmentCapabilities,
+    attachmentTransportCapabilities: adapter.attachmentTransportCapabilities,
     configurateMethods: provider.configurateMethods,
     customConfiguration: {
       currentCredentialName:

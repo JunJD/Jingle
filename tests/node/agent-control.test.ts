@@ -1512,7 +1512,11 @@ test("composer submission capability rejects provider-unsupported file sources",
   }
   assert.deepEqual(
     resolveJingleAgentComposerSubmissionAvailability({
-      attachmentCapabilities: { supportedFileSourceKinds: ["data", "text", "url"] },
+      attachmentCapabilities: {
+        supportedFileSourceKinds: ["data", "text", "url"],
+        supportedImageSourceKinds: ["data", "url"],
+        supportedModalities: ["document"]
+      },
       messageInput: fileIdInput
     }),
     { reason: "provider_file_id_unsupported", type: "unavailable" }
@@ -1520,7 +1524,9 @@ test("composer submission capability rejects provider-unsupported file sources",
   assert.deepEqual(
     resolveJingleAgentComposerSubmissionAvailability({
       attachmentCapabilities: {
-        supportedFileSourceKinds: ["data", "file-id", "text", "url"]
+        supportedFileSourceKinds: ["data", "file-id", "text", "url"],
+        supportedImageSourceKinds: ["data", "url"],
+        supportedModalities: ["document"]
       },
       messageInput: fileIdInput
     }),
@@ -1529,12 +1535,16 @@ test("composer submission capability rejects provider-unsupported file sources",
 
   for (const source of [
     { data: "cGRm", kind: "data", mimeType: "application/pdf" },
-    { kind: "url", url: "https://example.com/spec.pdf" },
+    { kind: "url", mimeType: "application/pdf", url: "https://example.com/spec.pdf" },
     { kind: "text", text: "specification" }
   ] as const) {
     assert.deepEqual(
       resolveJingleAgentComposerSubmissionAvailability({
-        attachmentCapabilities: { supportedFileSourceKinds: ["data", "text", "url"] },
+        attachmentCapabilities: {
+          supportedFileSourceKinds: ["data", "text", "url"],
+          supportedImageSourceKinds: ["data", "url"],
+          supportedModalities: ["document"]
+        },
         messageInput: {
           refs: [{ name: "spec.pdf", source, type: "file-attachment" }],
           text: "Review"
@@ -1548,7 +1558,11 @@ test("composer submission capability rejects provider-unsupported file sources",
     refs: [
       {
         name: "spec.pdf",
-        source: { kind: "url", url: "https://example.com/spec.pdf" },
+        source: {
+          kind: "url",
+          mimeType: "application/pdf",
+          url: "https://example.com/spec.pdf"
+        },
         type: "file-attachment"
       }
     ],
@@ -1556,14 +1570,22 @@ test("composer submission capability rejects provider-unsupported file sources",
   }
   assert.deepEqual(
     resolveJingleAgentComposerSubmissionAvailability({
-      attachmentCapabilities: { supportedFileSourceKinds: ["data", "file-id", "text"] },
+      attachmentCapabilities: {
+        supportedFileSourceKinds: ["data", "file-id", "text"],
+        supportedImageSourceKinds: ["data"],
+        supportedModalities: ["document"]
+      },
       messageInput: urlInput
     }),
     { reason: "provider_file_url_unsupported", type: "unavailable" }
   )
   assert.deepEqual(
     resolveJingleAgentComposerSubmissionAvailability({
-      attachmentCapabilities: { supportedFileSourceKinds: ["data", "text", "url"] },
+      attachmentCapabilities: {
+        supportedFileSourceKinds: ["data", "text", "url"],
+        supportedImageSourceKinds: ["data", "url"],
+        supportedModalities: ["document"]
+      },
       messageInput: urlInput
     }),
     { type: "ready" }

@@ -478,6 +478,7 @@ export class AgentController {
       case "provider_file_id_unsupported":
       case "provider_file_text_unsupported":
       case "provider_file_url_unsupported":
+      case "model_attachment_modality_unsupported":
         return "INVALID_ARGUMENT"
       case "queue_item_not_found":
         return "NOT_FOUND"

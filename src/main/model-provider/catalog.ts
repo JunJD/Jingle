@@ -1,4 +1,4 @@
-import type { ModelConfig, ProviderDefinition, ProviderId } from "./types"
+import type { ModelAttachmentModality, ModelConfig, ProviderDefinition, ProviderId } from "./types"
 import { listCustomProviderDefinitions, listCustomProviderModels } from "./custom-providers"
 import {
   listDeclarativeProviderDefinitions,
@@ -10,6 +10,30 @@ import { listRegistryModels, listRegistryProviderDefinitions } from "./registry"
 const MODEL_ID_SEPARATOR = ":"
 const LLM_MODEL_TYPE = "llm"
 export const API_KEY_CREDENTIAL_VARIABLE = "apiKey"
+
+const ATTACHMENT_MODALITIES_BY_MODEL_ID = new Map<string, readonly ModelAttachmentModality[]>([
+  ["anthropic:claude-opus-4-5-20251101", ["vision"]],
+  ["anthropic:claude-sonnet-4-5-20250929", ["vision"]],
+  ["anthropic:claude-haiku-4-5-20251001", ["vision"]],
+  ["anthropic:claude-opus-4-1-20250805", ["vision"]],
+  ["anthropic:claude-sonnet-4-20250514", ["vision"]],
+  ["openai:gpt-5.2", ["vision"]],
+  ["openai:gpt-5.1", ["vision"]],
+  ["openai:o3", ["vision"]],
+  ["openai:o4-mini", ["vision"]],
+  ["openai:o1", ["vision"]],
+  ["openai:gpt-4.1", ["vision"]],
+  ["openai:gpt-4.1-mini", ["vision"]],
+  ["openai:gpt-4.1-nano", ["vision"]],
+  ["openai:gpt-4o", ["vision"]],
+  ["openai:gpt-4o-mini", ["vision"]],
+  ["dashscope:qwen3.5-plus", ["vision"]],
+  ["google:gemini-3.1-pro-preview", ["vision"]],
+  ["google:gemini-3-flash-preview", ["vision"]],
+  ["google:gemini-2.5-pro", ["vision"]],
+  ["google:gemini-2.5-flash", ["vision"]],
+  ["google:gemini-2.5-flash-lite", ["vision"]]
+])
 
 export interface ProviderModelId {
   modelName: string
@@ -489,8 +513,14 @@ export function listModelCatalog(): ModelConfig[] {
     ...listRegistryModels()
   ].map((model) => ({
     ...model,
+    features: model.features ?? toCatalogAttachmentModalities(model.id),
     reasoning: model.reasoning ?? modelSupportsReasoning(model.model)
   }))
+}
+
+function toCatalogAttachmentModalities(modelId: string): ModelAttachmentModality[] | undefined {
+  const modalities = ATTACHMENT_MODALITIES_BY_MODEL_ID.get(modelId)
+  return modalities ? [...modalities] : undefined
 }
 
 export function getModelConfig(modelId: string): ModelConfig | undefined {

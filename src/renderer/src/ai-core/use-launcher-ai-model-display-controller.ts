@@ -1,5 +1,6 @@
 import { useHistoryShellStore } from "@/lib/history-shell-store"
-import type { ModelProviderAttachmentCapabilities } from "@shared/app-types"
+import type { ModelAttachmentCapabilities } from "@shared/app-types"
+import { projectModelAttachmentCapabilities } from "@shared/model-attachment-capabilities"
 
 export type LauncherAiModelDisplayProjection =
   | { kind: "configured"; label: string; modelId: string }
@@ -29,7 +30,7 @@ export function useLauncherAiModelDisplayProjection(
 
 export function useModelProviderAttachmentCapabilities(
   modelId: string | null
-): ModelProviderAttachmentCapabilities | null {
+): ModelAttachmentCapabilities | null {
   return useHistoryShellStore((state) => {
     if (modelId === null) {
       return null
@@ -39,9 +40,13 @@ export function useModelProviderAttachmentCapabilities(
     if (!model) {
       return null
     }
-    return (
-      state.providers.find((provider) => provider.id === model.provider)?.attachmentCapabilities ??
-      null
-    )
+    const provider = state.providers.find((candidate) => candidate.id === model.provider)
+    if (!provider) {
+      return null
+    }
+    return projectModelAttachmentCapabilities({
+      features: model.features,
+      transport: provider.attachmentTransportCapabilities
+    })
   })
 }

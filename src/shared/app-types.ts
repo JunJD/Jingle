@@ -65,6 +65,11 @@ export type ModelFeature =
   | "audio"
   | "structured-output"
 
+export type ModelAttachmentModality = Extract<
+  ModelFeature,
+  "audio" | "document" | "video" | "vision"
+>
+
 export type ModelStatus =
   | "active"
   | "no-configure"
@@ -103,8 +108,13 @@ export interface ModelProviderSystemConfiguration {
   enabled: boolean
 }
 
-export interface ModelProviderAttachmentCapabilities {
+export interface ModelProviderAttachmentTransportCapabilities {
   supportedFileSourceKinds: Array<MessageFileSource["kind"]>
+  supportedImageSourceKinds: Array<Extract<MessageFileSource["kind"], "data" | "url">>
+}
+
+export interface ModelAttachmentCapabilities extends ModelProviderAttachmentTransportCapabilities {
+  supportedModalities: ModelAttachmentModality[]
 }
 
 export interface DefaultModels {
@@ -180,7 +190,7 @@ export interface SetDefaultModelOptions extends ModelSelectionOptions {
 }
 
 export interface Provider {
-  attachmentCapabilities: ModelProviderAttachmentCapabilities
+  attachmentTransportCapabilities: ModelProviderAttachmentTransportCapabilities
   configurateMethods: ConfigurationMethod[]
   customConfiguration: ModelProviderCustomConfiguration
   description?: LocalizedText
@@ -226,6 +236,7 @@ export interface ModelProviderState {
 export type CustomProviderEngine = "openai" | "anthropic" | "ollama"
 
 export interface CustomProviderModel {
+  attachment_modalities?: ModelAttachmentModality[]
   context_limit?: number
   max_output_tokens?: number
   name: string
@@ -234,6 +245,7 @@ export interface CustomProviderModel {
 }
 
 export interface CustomProviderModelInput {
+  attachmentModalities?: ModelAttachmentModality[]
   name: string
   reasoningEfforts?: ThinkingEffort[]
 }

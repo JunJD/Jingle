@@ -1,6 +1,7 @@
 import type {
   CustomProviderEngine,
   CustomProviderInput,
+  ModelAttachmentModality,
   ProviderId,
   ThinkingEffort
 } from "@shared/app-types"
@@ -35,9 +36,13 @@ export function projectReasoningEffortSelection(input: {
 export function projectCustomProviderModelInputs(input: {
   engine: CustomProviderEngine
   modelEfforts: Record<string, ThinkingEffort[]>
+  modelModalities: Record<string, ModelAttachmentModality[]>
   modelNames: string[]
 }): CustomProviderInput["models"] {
   return input.modelNames.map((name) => ({
+    attachmentModalities: input.modelModalities[name]?.length
+      ? [...input.modelModalities[name]]
+      : undefined,
     name,
     reasoningEfforts:
       input.engine === "openai" && input.modelEfforts[name]?.length

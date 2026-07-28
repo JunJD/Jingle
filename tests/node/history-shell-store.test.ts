@@ -26,8 +26,9 @@ function createThread(id: string, overrides: Partial<Thread> = {}): Thread {
 
 function createProvider(overrides: Partial<Provider> = {}): Provider {
   return {
-    attachmentCapabilities: {
-      supportedFileSourceKinds: ["data", "file-id", "text"]
+    attachmentTransportCapabilities: {
+      supportedFileSourceKinds: ["data", "file-id", "text"],
+      supportedImageSourceKinds: ["data"]
     },
     configurateMethods: ["fetch-from-remote"],
     customConfiguration: {

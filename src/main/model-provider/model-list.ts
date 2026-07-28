@@ -147,6 +147,7 @@ function toModelConfig(providerId: ProviderId, remoteModel: RemoteModel): ModelC
     contextLimit: localModel?.contextLimit,
     description: localModel?.description ?? remoteModel.description,
     fetchFrom: "fetch-from-remote",
+    features: localModel?.features,
     id,
     maxOutputTokens: localModel?.maxOutputTokens,
     model: remoteModel.id,

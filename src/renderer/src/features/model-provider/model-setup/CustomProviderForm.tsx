@@ -13,6 +13,7 @@ import type {
   CustomProviderConfig,
   CustomProviderEngine,
   CustomProviderInput,
+  ModelAttachmentModality,
   ModelProviderPaths,
   ThinkingEffort
 } from "@shared/app-types"
@@ -34,6 +35,7 @@ interface CustomProviderFormState {
   errorText: string | null
   headers: CustomProviderHeaderDraft[]
   modelEfforts: Record<string, ThinkingEffort[]>
+  modelModalities: Record<string, ModelAttachmentModality[]>
   modelsText: string
   newHeaderKey: string
   newHeaderValue: string
@@ -61,6 +63,12 @@ type CustomProviderFormAction =
       effort: ThinkingEffort
       modelName: string
     }
+  | {
+      type: "toggle-model-modality"
+      checked: boolean
+      modality: ModelAttachmentModality
+      modelName: string
+    }
   | { type: "add-header"; header: CustomProviderHeaderDraft }
   | { type: "remove-header"; key: string }
   | { type: "submit-start" }
@@ -76,6 +84,13 @@ const CUSTOM_REASONING_EFFORT_OPTIONS = [
   "xhigh",
   "max"
 ] satisfies ThinkingEffort[]
+
+const CUSTOM_ATTACHMENT_MODALITY_OPTIONS = [
+  ["vision", "Images"],
+  ["document", "Documents"],
+  ["audio", "Audio"],
+  ["video", "Video"]
+] as const satisfies ReadonlyArray<readonly [ModelAttachmentModality, string]>
 
 function createCustomProviderFormState(
   initialProvider: CustomProviderConfig | undefined
@@ -95,6 +110,11 @@ function createCustomProviderFormState(
     modelEfforts: Object.fromEntries(
       (initialProvider?.models ?? []).flatMap((model) =>
         model.reasoning_efforts ? [[model.name, [...model.reasoning_efforts]]] : []
+      )
+    ),
+    modelModalities: Object.fromEntries(
+      (initialProvider?.models ?? []).flatMap((model) =>
+        model.attachment_modalities ? [[model.name, [...model.attachment_modalities]]] : []
       )
     ),
     modelsText: initialProvider ? initialProvider.models.map((model) => model.name).join(", ") : "",
@@ -146,6 +166,21 @@ function customProviderFormReducer(
         ...state,
         modelEfforts: {
           ...state.modelEfforts,
+          [action.modelName]: next
+        }
+      }
+    }
+    case "toggle-model-modality": {
+      const current = state.modelModalities[action.modelName] ?? []
+      const next = action.checked
+        ? CUSTOM_ATTACHMENT_MODALITY_OPTIONS.map(([modality]) => modality).filter(
+            (modality) => modality === action.modality || current.includes(modality)
+          )
+        : current.filter((modality) => modality !== action.modality)
+      return {
+        ...state,
+        modelModalities: {
+          ...state.modelModalities,
           [action.modelName]: next
         }
       }
@@ -216,6 +251,7 @@ export function CustomProviderForm(props: {
     errorText,
     headers,
     modelEfforts,
+    modelModalities,
     modelsText,
     newHeaderKey,
     newHeaderValue,
@@ -277,7 +313,12 @@ export function CustomProviderForm(props: {
         displayName,
         engine,
         headers: Object.fromEntries(headers.map((header) => [header.key, header.value])),
-        models: projectCustomProviderModelInputs({ engine, modelEfforts, modelNames }),
+        models: projectCustomProviderModelInputs({
+          engine,
+          modelEfforts,
+          modelModalities,
+          modelNames
+        }),
         providerId: initialProvider?.name,
         requiresAuth,
         supportsStreaming
@@ -397,6 +438,45 @@ export function CustomProviderForm(props: {
                             }
                           />
                           {effort}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </SettingsField>
+          ) : null}
+          {modelNames.length > 0 ? (
+            <SettingsField label="Attachment modalities">
+              <div className="divide-y divide-border border-y border-border">
+                {modelNames.map((modelName) => (
+                  <div
+                    key={modelName}
+                    className="grid gap-[var(--jingle-space-2)] py-[var(--jingle-space-3)] sm:grid-cols-[minmax(8rem,0.45fr)_minmax(0,1fr)] sm:items-start"
+                  >
+                    <span className="truncate [font-size:var(--jingle-font-body)] text-foreground">
+                      {modelName}
+                    </span>
+                    <div className="flex flex-wrap gap-x-[var(--jingle-space-3)] gap-y-[var(--jingle-space-2)]">
+                      {CUSTOM_ATTACHMENT_MODALITY_OPTIONS.map(([modality, label]) => (
+                        <label
+                          key={modality}
+                          className="inline-flex min-h-8 items-center gap-[var(--jingle-space-1)] [font-size:var(--jingle-font-meta)] text-muted-foreground"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={modelModalities[modelName]?.includes(modality) ?? false}
+                            className="h-4 w-4 accent-accent"
+                            onChange={(event) =>
+                              dispatchForm({
+                                checked: event.target.checked,
+                                modality,
+                                modelName,
+                                type: "toggle-model-modality"
+                              })
+                            }
+                          />
+                          {label}
                         </label>
                       ))}
                     </div>

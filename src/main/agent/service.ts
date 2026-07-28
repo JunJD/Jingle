@@ -1,9 +1,6 @@
-import { isDeepStrictEqual } from "node:util"
 import {
   normalizeComposerMessageRefs,
   summarizeMessageContent,
-  toAgentMessageContentWithRefs,
-  toMessageContent,
   type AgentInvokeMessage
 } from "@shared/message-content"
 import {
@@ -76,8 +73,7 @@ import {
   requirePersistedModelRuntimeSelection,
   type RunModelRuntimeSelectionResumeAdmission
 } from "../model-provider/runtime-selection-admission"
-import { getProviderAdapter } from "../model-provider/adapters"
-import { resolveModelRuntimeConfig } from "../model-provider/resolver"
+import { resolveModelAttachmentCapabilities } from "../model-provider/attachment-capabilities"
 import { resolveJingleWorkspaceIdentity } from "../workspace/identity"
 import { getAgentConfig } from "../preferences"
 import {
@@ -104,6 +100,7 @@ import type { AgentCommandOutcome } from "@shared/agent-command"
 import type { DurableWindowCallerLease } from "../windows/window-identity"
 import type { ComputerUseActionApprovalAdmission } from "../computer-use/runtime"
 import { ComputerUseRuntime } from "../computer-use/runtime"
+import { getCanonicalAttachmentMessageError } from "./attachment-admission"
 
 export type AgentStreamPayload =
   | { type: "done" }
@@ -193,29 +190,6 @@ function requireResumeExecutionModelRuntimeSelection(
 const DEFAULT_AGENT_EXTENSION_REGISTRY_READER: AgentExtensionRegistryReader = {
   listManifests: () => listNativeExtensionManifests(process.platform),
   readMainDefinitionSnapshot: readNativeExtensionMainDefinitionRegistrySnapshot
-}
-
-function getCanonicalFileAttachmentMessageError(
-  message: AgentInvokeMessage,
-  refs: ReturnType<typeof normalizeComposerMessageRefs>
-): string | null {
-  const hasFileContent =
-    Array.isArray(message.content) && message.content.some((block) => block.type === "file")
-  const hasFileRefs = refs.some((ref) => ref.type === "file-attachment")
-  if (!hasFileContent && !hasFileRefs) {
-    return null
-  }
-  if (typeof message.composerText !== "string") {
-    return "Composer text is required for file attachments."
-  }
-
-  const canonicalContent = toAgentMessageContentWithRefs(
-    toMessageContent({ refs, text: message.composerText }),
-    refs
-  )
-  return isDeepStrictEqual(message.content, canonicalContent)
-    ? null
-    : "File attachment content does not match canonical composer references."
 }
 
 interface ActiveAgentServiceRun {
@@ -1115,19 +1089,14 @@ export class AgentService {
         metadata: parsePersistedMetadata(channel, thread.metadata),
         owner: "thread"
       })
-      activeRun.attachmentCapabilities = getProviderAdapter(
-        resolveModelRuntimeConfig({ selection }).providerId
-      ).attachmentCapabilities
+      activeRun.attachmentCapabilities = resolveModelAttachmentCapabilities(selection.modelId)
       const normalizedRefs = normalizeComposerMessageRefs(message.refs)
-      const canonicalFileAttachmentMessageError = getCanonicalFileAttachmentMessageError(
-        message,
-        normalizedRefs
-      )
-      if (canonicalFileAttachmentMessageError) {
+      const canonicalAttachmentMessageError = getCanonicalAttachmentMessageError(message)
+      if (canonicalAttachmentMessageError) {
         throw new JingleIpcError({
           channel,
           code: "INVALID_ARGUMENT",
-          message: canonicalFileAttachmentMessageError
+          message: canonicalAttachmentMessageError
         })
       }
       const submissionAvailability = resolveJingleAgentComposerSubmissionAvailability({
@@ -1627,8 +1596,7 @@ export class AgentService {
       })
       const selection = modelRuntimeSelectionAdmission?.selection ?? null
       activeRun.attachmentCapabilities = selection
-        ? getProviderAdapter(resolveModelRuntimeConfig({ selection }).providerId)
-            .attachmentCapabilities
+        ? resolveModelAttachmentCapabilities(selection.modelId)
         : null
       options?.onCoreAdmitted?.()
       const permissionMode = readRunPermissionModeSnapshot(sourceRun)
@@ -1942,7 +1910,7 @@ export class AgentService {
     const runtimeRun = activeRun.run
     const activeRunId = runtimeRun?.runId ?? null
 
-    if (!runtimeRun || !activeRun.attachmentCapabilities) {
+    if (!runtimeRun) {
       return { reason: "no_active_run", type: "rejected" }
     }
 
@@ -1969,7 +1937,7 @@ export class AgentService {
     }
 
     const normalizedRefs = normalizeComposerMessageRefs(message.refs)
-    if (getCanonicalFileAttachmentMessageError(message, normalizedRefs)) {
+    if (getCanonicalAttachmentMessageError(message)) {
       return {
         reason: "invalid_message",
         runId: activeRunId,

@@ -44,6 +44,7 @@ export function listDeclarativeProviderModels(): ModelConfig[] {
       contextLimit: model.context_limit,
       description: provider.description,
       fetchFrom: "customizable-model" as const,
+      features: model.attachment_modalities,
       id: `${provider.name}:${model.name}`,
       maxOutputTokens: model.max_output_tokens,
       model: model.name,

@@ -3,7 +3,7 @@ import {
   resolveJingleAgentComposerSubmissionAvailability,
   type JingleAgentComposerSubmissionUnavailableReason
 } from "@jingle/agent-client"
-import type { ModelProviderAttachmentCapabilities } from "@shared/app-types"
+import type { ModelAttachmentCapabilities } from "@shared/app-types"
 import {
   resolveComposerMessageReplay,
   type ComposerMessageInput,
@@ -136,7 +136,7 @@ function areComposerMessageInputsEqual(
 export function projectComposerHistory(
   messages: readonly Pick<Message, "content" | "metadata" | "role">[],
   maxEntries = MAX_COMPOSER_HISTORY_ENTRIES,
-  attachmentCapabilities: ModelProviderAttachmentCapabilities | null = null
+  attachmentCapabilities: ModelAttachmentCapabilities | null = null
 ): ComposerMessageInput[] {
   return projectComposerHistoryEntries(messages, Number.MAX_SAFE_INTEGER, attachmentCapabilities)
     .flatMap((entry) => (entry.type === "ready" ? [entry.input] : []))
@@ -146,7 +146,7 @@ export function projectComposerHistory(
 export function projectComposerHistoryEntries(
   messages: readonly Pick<Message, "content" | "metadata" | "role">[],
   maxEntries = MAX_COMPOSER_HISTORY_ENTRIES,
-  attachmentCapabilities: ModelProviderAttachmentCapabilities | null = null
+  attachmentCapabilities: ModelAttachmentCapabilities | null = null
 ): ComposerHistoryEntry[] {
   const entries: ComposerHistoryEntry[] = []
 
