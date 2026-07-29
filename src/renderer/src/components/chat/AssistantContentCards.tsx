@@ -42,9 +42,11 @@ function syncIssueMessage(issue: ContentSyncIssue, copy: AppCopy["chat"]): strin
 
 function ContentSyncIssueNotice(props: { issue: ContentSyncIssue }): React.JSX.Element {
   const { copy } = useI18n()
+  const detail = props.issue.code === "transport-failure" ? null : props.issue.detail
   return (
     <p className="mt-2 text-[var(--jingle-font-meta)] text-destructive" role="alert">
       {syncIssueMessage(props.issue, copy.chat)}
+      {detail ? <span className="mt-1 block break-words font-mono">{detail}</span> : null}
     </p>
   )
 }

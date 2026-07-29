@@ -60,6 +60,11 @@ export const assistantContentPartIdentitySchema = partBaseSchema.extend({
 
 const assistantContentRevisionSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
 const assistantContentProjectionFingerprintSchema = z.string().regex(/^fnv1a64:[a-f0-9]{16}$/)
+export const ASSISTANT_CONTENT_PROJECTION_ERROR_MAX_LENGTH = 512
+export const assistantContentProjectionErrorDetailSchema = z
+  .string()
+  .min(1)
+  .max(ASSISTANT_CONTENT_PROJECTION_ERROR_MAX_LENGTH)
 
 export const assistantContentPartsProjectionSchema = z.object({
   contentRevision: assistantContentRevisionSchema,
@@ -141,6 +146,7 @@ export const assistantContentPartsResultSchema = z.discriminatedUnion("status", 
       issue: z
         .object({
           code: z.literal("source-invalid"),
+          detail: assistantContentProjectionErrorDetailSchema,
           reason: assistantContentProjectionBlockedReasonSchema
         })
         .strict(),
@@ -152,6 +158,7 @@ export const assistantContentPartsResultSchema = z.discriminatedUnion("status", 
       issue: z
         .object({
           code: z.literal("retryable-failure"),
+          detail: assistantContentProjectionErrorDetailSchema,
           reason: assistantContentProjectionRetryableFailureCodeSchema
         })
         .strict(),
@@ -163,6 +170,7 @@ export const assistantContentPartsResultSchema = z.discriminatedUnion("status", 
       issue: z
         .object({
           code: z.literal("retry-exhausted"),
+          detail: assistantContentProjectionErrorDetailSchema,
           reason: assistantContentProjectionRetryableFailureCodeSchema
         })
         .strict(),
@@ -174,6 +182,7 @@ export const assistantContentPartsResultSchema = z.discriminatedUnion("status", 
       issue: z
         .object({
           code: z.literal("terminal-failure"),
+          detail: assistantContentProjectionErrorDetailSchema,
           reason: assistantContentProjectionTerminalFailureCodeSchema
         })
         .strict(),

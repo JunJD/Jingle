@@ -30,13 +30,17 @@ import {
 } from "../../src/main/db/assistant-content-projection-jobs"
 import { ContentCardsService } from "../../src/main/content-cards/service"
 import {
-  ASSISTANT_CONTENT_PROJECTION_ERROR_MAX_LENGTH,
+  ASSISTANT_CONTENT_PROJECTION_ERROR_FALLBACK,
   ASSISTANT_CONTENT_PROJECTION_MAX_ATTEMPTS,
   AssistantContentProjectionFailureError
 } from "../../src/main/content-cards/projection-error"
 import { assistantContentProjectionEvents } from "../../src/main/content-cards/events"
 import { createContentCardId } from "../../src/shared/content-card"
-import { assistantContentProjectionFingerprint } from "../../src/shared/assistant-content-part"
+import {
+  ASSISTANT_CONTENT_PROJECTION_ERROR_MAX_LENGTH,
+  assistantContentProjectionFingerprint,
+  assistantContentPartsResultSchema
+} from "../../src/shared/assistant-content-part"
 
 const repoRoot = process.cwd()
 const originalJingleHome = process.env.JINGLE_HOME
@@ -282,7 +286,11 @@ test("transient projection writes remain durable and retry without changing the 
       threadId: "thread-content-projection-failure"
     }),
     {
-      issue: { code: "retryable-failure", reason: "persistence-unavailable" },
+      issue: {
+        code: "retryable-failure",
+        detail: failedJob!.lastError!,
+        reason: "persistence-unavailable"
+      },
       status: "failed"
     }
   )
@@ -520,9 +528,60 @@ test("unknown projection failures park terminally with bounded redacted diagnost
   assert.ok(failureSummary.length <= ASSISTANT_CONTENT_PROJECTION_ERROR_MAX_LENGTH)
   assert.doesNotMatch(failureSummary, /very-secret|\/Users\/example/)
   assert.match(failureSummary, /REDACTED/)
+  const serviceResult = assistantContentPartsResultSchema.parse(
+    await new ContentCardsService().getAssistantParts({
+      messageId: "assistant-message-redaction",
+      threadId: "thread-content-projection-redaction"
+    })
+  )
+  assert.equal(serviceResult.status, "parked")
+  if (serviceResult.status === "parked") {
+    assert.equal(serviceResult.issue.detail, failureSummary)
+    assert.doesNotMatch(serviceResult.issue.detail, /very-secret|\/Users\/example/)
+    assert.match(serviceResult.issue.detail, /REDACTED/)
+  }
   await getPrismaClient().assistantContentProjectionJob.delete({
     where: { runId: "run-content-projection-redaction" }
   })
+})
+
+test("empty projection errors persist a typed non-empty service fallback", async () => {
+  const { createRun, createThread, persistMessageStateVersion } = await loadDb()
+  const threadId = "thread-content-projection-empty-error"
+  const runId = "run-content-projection-empty-error"
+  const messageId = "assistant-message-empty-error"
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "success" })
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-empty-error",
+    checkpointNs: "",
+    messages: [{ ...assistantItem("raw-empty-error", null), messageId }],
+    runId,
+    threadId,
+    version: "1"
+  })
+
+  assert.equal(await markAssistantContentProjectionDirty(runId), true)
+  const claim = await claimAssistantContentProjection(runId)
+  assert.ok(claim)
+  await failAssistantContentProjection(claim, new Error(""))
+  assert.equal(
+    (await readAssistantContentProjectionJob(runId))?.lastError,
+    ASSISTANT_CONTENT_PROJECTION_ERROR_FALLBACK
+  )
+  assert.deepEqual(
+    assistantContentPartsResultSchema.parse(
+      await new ContentCardsService().getAssistantParts({ messageId, threadId })
+    ),
+    {
+      issue: {
+        code: "terminal-failure",
+        detail: ASSISTANT_CONTENT_PROJECTION_ERROR_FALLBACK,
+        reason: "unexpected"
+      },
+      status: "parked"
+    }
+  )
 })
 
 test("retryable projection failures exhaust the durable attempt budget without restart reset", async () => {
@@ -577,7 +636,11 @@ test("retryable projection failures exhaust the durable attempt budget without r
       threadId
     }),
     {
-      issue: { code: "retry-exhausted", reason: "persistence-unavailable" },
+      issue: {
+        code: "retry-exhausted",
+        detail: "temporary projection store failure",
+        reason: "persistence-unavailable"
+      },
       status: "exhausted"
     }
   )
@@ -1266,7 +1329,14 @@ test("a malformed assistant message blocks once while valid siblings remain repa
       messageId: "assistant-message-core-boundary-good",
       threadId: "thread-content-projection-core-boundary"
     }),
-    { issue: { code: "source-invalid", reason: "invalid-json" }, status: "blocked" }
+    {
+      issue: {
+        code: "source-invalid",
+        detail: "Assistant content projection rejected invalid-json persisted content.",
+        reason: "invalid-json"
+      },
+      status: "blocked"
+    }
   )
   assert.equal(
     (await readAssistantContentProjectionJob("run-content-projection-core-boundary"))?.attemptCount,
@@ -1439,7 +1509,11 @@ test("malformed input stays hidden without replacing durable card or annotation 
   assert.deepEqual(blockedEvents, [{ revision: "job:1:2", status: "blocked" }])
   assert.deepEqual(await Promise.all(blockedStatesAtDelivery), ["blocked"])
   assert.deepEqual(await new ContentCardsService().getAssistantParts({ messageId, threadId }), {
-    issue: { code: "source-invalid", reason: "invalid-json" },
+    issue: {
+      code: "source-invalid",
+      detail: "Assistant content projection rejected invalid-json persisted content.",
+      reason: "invalid-json"
+    },
     status: "blocked"
   })
   assert.equal((await readAssistantContentProjectionJob(runId))?.attemptCount, 2)
@@ -1716,7 +1790,11 @@ test("content-card hydrate uses canonical facts when the derived message is miss
     { messageId, status: "stale" }
   ])
   assert.deepEqual(await service.getAssistantParts({ messageId, threadId }), {
-    issue: { code: "source-invalid", reason: "invalid-json" },
+    issue: {
+      code: "source-invalid",
+      detail: "Assistant content projection rejected invalid-json persisted content.",
+      reason: "invalid-json"
+    },
     status: "blocked"
   })
 })

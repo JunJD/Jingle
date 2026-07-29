@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto"
 import { Prisma } from "@prisma/client"
+import { ASSISTANT_CONTENT_PROJECTION_ERROR_MAX_LENGTH } from "@shared/assistant-content-part"
 import { sanitizeDiagnosticText } from "../diagnostics/redaction"
 
-export const ASSISTANT_CONTENT_PROJECTION_ERROR_MAX_LENGTH = 512
-
 export const ASSISTANT_CONTENT_PROJECTION_MAX_ATTEMPTS = 4
+export const ASSISTANT_CONTENT_PROJECTION_ERROR_FALLBACK =
+  "Assistant content projection failed without a diagnostic message."
 
 export type ProjectionFailure =
   | {
@@ -102,9 +103,10 @@ export function assistantContentProjectionFailureCause(error: unknown): unknown 
 
 export function summarizeAssistantContentProjectionError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
-  return sanitizeDiagnosticText(
+  const sanitized = sanitizeDiagnosticText(
     message,
     ASSISTANT_CONTENT_PROJECTION_ERROR_MAX_LENGTH,
     "projectionError"
   )
+  return sanitized.trim() ? sanitized : ASSISTANT_CONTENT_PROJECTION_ERROR_FALLBACK
 }

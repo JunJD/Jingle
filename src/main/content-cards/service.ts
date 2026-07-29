@@ -1,5 +1,6 @@
 import {
   assistantContentProjectionBlockedReasonSchema,
+  assistantContentProjectionErrorDetailSchema,
   assistantContentProjectionRetryableFailureCodeSchema,
   assistantContentProjectionJobStatusSchema,
   assistantContentProjectionTerminalFailureCodeSchema,
@@ -37,6 +38,7 @@ interface ProjectionJobSnapshot {
     sourceRevision: string
   }>
   failureCode: string | null
+  lastError: string | null
   status: ReturnType<typeof assistantContentProjectionJobStatusSchema.parse>
 }
 
@@ -44,6 +46,7 @@ function parseProjectionJobSnapshot(
   job: {
     blockedInputs: Array<{ messageId: string; reason: string; sourceRevision: string }>
     failureCode: string | null
+    lastError: string | null
     status: string
   } | null
 ): ProjectionJobSnapshot | null {
@@ -54,6 +57,7 @@ function parseProjectionJobSnapshot(
       reason: assistantContentProjectionBlockedReasonSchema.parse(input.reason)
     })),
     failureCode: job.failureCode,
+    lastError: job.lastError,
     status: assistantContentProjectionJobStatusSchema.parse(job.status)
   }
 }
@@ -143,6 +147,7 @@ export class ContentCardsService {
                   select: { messageId: true, reason: true, sourceRevision: true }
                 },
                 failureCode: true,
+                lastError: true,
                 status: true
               },
               where: { runId: message.run_id }
@@ -193,6 +198,7 @@ export class ContentCardsService {
       return {
         issue: {
           code: "retryable-failure",
+          detail: assistantContentProjectionErrorDetailSchema.parse(inspection.job.lastError),
           reason: assistantContentProjectionRetryableFailureCodeSchema.parse(
             inspection.job.failureCode
           )
@@ -204,6 +210,7 @@ export class ContentCardsService {
       return {
         issue: {
           code: "retry-exhausted",
+          detail: assistantContentProjectionErrorDetailSchema.parse(inspection.job.lastError),
           reason: assistantContentProjectionRetryableFailureCodeSchema.parse(
             inspection.job.failureCode
           )
@@ -215,6 +222,7 @@ export class ContentCardsService {
       return {
         issue: {
           code: "terminal-failure",
+          detail: assistantContentProjectionErrorDetailSchema.parse(inspection.job.lastError),
           reason: assistantContentProjectionTerminalFailureCodeSchema.parse(
             inspection.job.failureCode
           )
@@ -249,7 +257,11 @@ export class ContentCardsService {
         throw new Error("Blocked assistant content projection has no durable blocked input.")
       }
       return {
-        issue: { code: "source-invalid", reason: persistedBlockedInput.reason },
+        issue: {
+          code: "source-invalid",
+          detail: assistantContentProjectionErrorDetailSchema.parse(inspection.job.lastError),
+          reason: persistedBlockedInput.reason
+        },
         status: "blocked"
       }
     }

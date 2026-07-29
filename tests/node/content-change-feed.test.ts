@@ -192,28 +192,45 @@ test("content change codecs reject unknown and malformed wire data", () => {
   )
   assert.equal(
     assistantContentPartsResultSchema.safeParse({
-      issue: { code: "source-invalid", reason: "noncanonical" },
+      issue: {
+        code: "source-invalid",
+        detail: "Assistant content projection rejected noncanonical persisted content.",
+        reason: "noncanonical"
+      },
       status: "blocked"
     }).success,
     true
   )
   assert.equal(
     assistantContentPartsResultSchema.safeParse({
-      issue: { code: "retryable-failure", message: "raw database error" },
+      issue: {
+        code: "retryable-failure",
+        detail: "Database unavailable.",
+        message: "raw database error",
+        reason: "persistence-unavailable"
+      },
       status: "failed"
     }).success,
     false
   )
   assert.equal(
     assistantContentPartsResultSchema.safeParse({
-      issue: { code: "retry-exhausted", reason: "persistence-unavailable" },
+      issue: {
+        code: "retry-exhausted",
+        detail: "Database unavailable.",
+        reason: "persistence-unavailable"
+      },
       status: "exhausted"
     }).success,
     true
   )
   assert.equal(
     assistantContentPartsResultSchema.safeParse({
-      issue: { code: "terminal-failure", reason: "unexpected" },
+      issue: {
+        code: "terminal-failure",
+        detail: "Projection failed unexpectedly.",
+        reason: "unexpected"
+      },
       status: "parked"
     }).success,
     true
