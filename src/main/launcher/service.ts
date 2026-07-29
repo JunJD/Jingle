@@ -34,6 +34,10 @@ export interface LauncherRuntime {
   openMainWindow: (threadId: string) => void
 }
 
+export interface LauncherDiagnosticsLogger {
+  error(summary: "Launcher action projection failed", fields: Readonly<{ error: unknown }>): void
+}
+
 async function openLauncherPath(
   path: string,
   kind: "application" | "file" | "directory"
@@ -225,7 +229,8 @@ export class LauncherService {
   constructor(
     private readonly launcherHistoryService: LauncherHistoryService,
     private readonly localStartService: LocalStartService,
-    private readonly runtime: LauncherRuntime
+    private readonly runtime: LauncherRuntime,
+    private readonly diagnosticsLogger: LauncherDiagnosticsLogger
   ) {}
 
   getClipboardContext(): ClipboardContext {
@@ -271,10 +276,14 @@ export class LauncherService {
     } else {
       await launcherActionExecutors[action.executor](action)
     }
-    await applyLauncherActionSideEffects(
-      action,
-      this.launcherHistoryService,
-      this.localStartService
-    )
+    try {
+      await applyLauncherActionSideEffects(
+        action,
+        this.launcherHistoryService,
+        this.localStartService
+      )
+    } catch (error) {
+      this.diagnosticsLogger.error("Launcher action projection failed", { error })
+    }
   }
 }

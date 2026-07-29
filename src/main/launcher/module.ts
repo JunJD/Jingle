@@ -1,5 +1,6 @@
 import type { IpcMain } from "electron"
 import { instanceCachingFactory, type DependencyContainer } from "tsyringe"
+import { diagnosticsLogger } from "../diagnostics/instance"
 import { LauncherHistoryService } from "../launcher-history/service"
 import { LocalStartService } from "../local-start/service"
 import { LauncherController } from "./controller"
@@ -17,7 +18,8 @@ export function registerLauncherModule(
       return new LauncherService(
         dependencyContainer.resolve(LauncherHistoryService),
         dependencyContainer.resolve(LocalStartService),
-        dependencyContainer.resolve(LAUNCHER_RUNTIME_TOKEN)
+        dependencyContainer.resolve(LAUNCHER_RUNTIME_TOKEN),
+        diagnosticsLogger
       )
     })
   })
