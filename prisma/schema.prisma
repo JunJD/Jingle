@@ -272,6 +272,7 @@ model AssistantContentProjectionBlockedInput {
   messageId      String @map("message_id")
   sourceRevision String @map("source_revision")
   reason         String
+  detail         String
   job            AssistantContentProjectionJob @relation(fields: [runId], references: [runId], onDelete: Cascade)
 
   @@id([runId, messageId])

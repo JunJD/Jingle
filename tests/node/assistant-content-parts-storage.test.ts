@@ -1198,6 +1198,86 @@ test("recovery collapses ten thousand deferred jobs into one earliest retry dead
   await prisma.thread.delete({ where: { threadId } })
 })
 
+test("blocked projection details remain owned by each malformed message", async () => {
+  const { createRun, createThread, getPrismaClient, persistMessageStateVersion } = await loadDb()
+  const threadId = "thread-content-projection-blocked-details"
+  const runId = "run-content-projection-blocked-details"
+  const invalidJsonMessageId = "assistant-message-blocked-invalid-json"
+  const noncanonicalMessageId = "assistant-message-blocked-noncanonical"
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "success" })
+  await persistMessageStateVersion({
+    checkpointId: "checkpoint-blocked-details",
+    checkpointNs: "",
+    messages: [
+      { ...assistantItem("raw-blocked-invalid-json", null), messageId: invalidJsonMessageId },
+      {
+        ...assistantItem("raw-blocked-noncanonical", null),
+        messageId: noncanonicalMessageId,
+        order: 2
+      }
+    ],
+    runId,
+    threadId,
+    version: "1"
+  })
+  await overwriteCanonicalMessageContent({
+    content: "{",
+    messageId: invalidJsonMessageId,
+    threadId
+  })
+  await overwriteCanonicalMessageContent({
+    content: JSON.stringify([{ content: "legacy raw payload", type: "text" }]),
+    messageId: noncanonicalMessageId,
+    threadId
+  })
+
+  await enqueueAssistantContentProjection({ runId })
+  await flushAssistantContentProjection()
+
+  const job = await readAssistantContentProjectionJob(runId)
+  assert.equal(job?.status, "blocked")
+  assert.equal(job?.lastError, null)
+  assert.deepEqual(
+    await getPrismaClient().assistantContentProjectionBlockedInput.findMany({
+      orderBy: { messageId: "asc" },
+      select: { detail: true, messageId: true, reason: true }
+    }),
+    [
+      {
+        detail: "Assistant content projection rejected invalid-json persisted content.",
+        messageId: invalidJsonMessageId,
+        reason: "invalid-json"
+      },
+      {
+        detail: "Assistant content projection rejected noncanonical persisted content.",
+        messageId: noncanonicalMessageId,
+        reason: "noncanonical"
+      }
+    ]
+  )
+  const service = new ContentCardsService()
+  assert.deepEqual(await service.getAssistantParts({ messageId: invalidJsonMessageId, threadId }), {
+    issue: {
+      code: "source-invalid",
+      detail: "Assistant content projection rejected invalid-json persisted content.",
+      reason: "invalid-json"
+    },
+    status: "blocked"
+  })
+  assert.deepEqual(
+    await service.getAssistantParts({ messageId: noncanonicalMessageId, threadId }),
+    {
+      issue: {
+        code: "source-invalid",
+        detail: "Assistant content projection rejected noncanonical persisted content.",
+        reason: "noncanonical"
+      },
+      status: "blocked"
+    }
+  )
+})
+
 test("a malformed assistant message blocks once while valid siblings remain repairable", async () => {
   const {
     closeDatabase,
@@ -1247,7 +1327,7 @@ test("a malformed assistant message blocks once while valid siblings remain repa
     (job) => job?.status === "blocked"
   )
   assert.equal(blockedJob?.attemptCount, 1)
-  assert.match(blockedJob?.lastError ?? "", /invalid-json/)
+  assert.equal(blockedJob?.lastError, null)
   const blockedInput = await prisma.assistantContentProjectionBlockedInput.findUniqueOrThrow({
     where: {
       runId_messageId: {
@@ -1257,6 +1337,10 @@ test("a malformed assistant message blocks once while valid siblings remain repa
     }
   })
   assert.match(blockedInput.sourceRevision, /^sha256:[a-f0-9]{64}$/)
+  assert.equal(
+    blockedInput.detail,
+    "Assistant content projection rejected invalid-json persisted content."
+  )
   assert.equal(
     await readAssistantContentPartsProjection({
       messageId: "assistant-message-core-boundary-bad",
@@ -1324,18 +1408,14 @@ test("a malformed assistant message blocks once while valid siblings remain repa
       }
     }
   })
-  assert.deepEqual(
-    await new ContentCardsService().getAssistantParts({
-      messageId: "assistant-message-core-boundary-good",
-      threadId: "thread-content-projection-core-boundary"
-    }),
+  await assert.rejects(
+    () =>
+      new ContentCardsService().getAssistantParts({
+        messageId: "assistant-message-core-boundary-good",
+        threadId: "thread-content-projection-core-boundary"
+      }),
     {
-      issue: {
-        code: "source-invalid",
-        detail: "Assistant content projection rejected invalid-json persisted content.",
-        reason: "invalid-json"
-      },
-      status: "blocked"
+      message: "Blocked assistant content projection has no durable blocked input for the message."
     }
   )
   assert.equal(

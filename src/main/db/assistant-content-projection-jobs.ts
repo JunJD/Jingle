@@ -328,15 +328,15 @@ export async function blockAssistantContentProjection(
   claim: AssistantContentProjectionClaim,
   inputs: readonly (AssistantContentProjectionBlockedInput & { error: unknown })[]
 ): Promise<boolean> {
-  const first = inputs[0]
-  if (!first) throw new Error("Assistant content projection cannot block without an input error.")
-  const message = summarizeAssistantContentProjectionError(first.error)
+  if (inputs.length === 0) {
+    throw new Error("Assistant content projection cannot block without an input error.")
+  }
   const timestamp = now()
   return getPrismaClient().$transaction(async (transaction) => {
     const result = await transaction.assistantContentProjectionJob.updateMany({
       data: {
         failureCode: null,
-        lastError: message,
+        lastError: null,
         nextAttemptAt: null,
         status: "blocked",
         updatedAt: timestamp
@@ -349,6 +349,7 @@ export async function blockAssistantContentProjection(
     })
     await transaction.assistantContentProjectionBlockedInput.createMany({
       data: inputs.map((input) => ({
+        detail: summarizeAssistantContentProjectionError(input.error),
         messageId: input.messageId,
         reason: input.reason,
         runId: claim.runId,

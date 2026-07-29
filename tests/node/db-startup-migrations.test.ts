@@ -100,7 +100,7 @@ test("first launch applies packaged Prisma migrations to a fresh database", asyn
   )
   assert.deepEqual(
     blockedInputColumns.map((column) => column.name),
-    ["run_id", "message_id", "source_revision", "reason"]
+    ["run_id", "message_id", "source_revision", "reason", "detail"]
   )
   const retryIndexColumns = await getPrismaClient().$queryRawUnsafe<Array<{ name: string }>>(
     `PRAGMA index_info("idx_assistant_content_projection_jobs_retry_due")`
@@ -183,6 +183,73 @@ test("retry migration parks legacy untyped failures instead of granting a retry 
         nextAttemptAt: null,
         status: "parked"
       }
+    )
+  } finally {
+    database.close()
+  }
+})
+
+test("blocked-input detail migration preserves message ownership and clears job detail", () => {
+  const database = new DatabaseSync(":memory:")
+  try {
+    database.exec(`
+      CREATE TABLE "assistant_content_projection_jobs" (
+        "run_id" TEXT NOT NULL PRIMARY KEY,
+        "status" TEXT NOT NULL,
+        "last_error" TEXT
+      );
+      CREATE TABLE "assistant_content_projection_blocked_inputs" (
+        "run_id" TEXT NOT NULL,
+        "message_id" TEXT NOT NULL,
+        "source_revision" TEXT NOT NULL,
+        "reason" TEXT NOT NULL,
+        PRIMARY KEY ("run_id", "message_id")
+      );
+      INSERT INTO "assistant_content_projection_jobs" ("run_id", "status", "last_error")
+      VALUES ('run-blocked', 'blocked', 'first input detail');
+      INSERT INTO "assistant_content_projection_blocked_inputs"
+        ("run_id", "message_id", "source_revision", "reason")
+      VALUES
+        ('run-blocked', 'message-invalid', 'sha256:invalid', 'invalid-json'),
+        ('run-blocked', 'message-noncanonical', 'sha256:noncanonical', 'noncanonical');
+    `)
+    database.exec(
+      readFileSync(
+        join(
+          repoRoot,
+          "prisma/migrations/20260729234500_bind_projection_block_details_to_messages/migration.sql"
+        ),
+        "utf8"
+      )
+    )
+    const rows = database
+      .prepare(
+        `SELECT message_id AS messageId, reason, detail
+         FROM assistant_content_projection_blocked_inputs ORDER BY message_id`
+      )
+      .all()
+    assert.deepEqual(
+      rows.map((row) => ({ ...row })),
+      [
+        {
+          detail: "Assistant content projection rejected invalid-json persisted content.",
+          messageId: "message-invalid",
+          reason: "invalid-json"
+        },
+        {
+          detail: "Assistant content projection rejected noncanonical persisted content.",
+          messageId: "message-noncanonical",
+          reason: "noncanonical"
+        }
+      ]
+    )
+    assert.equal(
+      (
+        database
+          .prepare(`SELECT last_error AS lastError FROM assistant_content_projection_jobs`)
+          .get() as { lastError: string | null }
+      ).lastError,
+      null
     )
   } finally {
     database.close()

@@ -33,6 +33,7 @@ import {
 
 interface ProjectionJobSnapshot {
   blockedInputs: Array<{
+    detail: string
     messageId: string
     reason: AssistantContentProjectionBlockedReason
     sourceRevision: string
@@ -44,7 +45,12 @@ interface ProjectionJobSnapshot {
 
 function parseProjectionJobSnapshot(
   job: {
-    blockedInputs: Array<{ messageId: string; reason: string; sourceRevision: string }>
+    blockedInputs: Array<{
+      detail: string
+      messageId: string
+      reason: string
+      sourceRevision: string
+    }>
     failureCode: string | null
     lastError: string | null
     status: string
@@ -54,6 +60,7 @@ function parseProjectionJobSnapshot(
   return {
     blockedInputs: job.blockedInputs.map((input) => ({
       ...input,
+      detail: assistantContentProjectionErrorDetailSchema.parse(input.detail),
       reason: assistantContentProjectionBlockedReasonSchema.parse(input.reason)
     })),
     failureCode: job.failureCode,
@@ -144,7 +151,7 @@ export class ContentCardsService {
               select: {
                 blockedInputs: {
                   orderBy: { messageId: "asc" },
-                  select: { messageId: true, reason: true, sourceRevision: true }
+                  select: { detail: true, messageId: true, reason: true, sourceRevision: true }
                 },
                 failureCode: true,
                 lastError: true,
@@ -252,15 +259,16 @@ export class ContentCardsService {
         await resumeAssistantContentProjectionForRepairedSource(inspection.runId, input.messageId)
         return { status: "pending-stream" }
       }
-      const persistedBlockedInput = inspection.job.blockedInputs[0]
-      if (!persistedBlockedInput) {
-        throw new Error("Blocked assistant content projection has no durable blocked input.")
+      if (!blockedInput) {
+        throw new Error(
+          "Blocked assistant content projection has no durable blocked input for the message."
+        )
       }
       return {
         issue: {
           code: "source-invalid",
-          detail: assistantContentProjectionErrorDetailSchema.parse(inspection.job.lastError),
-          reason: persistedBlockedInput.reason
+          detail: blockedInput.detail,
+          reason: blockedInput.reason
         },
         status: "blocked"
       }
