@@ -20,11 +20,7 @@ import {
   type RemoteModel
 } from "./model-list"
 import { modelSupportsReasoning } from "./model-metadata"
-import {
-  createAnthropicChatModel,
-  isAnthropicChatModel,
-  isDeepSeekThinkingModel
-} from "./protocols/anthropic-compatible"
+import { createAnthropicChatModel, isAnthropicChatModel } from "./protocols/anthropic-compatible"
 import { createCodexCliChatModel } from "./protocols/codex-cli"
 import { createGoogleChatModel, isGoogleChatModel } from "./protocols/google"
 import {
@@ -132,8 +128,7 @@ const BUILTIN_PROVIDER_ADAPTERS = {
         apiKey: requireApiKey(runtimeConfig.credentials, runtimeConfig.providerId),
         baseURL: DEEPSEEK_ANTHROPIC_BASE_URL,
         options,
-        runtimeConfig,
-        thinkingMode: isDeepSeekThinkingModel(runtimeConfig.modelName)
+        runtimeConfig
       }),
     fetchModels: (apiKey) =>
       fetchOpenAICompatibleModels("deepseek", `${DEEPSEEK_BASE_URL}/models`, apiKey),

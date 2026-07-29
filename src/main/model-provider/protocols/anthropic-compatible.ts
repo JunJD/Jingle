@@ -14,10 +14,10 @@ export function createAnthropicChatModel(
   input: ProtocolCreateModelInput & {
     apiKey: string
     baseURL?: string
-    thinkingMode?: boolean
   }
 ): ChatAnthropic {
-  const { apiKey, baseURL, headers, options, runtimeConfig, thinkingMode = false } = input
+  const { apiKey, baseURL, headers, options, runtimeConfig } = input
+  const thinkingMode = resolveAnthropicThinkingMode(runtimeConfig)
   const deepSeekThinkingEnabled =
     thinkingMode &&
     runtimeConfig.thinkingEffort !== null &&
@@ -50,6 +50,23 @@ export function createAnthropicChatModel(
       ? {}
       : { temperature: options.temperature })
   })
+}
+
+function resolveAnthropicThinkingMode(
+  runtimeConfig: ProtocolCreateModelInput["runtimeConfig"]
+): boolean {
+  if (runtimeConfig.reasoningEffortTransport === "deepseek-v4") {
+    return true
+  }
+  if (runtimeConfig.reasoningEffortTransport === "anthropic-legacy-budget") {
+    return false
+  }
+  if (runtimeConfig.thinkingEffort !== null && runtimeConfig.thinkingEffort !== undefined) {
+    throw new Error(
+      `Anthropic-compatible model ${runtimeConfig.modelName} has no admitted transport for thinking effort "${runtimeConfig.thinkingEffort}".`
+    )
+  }
+  return false
 }
 
 function createDeepSeekThinking(
@@ -231,14 +248,4 @@ function isAnthropicContentBlock(value: unknown): value is AnthropicContentBlock
 export function isAnthropicChatModel(modelId: string): boolean {
   const normalizedModelId = modelId.toLowerCase()
   return isChatCandidate(normalizedModelId) && normalizedModelId.startsWith("claude-")
-}
-
-export function isDeepSeekThinkingModel(modelId: string): boolean {
-  const normalizedModelId = modelId.toLowerCase()
-
-  return (
-    normalizedModelId === "deepseek-reasoner" ||
-    normalizedModelId.startsWith("deepseek-v4-") ||
-    normalizedModelId.startsWith("deepseek_v4_")
-  )
 }

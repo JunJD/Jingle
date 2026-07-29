@@ -113,6 +113,7 @@ test("openai-compatible chat models can disable parallel tool calls for agent ap
 test("openai-compatible chat models pass thinking effort as reasoning effort", () => {
   const model = createProviderChatModelFromAdapter(
     createRuntimeConfig("openai", "gpt-5.1", {
+      reasoningEffortTransport: "openai-native",
       thinkingEffort: "medium"
     })
   )
@@ -506,9 +507,12 @@ test("stored custom Goose providers preserve dynamic models and env vars", async
   }
 })
 
-test("deepseek chat models use the Anthropic-compatible endpoint for thinking tool calls", () => {
+test("deepseek admitted transport uses the Anthropic-compatible thinking contract", () => {
   const model = createProviderChatModelFromAdapter(
-    createRuntimeConfig("deepseek", "deepseek-v4-pro", { thinkingEffort: "max" }),
+    createRuntimeConfig("deepseek", "deepseek-v4-pro", {
+      reasoningEffortTransport: "deepseek-v4",
+      thinkingEffort: "max"
+    }),
     { parallelToolCalls: false, temperature: 0 }
   )
 
@@ -529,6 +533,7 @@ test("deepseek chat models use the Anthropic-compatible endpoint for thinking to
 test("deepseek fast summaries can disable thinking explicitly", () => {
   const model = createProviderChatModelFromAdapter(
     createRuntimeConfig("deepseek", "deepseek-v4-flash", {
+      reasoningEffortTransport: "deepseek-v4",
       thinkingEffort: "off"
     }),
     { temperature: 0 }
@@ -545,7 +550,10 @@ test("deepseek fast summaries can disable thinking explicitly", () => {
 
 test("deepseek legacy null effort does not enable thinking", () => {
   const model = createProviderChatModelFromAdapter(
-    createRuntimeConfig("deepseek", "deepseek-v4-pro", { thinkingEffort: null }),
+    createRuntimeConfig("deepseek", "deepseek-v4-pro", {
+      reasoningEffortTransport: "deepseek-v4",
+      thinkingEffort: null
+    }),
     { temperature: 0 }
   ) as ChatAnthropic
 
@@ -558,6 +566,7 @@ test("deepseek legacy null effort does not enable thinking", () => {
 test("anthropic chat models pass thinking effort as thinking budget", () => {
   const opusModel = createProviderChatModelFromAdapter(
     createRuntimeConfig("anthropic", "claude-opus-4-1-20250805", {
+      reasoningEffortTransport: "anthropic-legacy-budget",
       thinkingEffort: "high"
     }),
     { temperature: 0 }
@@ -570,6 +579,7 @@ test("anthropic chat models pass thinking effort as thinking budget", () => {
 
   const haikuModel = createProviderChatModelFromAdapter(
     createRuntimeConfig("anthropic", "claude-haiku-4-5-20251001", {
+      reasoningEffortTransport: "anthropic-legacy-budget",
       thinkingEffort: "max"
     }),
     { temperature: 0 }
@@ -595,7 +605,10 @@ test("OpenAI-compatible chat models expose runtime profile limits to middleware"
 
 test("deepseek thinking models replay assistant tool calls with an Anthropic thinking block", async () => {
   const model = createProviderChatModelFromAdapter(
-    createRuntimeConfig("deepseek", "deepseek-v4-pro", { thinkingEffort: "high" }),
+    createRuntimeConfig("deepseek", "deepseek-v4-pro", {
+      reasoningEffortTransport: "deepseek-v4",
+      thinkingEffort: "high"
+    }),
     { parallelToolCalls: false }
   )
   const originalGenerate = ChatAnthropic.prototype._generate
@@ -660,6 +673,28 @@ test("deepseek non-thinking chat models do not add Anthropic thinking replay blo
   const assistantMessage = capturedMessages[0]
   assert.ok(assistantMessage instanceof AIMessage)
   assert.equal(assistantMessage.content, "")
+})
+
+test("provider protocols reject thinking effort without their admitted transport", () => {
+  assert.throws(
+    () =>
+      createProviderChatModelFromAdapter(
+        createRuntimeConfig("deepseek", "deepseek-v4-pro-unlisted", {
+          thinkingEffort: "high"
+        })
+      ),
+    /has no admitted transport/
+  )
+  assert.throws(
+    () =>
+      createProviderChatModelFromAdapter(
+        createRuntimeConfig("openai", "gpt-5.6", {
+          reasoningEffortTransport: "google-thinking-level",
+          thinkingEffort: "high"
+        })
+      ),
+    /does not admit thinking effort/
+  )
 })
 
 test("listRemoteModelsByProvider scopes remote model ids by provider", async () => {

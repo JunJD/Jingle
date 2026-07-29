@@ -257,6 +257,14 @@ function toOpenAIReasoningEffort(
   thinkingEffort: ProtocolCreateModelInput["runtimeConfig"]["thinkingEffort"],
   transport: ProtocolCreateModelInput["runtimeConfig"]["reasoningEffortTransport"]
 ): "off" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | undefined {
+  if (thinkingEffort === null || thinkingEffort === undefined) {
+    return undefined
+  }
+  if (transport !== "openai-compatible" && transport !== "openai-native") {
+    throw new Error(
+      `OpenAI-compatible transport does not admit thinking effort "${thinkingEffort}".`
+    )
+  }
   if (thinkingEffort === "off") {
     return transport === "openai-native" ? "none" : "off"
   }
