@@ -118,7 +118,7 @@
       | type README.md                 | requires user approval |
       | findstr TODO README.md         | requires user approval |
       | sh scripts/dev.sh             | 未知副作用操作         |
-      | sh -c "echo hello" > out.txt  | 未知副作用操作         |
+      | sh -c 'echo hello' > out.txt  | 未知副作用操作         |
       | bash scripts/dev.sh            | 未知副作用操作         |
       | zsh scripts/dev.sh             | 未知副作用操作         |
 
