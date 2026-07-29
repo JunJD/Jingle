@@ -733,12 +733,21 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
     .stderr?.on("data", (chunk) => appendFileSync(logPath, `[app stderr] ${chunk}`))
 
   try {
-    const identity = await application.evaluate(({ app }) => ({
-      executablePath: process.execPath,
-      isPackaged: app.isPackaged,
-      version: app.getVersion()
-    }))
+    const identity = await application.evaluate(
+      ({ app }, expectProtocolClient) => ({
+        executablePath: process.execPath,
+        isPackaged: app.isPackaged,
+        protocolClientRegistered: expectProtocolClient
+          ? app.isDefaultProtocolClient("jingle")
+          : null,
+        version: app.getVersion()
+      }),
+      options.expectProtocolClient === true
+    )
     if (!identity.isPackaged) fail("installed executable reported app.isPackaged=false")
+    if (options.expectProtocolClient && !identity.protocolClientRegistered) {
+      fail("installed executable is not the default jingle protocol client")
+    }
     if (options.expectedVersion && identity.version !== options.expectedVersion) {
       fail(
         `installed executable reported version ${identity.version}, expected ${options.expectedVersion}`
@@ -992,6 +1001,7 @@ async function run() {
         )
         manifest.phase = "fresh-first-launch"
         const probe = await launchInstalledAndProbe(installed, freshHome, appLog, {
+          expectProtocolClient: process.platform === "darwin" || process.platform === "win32",
           expectedVersion: currentPackageVersion,
           expectedWindowKind: "main"
         })
@@ -1072,6 +1082,7 @@ async function run() {
       )
       manifest.phase = "upgrade-current-ipc-verification"
       const probe = await launchInstalledAndProbe(installed, upgradeHome, appLog, {
+        expectProtocolClient: process.platform === "darwin" || process.platform === "win32",
         expectedVersion: currentPackageVersion,
         expectedWindowKind: "main",
         sentinelRequest: {

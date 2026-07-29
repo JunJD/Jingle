@@ -440,6 +440,15 @@ test("release candidate workflow uses the installed smoke owner without uploadin
 
   const smokeSource = readFileSync("scripts/release-smoke/installed.mjs", "utf8")
   assert.match(smokeSource, /chromiumSandbox: true/)
+  assert.match(smokeSource, /protocolClientRegistered: expectProtocolClient/)
+  assert.match(smokeSource, /app\.isDefaultProtocolClient\("jingle"\)/)
+  assert.match(smokeSource, /installed executable is not the default jingle protocol client/)
+  assert.equal(
+    smokeSource.match(
+      /expectProtocolClient: process\.platform === "darwin" \|\| process\.platform === "win32"/g
+    )?.length,
+    2
+  )
   assert.match(smokeSource, /executablePath: invocation\.artifactPath/)
   assert.doesNotMatch(smokeSource, /APPIMAGE_EXTRACT_AND_RUN/)
   assert.doesNotMatch(smokeSource, /executablePath: join\(appRoot, "AppRun"\)/)
