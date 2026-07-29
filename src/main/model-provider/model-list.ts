@@ -1,5 +1,10 @@
 import type { ModelConfig, ProviderId } from "./types"
-import { getModelConfig, listModelCatalog, toProviderModelId } from "./catalog"
+import {
+  getModelAttachmentModalities,
+  getModelConfig,
+  listModelCatalog,
+  toProviderModelId
+} from "./catalog"
 import { modelSupportsReasoning } from "./model-metadata"
 
 export type RemoteModel = {
@@ -147,7 +152,7 @@ function toModelConfig(providerId: ProviderId, remoteModel: RemoteModel): ModelC
     contextLimit: localModel?.contextLimit,
     description: localModel?.description ?? remoteModel.description,
     fetchFrom: "fetch-from-remote",
-    features: localModel?.features,
+    features: localModel?.features ?? getModelAttachmentModalities(id),
     id,
     maxOutputTokens: localModel?.maxOutputTokens,
     model: remoteModel.id,

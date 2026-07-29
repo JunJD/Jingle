@@ -17,8 +17,20 @@ const ATTACHMENT_MODALITIES_BY_MODEL_ID = new Map<string, readonly ModelAttachme
   ["anthropic:claude-haiku-4-5-20251001", ["vision"]],
   ["anthropic:claude-opus-4-1-20250805", ["vision"]],
   ["anthropic:claude-sonnet-4-20250514", ["vision"]],
-  ["openai:gpt-5.2", ["vision"]],
+  ["openai:gpt-5", ["vision"]],
+  ["openai:gpt-5-2025-08-07", ["vision"]],
   ["openai:gpt-5.1", ["vision"]],
+  ["openai:gpt-5.1-2025-11-13", ["vision"]],
+  ["openai:gpt-5.2", ["vision"]],
+  ["openai:gpt-5.2-2025-12-11", ["vision"]],
+  ["openai:gpt-5.4", ["vision"]],
+  ["openai:gpt-5.4-2026-03-05", ["vision"]],
+  ["openai:gpt-5.5", ["vision"]],
+  ["openai:gpt-5.5-2026-04-23", ["vision"]],
+  ["openai:gpt-5.6", ["vision"]],
+  ["openai:gpt-5.6-sol", ["vision"]],
+  ["openai:gpt-5.6-terra", ["vision"]],
+  ["openai:gpt-5.6-luna", ["vision"]],
   ["openai:o3", ["vision"]],
   ["openai:o4-mini", ["vision"]],
   ["openai:o1", ["vision"]],
@@ -513,12 +525,14 @@ export function listModelCatalog(): ModelConfig[] {
     ...listRegistryModels()
   ].map((model) => ({
     ...model,
-    features: model.features ?? toCatalogAttachmentModalities(model.id),
+    features: model.features ?? getModelAttachmentModalities(model.id),
     reasoning: model.reasoning ?? modelSupportsReasoning(model.model)
   }))
 }
 
-function toCatalogAttachmentModalities(modelId: string): ModelAttachmentModality[] | undefined {
+export function getModelAttachmentModalities(
+  modelId: string
+): ModelAttachmentModality[] | undefined {
   const modalities = ATTACHMENT_MODALITIES_BY_MODEL_ID.get(modelId)
   return modalities ? [...modalities] : undefined
 }

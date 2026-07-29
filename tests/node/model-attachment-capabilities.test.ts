@@ -49,12 +49,42 @@ test("listed model attachment capability intersects exact modality with provider
 test("remote models inherit attachment modalities only from an exact catalog match", () => {
   const models = toRemoteModelConfigs(
     "openai",
-    [{ id: "gpt-4o" }, { id: "gpt-unknown-preview" }],
+    [{ id: "gpt-4o" }, { id: "gpt-5.6-sol" }, { id: "gpt-unknown-preview" }],
     () => true
   )
 
   assert.deepEqual(models.find((model) => model.model === "gpt-4o")?.features, ["vision"])
+  assert.deepEqual(models.find((model) => model.model === "gpt-5.6-sol")?.features, ["vision"])
   assert.equal(models.find((model) => model.model === "gpt-unknown-preview")?.features, undefined)
+})
+
+test("reviewed GPT family aliases and snapshots expose exact vision capability", () => {
+  const modelIds = [
+    "gpt-5",
+    "gpt-5-2025-08-07",
+    "gpt-5.1",
+    "gpt-5.1-2025-11-13",
+    "gpt-5.2",
+    "gpt-5.2-2025-12-11",
+    "gpt-5.4",
+    "gpt-5.4-2026-03-05",
+    "gpt-5.5",
+    "gpt-5.5-2026-04-23",
+    "gpt-5.6",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna"
+  ]
+
+  for (const modelName of modelIds) {
+    assert.deepEqual(resolveModelAttachmentCapabilities(`openai:${modelName}`), {
+      supportedFileSourceKinds: ["data", "file-id", "text"],
+      supportedImageSourceKinds: ["data", "url"],
+      supportedModalities: ["vision"]
+    })
+  }
+
+  assert.equal(resolveModelAttachmentCapabilities("openai:gpt-5.6-unknown-snapshot"), null)
 })
 
 test("custom models require an exact explicit attachment modality declaration", () => {
