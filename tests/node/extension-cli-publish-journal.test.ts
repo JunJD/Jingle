@@ -1,13 +1,32 @@
 import assert from "node:assert/strict"
-import { mkdir, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises"
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rename,
+  rm,
+  stat,
+  symlink,
+  writeFile
+} from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, join } from "node:path"
 import test from "node:test"
 import {
   beginPackagePublish,
   publishPreparedPackage,
-  reconcileInterruptedPackagePublish
+  reconcileInterruptedPackagePublish,
+  reconcileInterruptedPackagePublishes
 } from "../../packages/extension-cli/src/publish-journal.mjs"
+import {
+  parseInstalledExtensionId,
+  parseInstalledExtensionPackageRoot,
+  parseInstalledExtensionVersion,
+  resolveCanonicalInstalledExtensionPackageRoot,
+  resolveInstalledExtensionPackageRoot
+} from "../../packages/extension-cli/src/installed-package-path.mjs"
 import {
   acquirePublishLock,
   releasePublishLock
@@ -86,6 +105,203 @@ test("publish journal discards an interrupted first-build staging directory", as
     assert.equal(await pathExists(packageRoot), false)
     assert.equal(await pathExists(transaction.stagingRoot), false)
     assert.equal(await pathExists(transaction.journalPath), false)
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
+test("publish scanner treats a journal deleted after enumeration as converged", async () => {
+  const root = await mkdtemp(join(tmpdir(), "jingle-extension-publish-journal-"))
+  const packageRoot = join(root, "sample", "1.0.0")
+
+  try {
+    const transaction = (await withPublishLock(packageRoot, (publishLock) =>
+      beginPackagePublish(publishLock)
+    )) as PublishTransaction
+    let deleted = false
+
+    await reconcileInterruptedPackagePublishes(root, {
+      readFile: async (path: string, encoding: BufferEncoding) => {
+        if (path === transaction.journalPath && !deleted) {
+          deleted = true
+          await rm(path)
+        }
+        return readFile(path, encoding)
+      },
+      readdir,
+      realpath
+    })
+
+    assert.equal(deleted, true)
+    assert.equal(await pathExists(transaction.journalPath), false)
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
+test("publish scanner treats a journal deleted after its first read as converged", async () => {
+  const root = await mkdtemp(join(tmpdir(), "jingle-extension-publish-journal-"))
+  const packageRoot = join(root, "sample", "1.0.0")
+
+  try {
+    const transaction = (await withPublishLock(packageRoot, (publishLock) =>
+      beginPackagePublish(publishLock)
+    )) as PublishTransaction
+    let deleted = false
+
+    await reconcileInterruptedPackagePublishes(root, {
+      readFile: async (path: string, encoding: BufferEncoding) => {
+        const source = await readFile(path, encoding)
+        if (path === transaction.journalPath && !deleted) {
+          deleted = true
+          await rm(path)
+        }
+        return source
+      },
+      readdir,
+      realpath
+    })
+
+    assert.equal(deleted, true)
+    assert.equal(await pathExists(transaction.journalPath), false)
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
+test("publish scanner fails closed after reading a malformed journal", async () => {
+  const root = await mkdtemp(join(tmpdir(), "jingle-extension-publish-journal-"))
+  const packageRoot = join(root, "sample", "1.0.0")
+
+  try {
+    const transaction = (await withPublishLock(packageRoot, (publishLock) =>
+      beginPackagePublish(publishLock)
+    )) as PublishTransaction
+    await writeFile(transaction.journalPath, "{malformed")
+
+    await assert.rejects(() => reconcileInterruptedPackagePublishes(root), hasRecoveryFailureCode)
+    assert.equal(await pathExists(transaction.journalPath), true)
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
+test("publish scanner ignores broken and vanished foreign entries", async () => {
+  const root = await mkdtemp(join(tmpdir(), "jingle-extension-publish-journal-"))
+  const brokenEntry = join(root, "broken-entry")
+  const vanishedEntry = join(root, "vanished-entry")
+
+  try {
+    await mkdir(root, { recursive: true })
+    await symlink(
+      join(root, "missing-target"),
+      brokenEntry,
+      process.platform === "win32" ? "junction" : "dir"
+    )
+    await mkdir(vanishedEntry)
+    let removed = false
+
+    await reconcileInterruptedPackagePublishes(root, {
+      readFile,
+      readdir,
+      realpath: async (path: string) => {
+        if (basename(path) === "vanished-entry" && !removed) {
+          removed = true
+          await rm(vanishedEntry, { recursive: true })
+        }
+        return realpath(path)
+      }
+    })
+
+    assert.equal(removed, true)
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
+test("installed package paths require a flat lowercase id and canonical SemVer", () => {
+  const root = join(tmpdir(), "jingle-extension-package-path")
+
+  assert.equal(parseInstalledExtensionId("apple-reminders"), "apple-reminders")
+  assert.equal(parseInstalledExtensionVersion("1.0.0-beta.1"), "1.0.0-beta.1")
+  assert.equal(parseInstalledExtensionVersion("1.0.0+build.1"), "1.0.0+build.1")
+  assert.deepEqual(
+    parseInstalledExtensionPackageRoot(root, join(root, "apple-reminders", "1.0.0")),
+    {
+      id: "apple-reminders",
+      packageRoot: resolveInstalledExtensionPackageRoot(root, {
+        id: "apple-reminders",
+        version: "1.0.0"
+      }),
+      version: "1.0.0"
+    }
+  )
+
+  for (const id of ["@jingle/apple-reminders", "nested/id", "nested\\id", "Apple", "a--b"]) {
+    assert.throws(() => parseInstalledExtensionId(id), hasPackagePathFailureCode)
+  }
+  for (const version of ["v1.0.0", "01.0.0", "1.0.0-RC", "1.0.0/next", "1.0.0\\next"]) {
+    assert.throws(() => parseInstalledExtensionVersion(version), hasPackagePathFailureCode)
+  }
+  for (const packageRoot of [
+    join(root, "apple-reminders", "nested", "1.0.0"),
+    join(root, "..", "escape", "1.0.0"),
+    join(root, "Apple", "1.0.0")
+  ]) {
+    assert.throws(
+      () => parseInstalledExtensionPackageRoot(root, packageRoot),
+      hasPackagePathFailureCode
+    )
+  }
+})
+
+test("installed package target rejects a symlink or junction escape", async () => {
+  const root = await mkdtemp(join(tmpdir(), "jingle-extension-package-path-"))
+  const outsideRoot = await mkdtemp(join(tmpdir(), "jingle-extension-package-outside-"))
+
+  try {
+    await symlink(
+      outsideRoot,
+      join(root, "sample"),
+      process.platform === "win32" ? "junction" : "dir"
+    )
+
+    await assert.rejects(
+      () =>
+        resolveCanonicalInstalledExtensionPackageRoot(root, {
+          id: "sample",
+          version: "1.0.0"
+        }),
+      hasPackagePathFailureCode
+    )
+  } finally {
+    await rm(root, { force: true, recursive: true })
+    await rm(outsideRoot, { force: true, recursive: true })
+  }
+})
+
+test("publish scanner rejects nested and escaping journal targets", async () => {
+  const root = await mkdtemp(join(tmpdir(), "jingle-extension-publish-journal-"))
+  const packageRoot = join(root, "sample", "1.0.0")
+
+  try {
+    const transaction = (await withPublishLock(packageRoot, (publishLock) =>
+      beginPackagePublish(publishLock)
+    )) as PublishTransaction
+    for (const targetPath of [
+      join(root, "sample", "nested", "1.0.0"),
+      join(root, "..", "escape", "1.0.0")
+    ]) {
+      await writeFile(
+        transaction.journalPath,
+        `${JSON.stringify({
+          schemaVersion: 1,
+          targetPath,
+          transactionId: transaction.transactionId
+        })}\n`
+      )
+      await assert.rejects(() => reconcileInterruptedPackagePublishes(root), hasRecoveryFailureCode)
+    }
   } finally {
     await rm(root, { force: true, recursive: true })
   }
@@ -237,6 +453,11 @@ async function withPublishLock<T>(
   }
 }
 
+interface PublishTransaction {
+  journalPath: string
+  transactionId: string
+}
+
 async function writeMarker(root: string, value: string): Promise<void> {
   await mkdir(root, { recursive: true })
   await writeFile(join(root, "marker.txt"), value)
@@ -253,4 +474,20 @@ async function pathExists(path: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+function hasPackagePathFailureCode(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    error.code === "JINGLE_EXTENSION_PACKAGE_PATH_INVALID"
+  )
+}
+
+function hasRecoveryFailureCode(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    error.code === "JINGLE_EXTENSION_PUBLISH_RECOVERY_FAILED"
+  )
 }

@@ -65,6 +65,8 @@ package 必须通过 `@jingle/extension-api` 暴露四个入口：
 
 不要从外部 extension 直接 import Jingle app 私有路径，例如 `@shared/*`、`@extensions/*`、`src/main/*` 或 `src/renderer/*`。
 
+`package.json.name` 是 npm package name，可以使用合法 scoped name，例如 `@jingle/extension-my-extension`；它不决定安装目录。安装身份来自 `manifest.ts` 的 `name`，必须是 flat lowercase id：以小写字母开头，只包含小写字母、数字和单个连字符，不能使用 npm scope、斜杠、反斜杠或嵌套路径。`package.json.version` 必须是 lowercase canonical SemVer。CLI、descriptor parser 和 installed registry 共同使用这套路径契约：`<installed-root>/<extension-id>/<version>/`。
+
 ## 写一个最小 Command
 
 `manifest.ts`：
@@ -182,7 +184,7 @@ make extension-dev EXTENSION=/absolute/path/to/my-extension
 
 CLI 会对最终 runtime bundle 的精确字节计算 `sha256:<64 lowercase hex>`，把 digest 同时写入内容寻址文件名和 `jingle.extension.json.runtimeArtifactRevision`。宿主只有在 descriptor、文件名和实际字节三者一致时才接受该 revision。旧 descriptor 没有这个字段时仍可加载，但 runtime artifact revision 明确不可用，不能从 version、路径或 mtime 推断。
 
-同一 package 目标的发布由跨进程锁和忽略目录中的事务 journal 串行化。若 CLI 进程在旧目录移入 backup 后退出，下次发布会先恢复最后一个已发布目录；若新 staging 已经提升到最终目录，则保留新目录并清理旧 backup。journal 会绑定锁解析出的物理目标路径；无法严格解析或目标不一致时发布会停止，不会扫描或猜测其他版本的临时目录。
+同一 package 目标的发布由跨进程锁和同级临时目录中的事务 journal 串行化。每次 build（包括 dev watch 的每次 rebuild）会先扫描严格符合 `<extension-id>/<version>` 契约的 journal。若 CLI 进程在旧目录移入 backup 后退出，下次发布会先恢复最后一个已发布目录；若新 staging 已经提升到最终目录，则保留新目录并清理旧 backup。扫描后 journal 被合法 publisher 删除时视为事务已经收敛；已成功读取但内容 malformed 的 journal 仍会 fail closed。没有观察到 journal 的 broken link、已消失 foreign entry 和非契约目录不会阻断其他 package 的恢复。journal 会绑定锁解析出的物理目标路径；无法严格解析或目标不一致时发布会停止，不会从路径 fallback，也不会猜测嵌套结构或其他版本的临时目录。
 
 然后启动 Jingle dev app：
 

@@ -425,6 +425,9 @@ importers:
       esbuild:
         specifier: ~0.27.0
         version: 0.27.4
+      semver:
+        specifier: ^7.7.4
+        version: 7.7.4
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

@@ -1,11 +1,16 @@
 import { createHash } from "node:crypto"
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs"
 import { basename, isAbsolute, join, relative, resolve } from "node:path"
 import {
   validateNativeExtensionPackageManifest,
   type NativeExtensionPackageManifest
 } from "@shared/native-extensions"
 import type { NativeExtensionRuntimePackageMetadata } from "@jingle/extension-api"
+import {
+  isInstalledExtensionId,
+  isInstalledExtensionVersion,
+  resolveInstalledExtensionPackageRoot
+} from "@jingle/extension-cli/installed-package-path"
 import {
   parseInstalledExtensionDescriptorFile,
   type InstalledExtensionDescriptorFile,
@@ -29,6 +34,7 @@ export class InstalledExtensionProvider {
     }
 
     return readdirSync(this.extensionsRoot)
+      .filter((extensionId) => isInstalledExtensionId(extensionId))
       .sort((left, right) => left.localeCompare(right))
       .flatMap((extensionId) => this.listExtensionVersionPackages(extensionId))
       .sort((left, right) => left.id.localeCompare(right.id))
@@ -45,16 +51,18 @@ export class InstalledExtensionProvider {
       if (isExtensionPackageTemporaryDirectory(version)) {
         continue
       }
-      const versionRoot = join(extensionRoot, version)
+      if (!isInstalledExtensionVersion(version)) {
+        continue
+      }
+      const versionRoot = resolveInstalledExtensionPackageRoot(this.extensionsRoot, {
+        id: extensionId,
+        version
+      })
       if (safeIsDirectory(versionRoot)) {
         versionEntries.push(versionRoot)
       }
     }
     versionEntries.sort((left, right) => left.localeCompare(right))
-
-    if (versionEntries.length === 0 && this.hasDescriptor(extensionRoot)) {
-      return [this.readPackage(extensionRoot, extensionId)]
-    }
 
     return versionEntries.map((packageRoot) => this.readPackage(packageRoot, extensionId))
   }
@@ -74,6 +82,11 @@ export class InstalledExtensionProvider {
       const descriptor = parseInstalledExtensionDescriptorFile(
         JSON.parse(readFileSync(descriptorRef, "utf8"))
       )
+      if (descriptor.id !== fallbackId || descriptor.version !== basename(packageRoot)) {
+        throw new Error(
+          `Installed extension descriptor identity ${descriptor.id}@${descriptor.version} does not match package path ${fallbackId}@${basename(packageRoot)}`
+        )
+      }
       return this.readLoadedPackage(packageRoot, descriptor)
     } catch (error) {
       return failedPackage({
@@ -83,10 +96,6 @@ export class InstalledExtensionProvider {
         rootDir: packageRoot
       })
     }
-  }
-
-  private hasDescriptor(packageRoot: string): boolean {
-    return existsSync(join(packageRoot, DESCRIPTOR_FILE_NAME))
   }
 
   private resolveDescriptorPath(packageRoot: string): string | null {
@@ -382,7 +391,7 @@ function resolvePackageRelativePath(input: {
 
 function safeIsDirectory(filePath: string): boolean {
   try {
-    return statSync(filePath).isDirectory()
+    return lstatSync(filePath).isDirectory()
   } catch {
     return false
   }

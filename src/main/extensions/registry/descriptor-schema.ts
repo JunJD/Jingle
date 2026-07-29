@@ -1,3 +1,8 @@
+import {
+  parseInstalledExtensionId,
+  parseInstalledExtensionVersion
+} from "@jingle/extension-cli/installed-package-path"
+
 export type InstalledExtensionTrustLevel = "trusted" | "untrusted"
 export type InstalledExtensionRuntimeArtifactRevision = `sha256:${string}`
 
@@ -37,7 +42,7 @@ export function parseInstalledExtensionDescriptorFile(
 
   return {
     assets: readRequiredString(value, "assets"),
-    id: readRequiredString(value, "id"),
+    id: parseInstalledExtensionId(readRequiredString(value, "id")),
     main: readOptionalString(value, "main"),
     manifest: readRequiredString(value, "manifest"),
     runtime,
@@ -45,7 +50,7 @@ export function parseInstalledExtensionDescriptorFile(
     runtimeMetadata: readOptionalString(value, "runtimeMetadata"),
     schemaVersion: 1,
     trust: readOptionalTrustLevel(value, "trust") ?? "untrusted",
-    version: readRequiredString(value, "version")
+    version: parseInstalledExtensionVersion(readRequiredString(value, "version"))
   }
 }
 

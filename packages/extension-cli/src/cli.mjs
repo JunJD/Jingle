@@ -15,6 +15,11 @@ import { pathToFileURL } from "node:url"
 import { build } from "esbuild"
 import ts from "typescript"
 import {
+  parseInstalledExtensionId,
+  parseInstalledExtensionVersion,
+  resolveCanonicalInstalledExtensionPackageRoot
+} from "./installed-package-path.mjs"
+import {
   acquirePublishLock,
   assertPublishLockHeld,
   formatPublishLockErrorDiagnostics,
@@ -24,6 +29,7 @@ import {
   abandonPreparedPackage,
   beginPackagePublish,
   publishPreparedPackage,
+  reconcileInterruptedPackagePublishes,
   renamePathWithRetry
 } from "./publish-journal.mjs"
 
@@ -260,13 +266,18 @@ function shouldIgnoreWatchedPath(filename) {
 }
 
 async function buildExtension(input) {
+  await reconcileInterruptedPackagePublishes(input.outputRoot)
   const extensionRoot = resolveExtensionRoot(input.extensionRef)
   const packageJson = readPackageJson(extensionRoot)
   const manifest = await loadNativeExtensionManifest(extensionRoot)
   const runtimeMetadata = await loadRuntimeMetadata(extensionRoot)
-  const version = packageJson.version ?? "0.0.0"
+  const id = parseInstalledExtensionId(manifest.name)
+  const version = parseInstalledExtensionVersion(packageJson.version ?? "0.0.0")
   const trust = resolvePackageTrust(packageJson, input.trustOverride)
-  const packageRoot = resolve(input.outputRoot, manifest.name, version)
+  const packageRoot = await resolveCanonicalInstalledExtensionPackageRoot(input.outputRoot, {
+    id,
+    version
+  })
   const publishLock = await acquirePublishLock(packageRoot)
   let publishTransaction = null
   let transactionError = null
@@ -275,6 +286,11 @@ async function buildExtension(input) {
 
   try {
     try {
+      if (publishLock.targetPath !== packageRoot) {
+        const error = new Error("Installed extension package path changed during publication")
+        error.code = "JINGLE_EXTENSION_PACKAGE_PATH_INVALID"
+        throw error
+      }
       assertPublishLockHeld(publishLock)
       publishTransaction = await beginPackagePublish(publishLock)
       const { stagingRoot } = publishTransaction
@@ -303,14 +319,14 @@ async function buildExtension(input) {
         installRuntimeReactShim: true,
         outfile: runtimeModulePath,
         source: `export { ${runtimeExportName} as default } from "./runtime"\n`,
-        sourcefile: `${manifest.name}-runtime-entry.ts`
+        sourcefile: `${id}-runtime-entry.ts`
       })
       await buildModuleFromSource({
         extensionRoot,
         external: ["electron"],
         outfile: join(stagingRoot, "dist", "main.mjs"),
         source: `export { ${mainExportName} as default } from "./main"\n`,
-        sourcefile: `${manifest.name}-main-entry.ts`
+        sourcefile: `${id}-main-entry.ts`
       })
 
       const runtimeArtifactRevision = createRuntimeArtifactRevision(runtimeModulePath)
@@ -322,7 +338,7 @@ async function buildExtension(input) {
 
       writeJson(join(stagingRoot, "jingle.extension.json"), {
         assets: "./assets",
-        id: manifest.name,
+        id,
         main: "./dist/main.mjs",
         manifest: "./manifest.json",
         runtime: `./dist/${runtimeArtifactFileName}`,
@@ -381,7 +397,7 @@ async function buildExtension(input) {
   }
 
   return {
-    id: manifest.name,
+    id,
     packageRoot: publishTransaction?.packageRoot ?? packageRoot,
     trust,
     version

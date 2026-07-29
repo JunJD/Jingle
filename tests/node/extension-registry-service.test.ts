@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
 import { createHash } from "node:crypto"
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -676,6 +676,51 @@ test("installed extension provider loads a valid descriptor package", async () =
   }
 })
 
+test("installed extension provider ignores non-contract package directory shapes", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "jingle-installed-extension-"))
+  try {
+    await writeInstalledExtensionFixture(join(rootDir, "sample", "1.0.0"))
+    await writeInstalledExtensionFixture(join(rootDir, "nested", "child", "1.0.0"))
+    await writeInstalledExtensionFixture(join(rootDir, "Sample", "1.0.0"))
+    await writeInstalledExtensionFixture(join(rootDir, "other", "1.0.0-RC"))
+    await symlink(
+      join(rootDir, "nested", "child"),
+      join(rootDir, "linked"),
+      process.platform === "win32" ? "junction" : "dir"
+    )
+
+    const packages = new InstalledExtensionProvider(rootDir).listPackages()
+
+    assert.deepEqual(
+      packages.map((extensionPackage) => extensionPackage.rootDir),
+      [join(rootDir, "sample", "1.0.0")]
+    )
+  } finally {
+    await rm(rootDir, { force: true, recursive: true })
+  }
+})
+
+test("installed extension provider rejects descriptor identity that differs from its path", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "jingle-installed-extension-"))
+  try {
+    const packageRoot = join(rootDir, "sample", "1.0.0")
+    await writeInstalledExtensionFixture(packageRoot, {
+      descriptorOverrides: { id: "other", version: "2.0.0" }
+    })
+
+    const [extensionPackage] = new InstalledExtensionProvider(rootDir).listPackages()
+
+    assert.equal(extensionPackage?.status, "error")
+    assert.deepEqual(
+      extensionPackage?.errors.map((error) => error.code),
+      ["descriptor_invalid"]
+    )
+    assert.match(extensionPackage?.errors[0]?.message ?? "", /does not match package path/)
+  } finally {
+    await rm(rootDir, { force: true, recursive: true })
+  }
+})
+
 test("installed extension provider keeps legacy runtime revision unavailable", async () => {
   const rootDir = await mkdtemp(join(tmpdir(), "jingle-installed-extension-"))
   try {
@@ -841,7 +886,11 @@ async function writeRuntimeRevisionExtensionSource(
     writeFile(join(sourceRoot, "assets", "icon.svg"), "<svg />"),
     writeFile(
       join(sourceRoot, "package.json"),
-      JSON.stringify({ name: "runtime-revision-sample", type: "module", version: "1.0.0" })
+      JSON.stringify({
+        name: "@jingle/runtime-revision-sample",
+        type: "module",
+        version: "1.0.0"
+      })
     ),
     writeFile(
       join(sourceRoot, "manifest.ts"),

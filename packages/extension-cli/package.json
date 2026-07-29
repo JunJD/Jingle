@@ -12,10 +12,15 @@
     "node": ">=18"
   },
   "exports": {
-    ".": "./src/cli.mjs"
+    ".": "./src/cli.mjs",
+    "./installed-package-path": {
+      "types": "./src/installed-package-path.d.mts",
+      "default": "./src/installed-package-path.mjs"
+    }
   },
   "dependencies": {
     "esbuild": "~0.27.0",
+    "semver": "^7.7.4",
     "typescript": "^5.9.3"
   }
 }

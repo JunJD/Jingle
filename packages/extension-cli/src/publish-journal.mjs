@@ -1,15 +1,83 @@
 import { createHash, randomUUID } from "node:crypto"
 import { existsSync, mkdirSync, statSync } from "node:fs"
-import { open, readFile, rename, rm } from "node:fs/promises"
-import { dirname, join } from "node:path"
+import { open, readFile, readdir, realpath, rename, rm } from "node:fs/promises"
+import { basename, dirname, join } from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
-import { assertPublishLockHeld } from "./publish-lock.mjs"
+import {
+  isInstalledExtensionId,
+  parseInstalledExtensionPackageRoot
+} from "./installed-package-path.mjs"
+import { acquirePublishLock, assertPublishLockHeld, releasePublishLock } from "./publish-lock.mjs"
 
 const extensionPackageTemporaryDirectoryPrefix = ".jingle-extension-tmp-"
 const journalSchemaVersion = 1
 const transactionIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+const journalFileNamePattern = /^\.jingle-extension-tmp-journal-[0-9a-f]{32}\.json$/
 const windowsFilesystemRetryCodes = new Set(["EACCES", "EBUSY", "EPERM"])
+const defaultScanFilesystem = { readFile, readdir, realpath }
+
+export async function reconcileInterruptedPackagePublishes(
+  outputRoot,
+  scanFilesystem = defaultScanFilesystem
+) {
+  let canonicalOutputRoot
+  let extensionEntries
+  try {
+    canonicalOutputRoot = (await scanFilesystem.realpath(outputRoot)).normalize("NFC")
+    extensionEntries = await scanFilesystem.readdir(canonicalOutputRoot, { withFileTypes: true })
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return
+    }
+    throw error
+  }
+
+  for (const extensionEntry of extensionEntries) {
+    if (!extensionEntry.isDirectory() || !isInstalledExtensionId(extensionEntry.name)) {
+      continue
+    }
+    const extensionRoot = join(canonicalOutputRoot, extensionEntry.name)
+    const canonicalExtensionRoot = await readCanonicalExtensionRoot(
+      canonicalOutputRoot,
+      extensionRoot,
+      scanFilesystem
+    )
+    if (!canonicalExtensionRoot) {
+      continue
+    }
+
+    let journalEntries
+    try {
+      journalEntries = await scanFilesystem.readdir(canonicalExtensionRoot, {
+        withFileTypes: true
+      })
+    } catch (error) {
+      if (isMissingPathError(error) || error?.code === "ENOTDIR") {
+        continue
+      }
+      throw error
+    }
+
+    for (const journalEntry of journalEntries) {
+      if (!journalEntry.isFile() || !journalFileNamePattern.test(journalEntry.name)) {
+        continue
+      }
+      const journalPath = join(canonicalExtensionRoot, journalEntry.name)
+      const packageRoot = await readDiscoveredJournalTarget({
+        canonicalOutputRoot,
+        extensionId: extensionEntry.name,
+        journalFileName: journalEntry.name,
+        journalPath,
+        scanFilesystem
+      })
+      if (!packageRoot) {
+        continue
+      }
+      await reconcileDiscoveredPackagePublish(packageRoot)
+    }
+  }
+}
 
 export async function beginPackagePublish(publishLock) {
   assertPublishLockHeld(publishLock)
@@ -34,11 +102,10 @@ export async function reconcileInterruptedPackagePublish(publishLock) {
   const journalWritePath = resolveJournalWritePath(journalPath)
 
   await removePath(journalWritePath)
-  if (!existsSync(journalPath)) {
+  const transaction = await readJournalIfPresent(packageRoot, publishLock.identity, journalPath)
+  if (!transaction) {
     return { kind: "none" }
   }
-
-  const transaction = await readJournal(packageRoot, publishLock.identity, journalPath)
   const packageState = readDirectoryState(transaction.packageRoot)
   const stagingState = readDirectoryState(transaction.stagingRoot)
   const backupState = readDirectoryState(transaction.backupRoot)
@@ -213,10 +280,28 @@ async function writeJournal(transaction, publishLock) {
   await renamePathWithRetry(journalWritePath, transaction.journalPath)
 }
 
-async function readJournal(packageRoot, targetIdentity, journalPath) {
+async function readJournalIfPresent(packageRoot, targetIdentity, journalPath) {
+  const value = await readJournalValueIfPresent(journalPath, packageRoot)
+  return value === null ? null : parseJournalValue(value, packageRoot, targetIdentity, journalPath)
+}
+
+async function readJournalValueIfPresent(journalPath, packageRoot, readJournalFile = readFile) {
+  let source
+  try {
+    source = await readJournalFile(journalPath, "utf8")
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return null
+    }
+    throw recoveryError(
+      { journalPath, packageRoot },
+      `publish journal could not be read: ${error instanceof Error ? error.message : String(error)}`
+    )
+  }
+
   let value
   try {
-    value = JSON.parse(await readFile(journalPath, "utf8"))
+    value = JSON.parse(source)
   } catch (error) {
     throw recoveryError(
       { journalPath, packageRoot },
@@ -224,6 +309,10 @@ async function readJournal(packageRoot, targetIdentity, journalPath) {
     )
   }
 
+  return value
+}
+
+function parseJournalValue(value, packageRoot, targetIdentity, journalPath) {
   if (!isRecord(value)) {
     throw recoveryError({ journalPath, packageRoot }, "publish journal must be an object")
   }
@@ -251,12 +340,124 @@ async function readJournal(packageRoot, targetIdentity, journalPath) {
   return createTransaction(packageRoot, targetIdentity, value.transactionId)
 }
 
+async function readCanonicalExtensionRoot(canonicalOutputRoot, extensionRoot, scanFilesystem) {
+  let canonicalExtensionRoot
+  try {
+    canonicalExtensionRoot = (await scanFilesystem.realpath(extensionRoot)).normalize("NFC")
+  } catch (error) {
+    if (isMissingPathError(error) || error?.code === "ENOTDIR") {
+      return null
+    }
+    throw error
+  }
+  return filesystemIdentity(dirname(canonicalExtensionRoot)) ===
+    filesystemIdentity(canonicalOutputRoot)
+    ? canonicalExtensionRoot
+    : null
+}
+
+async function readDiscoveredJournalTarget(input) {
+  const value = await readJournalValueIfPresent(
+    input.journalPath,
+    input.canonicalOutputRoot,
+    input.scanFilesystem.readFile
+  )
+  if (value === null) {
+    return null
+  }
+  if (!isRecord(value) || typeof value.targetPath !== "string") {
+    throw recoveryError(
+      { journalPath: input.journalPath, packageRoot: input.canonicalOutputRoot },
+      "publish journal targetPath is missing"
+    )
+  }
+
+  let packageIdentity
+  try {
+    packageIdentity = parseInstalledExtensionPackageRoot(
+      input.canonicalOutputRoot,
+      value.targetPath
+    )
+  } catch (error) {
+    throw recoveryError(
+      { journalPath: input.journalPath, packageRoot: value.targetPath },
+      error instanceof Error ? error.message : String(error)
+    )
+  }
+  if (packageIdentity.id !== input.extensionId) {
+    throw recoveryError(
+      { journalPath: input.journalPath, packageRoot: packageIdentity.packageRoot },
+      "publish journal extension id does not match its parent directory"
+    )
+  }
+
+  const targetIdentity = filesystemIdentity(packageIdentity.packageRoot)
+  if (
+    basename(resolveJournalPath(packageIdentity.packageRoot, targetIdentity)) !==
+    input.journalFileName
+  ) {
+    throw recoveryError(
+      { journalPath: input.journalPath, packageRoot: packageIdentity.packageRoot },
+      "publish journal file name does not match its target identity"
+    )
+  }
+  parseJournalValue(value, packageIdentity.packageRoot, targetIdentity, input.journalPath)
+  return packageIdentity.packageRoot
+}
+
+async function reconcileDiscoveredPackagePublish(packageRoot) {
+  let publishLock
+  try {
+    publishLock = await acquirePublishLock(packageRoot)
+  } catch (error) {
+    if (error?.code === "JINGLE_EXTENSION_PUBLISH_LOCKED") {
+      return
+    }
+    throw error
+  }
+
+  let recoveryFailure = null
+  let releaseFailure = null
+  try {
+    const recovery = await reconcileInterruptedPackagePublish(publishLock)
+    if (recovery.kind !== "none") {
+      console.warn(`Reconciled interrupted extension publish (${recovery.kind}): ${packageRoot}`)
+    }
+  } catch (error) {
+    recoveryFailure = error
+  }
+  try {
+    await releasePublishLock(publishLock, publishLock.ownerToken)
+  } catch (error) {
+    releaseFailure = error
+  }
+  if (recoveryFailure && releaseFailure) {
+    throw new AggregateError(
+      [recoveryFailure, releaseFailure],
+      `Extension publish recovery failed and its publish lock could not be released: ${packageRoot}`
+    )
+  }
+  if (recoveryFailure) {
+    throw recoveryFailure
+  }
+  if (releaseFailure) {
+    throw releaseFailure
+  }
+}
+
 function resolveJournalPath(packageRoot, targetIdentity) {
   const packageIdentity = createHash("sha256").update(targetIdentity).digest("hex").slice(0, 32)
   return join(
     dirname(packageRoot),
     `${extensionPackageTemporaryDirectoryPrefix}journal-${packageIdentity}.json`
   )
+}
+
+function filesystemIdentity(path) {
+  const normalizedPath = path.normalize("NFC")
+  return process.platform === "win32" || process.platform === "darwin"
+    ? normalizedPath.toLowerCase()
+    : normalizedPath
 }
 
 function readPublishLockTargetPath(publishLock) {
@@ -313,6 +514,10 @@ function isWindowsFilesystemLockError(error) {
     typeof error.code === "string" &&
     windowsFilesystemRetryCodes.has(error.code)
   )
+}
+
+function isMissingPathError(error) {
+  return error instanceof Error && "code" in error && error.code === "ENOENT"
 }
 
 function isRecord(value) {
