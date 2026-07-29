@@ -55,6 +55,6 @@
     那么 最新 agent stream 应收到 HITL 中断
     而且 最新 agent runtime state 待审批工具应为 "write_file"
     当 我通过 agent resume 拒绝最新待审批请求
-    那么 最新 agent stream 应收到 done
+    那么 最新 agent stream 应收到取消完成事件
     而且 最新 agent runtime state 待审批请求应为空
     而且 最新 agent 线程状态应为 "idle"

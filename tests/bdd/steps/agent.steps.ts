@@ -28,8 +28,8 @@ interface AgentBddWindow extends Window {
   api: {
     agent: {
       cancel: (threadId: string) => Promise<void>
-      invoke: (threadId: string, message: AgentInvokeMessage, modelId?: string) => void
-      resume: (threadId: string, decision: HITLDecision, modelId?: string) => void
+      invoke: (threadId: string, message: AgentInvokeMessage) => Promise<unknown>
+      resume: (threadId: string, decision: HITLDecision) => Promise<unknown>
       connectThreadEvents: (
         threadId: string,
         onBatch: (batch: JingleRuntimeEventBatch<AgentThreadEvent>) => void
@@ -150,7 +150,7 @@ async function startStreamAgent(
       }
 
       if (decision) {
-        targetWindow.api.agent.resume(inputThreadId, decision, "bdd-scripted-model")
+        void targetWindow.api.agent.resume(inputThreadId, decision)
         return
       }
 
@@ -159,8 +159,7 @@ async function startStreamAgent(
         {
           content: message,
           id: `${inputStreamKey}:message`
-        },
-        "bdd-scripted-model"
+        }
       )
     },
     {
