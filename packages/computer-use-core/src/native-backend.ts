@@ -30,6 +30,7 @@ import {
   parseComputerUseSemanticActions,
   sameComputerUseSemanticAction
 } from "./semantic-action"
+import { sameComputerUseWindowIdentity } from "./authorization"
 
 export type JingleComputerUseNativeRequest =
   | {
@@ -62,6 +63,18 @@ export interface JingleComputerUseNativeBridge {
   invoke(request: JingleComputerUseNativeRequest, signal?: AbortSignal): Promise<unknown>
 }
 
+export class ComputerUseNativeProtocolError extends Error {
+  readonly code = "invalid_native_response"
+
+  constructor(
+    readonly method: "execute" | "identify" | "observe" | "probe",
+    message: string
+  ) {
+    super(message)
+    this.name = "ComputerUseNativeProtocolError"
+  }
+}
+
 export async function createJingleComputerUseNativeBackend(
   environment: ComputerUseBackendEnvironment,
   bridge: JingleComputerUseNativeBridge,
@@ -75,7 +88,9 @@ export async function createJingleComputerUseNativeBackend(
   signal?.throwIfAborted()
   return new NativeComputerUseBackend(
     bridge,
-    validateComputerUseNativeCapabilityMatrix(environment, rawMatrix)
+    decodeNativeResponse("probe", () =>
+      validateComputerUseNativeCapabilityMatrix(environment, rawMatrix)
+    )
   )
 }
 
@@ -88,20 +103,25 @@ class NativeComputerUseBackend implements ComputerUseBackend {
   async identify(request: ComputerUseIdentifyRequest): Promise<ComputerUseTargetIdentity> {
     request.signal?.throwIfAborted()
     const signal = request.signal
+    const nativeRequest = encodeNativeIdentifyRequest(request)
     const result = await this.bridge.invoke(
       {
         environment: this.matrix.environment,
         method: "identify",
         protocolVersion: JINGLE_COMPUTER_USE_PROTOCOL_VERSION,
-        request: encodeNativeIdentifyRequest(request)
+        request: nativeRequest
       },
       signal
     )
     signal?.throwIfAborted()
-    return decodeNativeTargetIdentity(
-      this.matrix.platform,
-      decodeNativeOperationResponse(this.matrix.environment, "identify", result)
-    )
+    return decodeNativeResponse("identify", () => {
+      const target = decodeNativeTargetIdentity(
+        this.matrix.platform,
+        decodeNativeOperationResponse(this.matrix.environment, "identify", result)
+      )
+      assertNativeIdentifyTargetMatches(nativeRequest, target)
+      return target
+    })
   }
 
   async observe(request: ComputerUseObserveRequest): Promise<ComputerUseBackendObservation> {
@@ -118,10 +138,14 @@ class NativeComputerUseBackend implements ComputerUseBackend {
       signal
     )
     signal?.throwIfAborted()
-    return decodeNativeObservation(
-      this.matrix.platform,
-      decodeNativeOperationResponse(this.matrix.environment, "observe", result)
-    )
+    return decodeNativeResponse("observe", () => {
+      const observation = decodeNativeObservation(
+        this.matrix.platform,
+        decodeNativeOperationResponse(this.matrix.environment, "observe", result)
+      )
+      assertNativeTargetMatches(nativeRequest.target, observation)
+      return observation
+    })
   }
 
   async execute(request: ComputerUseExecuteRequest): Promise<ComputerUseBackendExecutionResult> {
@@ -152,10 +176,12 @@ class NativeComputerUseBackend implements ComputerUseBackend {
       signal
     )
     signal?.throwIfAborted()
-    return decodeNativeExecutionResult(
-      decodeNativeOperationResponse(this.matrix.environment, "execute", result),
-      nativeRequest,
-      this.matrix
+    return decodeNativeResponse("execute", () =>
+      decodeNativeExecutionResult(
+        decodeNativeOperationResponse(this.matrix.environment, "execute", result),
+        nativeRequest,
+        this.matrix
+      )
     )
   }
 
@@ -342,6 +368,46 @@ function decodeNativeOperationResponse(
     )
   }
   return value.result
+}
+
+function decodeNativeResponse<T>(
+  method: ComputerUseNativeProtocolError["method"],
+  decode: () => T
+): T {
+  try {
+    return decode()
+  } catch (error) {
+    if (error instanceof ComputerUseNativeProtocolError) throw error
+    throw new ComputerUseNativeProtocolError(
+      method,
+      error instanceof Error ? error.message : `Computer-use native ${method} response is invalid.`
+    )
+  }
+}
+
+function assertNativeTargetMatches(
+  expected: ComputerUseTargetIdentity,
+  actual: ComputerUseTargetIdentity
+): void {
+  if (
+    actual.application.id !== expected.application.id ||
+    actual.resourceKey !== expected.resourceKey ||
+    !sameComputerUseWindowIdentity(actual.window, expected.window)
+  ) {
+    throw new Error("Computer-use native observation belongs to another target identity.")
+  }
+}
+
+function assertNativeIdentifyTargetMatches(
+  request: Omit<ComputerUseIdentifyRequest, "signal">,
+  target: ComputerUseTargetIdentity
+): void {
+  if (
+    target.application.id !== request.applicationId ||
+    (request.windowId !== undefined && target.window.nativeId !== request.windowId)
+  ) {
+    throw new Error("Computer-use native identification belongs to another selector.")
+  }
 }
 
 function decodeNativeObservation(

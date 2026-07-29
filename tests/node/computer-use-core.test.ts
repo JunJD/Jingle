@@ -9,6 +9,7 @@ import {
   COMPUTER_USE_NATIVE_RESPONSE_LIMITS,
   ComputerUseAuthorizationRegistry,
   ComputerUseActionLedger,
+  ComputerUseNativeProtocolError,
   createJingleComputerUseNativeBackend,
   ComputerUseObservationStore,
   ComputerUseResourceScheduler,
@@ -2812,10 +2813,13 @@ test("native capability probes reject environment and protocol mismatches", asyn
   ]
   for (const matrix of invalidMatrices) {
     const { bridge } = recordingNativeBridge(() => matrix)
-    await assert.rejects(
-      createJingleComputerUseNativeBackend("macos-quartz", bridge),
-      /another environment or protocol/
-    )
+    await assert.rejects(createJingleComputerUseNativeBackend("macos-quartz", bridge), (error) => {
+      assert.ok(error instanceof ComputerUseNativeProtocolError)
+      assert.equal(error.code, "invalid_native_response")
+      assert.equal(error.method, "probe")
+      assert.match(error.message, /another environment or protocol/)
+      return true
+    })
   }
 })
 
@@ -3210,6 +3214,227 @@ test("native observations are strictly decoded into bounded immutable facts", as
   assert.equal(bounded.elements[0]?.title?.length, COMPUTER_USE_NATIVE_RESPONSE_LIMITS.text - 1)
 })
 
+test("native observations reject valid-shaped target drift at the backend boundary", async () => {
+  const base = typeTextObservation()
+  const { epoch: _epoch, stateId: _stateId, ...validObservation } = base
+  const target = targetIdentity(base)
+  const drifts: unknown[] = [
+    {
+      ...validObservation,
+      application: { ...validObservation.application, id: "com.example.other" }
+    },
+    { ...validObservation, resourceKey: "macos:42:g1:other-window" },
+    {
+      ...validObservation,
+      window: { ...validObservation.window, generation: "g2" }
+    },
+    {
+      ...validObservation,
+      window: { ...validObservation.window, nativeId: "other-window" }
+    },
+    { ...validObservation, window: { ...validObservation.window, pid: 43 } }
+  ]
+
+  for (const drift of drifts) {
+    const { bridge } = recordingNativeBridge((request) =>
+      request.method === "probe"
+        ? probedMatrix("macos-quartz")
+        : nativeOperationResponse("observe", drift)
+    )
+    const backend = await createJingleComputerUseNativeBackend("macos-quartz", bridge)
+    await assert.rejects(backend.observe({ target }), (error) => {
+      assert.ok(error instanceof ComputerUseNativeProtocolError)
+      assert.equal(error.code, "invalid_native_response")
+      assert.equal(error.method, "observe")
+      assert.match(error.message, /another target identity/)
+      return true
+    })
+  }
+})
+
+test("native observations validate the dispatched target snapshot when callers mutate", async () => {
+  const base = typeTextObservation()
+  const { epoch: _epoch, stateId: _stateId, ...validObservation } = base
+  const target = structuredClone(targetIdentity(base))
+  const dispatchedTarget = structuredClone(target)
+  let markObserveStarted: (() => void) | undefined
+  const observeStarted = new Promise<void>((resolve) => {
+    markObserveStarted = resolve
+  })
+  let releaseObserve: (() => void) | undefined
+  const observeReleased = new Promise<void>((resolve) => {
+    releaseObserve = resolve
+  })
+  const { bridge, calls } = recordingNativeBridge(async (request) => {
+    if (request.method === "probe") return probedMatrix("macos-quartz")
+    assert.equal(request.method, "observe")
+    markObserveStarted?.()
+    await observeReleased
+    return nativeOperationResponse("observe", {
+      ...validObservation,
+      resourceKey: target.resourceKey,
+      window: target.window
+    })
+  })
+  const backend = await createJingleComputerUseNativeBackend("macos-quartz", bridge)
+  const observing = backend.observe({ target })
+
+  await observeStarted
+  target.resourceKey = "macos:43:g2:other-window"
+  target.window = {
+    ...target.window,
+    generation: "g2",
+    nativeId: "other-window",
+    pid: 43
+  }
+  releaseObserve?.()
+
+  await assert.rejects(observing, (error) => {
+    assert.ok(error instanceof ComputerUseNativeProtocolError)
+    assert.equal(error.method, "observe")
+    assert.match(error.message, /another target identity/)
+    return true
+  })
+  assert.deepEqual(calls[1]?.request, {
+    environment: "macos-quartz",
+    method: "observe",
+    protocolVersion: 1,
+    request: { target: dispatchedTarget }
+  })
+})
+
+test("native identify response decoding fails closed with a typed protocol error", async () => {
+  const { bridge } = recordingNativeBridge((request) =>
+    request.method === "probe"
+      ? probedMatrix("macos-quartz")
+      : nativeOperationResponse("identify", { invalid: true })
+  )
+  const backend = await createJingleComputerUseNativeBackend("macos-quartz", bridge)
+
+  await assert.rejects(backend.identify({ applicationId: "com.example.editor" }), (error) => {
+    assert.ok(error instanceof ComputerUseNativeProtocolError)
+    assert.equal(error.code, "invalid_native_response")
+    assert.equal(error.method, "identify")
+    return true
+  })
+})
+
+test("native identify rejects valid-shaped application and window selector drift", async () => {
+  const base = typeTextObservation()
+  const target = targetIdentity(base)
+  const drifts = [
+    { ...target, application: { ...target.application, id: "com.example.other" } },
+    { ...target, window: { ...target.window, nativeId: "other-window" } }
+  ]
+
+  for (const drift of drifts) {
+    const { bridge } = recordingNativeBridge((request) =>
+      request.method === "probe"
+        ? probedMatrix("macos-quartz")
+        : nativeOperationResponse("identify", drift)
+    )
+    const backend = await createJingleComputerUseNativeBackend("macos-quartz", bridge)
+    await assert.rejects(
+      backend.identify({ applicationId: target.application.id, windowId: target.window.nativeId }),
+      (error) => {
+        assert.ok(error instanceof ComputerUseNativeProtocolError)
+        assert.equal(error.method, "identify")
+        assert.match(error.message, /another selector/)
+        return true
+      }
+    )
+  }
+})
+
+test("native identify validates the dispatched selector snapshot when callers mutate", async () => {
+  const base = typeTextObservation()
+  const target = targetIdentity(base)
+  const request = {
+    applicationId: target.application.id,
+    windowId: target.window.nativeId
+  }
+  const dispatchedRequest = structuredClone(request)
+  let markIdentifyStarted: (() => void) | undefined
+  const identifyStarted = new Promise<void>((resolve) => {
+    markIdentifyStarted = resolve
+  })
+  let releaseIdentify: (() => void) | undefined
+  const identifyReleased = new Promise<void>((resolve) => {
+    releaseIdentify = resolve
+  })
+  const { bridge, calls } = recordingNativeBridge(async (nativeInvocation) => {
+    if (nativeInvocation.method === "probe") return probedMatrix("macos-quartz")
+    assert.equal(nativeInvocation.method, "identify")
+    markIdentifyStarted?.()
+    await identifyReleased
+    return nativeOperationResponse("identify", {
+      ...target,
+      application: { ...target.application, id: request.applicationId },
+      window: { ...target.window, nativeId: request.windowId }
+    })
+  })
+  const backend = await createJingleComputerUseNativeBackend("macos-quartz", bridge)
+  const identifying = backend.identify(request)
+
+  await identifyStarted
+  request.applicationId = "com.example.other"
+  request.windowId = "other-window"
+  releaseIdentify?.()
+
+  await assert.rejects(identifying, (error) => {
+    assert.ok(error instanceof ComputerUseNativeProtocolError)
+    assert.equal(error.method, "identify")
+    assert.match(error.message, /another selector/)
+    return true
+  })
+  assert.deepEqual(calls[1]?.request, {
+    environment: "macos-quartz",
+    method: "identify",
+    protocolVersion: 1,
+    request: dispatchedRequest
+  })
+})
+
+test("native bridge transport rejections retain their original error identity", async () => {
+  const transportError = new TypeError("native transport disconnected")
+  const { bridge } = recordingNativeBridge((request) => {
+    if (request.method === "probe") return probedMatrix("macos-quartz")
+    throw transportError
+  })
+  const backend = await createJingleComputerUseNativeBackend("macos-quartz", bridge)
+
+  await assert.rejects(
+    backend.observe({ target: targetIdentity(typeTextObservation()) }),
+    (error) => error === transportError
+  )
+})
+
+test("native bridge in-flight aborts retain their original reason identity", async () => {
+  const controller = new AbortController()
+  const abortReason = new DOMException("native operation cancelled", "AbortError")
+  let markObserveStarted: (() => void) | undefined
+  const observeStarted = new Promise<void>((resolve) => {
+    markObserveStarted = resolve
+  })
+  const { bridge } = recordingNativeBridge((request, signal) => {
+    if (request.method === "probe") return probedMatrix("macos-quartz")
+    markObserveStarted?.()
+    return new Promise<never>((_resolve, reject) => {
+      signal?.addEventListener("abort", () => reject(signal.reason), { once: true })
+    })
+  })
+  const backend = await createJingleComputerUseNativeBackend("macos-quartz", bridge)
+  const observing = backend.observe({
+    signal: controller.signal,
+    target: targetIdentity(typeTextObservation())
+  })
+
+  await observeStarted
+  controller.abort(abortReason)
+
+  await assert.rejects(observing, (error) => error === abortReason)
+})
+
 test("native execution results reject malformed action, status, route, and evidence facts", async () => {
   const base = typeTextObservation()
   const action = { kind: "type_text", ref: "@e1", value: "hello" } as const
@@ -3404,7 +3629,13 @@ test("native execution results reject malformed action, status, route, and evide
         base,
         delivery: "background"
       }),
-      /Computer-use native/
+      (error) => {
+        assert.ok(error instanceof ComputerUseNativeProtocolError)
+        assert.equal(error.code, "invalid_native_response")
+        assert.equal(error.method, "execute")
+        assert.match(error.message, /Computer-use native/)
+        return true
+      }
     )
   }
 
