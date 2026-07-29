@@ -8,6 +8,10 @@ import type {
   NativeExtensionRuntimeCommandDefinition,
   NativeExtensionRuntimePackage
 } from "@jingle/extension-api"
+import {
+  extensionRuntimeHostModuleSpecifiers,
+  normalizeExtensionRuntimeHostModuleSpecifier
+} from "../../packages/extension-cli/src/runtime-artifact-policy.mjs"
 
 type RuntimeArtifactRevision = `sha256:${string}`
 
@@ -21,6 +25,7 @@ export type ExtensionRuntimeArtifactLoadErrorCode =
   | "runtime_artifact_revision_missing"
 
 const RUNTIME_ARTIFACT_REVISION_PATTERN = /^sha256:[a-f0-9]{64}$/
+const EXTENSION_RUNTIME_HOST_MODULE_SPECIFIERS = new Set(extensionRuntimeHostModuleSpecifiers)
 
 const builtInRuntimePackagesByExtensionName = new Map(
   nativeExtensionRuntimePackages.map((runtimePackage) => [
@@ -214,7 +219,12 @@ async function linkRuntimeArtifactDependency(
   extensionName: string,
   expectedRevision: RuntimeArtifactRevision
 ): Promise<VmModule> {
-  if (!specifier.startsWith("node:")) {
+  const canonicalSpecifier = normalizeExtensionRuntimeHostModuleSpecifier(specifier)
+  if (
+    !canonicalSpecifier ||
+    specifier !== canonicalSpecifier ||
+    !EXTENSION_RUNTIME_HOST_MODULE_SPECIFIERS.has(canonicalSpecifier)
+  ) {
     throw new ExtensionRuntimeArtifactLoadError(
       "runtime_artifact_dependency_unsupported",
       extensionName,
@@ -222,7 +232,7 @@ async function linkRuntimeArtifactDependency(
     )
   }
 
-  const namespace = await import(specifier)
+  const namespace = await import(canonicalSpecifier)
   const exportNames = Object.keys(namespace)
   return new SyntheticModule(exportNames, function () {
     for (const exportName of exportNames) {

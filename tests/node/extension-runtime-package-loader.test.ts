@@ -101,6 +101,50 @@ test("installed runtime artifact mismatch fails before top-level evaluation", as
   }
 })
 
+test("installed runtime rejects external module dependencies before top-level evaluation", async () => {
+  const root = await mkdtemp(join(tmpdir(), "jingle-runtime-loader-dependency-"))
+  const modulePath = join(root, "runtime.mjs")
+  const extensionName = `dependency-runtime-${Date.now()}`
+  const marker = `dependency-${Date.now()}`
+  const source = [
+    'import "node:fs";',
+    `globalThis.__jingleVerifiedRuntimeMarkers ??= [];`,
+    `globalThis.__jingleVerifiedRuntimeMarkers.push(${JSON.stringify(marker)});`,
+    `export default { extensionName: ${JSON.stringify(extensionName)}, commands: {} };`
+  ].join("\n")
+  await writeFile(modulePath, source)
+
+  try {
+    await assert.rejects(
+      loadNativeExtensionRuntimeCommand(
+        {
+          expectedRuntimeArtifactRevision: createRevision(source),
+          extensionName,
+          kind: "module",
+          modulePath,
+          version: "1.0.0"
+        },
+        { commandName: "execute", extensionName }
+      ),
+      (error: unknown) => {
+        assert.ok(error instanceof ExtensionRuntimeArtifactLoadError)
+        assert.equal(error.code, "runtime_artifact_dependency_unsupported")
+        return true
+      }
+    )
+    assert.equal(
+      (
+        ((globalThis as Record<string, unknown>).__jingleVerifiedRuntimeMarkers as
+          | string[]
+          | undefined) ?? []
+      ).includes(marker),
+      false
+    )
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
 test("installed runtime retries a transient artifact read failure without restarting", async () => {
   const root = await mkdtemp(join(tmpdir(), "jingle-runtime-loader-retry-"))
   const modulePath = join(root, "runtime.mjs")

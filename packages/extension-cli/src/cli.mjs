@@ -32,6 +32,11 @@ import {
   reconcileInterruptedPackagePublishes,
   renamePathWithRetry
 } from "./publish-journal.mjs"
+import {
+  extensionRuntimeHostModuleSpecifiers,
+  extensionRuntimeUnavailableOptionalDependencies,
+  normalizeExtensionRuntimeHostModuleSpecifier
+} from "./runtime-artifact-policy.mjs"
 
 const repoRoot = process.cwd()
 const defaultOutputRoot = resolve(repoRoot, ".jingle-build", "installed-extensions")
@@ -324,6 +329,7 @@ async function buildExtension(input) {
       await buildModuleFromSource({
         extensionRoot,
         external: ["electron"],
+        installCommonJsRequire: true,
         outfile: join(stagingRoot, "dist", "main.mjs"),
         source: `export { ${mainExportName} as default } from "./main"\n`,
         sourcefile: `${id}-main-entry.ts`
@@ -701,18 +707,17 @@ function findDefinitionExportName(filePath, factoryName) {
 async function buildModuleFromSource(input) {
   const plugins = [extensionApiSourceAliasPlugin()]
   if (input.installRuntimeReactShim) {
-    plugins.push(jingleRuntimeShimPlugin())
+    plugins.push(jingleRuntimeShimPlugin(), unavailableRuntimeOptionalDependencyPlugin())
   }
 
-  await build({
-    banner: {
-      js: 'import { createRequire as __jingleCreateRequire } from "node:module"; const require = __jingleCreateRequire(import.meta.url);'
-    },
+  const result = await build({
+    banner: resolveModuleBanner(input),
     bundle: true,
     external: input.external ?? [],
     format: "esm",
     jsx: "automatic",
     logLevel: "silent",
+    metafile: input.installRuntimeReactShim === true,
     outfile: input.outfile,
     packages: "bundle",
     platform: "node",
@@ -725,6 +730,55 @@ async function buildModuleFromSource(input) {
     },
     target: "node18"
   })
+
+  if (input.installRuntimeReactShim) {
+    assertSelfContainedRuntimeArtifact(result.metafile)
+  }
+}
+
+function resolveModuleBanner(input) {
+  if (input.installCommonJsRequire) {
+    return {
+      js: 'import { createRequire as __jingleCreateRequire } from "node:module"; const require = __jingleCreateRequire(import.meta.url);'
+    }
+  }
+  if (!input.installRuntimeReactShim) {
+    return undefined
+  }
+
+  const moduleImports = extensionRuntimeHostModuleSpecifiers.map(
+    (specifier, index) =>
+      `import * as __jingleRuntimeHostModule${index} from ${JSON.stringify(specifier)};`
+  )
+  const moduleEntries = extensionRuntimeHostModuleSpecifiers.flatMap((specifier, index) => [
+    `${JSON.stringify(specifier)}: __jingleRuntimeHostModule${index}`,
+    `${JSON.stringify(specifier.slice("node:".length))}: __jingleRuntimeHostModule${index}`
+  ])
+  return {
+    js: [
+      ...moduleImports,
+      `const __jingleRuntimeHostModules = Object.freeze({ ${moduleEntries.join(", ")} });`,
+      "const require = (specifier) => {",
+      '  if (typeof specifier !== "string" || !Object.hasOwn(__jingleRuntimeHostModules, specifier)) {',
+      '    throw new Error("Extension runtime requested an unavailable host module")',
+      "  }",
+      "  return __jingleRuntimeHostModules[specifier]",
+      "};"
+    ].join("\n")
+  }
+}
+
+function assertSelfContainedRuntimeArtifact(metafile) {
+  const externalImports = Object.values(metafile?.outputs ?? {}).flatMap((output) =>
+    output.imports.filter((dependency) => dependency.external)
+  )
+  if (
+    externalImports.some(
+      (dependency) => normalizeExtensionRuntimeHostModuleSpecifier(dependency.path) === null
+    )
+  ) {
+    throw new Error("Extension runtime artifact must not retain external module dependencies")
+  }
 }
 
 function extensionApiSourceAliasPlugin() {
@@ -778,6 +832,28 @@ function jingleRuntimeShimPlugin() {
         { filter: /^react\/jsx-dev-runtime$/, namespace: "jingle-runtime-shim" },
         () => ({
           contents: reactJsxRuntimeShimSource("jsxDevRuntime"),
+          loader: "js"
+        })
+      )
+    }
+  }
+}
+
+function unavailableRuntimeOptionalDependencyPlugin() {
+  const filter = new RegExp(
+    `^(?:${extensionRuntimeUnavailableOptionalDependencies.map(escapeRegExp).join("|")})$`
+  )
+  return {
+    name: "jingle-runtime-unavailable-optional-dependency",
+    setup(build) {
+      build.onResolve({ filter }, (args) => ({
+        namespace: "jingle-runtime-unavailable-optional-dependency",
+        path: args.path
+      }))
+      build.onLoad(
+        { filter: /.*/, namespace: "jingle-runtime-unavailable-optional-dependency" },
+        () => ({
+          contents: 'throw new Error("Optional extension runtime dependency is unavailable")',
           loader: "js"
         })
       )

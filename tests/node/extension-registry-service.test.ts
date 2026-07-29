@@ -120,6 +120,7 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
     assert.ok(extensionPackage.runtime)
     assert.equal(extensionPackage.runtime.kind, "module")
     const runtimeBundle = await readFile(extensionPackage.runtime.modulePath)
+    const runtimeBundleSource = runtimeBundle.toString("utf8")
     const descriptor = JSON.parse(
       await readFile(join(extensionPackage.rootDir, "jingle.extension.json"), "utf8")
     ) as { runtime: string; runtimeArtifactRevision: string }
@@ -133,6 +134,7 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
       descriptor.runtime,
       `./dist/runtime-${descriptor.runtimeArtifactRevision.slice("sha256:".length)}.mjs`
     )
+    assert.doesNotMatch(runtimeBundleSource, /__jingleCreateRequire|node:module/)
     assert.ok(extensionPackage.main)
     const mainBundle = await readFile(extensionPackage.main.modulePath, "utf8")
     assert.doesNotMatch(mainBundle, /__dirname/)
@@ -643,6 +645,46 @@ test("extension CLI content-addresses same-version runtime rebuilds", async () =
       createRuntimeArtifactRevision(await readFile(secondRuntimePath))
     )
     await assert.rejects(() => readFile(firstRuntimePath), /ENOENT/)
+  } finally {
+    await rm(sourceRoot, { force: true, recursive: true })
+    await rm(outputRoot, { force: true, recursive: true })
+  }
+})
+
+test("extension CLI rejects runtime artifacts with external module dependencies", async () => {
+  const sourceRoot = await mkdtemp(join(tmpdir(), "jingle-runtime-external-source-"))
+  const outputRoot = await mkdtemp(join(tmpdir(), "jingle-runtime-external-out-"))
+
+  try {
+    await writeRuntimeRevisionExtensionSource(sourceRoot, "external-build")
+    await writeFile(
+      join(sourceRoot, "runtime.ts"),
+      [
+        'import { readFileSync } from "node:fs"',
+        'import { defineNativeExtensionRuntime } from "@jingle/extension-api"',
+        "export const runtime = defineNativeExtensionRuntime({",
+        '  commands: { run: { mode: "no-view", run: async () => typeof readFileSync } },',
+        '  extensionName: "runtime-revision-sample"',
+        "})"
+      ].join("\n")
+    )
+
+    await assert.rejects(
+      () =>
+        execFileAsync(
+          process.execPath,
+          ["packages/extension-cli/src/cli.mjs", "build", sourceRoot, "--out-dir", outputRoot],
+          { cwd: process.cwd(), timeout: 60_000 }
+        ),
+      (error) => {
+        assert.equal((error as { code?: number }).code, 1)
+        assert.match(
+          `${(error as { stderr?: string }).stderr ?? ""}\n${(error as { stdout?: string }).stdout ?? ""}`,
+          /runtime artifact must not retain external module dependencies/i
+        )
+        return true
+      }
+    )
   } finally {
     await rm(sourceRoot, { force: true, recursive: true })
     await rm(outputRoot, { force: true, recursive: true })
