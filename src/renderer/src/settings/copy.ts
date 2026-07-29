@@ -28,8 +28,13 @@ interface SettingsCopy {
   }
   general: {
     computerUseAllowlist: string
+    computerUseApplied: string
+    computerUseApplying: string
     computerUseDescription: string
+    computerUseDiagnostic: string
     computerUseEnabled: string
+    computerUseRetry: string
+    computerUseStatusUnavailable: string
     computerUseTitle: string
     title: string
     workspaceTitle: string
@@ -59,6 +64,7 @@ interface SettingsCopy {
     noNativeExtensions: string
     useEnvironmentFallback: string
     saveFailed: string
+    saveUnavailable: string
     saved: string
     workspaceHint: string
   }
@@ -271,9 +277,14 @@ const zhCN: SettingsCopy = {
   },
   general: {
     computerUseAllowlist: "允许的稳定应用标识",
+    computerUseApplied: "已应用到当前 Computer Use runtime",
+    computerUseApplying: "正在应用到当前 Computer Use runtime...",
     computerUseDescription:
       "启用后，金果只能观察和操作下面逐行列出的稳定应用标识。该能力仅在主窗口或独立线程窗口中可用；保存设置会立即撤销现有桌面会话。",
+    computerUseDiagnostic: "诊断码",
     computerUseEnabled: "启用 Computer Use",
+    computerUseRetry: "重试",
+    computerUseStatusUnavailable: "无法刷新 Computer Use runtime 状态，请保存以重试",
     computerUseTitle: "Computer Use",
     title: "金果基础设置",
     workspaceTitle: "默认 Workspace",
@@ -303,7 +314,8 @@ const zhCN: SettingsCopy = {
     nativeExtensionsDescription: "管理金果内置 extension 的偏好设置。",
     noNativeExtensions: "当前没有带设置项的 native extension。",
     useEnvironmentFallback: "跟随环境变量 / 默认值",
-    saveFailed: "设置已保存，但 Computer Use 未能应用。请再次保存以重试。",
+    saveFailed: "设置已保存，但 Computer Use 未能应用。需要重试。",
+    saveUnavailable: "设置未能保存",
     saved: "已保存",
     workspaceHint: "线程级 workspace 仍然可以覆盖这里的默认值。"
   },
@@ -518,9 +530,14 @@ const enUS: SettingsCopy = {
   },
   general: {
     computerUseAllowlist: "Allowed stable application identifiers",
+    computerUseApplied: "Applied to the current Computer Use runtime",
+    computerUseApplying: "Applying to the current Computer Use runtime...",
     computerUseDescription:
       "When enabled, Jingle can observe and operate only the stable application identifiers listed below. Computer Use is available only in Main or separate thread windows; saving changes immediately revokes active desktop sessions.",
+    computerUseDiagnostic: "Diagnostic code",
     computerUseEnabled: "Enable Computer Use",
+    computerUseRetry: "Retry",
+    computerUseStatusUnavailable: "Could not refresh Computer Use runtime status. Save to retry.",
     computerUseTitle: "Computer Use",
     title: "Jingle Foundation",
     workspaceTitle: "Default Workspace",
@@ -551,7 +568,8 @@ const enUS: SettingsCopy = {
     nativeExtensionsDescription: "Manage preferences for built-in Jingle extensions.",
     noNativeExtensions: "No native extensions expose preferences yet.",
     useEnvironmentFallback: "Use env var / fallback default",
-    saveFailed: "Settings were saved, but Computer Use could not be applied. Save again to retry.",
+    saveFailed: "Settings were saved, but Computer Use could not be applied. Retry is required.",
+    saveUnavailable: "Settings could not be saved",
     saved: "Saved",
     workspaceHint: "Thread-level workspace can still override this global default."
   },

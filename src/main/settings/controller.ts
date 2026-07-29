@@ -13,6 +13,10 @@ export class SettingsController {
       return this.settingsService.getAgentConfig()
     })
 
+    registerIpcHandle(ipcMain, "settings:getComputerUseRuntimeStatus", async () => {
+      return this.settingsService.getComputerUseRuntimeStatus()
+    })
+
     registerIpcHandle(
       ipcMain,
       "settings:setAgentConfig",

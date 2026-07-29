@@ -251,6 +251,50 @@ test("Computer Use retries a native service creation failure without creating a 
   assert.equal(closeCalls, 1)
 })
 
+test("Computer Use settings leave applying state when concurrent service creation rejects", async () => {
+  let rejectService!: (error: Error) => void
+  const servicePromise = new Promise<ComputerUseApplicationService>((_resolve, reject) => {
+    rejectService = reject
+  })
+  const runtime = new ComputerUseRuntime({
+    initialConfig: {
+      computerUseApplicationAllowlist: ["com.example.editor"],
+      computerUseEnabled: true
+    },
+    createService: async () => servicePromise
+  })
+  const { lease } = caller()
+  const invocation = runtime
+    .createToolHandlers(lease)!
+    .observe({ applicationId: "com.example.editor" }, context())
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  const disabledConfig = {
+    computerUseApplicationAllowlist: ["com.example.editor"],
+    computerUseEnabled: false
+  }
+  const applying = runtime.applyAgentConfig(disabledConfig)
+  const latestConfig = {
+    computerUseApplicationAllowlist: ["com.example.other"],
+    computerUseEnabled: false
+  }
+  const latestApplying = runtime.applyAgentConfig(latestConfig)
+
+  assert.deepEqual(runtime.getConfigApplicationStatus(), { state: "applying" })
+  rejectService(new Error("native service creation failed"))
+  await assert.rejects(invocation, /native service creation failed/)
+  await assert.rejects(applying, /native service creation failed/)
+  await assert.rejects(latestApplying, /native service creation failed/)
+  assert.deepEqual(runtime.getConfigApplicationStatus(), {
+    diagnosticCode: "computer_use.settings_apply_failed",
+    retryable: true,
+    state: "retry_required"
+  })
+
+  await runtime.applyAgentConfig(latestConfig)
+  assert.deepEqual(runtime.getConfigApplicationStatus(), { state: "applied" })
+  await runtime.close()
+})
+
 test("Computer Use disable wins while the native service is still being created", async () => {
   let observeCalls = 0
   let resolveService!: (service: ComputerUseApplicationService) => void
@@ -329,9 +373,15 @@ test("Computer Use retries failed session cleanup when the same disabled config 
   }
 
   await assert.rejects(runtime.applyAgentConfig(disabledConfig), /dispose failed/)
+  assert.deepEqual(runtime.getConfigApplicationStatus(), {
+    diagnosticCode: "computer_use.settings_apply_failed",
+    retryable: true,
+    state: "retry_required"
+  })
   await runtime.applyAgentConfig(disabledConfig)
 
   assert.deepEqual(transitions, [true, false, false])
+  assert.deepEqual(runtime.getConfigApplicationStatus(), { state: "applied" })
   assert.equal(runtime.createToolHandlers(lease), undefined)
   await runtime.close()
 })
@@ -378,13 +428,93 @@ test("Computer Use retries failed disable cleanup before restoring the applied e
     }),
     /dispose failed/
   )
+  assert.deepEqual(runtime.getConfigApplicationStatus(), {
+    diagnosticCode: "computer_use.settings_apply_failed",
+    retryable: true,
+    state: "retry_required"
+  })
   await runtime.applyAgentConfig({
     computerUseApplicationAllowlist: ["com.example.editor"],
     computerUseEnabled: true
   })
 
   assert.deepEqual(transitions, [true, false, false, true])
+  assert.deepEqual(runtime.getConfigApplicationStatus(), { state: "applied" })
   assert.ok(runtime.createToolHandlers(lease))
+  await runtime.close()
+})
+
+test("Computer Use ignores stale apply failure status while a newer config is queued", async () => {
+  let disableCalls = 0
+  let releaseFirstDisable!: () => void
+  let releaseSecondDisable!: () => void
+  let startFirstDisable!: () => void
+  let startSecondDisable!: () => void
+  const firstDisableStarted = new Promise<void>((resolve) => {
+    startFirstDisable = resolve
+  })
+  const secondDisableStarted = new Promise<void>((resolve) => {
+    startSecondDisable = resolve
+  })
+  const firstDisableReleased = new Promise<void>((resolve) => {
+    releaseFirstDisable = resolve
+  })
+  const secondDisableReleased = new Promise<void>((resolve) => {
+    releaseSecondDisable = resolve
+  })
+  const runtime = new ComputerUseRuntime({
+    initialConfig: {
+      computerUseApplicationAllowlist: ["com.example.editor"],
+      computerUseEnabled: true
+    },
+    createService: async ({ authorizeTarget }) =>
+      ({
+        async close() {},
+        async closeRun() {},
+        async observeAndOpenSession() {
+          const value = observation()
+          authorizeTarget(value)
+          return {
+            authorization: { sessionId: "session-1" },
+            observation: value,
+            projection: { elements: [], kind: "full", reason: "initial", stateId: value.stateId }
+          }
+        },
+        async setEnabled(enabled: boolean) {
+          if (enabled) return
+          disableCalls += 1
+          if (disableCalls === 1) {
+            startFirstDisable()
+            await firstDisableReleased
+            throw new Error("stale disable failed")
+          }
+          startSecondDisable()
+          await secondDisableReleased
+        }
+      }) as never
+  })
+  const { lease } = caller()
+  await runtime
+    .createToolHandlers(lease)!
+    .observe({ applicationId: "com.example.editor" }, context())
+
+  const staleApply = runtime.applyAgentConfig({
+    computerUseApplicationAllowlist: ["com.example.editor"],
+    computerUseEnabled: false
+  })
+  await firstDisableStarted
+  const currentApply = runtime.applyAgentConfig({
+    computerUseApplicationAllowlist: ["com.example.editor"],
+    computerUseEnabled: true
+  })
+  releaseFirstDisable()
+  await assert.rejects(staleApply, /stale disable failed/)
+  await secondDisableStarted
+  assert.deepEqual(runtime.getConfigApplicationStatus(), { state: "applying" })
+
+  releaseSecondDisable()
+  await currentApply
+  assert.deepEqual(runtime.getConfigApplicationStatus(), { state: "applied" })
   await runtime.close()
 })
 

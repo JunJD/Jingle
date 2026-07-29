@@ -1,5 +1,10 @@
 import { ipcRenderer } from "electron"
 import type { AgentConfig } from "@shared/app-types"
+import {
+  computerUseSettingsRuntimeStatusSchema,
+  type AgentConfigUpdateResult,
+  type ComputerUseSettingsRuntimeStatus
+} from "@shared/computer-use-settings"
 import type { AppThemeSettings } from "@shared/app-theme"
 import type { LauncherSettings } from "@shared/launcher-settings"
 import {
@@ -47,8 +52,18 @@ export const settingsApi = {
   getAgentConfig: (): Promise<AgentConfig> => {
     return invokeIpc("settings:getAgentConfig")
   },
-  setAgentConfig: (updates: Partial<AgentConfig>): Promise<AgentConfig> => {
-    return invokeIpc("settings:setAgentConfig", updates)
+  getComputerUseRuntimeStatus: (): Promise<ComputerUseSettingsRuntimeStatus> => {
+    return invokeIpc<unknown>("settings:getComputerUseRuntimeStatus").then((result) =>
+      computerUseSettingsRuntimeStatusSchema.parse(result)
+    )
+  },
+  setAgentConfig: (updates: Partial<AgentConfig>): Promise<AgentConfigUpdateResult> => {
+    return invokeIpc<AgentConfigUpdateResult>("settings:setAgentConfig", updates).then(
+      (result) => ({
+        config: result.config,
+        computerUseRuntime: computerUseSettingsRuntimeStatusSchema.parse(result.computerUseRuntime)
+      })
+    )
   },
   onAgentConfigChanged: (callback: (config: AgentConfig) => void): (() => void) => {
     const handler = (_event: unknown, config: AgentConfig): void => {

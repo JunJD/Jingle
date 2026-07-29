@@ -3,6 +3,11 @@ import type { AppThemeSettings } from "@shared/app-theme"
 import type { LauncherSettings } from "@shared/launcher-settings"
 import type { AgentConfig } from "../types"
 import {
+  COMPUTER_USE_SETTINGS_APPLY_FAILED_DIAGNOSTIC_CODE,
+  type AgentConfigUpdateResult,
+  type ComputerUseSettingsRuntimeStatus
+} from "@shared/computer-use-settings"
+import {
   getAgentConfig,
   getAppThemeSettings,
   getLauncherSettings,
@@ -22,27 +27,35 @@ export class SettingsService {
     return getAgentConfig()
   }
 
-  async setAgentConfig(updates: Partial<AgentConfig>): Promise<AgentConfig> {
+  getComputerUseRuntimeStatus(): ComputerUseSettingsRuntimeStatus {
+    return this.computerUseRuntime.getConfigApplicationStatus()
+  }
+
+  async setAgentConfig(updates: Partial<AgentConfig>): Promise<AgentConfigUpdateResult> {
     const config = setAgentConfig(updates)
     try {
       await this.computerUseRuntime.applyAgentConfig(config)
     } catch (error) {
-      diagnosticsGraph.capture({
-        component: "settings-service",
-        dimensionEntries: [{ key: "errorType", value: readDiagnosticErrorType(error) }],
-        eventCode: "computer_use.settings_apply_failed",
-        fingerprint: "computer_use.settings_apply_failed",
-        level: "error",
-        operation: "apply-computer-use-settings",
-        recoverable: true,
-        stateImpact: "desired-settings-persisted-runtime-apply-retry-required",
-        summary: "Computer Use settings were saved but could not be applied to the live runtime."
-      })
-      throw error
+      if (this.computerUseRuntime.getConfigApplicationStatus().state === "retry_required") {
+        diagnosticsGraph.capture({
+          component: "settings-service",
+          dimensionEntries: [{ key: "errorType", value: readDiagnosticErrorType(error) }],
+          eventCode: COMPUTER_USE_SETTINGS_APPLY_FAILED_DIAGNOSTIC_CODE,
+          fingerprint: COMPUTER_USE_SETTINGS_APPLY_FAILED_DIAGNOSTIC_CODE,
+          level: "error",
+          operation: "apply-computer-use-settings",
+          recoverable: true,
+          stateImpact: "desired-settings-persisted-runtime-apply-retry-required",
+          summary: "Computer Use settings were saved but could not be applied to the live runtime."
+        })
+      }
     } finally {
-      this.emitAgentConfigChanged(config)
+      this.emitAgentConfigChanged(getAgentConfig())
     }
-    return config
+    return {
+      config: getAgentConfig(),
+      computerUseRuntime: this.computerUseRuntime.getConfigApplicationStatus()
+    }
   }
 
   getAppThemeSettings(): AppThemeSettings {

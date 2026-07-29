@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from "react"
+import { useCallback, useEffect, useReducer, useRef } from "react"
 import {
   CornerDownRight,
   Download,
@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 import type { AgentConfig } from "@shared/app-types"
 import type { AgentFollowUpMode } from "@shared/agent-follow-up"
+import type { ComputerUseSettingsRuntimeStatus } from "@shared/computer-use-settings"
 import type { DiagnosticSupportPacketExportResult } from "@shared/diagnostics"
 import type { LauncherSettings, LauncherWindowMode } from "@shared/launcher-settings"
 import { SUPPORTED_APP_LOCALES, type AppLocale } from "@shared/i18n"
@@ -83,6 +84,8 @@ function getSupportPacketExportStatus(
 interface GeneralTabState {
   agentConfig: AgentConfig | null
   computerUseApplicationAllowlistDraft: string
+  computerUseRuntimeStatus: ComputerUseSettingsRuntimeStatus | null
+  computerUseSaving: boolean
   globalWorkspacePath: string | null
   launcherSettings: LauncherSettings | null
   skillSourcesDraft: string
@@ -95,10 +98,22 @@ type GeneralTabAction =
   | {
       type: "loaded"
       agentConfig: AgentConfig
+      computerUseRuntimeStatus?: ComputerUseSettingsRuntimeStatus
       globalWorkspacePath: string | null
       launcherSettings: LauncherSettings
     }
-  | { type: "agent-config-saved"; agentConfig: AgentConfig; status: string }
+  | {
+      type: "agent-config-saved"
+      agentConfig: AgentConfig
+      computerUseRuntimeStatus?: ComputerUseSettingsRuntimeStatus
+      status: string
+    }
+  | { type: "computer-use-save-failed"; status: string }
+  | { type: "computer-use-save-started" }
+  | {
+      type: "computer-use-runtime-status-changed"
+      computerUseRuntimeStatus: ComputerUseSettingsRuntimeStatus
+    }
   | { type: "computer-use-allowlist-changed"; value: string }
   | { type: "computer-use-enabled-changed"; value: boolean }
   | { type: "launcher-settings-changed"; launcherSettings: LauncherSettings }
@@ -113,6 +128,8 @@ type GeneralTabAction =
 const initialGeneralTabState: GeneralTabState = {
   agentConfig: null,
   computerUseApplicationAllowlistDraft: "",
+  computerUseRuntimeStatus: null,
+  computerUseSaving: false,
   globalWorkspacePath: null,
   launcherSettings: null,
   skillSourcesDraft: "",
@@ -129,6 +146,9 @@ function generalTabReducer(state: GeneralTabState, action: GeneralTabAction): Ge
         agentConfig: action.agentConfig,
         computerUseApplicationAllowlistDraft:
           action.agentConfig.computerUseApplicationAllowlist.join("\n"),
+        ...(action.computerUseRuntimeStatus
+          ? { computerUseRuntimeStatus: action.computerUseRuntimeStatus }
+          : {}),
         globalWorkspacePath: action.globalWorkspacePath,
         launcherSettings: action.launcherSettings,
         skillSourcesDraft: action.agentConfig.skillSources.join("\n")
@@ -139,8 +159,18 @@ function generalTabReducer(state: GeneralTabState, action: GeneralTabAction): Ge
         agentConfig: action.agentConfig,
         computerUseApplicationAllowlistDraft:
           action.agentConfig.computerUseApplicationAllowlist.join("\n"),
+        ...(action.computerUseRuntimeStatus
+          ? { computerUseRuntimeStatus: action.computerUseRuntimeStatus }
+          : {}),
+        computerUseSaving: false,
         status: action.status
       }
+    case "computer-use-save-failed":
+      return { ...state, computerUseSaving: false, status: action.status }
+    case "computer-use-save-started":
+      return { ...state, computerUseSaving: true, status: "" }
+    case "computer-use-runtime-status-changed":
+      return { ...state, computerUseRuntimeStatus: action.computerUseRuntimeStatus }
     case "computer-use-allowlist-changed":
       return { ...state, computerUseApplicationAllowlistDraft: action.value }
     case "computer-use-enabled-changed":
@@ -178,9 +208,12 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
   const { setLocale } = useI18n()
   const copy = getSettingsCopy(locale)
   const [state, dispatch] = useReducer(generalTabReducer, initialGeneralTabState)
+  const computerUseStatusRequestGeneration = useRef(0)
   const {
     agentConfig,
     computerUseApplicationAllowlistDraft,
+    computerUseRuntimeStatus,
+    computerUseSaving,
     globalWorkspacePath,
     launcherSettings,
     skillSourcesDraft,
@@ -189,20 +222,63 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
     supportPacketStatus
   } = state
 
+  const readComputerUseRuntimeStatus = useCallback(async () => {
+    const generation = ++computerUseStatusRequestGeneration.current
+    try {
+      return {
+        generation,
+        status: await window.api.settings.getComputerUseRuntimeStatus()
+      }
+    } catch {
+      return { generation, status: null }
+    }
+  }, [])
+
   useEffect(() => {
     void Promise.all([
       window.api.settings.getAgentConfig(),
+      readComputerUseRuntimeStatus(),
       window.api.workspace.get(),
       window.api.settings.getLauncherSettings()
-    ]).then(([nextAgentConfig, nextGlobalWorkspacePath, nextLauncherSettings]) => {
-      dispatch({
-        type: "loaded",
-        agentConfig: nextAgentConfig,
-        globalWorkspacePath: nextGlobalWorkspacePath,
-        launcherSettings: nextLauncherSettings
+    ]).then(
+      ([
+        nextAgentConfig,
+        computerUseRuntimeStatusRead,
+        nextGlobalWorkspacePath,
+        nextLauncherSettings
+      ]) => {
+        dispatch({
+          type: "loaded",
+          agentConfig: nextAgentConfig,
+          ...(computerUseStatusRequestGeneration.current ===
+            computerUseRuntimeStatusRead.generation && computerUseRuntimeStatusRead.status
+            ? { computerUseRuntimeStatus: computerUseRuntimeStatusRead.status }
+            : {}),
+          globalWorkspacePath: nextGlobalWorkspacePath,
+          launcherSettings: nextLauncherSettings
+        })
+      }
+    )
+  }, [readComputerUseRuntimeStatus])
+
+  useEffect(() => {
+    return window.api.settings.onAgentConfigChanged(() => {
+      void readComputerUseRuntimeStatus().then((runtimeStatusRead) => {
+        if (computerUseStatusRequestGeneration.current !== runtimeStatusRead.generation) return
+        if (runtimeStatusRead.status) {
+          dispatch({
+            type: "computer-use-runtime-status-changed",
+            computerUseRuntimeStatus: runtimeStatusRead.status
+          })
+        } else {
+          dispatch({
+            type: "status-changed",
+            status: copy.general.computerUseStatusUnavailable
+          })
+        }
       })
     })
-  }, [])
+  }, [copy.general.computerUseStatusUnavailable, readComputerUseRuntimeStatus])
 
   useEffect(() => {
     if (!status) {
@@ -223,23 +299,37 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
   }, [supportPacketStatus])
 
   const saveAgentConfig = async (): Promise<void> => {
+    dispatch({ type: "computer-use-save-started" })
     try {
-      const nextConfig = await window.api.settings.setAgentConfig({
+      const result = await window.api.settings.setAgentConfig({
         computerUseApplicationAllowlist: parseLineList(computerUseApplicationAllowlistDraft),
         computerUseEnabled: agentConfig?.computerUseEnabled === true,
         skillSources: parseLineList(skillSourcesDraft)
       })
-      dispatch({ type: "agent-config-saved", agentConfig: nextConfig, status: copy.general.saved })
+      computerUseStatusRequestGeneration.current += 1
+      dispatch({
+        type: "agent-config-saved",
+        agentConfig: result.config,
+        computerUseRuntimeStatus: result.computerUseRuntime,
+        status: result.computerUseRuntime.state === "applied" ? copy.general.saved : ""
+      })
     } catch {
       try {
-        const persistedConfig = await window.api.settings.getAgentConfig()
+        const [persistedConfig, runtimeStatusRead] = await Promise.all([
+          window.api.settings.getAgentConfig(),
+          readComputerUseRuntimeStatus()
+        ])
         dispatch({
           type: "agent-config-saved",
           agentConfig: persistedConfig,
-          status: copy.general.saveFailed
+          ...(computerUseStatusRequestGeneration.current === runtimeStatusRead.generation &&
+          runtimeStatusRead.status
+            ? { computerUseRuntimeStatus: runtimeStatusRead.status }
+            : {}),
+          status: copy.general.saveUnavailable
         })
       } catch {
-        dispatch({ type: "status-changed", status: copy.general.saveFailed })
+        dispatch({ type: "computer-use-save-failed", status: copy.general.saveUnavailable })
       }
     }
   }
@@ -258,8 +348,19 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
 
   const handleLocaleChange = async (nextLocale: AppLocale): Promise<void> => {
     await setLocale(nextLocale)
-    const nextConfig = await window.api.settings.getAgentConfig()
-    dispatch({ type: "agent-config-saved", agentConfig: nextConfig, status: "" })
+    const [nextConfig, runtimeStatusRead] = await Promise.all([
+      window.api.settings.getAgentConfig(),
+      readComputerUseRuntimeStatus()
+    ])
+    dispatch({
+      type: "agent-config-saved",
+      agentConfig: nextConfig,
+      ...(computerUseStatusRequestGeneration.current === runtimeStatusRead.generation &&
+      runtimeStatusRead.status
+        ? { computerUseRuntimeStatus: runtimeStatusRead.status }
+        : {}),
+      status: ""
+    })
   }
 
   const handleLauncherModeChange = async (nextMode: LauncherWindowMode): Promise<void> => {
@@ -268,8 +369,14 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
   }
 
   const handleFollowUpModeChange = async (nextMode: AgentFollowUpMode): Promise<void> => {
-    const nextConfig = await window.api.settings.setAgentConfig({ followUpMode: nextMode })
-    dispatch({ type: "agent-config-saved", agentConfig: nextConfig, status: "" })
+    const result = await window.api.settings.setAgentConfig({ followUpMode: nextMode })
+    computerUseStatusRequestGeneration.current += 1
+    dispatch({
+      type: "agent-config-saved",
+      agentConfig: result.config,
+      computerUseRuntimeStatus: result.computerUseRuntime,
+      status: ""
+    })
   }
 
   const handleSupportPacketExport = async (): Promise<void> => {
@@ -455,9 +562,12 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
               <button
                 type="button"
                 className={secondaryButtonClassName}
+                disabled={computerUseSaving}
                 onClick={() => void saveAgentConfig()}
               >
-                {copy.common.save}
+                {!computerUseSaving && computerUseRuntimeStatus?.state === "retry_required"
+                  ? copy.general.computerUseRetry
+                  : copy.common.save}
               </button>
               {status ? (
                 <span className="[font-size:var(--jingle-font-body)] text-muted-foreground">
@@ -465,6 +575,27 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
                 </span>
               ) : null}
             </div>
+            {computerUseRuntimeStatus ? (
+              <div
+                className="space-y-[var(--jingle-space-1)] [font-size:var(--jingle-font-body)] text-muted-foreground"
+                role="status"
+              >
+                <p>
+                  {computerUseSaving
+                    ? copy.general.computerUseApplying
+                    : computerUseRuntimeStatus.state === "applied"
+                      ? copy.general.computerUseApplied
+                      : computerUseRuntimeStatus.state === "applying"
+                        ? copy.general.computerUseApplying
+                        : copy.general.saveFailed}
+                </p>
+                {computerUseRuntimeStatus.state === "retry_required" ? (
+                  <p>
+                    {copy.general.computerUseDiagnostic}: {computerUseRuntimeStatus.diagnosticCode}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </SettingsRow>
 

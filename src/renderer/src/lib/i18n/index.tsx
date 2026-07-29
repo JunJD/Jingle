@@ -1,9 +1,5 @@
 import { createContext, use, useCallback, useEffect, useMemo, useState } from "react"
-import {
-  DEFAULT_APP_LOCALE,
-  normalizeAppLocale,
-  type AppLocale
-} from "@shared/i18n"
+import { DEFAULT_APP_LOCALE, normalizeAppLocale, type AppLocale } from "@shared/i18n"
 import { appCopy, type AppCopy } from "./messages"
 
 interface I18nContextValue {
@@ -35,8 +31,8 @@ export function I18nProvider(props: {
 
   const setLocale = useCallback(async (nextLocale: AppLocale): Promise<void> => {
     const normalizedLocale = normalizeAppLocale(nextLocale)
-    const nextConfig = await window.api.settings.setAgentConfig({ locale: normalizedLocale })
-    setLocaleState(normalizeAppLocale(nextConfig.locale))
+    const result = await window.api.settings.setAgentConfig({ locale: normalizedLocale })
+    setLocaleState(normalizeAppLocale(result.config.locale))
   }, [])
 
   const value = useMemo<I18nContextValue>(() => {

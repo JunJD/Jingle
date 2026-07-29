@@ -11,6 +11,10 @@ import type {
 } from "@jingle/langchain-agent-harness"
 import { JINGLE_COMPUTER_USE_TOOL_RESULT_VERSION } from "@shared/computer-use-tool-result"
 import {
+  COMPUTER_USE_SETTINGS_APPLY_FAILED_DIAGNOSTIC_CODE,
+  type ComputerUseSettingsRuntimeStatus
+} from "@shared/computer-use-settings"
+import {
   parseComputerUseToolApprovalInput,
   type ComputerUseToolApprovalItem
 } from "@shared/tool-approval"
@@ -45,6 +49,8 @@ export interface ComputerUseActionApprovalAdmission {
 export class ComputerUseRuntime {
   private appliedConfig: Readonly<ComputerUseConfig> | null = null
   private config: Readonly<ComputerUseConfig>
+  private configApplicationStatus: ComputerUseSettingsRuntimeStatus = { state: "applied" }
+  private configGeneration = 0
   private configQueue = Promise.resolve()
   private readonly cleanupFailures = new Map<string, unknown>()
   private readonly runCallers = new Map<string, RunCallerBinding>()
@@ -59,11 +65,22 @@ export class ComputerUseRuntime {
   applyAgentConfig(config: ComputerUseConfig): Promise<void> {
     this.assertOpen()
     const normalized = normalizeConfig(config)
+    const generation = ++this.configGeneration
     this.config = normalized
-    if (!this.servicePromise || sameConfig(this.appliedConfig, normalized)) {
+    if (!this.servicePromise) {
+      this.configApplicationStatus = { state: "applied" }
+      this.configQueue = this.configQueue.catch(() => undefined)
       return this.configQueue
     }
-    return this.queueConfigApplication()
+    if (sameConfig(this.appliedConfig, normalized)) {
+      this.configApplicationStatus = { state: "applied" }
+      return this.configQueue
+    }
+    return this.queueConfigApplication(generation)
+  }
+
+  getConfigApplicationStatus(): ComputerUseSettingsRuntimeStatus {
+    return this.configApplicationStatus
   }
 
   createToolHandlers(
@@ -327,7 +344,7 @@ export class ComputerUseRuntime {
       }
     }
     if (!sameConfig(this.appliedConfig, this.config)) {
-      await this.queueConfigApplication()
+      await this.queueConfigApplication(this.configGeneration)
     }
     return this.servicePromise
   }
@@ -358,20 +375,40 @@ export class ComputerUseRuntime {
     if (sameConfig(this.config, desired)) this.appliedConfig = desired
   }
 
-  private queueConfigApplication(): Promise<void> {
+  private queueConfigApplication(generation: number): Promise<void> {
+    const servicePromise = this.servicePromise
     this.appliedConfig = null
+    this.configApplicationStatus = { state: "applying" }
     const apply = async (): Promise<void> => {
-      if (!this.servicePromise) return
+      if (!servicePromise) return
       let service: ComputerUseApplicationService
       try {
-        service = await this.servicePromise
-      } catch {
-        return
+        service = await servicePromise
+      } catch (error) {
+        this.markConfigApplicationRetryRequired(generation)
+        throw error
       }
-      await this.applyConfigToLiveService(service)
+      try {
+        await this.applyConfigToLiveService(service)
+        if (this.configGeneration === generation) {
+          this.configApplicationStatus = { state: "applied" }
+        }
+      } catch (error) {
+        this.markConfigApplicationRetryRequired(generation)
+        throw error
+      }
     }
     this.configQueue = this.configQueue.then(apply, apply)
     return this.configQueue
+  }
+
+  private markConfigApplicationRetryRequired(generation: number): void {
+    if (this.configGeneration !== generation) return
+    this.configApplicationStatus = {
+      diagnosticCode: COMPUTER_USE_SETTINGS_APPLY_FAILED_DIAGNOSTIC_CODE,
+      retryable: true,
+      state: "retry_required"
+    }
   }
 
   private assertOpen(): void {

@@ -1,5 +1,6 @@
 import { Then, When } from "@cucumber/cucumber"
 import { expect } from "@playwright/test"
+import type { AgentConfigUpdateResult } from "../../../src/shared/computer-use-settings"
 import type { AppLocale } from "../../../src/shared/i18n"
 import type { LauncherWindowMode } from "../../../src/shared/launcher-settings"
 import { JingleWorld } from "../support/world"
@@ -12,13 +13,13 @@ async function setAgentLocale(world: JingleWorld, locale: AppLocale): Promise<Ap
       window as typeof window & {
         api: {
           settings: {
-            setAgentConfig: (updates: { locale: AppLocale }) => Promise<{ locale: AppLocale }>
+            setAgentConfig: (updates: { locale: AppLocale }) => Promise<AgentConfigUpdateResult>
           }
         }
       }
     ).api.settings.setAgentConfig({ locale: inputLocale })
 
-    return config.locale
+    return config.config.locale
   }, locale)
 }
 
