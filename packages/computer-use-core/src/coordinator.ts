@@ -241,6 +241,7 @@ export class ComputerUseTransactionCoordinator {
     input: {
       baseStateId: string
       runId: string
+      sessionId: string
       threadId: string
     },
     actions: readonly ComputerUseSemanticAction[],
@@ -250,6 +251,7 @@ export class ComputerUseTransactionCoordinator {
     const matches =
       attempt.baseStateId === input.baseStateId &&
       attempt.authorization.runId === input.runId &&
+      attempt.authorization.sessionId === input.sessionId &&
       attempt.authorization.threadId === input.threadId &&
       (!base ||
         (attempt.target.applicationId === base.application.id &&

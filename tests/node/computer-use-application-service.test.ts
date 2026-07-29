@@ -184,6 +184,23 @@ test("post-dispatch cancellation settles durable unknown and restart does not re
 
     await service.close()
     const restarted = createComputerUseApplicationService(backend)
+    const refusedReplay = await restarted.execute({
+      actions,
+      baseStateId: session.observation.stateId,
+      runId: "run-cua",
+      sessionId: "another-session",
+      threadId: "thread-cua",
+      transactionId: "tool-call-cua"
+    })
+    assert.deepEqual(refusedReplay.result, {
+      baseStateId: session.observation.stateId,
+      outcome: "refused",
+      steps: []
+    })
+    assert.equal(refusedReplay.projection, undefined)
+    assert.equal(dispatches, 1)
+    assert.deepEqual(await ledgerPort.read("tool-call-cua"), durable)
+
     const replay = await restarted.execute({
       actions,
       baseStateId: session.observation.stateId,

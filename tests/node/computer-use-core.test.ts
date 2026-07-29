@@ -1559,11 +1559,26 @@ test("settled durable attempts replay their complete immutable result after rest
     new ComputerUseSessionManager(backend),
     new ComputerUseActionLedger(actionLedgerPort({ attempts }))
   )
-  const replayed = await coordinator.execute({
+  const refused = await coordinator.execute({
     actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
     baseStateId: "state-0",
     runId: "run-1",
     sessionId: "replacement-session",
+    threadId: "thread-1",
+    transactionId: "settled-restart"
+  })
+  assert.deepEqual(refused, {
+    baseStateId: "state-0",
+    outcome: "refused",
+    steps: []
+  })
+  assert.deepEqual(attempts.get("settled-restart")?.result, persisted)
+
+  const replayed = await coordinator.execute({
+    actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
+    baseStateId: "state-0",
+    runId: "run-1",
+    sessionId: "session-1",
     threadId: "thread-1",
     transactionId: "settled-restart"
   })
@@ -1581,7 +1596,7 @@ test("settled durable attempts replay their complete immutable result after rest
       actions: [{ kind: "type_text", ref: "@e1", value: "again" }],
       baseStateId: replayed.successor!.stateId,
       runId: "run-1",
-      sessionId: "replacement-session",
+      sessionId: "session-1",
       threadId: "thread-1",
       transactionId: "new-after-restart"
     }),
@@ -1719,7 +1734,7 @@ test("durable replay rejects corrupt authorization, action, evidence, and succes
         actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
         baseStateId: "state-0",
         runId: "run-1",
-        sessionId: "replacement-session",
+        sessionId: "session-1",
         threadId: "thread-1",
         transactionId: "corrupt-restart"
       }),
@@ -1744,12 +1759,27 @@ test("durable queued and dispatched attempts settle without replay after restart
       new ComputerUseSessionManager(backend),
       new ComputerUseActionLedger(actionLedgerPort({ attempts }))
     )
+    const beforeRefusal = structuredClone(attempts.get(transactionId))
+    const refused = await coordinator.execute({
+      actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
+      baseStateId: "state-0",
+      runId: "run-1",
+      sessionId: "another-session",
+      threadId: "thread-1",
+      transactionId
+    })
+    assert.deepEqual(refused, {
+      baseStateId: "state-0",
+      outcome: "refused",
+      steps: []
+    })
+    assert.deepEqual(attempts.get(transactionId), beforeRefusal)
 
     const result = await coordinator.execute({
       actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
       baseStateId: "state-0",
       runId: "run-1",
-      sessionId: "replacement-session",
+      sessionId: "session-1",
       threadId: "thread-1",
       transactionId
     })
@@ -1776,12 +1806,13 @@ test("durable identity mismatches refuse without rewriting or poisoning later re
     actions: [{ kind: "type_text", ref: "@e1", value: "hello" }] as const,
     baseStateId: "state-0",
     runId: "run-1",
-    sessionId: "replacement-session",
+    sessionId: "session-1",
     threadId: "thread-1",
     transactionId: "identity-mismatch"
   }
   const mismatches = [
     { ...baseInput, runId: "another-run" },
+    { ...baseInput, sessionId: "another-session" },
     { ...baseInput, threadId: "another-thread" },
     { ...baseInput, baseStateId: "another-state" },
     { ...baseInput, actions: [{ kind: "type_text", ref: "@e1", value: "changed" }] as const }
