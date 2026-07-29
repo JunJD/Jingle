@@ -416,10 +416,13 @@ export class BrowserHistorySnapshotLeaseManager {
       acquisitionSignal.throwIfAborted()
       await this.removePendingCleanupDirectories()
       acquisitionSignal.throwIfAborted()
+      const cleanupBlocked = this.pendingCleanupDirectories.size > 0
       const fingerprint = await this.readFingerprint(historyPath)
       acquisitionSignal.throwIfAborted()
       const state = this.getState(historyPath)
-      await this.removeRetiredSnapshots(state)
+      if (!cleanupBlocked) {
+        await this.removeRetiredSnapshots(state)
+      }
       acquisitionSignal.throwIfAborted()
       const current = state.current
 
@@ -435,10 +438,17 @@ export class BrowserHistorySnapshotLeaseManager {
       }
 
       const pending = state.pendingByFingerprint.get(fingerprint)
-      const build =
-        pending && !pending.controller.signal.aborted
-          ? pending
-          : this.startSnapshotBuild(historyPath, fingerprint, state)
+      if (pending?.controller.signal.aborted) {
+        throw new Error(
+          "Browser history snapshot cancellation is still pending; refusing to create a replacement snapshot."
+        )
+      }
+      if (!pending && this.pendingCleanupDirectories.size > 0) {
+        throw new Error(
+          "Browser history snapshot cleanup is blocked; refusing to create another snapshot."
+        )
+      }
+      const build = pending ?? this.startSnapshotBuild(historyPath, fingerprint, state)
 
       try {
         const lease = await this.waitForBuild(state, build, acquisitionSignal)

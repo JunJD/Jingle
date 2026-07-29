@@ -351,6 +351,174 @@ test("snapshot cleanup failure stays observable and does not replace a successfu
   }
 })
 
+test("persistent snapshot cleanup failure applies backpressure before copying again", async () => {
+  const root = await mkdtemp(join(tmpdir(), "jingle-browser-history-cleanup-pressure-"))
+  const snapshotRoot = join(root, "snapshots")
+  await mkdir(snapshotRoot)
+  let copyCount = 0
+  let removeAttempts = 0
+  const manager = new BrowserHistorySnapshotLeaseManager({
+    copyHistoryDatabase: async () => {
+      copyCount += 1
+    },
+    onCleanupError: () => undefined,
+    readFingerprint: async () => "stable-fingerprint",
+    removeDirectory: async () => {
+      removeAttempts += 1
+      const error = new Error("cleanup denied")
+      ;(error as NodeJS.ErrnoException).code = "EACCES"
+      throw error
+    },
+    snapshotTtlMs: 0,
+    tempDirectoryRoot: snapshotRoot
+  })
+  let blockedAcquisitions = 0
+  let successfulAcquisitions = 0
+
+  try {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try {
+        const lease = await manager.acquire(
+          join(root, "profile", "History"),
+          new AbortController().signal
+        )
+        successfulAcquisitions += 1
+        await lease.release()
+      } catch (error) {
+        assert.match(String(error), /cleanup is blocked/)
+        blockedAcquisitions += 1
+      }
+    }
+
+    assert.deepEqual(
+      {
+        blockedAcquisitions,
+        copyCount,
+        removeAttempts,
+        retainedDirectories: (await listSnapshotDirectories(snapshotRoot)).length,
+        successfulAcquisitions
+      },
+      {
+        blockedAcquisitions: 19,
+        copyCount: 1,
+        removeAttempts: 20,
+        retainedDirectories: 1,
+        successfulAcquisitions: 1
+      }
+    )
+  } finally {
+    manager.disposeSync()
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
+test("cleanup backpressure preserves valid current snapshots and live pending builds", async () => {
+  const root = await mkdtemp(join(tmpdir(), "jingle-browser-history-cleanup-reuse-"))
+  const snapshotRoot = join(root, "snapshots")
+  const cachedHistoryPath = join(root, "cached", "History")
+  const cleanupFailurePath = join(root, "cleanup-failure", "History")
+  const pendingHistoryPath = join(root, "pending", "History")
+  const pendingCopyGate = createDeferred()
+  const copyCounts = new Map<string, number>()
+  await mkdir(snapshotRoot)
+  const manager = new BrowserHistorySnapshotLeaseManager({
+    copyHistoryDatabase: async ({ historyPath }) => {
+      copyCounts.set(historyPath, (copyCounts.get(historyPath) ?? 0) + 1)
+      if (historyPath === cleanupFailurePath) {
+        throw new Error("copy failed")
+      }
+      if (historyPath === pendingHistoryPath) {
+        await pendingCopyGate.promise
+      }
+    },
+    onCleanupError: () => undefined,
+    readFingerprint: async (historyPath) => `fingerprint:${historyPath}`,
+    removeDirectory: async () => {
+      throw new Error("cleanup denied")
+    },
+    snapshotTtlMs: 10_000,
+    tempDirectoryRoot: snapshotRoot
+  })
+
+  try {
+    const signal = new AbortController().signal
+    const cachedLease = await manager.acquire(cachedHistoryPath, signal)
+    await cachedLease.release()
+    const firstPendingAcquire = manager.acquire(pendingHistoryPath, signal)
+    await waitFor(() => copyCounts.get(pendingHistoryPath) === 1)
+    await assert.rejects(manager.acquire(cleanupFailurePath, signal), /copy failed/)
+
+    const cachedReuse = await manager.acquire(cachedHistoryPath, signal)
+    assert.equal(cachedReuse.snapshotPath, cachedLease.snapshotPath)
+    await cachedReuse.release()
+
+    const secondPendingAcquire = manager.acquire(pendingHistoryPath, signal)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    assert.equal(copyCounts.get(pendingHistoryPath), 1)
+    pendingCopyGate.resolve()
+    const [firstPendingLease, secondPendingLease] = await Promise.all([
+      firstPendingAcquire,
+      secondPendingAcquire
+    ])
+    assert.equal(firstPendingLease.snapshotPath, secondPendingLease.snapshotPath)
+    await firstPendingLease.release()
+    await secondPendingLease.release()
+  } finally {
+    pendingCopyGate.resolve()
+    manager.disposeSync()
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
+test("an aborted pending build must settle before a replacement starts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "jingle-browser-history-pending-abort-"))
+  const snapshotRoot = join(root, "snapshots")
+  const pendingHistoryPath = join(root, "pending", "History")
+  const pendingCopyGate = createDeferred()
+  let pendingCopyCount = 0
+  await mkdir(snapshotRoot)
+  const manager = new BrowserHistorySnapshotLeaseManager({
+    copyHistoryDatabase: async () => {
+      pendingCopyCount += 1
+      await pendingCopyGate.promise
+    },
+    readFingerprint: async (historyPath) => `fingerprint:${historyPath}`,
+    tempDirectoryRoot: snapshotRoot
+  })
+
+  try {
+    const pendingController = new AbortController()
+    const pendingAcquire = manager.acquire(pendingHistoryPath, pendingController.signal)
+    await waitFor(() => pendingCopyCount === 1)
+    pendingController.abort(new Error("pending caller cancelled"))
+    await assert.rejects(pendingAcquire, /pending caller cancelled/)
+
+    await assert.rejects(
+      manager.acquire(pendingHistoryPath, new AbortController().signal),
+      /cancellation is still pending/
+    )
+    assert.equal(pendingCopyCount, 1)
+
+    pendingCopyGate.resolve()
+    let replacementLease: Awaited<ReturnType<typeof manager.acquire>> | undefined
+    await waitFor(async () => {
+      try {
+        replacementLease = await manager.acquire(pendingHistoryPath, new AbortController().signal)
+        return true
+      } catch (error) {
+        assert.match(String(error), /cancellation is still pending/)
+        return false
+      }
+    })
+    assert.equal(pendingCopyCount, 2)
+    await replacementLease?.release()
+  } finally {
+    pendingCopyGate.resolve()
+    manager.disposeSync()
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
 test("dispose stops new leases but waits for active readers before cleanup", async () => {
   const root = await mkdtemp(join(tmpdir(), "jingle-browser-history-test-"))
   const historyPath = join(root, "profile", "History")
