@@ -1240,9 +1240,10 @@ test("cache control records permit one atomic temp at the full physical budget",
     )
     for (const [index, lease] of leases.entries()) {
       const namespaceDigest = createHash("sha256").update(`retained-${index}`).digest("hex")
+      const storeKeyDigest = createHash("sha256").update(`store-${index}`).digest("hex")
       writeFileSync(
         getRetentionRecordPath(cacheDir, lease),
-        `${JSON.stringify({ namespaceDigests: [namespaceDigest], ...lease, version: 1 })}\n`
+        `${JSON.stringify({ addresses: [{ namespaceDigest, storeKeyDigest }], ...lease, version: 2 })}\n`
       )
       await activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
     }
@@ -1265,8 +1266,8 @@ test("cache control records permit one atomic temp at the full physical budget",
     )
     const currentRecord = JSON.parse(
       readFileSync(getRetentionRecordPath(cacheDir, currentLease), "utf8")
-    ) as { namespaceDigests: string[] }
-    assert.equal(currentRecord.namespaceDigests.length, 2)
+    ) as { addresses: unknown[] }
+    assert.equal(currentRecord.addresses.length, 2)
     subscription.unsubscribe()
     await backend.close()
   })
@@ -1343,6 +1344,164 @@ test("exact namespace retention survives unsubscribe and write revocation until 
 
     await reader.close()
     await writer.close()
+  })
+})
+
+test("exact generation retention survives concurrent store GC until process exit", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const pinnedScope = createGenerationScope(1)
+    const readerLease = { sessionId: "generation-reader", token: "4".repeat(64) }
+    await activateExtensionRuntimeCacheWriterLease(cacheDir, readerLease)
+    const reader = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: readerLease })
+    writeEntries(reader, pinnedScope, [["page", "pinned-generation"]])
+    await reader.flush()
+    const subscription = reader.subscribeStore(pinnedScope, () => undefined)
+    assert.equal((await subscription.admission).kind, "admitted")
+    await revokeExtensionRuntimeCacheWrites(cacheDir, readerLease)
+
+    const firstWriterLease = { sessionId: "generation-writer-a", token: "5".repeat(64) }
+    const secondWriterLease = { sessionId: "generation-writer-b", token: "6".repeat(64) }
+    await activateExtensionRuntimeCacheWriterLease(cacheDir, firstWriterLease)
+    await activateExtensionRuntimeCacheWriterLease(cacheDir, secondWriterLease)
+    const firstWriter = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      writerLease: firstWriterLease
+    })
+    const secondWriter = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      writerLease: secondWriterLease
+    })
+
+    for (
+      let generation = 2;
+      generation <= EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE + 2;
+      generation++
+    ) {
+      writeEntries(
+        generation % 2 === 0 ? firstWriter : secondWriter,
+        createGenerationScope(generation),
+        [["page", `generation-${generation}`]]
+      )
+    }
+    await Promise.all([firstWriter.flush(), secondWriter.flush()])
+    assert.deepEqual(reader.loadStore(pinnedScope), [["page", "pinned-generation"]])
+
+    subscription.unsubscribe()
+    writeEntries(firstWriter, createGenerationScope(20), [["page", "after-unsubscribe"]])
+    await firstWriter.flush()
+    assert.deepEqual(reader.loadStore(pinnedScope), [["page", "pinned-generation"]])
+
+    await releaseExtensionRuntimeCacheRetention(cacheDir, readerLease)
+    writeEntries(secondWriter, createGenerationScope(21), [["page", "after-process-exit"]])
+    await secondWriter.flush()
+    assert.deepEqual(reader.loadStore(pinnedScope), [])
+
+    await reader.close()
+    await firstWriter.close()
+    await secondWriter.close()
+  })
+})
+
+test("sync corruption recovery applies exact generation pins before store GC", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const pinnedScope = createGenerationScope(1)
+    const pinnedStoreKey = encodeRuntimeCacheBackendScopeKey(pinnedScope)
+    const lease = { sessionId: "generation-recovery", token: "8".repeat(64) }
+    await activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: lease })
+    writeEntries(backend, pinnedScope, [["page", "pinned-before-recovery"]])
+    await backend.flush()
+    const subscription = backend.subscribeStore(pinnedScope, () => undefined)
+    assert.equal((await subscription.admission).kind, "admitted")
+    subscription.unsubscribe()
+
+    const stores: Record<string, unknown> = {
+      [pinnedStoreKey]: {
+        entries: [["page", "pinned-before-recovery"]],
+        lastMutationSequence: 1
+      }
+    }
+    for (
+      let generation = 2;
+      generation <= EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE + 1;
+      generation++
+    ) {
+      stores[encodeRuntimeCacheBackendScopeKey(createGenerationScope(generation))] = {
+        entries: [["page", `generation-${generation}`]],
+        lastMutationSequence: generation
+      }
+    }
+    stores.invalid = { entries: "invalid", lastMutationSequence: 1 }
+    const cacheFilePath = getCacheFilePathForScope(cacheDir, pinnedScope)
+    writeFileSync(
+      cacheFilePath,
+      `${JSON.stringify({
+        mutationSequence: EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE + 1,
+        stores,
+        version: 1
+      })}\n`
+    )
+
+    assert.deepEqual(backend.loadStore(pinnedScope), [["page", "pinned-before-recovery"]])
+    const recovered = readCacheEnvelope(cacheFilePath)
+    assert.equal(Object.keys(recovered.stores).length, EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE)
+    assert.deepEqual(recovered.stores[pinnedStoreKey]?.entries, [
+      ["page", "pinned-before-recovery"]
+    ])
+    assert.equal("invalid" in recovered.stores, false)
+
+    await releaseExtensionRuntimeCacheRetention(cacheDir, lease)
+    await backend.close()
+  })
+})
+
+test("exact generation retention admission fails closed at the per-file store budget", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const admitted: Array<{
+      backend: RuntimeCacheBackend
+      subscription: ReturnType<RuntimeCacheBackend["subscribeStore"]>
+    }> = []
+    for (
+      let generation = 1;
+      generation <= EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE;
+      generation++
+    ) {
+      const lease = {
+        sessionId: `generation-budget-${generation}`,
+        token: generation.toString(16).padStart(64, "0")
+      }
+      await activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
+      const backend = createFileExtensionRuntimeCacheBackend(cacheDir, {
+        watchDirectory: () => ({ close: () => undefined }),
+        writerLease: lease
+      })
+      const subscription = backend.subscribeStore(
+        createGenerationScope(generation),
+        () => undefined
+      )
+      assert.equal((await subscription.admission).kind, "admitted")
+      admitted.push({ backend, subscription })
+    }
+
+    const overflowLease = {
+      sessionId: "generation-budget-overflow",
+      token: "f".repeat(64)
+    }
+    await activateExtensionRuntimeCacheWriterLease(cacheDir, overflowLease)
+    const overflowBackend = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      watchDirectory: () => ({ close: () => undefined }),
+      writerLease: overflowLease
+    })
+    const overflow = overflowBackend.subscribeStore(
+      createGenerationScope(EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE + 1),
+      () => undefined
+    )
+    await assert.rejects(overflow.admission, /Extension runtime cache persistence failed/)
+    assert.equal(listRetentionRecords(cacheDir).length, EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE)
+
+    for (const { backend, subscription } of admitted) {
+      subscription.unsubscribe()
+      await backend.close()
+    }
+    await assert.rejects(overflowBackend.close(), /Extension runtime cache persistence failed/)
   })
 })
 

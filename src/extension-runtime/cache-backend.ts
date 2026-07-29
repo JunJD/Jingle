@@ -91,11 +91,17 @@ interface RuntimeCacheSnapshotNotificationBatch {
 }
 
 interface RuntimeCacheFileSubscriptionState {
+  namespaceDigest: string
   stores: Map<string, RuntimeCacheStoreSubscriptionState>
 }
 
+interface RuntimeCacheRetentionAddress {
+  namespaceDigest: string
+  storeKeyDigest: string
+}
+
 interface RuntimeCacheRetentionRecord {
-  namespaceDigests: string[]
+  addresses: RuntimeCacheRetentionAddress[]
   sessionId: string
   token: string
   version: typeof CACHE_RETENTION_RECORD_VERSION
@@ -137,9 +143,10 @@ const CACHE_WRITER_LEASE_TEMPORARY_FILE_PATTERN =
   /^writer-lease-[a-f0-9]{64}\.json\.[0-9]+\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/
 const CACHE_WRITER_LEASE_FILE_VERSION = 1
 const CACHE_WRITER_LEASE_MAX_FILE_BYTES = 512
-const CACHE_RETENTION_RECORD_VERSION = 1
-const CACHE_RETENTION_RECORD_MAX_FILE_BYTES = 4 * 1024
-const CACHE_RETENTION_RECORD_MAX_NAMESPACES = EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES
+const CACHE_RETENTION_RECORD_VERSION = 2
+const CACHE_RETENTION_RECORD_MAX_ADDRESSES =
+  EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES * EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE
+const CACHE_RETENTION_RECORD_MAX_FILE_BYTES = 64 * 1024
 const CACHE_CONTROL_MAX_WRITER_FINAL_FILES = EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES * 2
 const CACHE_CONTROL_MAX_RETENTION_FINAL_FILES = EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES * 2
 const CACHE_CONTROL_MAX_FINAL_FILES =
@@ -156,6 +163,7 @@ const CACHE_RETENTION_RECORD_FILE_PATTERN = /^retention-lease-[a-f0-9]{64}\.json
 const CACHE_RETENTION_RECORD_TEMPORARY_FILE_PATTERN =
   /^retention-lease-[a-f0-9]{64}\.json\.[0-9]+\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/
 const CACHE_NAMESPACE_DIGEST_PATTERN = /^[a-f0-9]{64}$/
+const CACHE_STORE_KEY_DIGEST_PATTERN = /^[a-f0-9]{64}$/
 const CACHE_CHANGE_FEED_MAX_FILES = EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES
 const CACHE_CHANGE_FEED_MAX_STORES_PER_FILE = EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE
 
@@ -370,6 +378,7 @@ export function createFileExtensionRuntimeCacheBackend(
     const result = await readCacheFileWithRecovery(
       cacheDir,
       cacheFilePath,
+      fileState.namespaceDigest,
       options.lock ?? DEFAULT_LOCK_OPTIONS,
       options.writerLease
     )
@@ -466,6 +475,7 @@ export function createFileExtensionRuntimeCacheBackend(
         const result = readCacheFileWithRecoverySync(
           cacheDir,
           cacheFilePath,
+          getCacheNamespaceDigest(scope),
           options.lock ?? DEFAULT_LOCK_OPTIONS,
           options.writerLease
         )
@@ -496,6 +506,7 @@ export function createFileExtensionRuntimeCacheBackend(
           await updateCacheFile(
             cacheDir,
             cacheFilePath,
+            getCacheNamespaceDigest(scope),
             storeKey,
             mutationSnapshot,
             options.lock ?? DEFAULT_LOCK_OPTIONS,
@@ -533,7 +544,7 @@ export function createFileExtensionRuntimeCacheBackend(
         if (subscribedFiles.size >= CACHE_CHANGE_FEED_MAX_FILES) {
           throw new RangeError("Extension runtime cache change feed file limit exceeded.")
         }
-        fileState = { stores: new Map() }
+        fileState = { namespaceDigest: getCacheNamespaceDigest(scope), stores: new Map() }
         subscribedFiles.set(cacheFilePath, fileState)
       }
       let storeState = fileState.stores.get(storeKey)
@@ -703,6 +714,7 @@ function removeEmptyStoreSubscription(
 async function updateCacheFile(
   cacheDir: string,
   cacheFilePath: string,
+  namespaceDigest: string,
   storeKey: string,
   mutation: RuntimeCacheBackendMutation,
   lockOptions: NonNullable<RuntimeCacheFileBackendOptions["lock"]>,
@@ -738,6 +750,10 @@ async function updateCacheFile(
     const result = await readCacheFileForUpdate(cacheFilePath)
     recoveredCorruption = result.corruption
     const cacheFile = result.cacheFile
+    const retainedStoreKeyDigests = getRetainedStoreKeyDigests(
+      await readRetainedCacheAddresses(cacheDir),
+      namespaceDigest
+    )
     const currentEntries = cacheFile.stores[storeKey]?.entries ?? []
     if (cacheFile.mutationSequence === Number.MAX_SAFE_INTEGER) {
       throw new RangeError("Extension runtime cache mutation sequence is exhausted.")
@@ -758,7 +774,8 @@ async function updateCacheFile(
         stores,
         version: RUNTIME_CACHE_FILE_VERSION
       },
-      mutation.kind === "clear" ? null : storeKey
+      mutation.kind === "clear" ? null : storeKey,
+      retainedStoreKeyDigests
     )
     assertLockIsOwned(directoryCompromisedError)
     assertLockIsOwned(compromisedError)
@@ -843,23 +860,38 @@ async function admitCacheRetention(
     ) {
       throw new ExtensionRuntimeCacheWriterLeaseError()
     }
-    const namespaceDigest = getCacheNamespaceDigest(scope)
-    const namespaceDigests = Array.from(
-      new Set([...(current?.namespaceDigests ?? []), namespaceDigest])
-    ).sort(compareStoreKeys)
-    if (namespaceDigests.length > CACHE_RETENTION_RECORD_MAX_NAMESPACES) {
-      throw new RangeError("Extension runtime cache retention namespace limit exceeded.")
+    const address = getCacheRetentionAddress(scope)
+    const addresses = [...(current?.addresses ?? []), address]
+      .filter(
+        (candidate, index, all) =>
+          all.findIndex(
+            (entry) => encodeCacheRetentionAddress(entry) === encodeCacheRetentionAddress(candidate)
+          ) === index
+      )
+      .sort(compareCacheRetentionAddresses)
+    if (addresses.length > CACHE_RETENTION_RECORD_MAX_ADDRESSES) {
+      throw new RangeError("Extension runtime cache retention address limit exceeded.")
     }
-    if (current?.namespaceDigests.includes(namespaceDigest)) {
+    const retainedAddresses = await readRetainedCacheAddresses(cacheDir)
+    assertRetainedStoreBudget([...retainedAddresses, ...addresses])
+    if (
+      current?.addresses.some(
+        (candidate) =>
+          encodeCacheRetentionAddress(candidate) === encodeCacheRetentionAddress(address)
+      )
+    ) {
       return
     }
     await convergeCacheDirectoryQuota(
       cacheDir,
-      createRetainedCacheArtifactPaths(cacheDir, namespaceDigests)
+      createRetainedCacheArtifactPaths(
+        cacheDir,
+        new Set(addresses.map((candidate) => candidate.namespaceDigest))
+      )
     )
     assertLockIsOwned(directoryCompromisedError)
     const next: RuntimeCacheRetentionRecord = {
-      namespaceDigests,
+      addresses,
       sessionId: writerLease.sessionId,
       token: writerLease.token,
       version: CACHE_RETENTION_RECORD_VERSION
@@ -884,6 +916,7 @@ async function admitCacheRetention(
 async function readCacheFileWithRecovery(
   cacheDir: string,
   cacheFilePath: string,
+  namespaceDigest: string,
   lockOptions: NonNullable<RuntimeCacheFileBackendOptions["lock"]>,
   writerLease: ExtensionRuntimeCacheWriterLease | undefined
 ): Promise<{
@@ -912,7 +945,11 @@ async function readCacheFileWithRecovery(
     assertActiveCacheWriterLease(cacheDir, writerLease)
     const protectedPaths = new Set([cacheFilePath, `${cacheFilePath}.corrupt`])
     await convergeCacheDirectoryQuota(cacheDir, protectedPaths)
-    const recoveredFile = retainCacheFile(result.corruption.recoveredFile, null)
+    const recoveredFile = retainCacheFile(
+      result.corruption.recoveredFile,
+      null,
+      getRetainedStoreKeyDigests(await readRetainedCacheAddresses(cacheDir), namespaceDigest)
+    )
     await reserveCacheArtifactReplacement(
       cacheDir,
       cacheFilePath,
@@ -1023,6 +1060,7 @@ async function readCacheFileForUpdate(cacheFilePath: string): Promise<{
 function readCacheFileWithRecoverySync(
   cacheDir: string,
   cacheFilePath: string,
+  namespaceDigest: string,
   lockOptions: NonNullable<RuntimeCacheFileBackendOptions["lock"]>,
   writerLease: ExtensionRuntimeCacheWriterLease | undefined
 ): {
@@ -1066,12 +1104,16 @@ function readCacheFileWithRecoverySync(
     assertLockIsOwned(directoryCompromisedError)
     assertLockIsOwned(compromisedError)
     try {
-      result = { cacheFile: readCacheFile(cacheFilePath), corruption: null }
+      result = { cacheFile: readCacheFile(cacheFilePath, false), corruption: null }
     } catch (error) {
       if (!(error instanceof ExtensionRuntimeCacheCorruptionError)) {
         throw error
       }
-      const recoveredFile = retainCacheFile(error.recoveredFile, null)
+      const recoveredFile = retainCacheFile(
+        error.recoveredFile,
+        null,
+        getRetainedStoreKeyDigests(readRetainedCacheAddressesSync(cacheDir), namespaceDigest)
+      )
       assertLockIsOwned(directoryCompromisedError)
       assertLockIsOwned(compromisedError)
       reserveCacheArtifactReplacementSync(
@@ -1257,11 +1299,16 @@ function parseCacheRetentionRecord(raw: string): RuntimeCacheRetentionRecord {
     !isRecord(parsed) ||
     Object.keys(parsed).length !== 4 ||
     parsed.version !== CACHE_RETENTION_RECORD_VERSION ||
-    !Array.isArray(parsed.namespaceDigests) ||
-    parsed.namespaceDigests.length > CACHE_RETENTION_RECORD_MAX_NAMESPACES ||
-    !parsed.namespaceDigests.every(
-      (digest): digest is string =>
-        typeof digest === "string" && CACHE_NAMESPACE_DIGEST_PATTERN.test(digest)
+    !Array.isArray(parsed.addresses) ||
+    parsed.addresses.length > CACHE_RETENTION_RECORD_MAX_ADDRESSES ||
+    !parsed.addresses.every(
+      (address): address is RuntimeCacheRetentionAddress =>
+        isRecord(address) &&
+        Object.keys(address).length === 2 &&
+        typeof address.namespaceDigest === "string" &&
+        CACHE_NAMESPACE_DIGEST_PATTERN.test(address.namespaceDigest) &&
+        typeof address.storeKeyDigest === "string" &&
+        CACHE_STORE_KEY_DIGEST_PATTERN.test(address.storeKeyDigest)
     )
   ) {
     throw new TypeError("Extension runtime cache retention record is invalid.")
@@ -1270,17 +1317,18 @@ function parseCacheRetentionRecord(raw: string): RuntimeCacheRetentionRecord {
     sessionId: parsed.sessionId,
     token: parsed.token
   })
-  const namespaceDigests = [...parsed.namespaceDigests]
+  const addresses = parsed.addresses.map((address) => ({ ...address }))
   if (
-    new Set(namespaceDigests).size !== namespaceDigests.length ||
-    namespaceDigests.some(
-      (digest, index) => index > 0 && compareStoreKeys(namespaceDigests[index - 1]!, digest) >= 0
+    new Set(addresses.map(encodeCacheRetentionAddress)).size !== addresses.length ||
+    addresses.some(
+      (address, index) =>
+        index > 0 && compareCacheRetentionAddresses(addresses[index - 1]!, address) >= 0
     )
   ) {
     throw new TypeError("Extension runtime cache retention record is not canonical.")
   }
   return {
-    namespaceDigests,
+    addresses,
     sessionId: lease.sessionId,
     token: lease.token,
     version: CACHE_RETENTION_RECORD_VERSION
@@ -1295,9 +1343,11 @@ function serializeCacheRetentionRecord(record: RuntimeCacheRetentionRecord): str
   return serialized
 }
 
-async function readRetainedCacheArtifactPaths(cacheDir: string): Promise<Set<string>> {
+async function readRetainedCacheAddresses(
+  cacheDir: string
+): Promise<RuntimeCacheRetentionAddress[]> {
   await measureCacheControlDirectory(cacheDir)
-  const paths = new Set<string>()
+  const addresses: RuntimeCacheRetentionAddress[] = []
   for (const name of await readdir(cacheDir)) {
     if (!CACHE_RETENTION_RECORD_FILE_PATTERN.test(name)) {
       continue
@@ -1305,17 +1355,15 @@ async function readRetainedCacheArtifactPaths(cacheDir: string): Promise<Set<str
     const record = await readCacheRetentionRecordAsync(join(cacheDir, name))
     if (record) {
       assertCacheRetentionRecordAddress(cacheDir, name, record)
-      for (const path of createRetainedCacheArtifactPaths(cacheDir, record.namespaceDigests)) {
-        paths.add(path)
-      }
+      addresses.push(...record.addresses)
     }
   }
-  return paths
+  return addresses
 }
 
-function readRetainedCacheArtifactPathsSync(cacheDir: string): Set<string> {
+function readRetainedCacheAddressesSync(cacheDir: string): RuntimeCacheRetentionAddress[] {
   measureCacheControlDirectorySync(cacheDir)
-  const paths = new Set<string>()
+  const addresses: RuntimeCacheRetentionAddress[] = []
   for (const name of readdirSync(cacheDir)) {
     if (!CACHE_RETENTION_RECORD_FILE_PATTERN.test(name)) {
       continue
@@ -1323,12 +1371,49 @@ function readRetainedCacheArtifactPathsSync(cacheDir: string): Set<string> {
     const record = readCacheRetentionRecord(join(cacheDir, name))
     if (record) {
       assertCacheRetentionRecordAddress(cacheDir, name, record)
-      for (const path of createRetainedCacheArtifactPaths(cacheDir, record.namespaceDigests)) {
-        paths.add(path)
-      }
+      addresses.push(...record.addresses)
     }
   }
-  return paths
+  return addresses
+}
+
+function getRetainedStoreKeyDigests(
+  addresses: readonly RuntimeCacheRetentionAddress[],
+  namespaceDigest: string
+): Set<string> {
+  return new Set(
+    addresses
+      .filter((address) => address.namespaceDigest === namespaceDigest)
+      .map((address) => address.storeKeyDigest)
+  )
+}
+
+function assertRetainedStoreBudget(addresses: readonly RuntimeCacheRetentionAddress[]): void {
+  const storesByNamespace = new Map<string, Set<string>>()
+  for (const address of addresses) {
+    const stores = storesByNamespace.get(address.namespaceDigest) ?? new Set<string>()
+    stores.add(address.storeKeyDigest)
+    if (stores.size > EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE) {
+      throw new RangeError("Extension runtime cache retained store limit exceeded.")
+    }
+    storesByNamespace.set(address.namespaceDigest, stores)
+  }
+}
+
+async function readRetainedCacheArtifactPaths(cacheDir: string): Promise<Set<string>> {
+  const addresses = await readRetainedCacheAddresses(cacheDir)
+  return createRetainedCacheArtifactPaths(
+    cacheDir,
+    new Set(addresses.map((address) => address.namespaceDigest))
+  )
+}
+
+function readRetainedCacheArtifactPathsSync(cacheDir: string): Set<string> {
+  const addresses = readRetainedCacheAddressesSync(cacheDir)
+  return createRetainedCacheArtifactPaths(
+    cacheDir,
+    new Set(addresses.map((address) => address.namespaceDigest))
+  )
 }
 
 interface RuntimeCacheControlDirectoryBudget {
@@ -1511,7 +1596,7 @@ function assertCacheRetentionRecordAddress(
 
 function createRetainedCacheArtifactPaths(
   cacheDir: string,
-  namespaceDigests: readonly string[]
+  namespaceDigests: Iterable<string>
 ): Set<string> {
   const paths = new Set<string>()
   for (const digest of namespaceDigests) {
@@ -1520,6 +1605,31 @@ function createRetainedCacheArtifactPaths(
     paths.add(`${activePath}.corrupt`)
   }
   return paths
+}
+
+function getCacheRetentionAddress(scope: RuntimeCacheBackendScope): RuntimeCacheRetentionAddress {
+  return {
+    namespaceDigest: getCacheNamespaceDigest(scope),
+    storeKeyDigest: getCacheStoreKeyDigest(encodeRuntimeCacheBackendScopeKey(scope))
+  }
+}
+
+function getCacheStoreKeyDigest(storeKey: string): string {
+  return createHash("sha256").update(storeKey).digest("hex")
+}
+
+function encodeCacheRetentionAddress(address: RuntimeCacheRetentionAddress): string {
+  return `${address.namespaceDigest}:${address.storeKeyDigest}`
+}
+
+function compareCacheRetentionAddresses(
+  left: RuntimeCacheRetentionAddress,
+  right: RuntimeCacheRetentionAddress
+): number {
+  return (
+    compareStoreKeys(left.namespaceDigest, right.namespaceDigest) ||
+    compareStoreKeys(left.storeKeyDigest, right.storeKeyDigest)
+  )
 }
 
 function serializeCacheWriterLease(lease: ExtensionRuntimeCacheWriterLease): string {
@@ -2256,12 +2366,12 @@ function isNodeErrorWithCode(error: unknown, code: string): boolean {
   return error instanceof Error && "code" in error && error.code === code
 }
 
-function readCacheFile(cacheFilePath: string): RuntimeCacheFileShape {
+function readCacheFile(cacheFilePath: string, applyRetention = true): RuntimeCacheFileShape {
   if (!existsSync(cacheFilePath)) {
     return createEmptyCacheFile()
   }
   assertRegularCacheArtifactSync(cacheFilePath)
-  return parseCacheFile(readFileSync(cacheFilePath, "utf8"))
+  return parseCacheFile(readFileSync(cacheFilePath, "utf8"), applyRetention)
 }
 
 function parseCacheFile(raw: string, applyRetention = true): RuntimeCacheFileShape {
@@ -2345,11 +2455,16 @@ function createEmptyCacheFile(): RuntimeCacheFileShape {
 
 function retainCacheFile(
   cacheFile: RuntimeCacheFileShape,
-  retainedStoreKey: string | null
+  retainedStoreKey: string | null,
+  retainedStoreKeyDigests: ReadonlySet<string> = new Set()
 ): RuntimeCacheFileShape {
   const stores = { ...cacheFile.stores }
   const evictionCandidates = Object.entries(stores)
-    .filter(([storeKey]) => storeKey !== retainedStoreKey)
+    .filter(
+      ([storeKey]) =>
+        storeKey !== retainedStoreKey &&
+        !retainedStoreKeyDigests.has(getCacheStoreKeyDigest(storeKey))
+    )
     .sort(
       ([leftKey, left], [rightKey, right]) =>
         left.lastMutationSequence - right.lastMutationSequence ||
