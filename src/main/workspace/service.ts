@@ -17,6 +17,7 @@ import { ThreadWorkspaceService } from "../thread-workspace/service"
 import { WorkspaceRepository } from "./repository"
 
 const WORKSPACE_FILE_SEARCH_MAX_RESULTS = 20
+const WORKSPACE_FILE_SEARCH_CACHE_MAX_ENTRIES = 64
 const WORKSPACE_FILE_SEARCH_CACHE_TTL_MS = 30_000
 const WORKSPACE_FILE_SEARCH_PARTIAL_CACHE_TTL_MS = 5_000
 const WORKSPACE_FILE_SEARCH_TIMEOUT_MS = 2_500
@@ -102,14 +103,25 @@ type WorkspaceFileSearchCacheEntry = {
   value?: WorkspaceFilePathCollection
 }
 
+export interface WorkspaceServiceOptions {
+  collectFilePaths?: typeof collectWorkspaceFilePaths
+  now?: () => number
+}
+
 export class WorkspaceService {
   private readonly fileSearchCache = new Map<string, WorkspaceFileSearchCacheEntry>()
+  private readonly collectFilePaths: typeof collectWorkspaceFilePaths
+  private readonly now: () => number
 
   constructor(
     private readonly workspaceRepository: WorkspaceRepository,
     private readonly threadWorkspaceService: ThreadWorkspaceService,
-    private readonly jingleMemoryService: JingleMemoryService
-  ) {}
+    private readonly jingleMemoryService: JingleMemoryService,
+    options: WorkspaceServiceOptions = {}
+  ) {
+    this.collectFilePaths = options.collectFilePaths ?? collectWorkspaceFilePaths
+    this.now = options.now ?? Date.now
+  }
 
   async resolveGlobalWorkspacePath(): Promise<string | null> {
     const workspacePath = this.workspaceRepository.getGlobalWorkspacePath()
@@ -291,34 +303,72 @@ export class WorkspaceService {
     workspacePath: string
   ): Promise<WorkspaceFilePathCollection> {
     const cacheKey = path.resolve(workspacePath)
-    const now = Date.now()
+    const now = this.now()
     const cached = this.fileSearchCache.get(cacheKey)
 
     if (cached?.value && cached.expiresAt > now) {
+      this.touchFileSearchCacheEntry(cacheKey, cached)
       return cached.value
     }
 
     if (cached?.promise) {
+      this.touchFileSearchCacheEntry(cacheKey, cached)
       return cached.promise
     }
 
-    const promise = collectWorkspaceFilePaths(cacheKey, WORKSPACE_FILE_SEARCH_TIMEOUT_MS)
-    this.fileSearchCache.set(cacheKey, { expiresAt: 0, promise })
+    const promise = this.collectFilePaths(cacheKey, WORKSPACE_FILE_SEARCH_TIMEOUT_MS)
+    const pendingEntry = { expiresAt: 0, promise }
+    this.setFileSearchCacheEntry(cacheKey, pendingEntry, now)
 
     try {
       const value = await promise
-      this.fileSearchCache.set(cacheKey, {
-        expiresAt:
-          Date.now() +
-          (value.completed
-            ? WORKSPACE_FILE_SEARCH_CACHE_TTL_MS
-            : WORKSPACE_FILE_SEARCH_PARTIAL_CACHE_TTL_MS),
-        value
-      })
+      if (this.fileSearchCache.get(cacheKey) === pendingEntry) {
+        const completedAt = this.now()
+        this.setFileSearchCacheEntry(
+          cacheKey,
+          {
+            expiresAt:
+              completedAt +
+              (value.completed
+                ? WORKSPACE_FILE_SEARCH_CACHE_TTL_MS
+                : WORKSPACE_FILE_SEARCH_PARTIAL_CACHE_TTL_MS),
+            value
+          },
+          completedAt
+        )
+      }
       return value
     } catch (error) {
-      this.fileSearchCache.delete(cacheKey)
+      if (this.fileSearchCache.get(cacheKey) === pendingEntry) {
+        this.fileSearchCache.delete(cacheKey)
+      }
       throw error
+    }
+  }
+
+  private touchFileSearchCacheEntry(cacheKey: string, entry: WorkspaceFileSearchCacheEntry): void {
+    this.fileSearchCache.delete(cacheKey)
+    this.fileSearchCache.set(cacheKey, entry)
+  }
+
+  private setFileSearchCacheEntry(
+    cacheKey: string,
+    entry: WorkspaceFileSearchCacheEntry,
+    now: number
+  ): void {
+    for (const [key, cached] of this.fileSearchCache) {
+      if (cached.value && cached.expiresAt <= now) {
+        this.fileSearchCache.delete(key)
+      }
+    }
+
+    this.fileSearchCache.delete(cacheKey)
+    this.fileSearchCache.set(cacheKey, entry)
+
+    while (this.fileSearchCache.size > WORKSPACE_FILE_SEARCH_CACHE_MAX_ENTRIES) {
+      const oldestKey = this.fileSearchCache.keys().next().value
+      if (oldestKey === undefined) break
+      this.fileSearchCache.delete(oldestKey)
     }
   }
 

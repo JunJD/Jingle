@@ -31,15 +31,90 @@ class StaticGlobalWorkspaceRepository extends WorkspaceRepository {
   }
 }
 
-function createWorkspaceServiceFromRepository(repository: WorkspaceRepository): WorkspaceService {
+class MutableGlobalWorkspaceRepository extends WorkspaceRepository {
+  constructor(private workspacePath: string) {
+    super()
+  }
+
+  override getGlobalWorkspacePath(): string | null {
+    return this.workspacePath
+  }
+
+  setWorkspacePath(workspacePath: string): void {
+    this.workspacePath = workspacePath
+  }
+}
+
+function createWorkspaceServiceFromRepository(
+  repository: WorkspaceRepository,
+  options: ConstructorParameters<typeof WorkspaceService>[3] = {}
+): WorkspaceService {
   const threadWorkspaceService = new ThreadWorkspaceService(new ThreadWorkspaceRepository())
   return new WorkspaceService(
     repository,
     threadWorkspaceService,
     new MemorySafeJingleMemoryService() as unknown as ConstructorParameters<
       typeof WorkspaceService
-    >[2]
+    >[2],
+    options
   )
+}
+
+function getFileSearchCache(service: WorkspaceService): Map<
+  string,
+  {
+    expiresAt: number
+    promise?: Promise<unknown>
+    value?: unknown
+  }
+> {
+  return (
+    service as unknown as {
+      fileSearchCache: Map<
+        string,
+        {
+          expiresAt: number
+          promise?: Promise<unknown>
+          value?: unknown
+        }
+      >
+    }
+  ).fileSearchCache
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>
+  reject: (error: Error) => void
+  resolve: (value: T) => void
+  settled: boolean
+} {
+  let rejectPromise!: (error: Error) => void
+  let resolvePromise!: (value: T) => void
+  const deferred = {
+    promise: new Promise<T>((resolve, reject) => {
+      resolvePromise = resolve
+      rejectPromise = reject
+    }),
+    reject(error: Error) {
+      deferred.settled = true
+      rejectPromise(error)
+    },
+    resolve(value: T) {
+      deferred.settled = true
+      resolvePromise(value)
+    },
+    settled: false
+  }
+  return deferred
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return
+    await new Promise<void>((resolve) => setImmediate(resolve))
+  }
+
+  assert.fail("Timed out waiting for async workspace search state")
 }
 
 async function createWorkspaceService(
@@ -62,7 +137,7 @@ before(async () => {
     cwd: repoRoot,
     env: {
       ...process.env,
-      JINGLE_HOME: jingleHome,
+      JINGLE_HOME: jingleHome
     }
   })
   await initializeDatabase()
@@ -247,6 +322,154 @@ test("workspace file search skips dependency and build output directories", asyn
         }
       ]
     })
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
+test("workspace file search bounds cached workspace path collections", async () => {
+  const root = await mkdtemp(join(tmpdir(), "jingle-workspace-cache-bound-"))
+  const cacheEntryLimit = 64
+
+  try {
+    const workspacePaths = await Promise.all(
+      Array.from({ length: cacheEntryLimit + 1 }, async (_, index) => {
+        const workspacePath = join(root, `workspace-${index}`)
+        await mkdir(workspacePath, { recursive: true })
+        await writeFile(join(workspacePath, `file-${index}.txt`), "cached\n")
+        return workspacePath
+      })
+    )
+    const repository = new MutableGlobalWorkspaceRepository(workspacePaths[0])
+    const service = createWorkspaceServiceFromRepository(repository)
+
+    for (const workspacePath of workspacePaths.slice(0, cacheEntryLimit)) {
+      repository.setWorkspacePath(workspacePath)
+      const result = await service.searchFiles({ query: "file" })
+      assert.equal(result.success, true)
+    }
+
+    repository.setWorkspacePath(workspacePaths[0])
+    await service.searchFiles({ query: "file" })
+    repository.setWorkspacePath(workspacePaths[cacheEntryLimit])
+    await service.searchFiles({ query: "file" })
+
+    const cache = getFileSearchCache(service)
+    assert.equal(cache.size, cacheEntryLimit)
+
+    await writeFile(join(workspacePaths[1], "post-eviction-marker.txt"), "fresh\n")
+    repository.setWorkspacePath(workspacePaths[1])
+    const evictedResult = await service.searchFiles({ query: "post eviction marker" })
+
+    assert.deepEqual(evictedResult, {
+      success: true,
+      files: [
+        {
+          name: "post-eviction-marker.txt",
+          path: "post-eviction-marker.txt"
+        }
+      ]
+    })
+
+    await writeFile(join(workspacePaths[0], "still-cached-marker.txt"), "stale\n")
+    repository.setWorkspacePath(workspacePaths[0])
+    const retainedResult = await service.searchFiles({ query: "still cached marker" })
+
+    assert.deepEqual(retainedResult, {
+      success: true,
+      files: []
+    })
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
+test("workspace file search ignores completions from evicted pending entries", async () => {
+  const root = await mkdtemp(join(tmpdir(), "jingle-workspace-cache-pending-"))
+  const cacheEntryLimit = 64
+  type Collection = { completed: boolean; paths: string[] }
+  const deferredByPath = new Map<string, Array<ReturnType<typeof createDeferred<Collection>>>>()
+  let collectorCallCount = 0
+
+  try {
+    const workspacePaths = Array.from({ length: cacheEntryLimit + 1 }, (_, index) =>
+      join(root, `workspace-${index}`)
+    )
+    const repository = new MutableGlobalWorkspaceRepository(workspacePaths[0])
+    const service = createWorkspaceServiceFromRepository(repository, {
+      collectFilePaths: (workspacePath) => {
+        const deferred = createDeferred<Collection>()
+        const calls = deferredByPath.get(workspacePath) ?? []
+        calls.push(deferred)
+        deferredByPath.set(workspacePath, calls)
+        collectorCallCount += 1
+        return deferred.promise
+      }
+    })
+    const originalSearches = workspacePaths.map((workspacePath) => {
+      repository.setWorkspacePath(workspacePath)
+      return service.searchFiles({ query: "file" })
+    })
+    await waitFor(() => collectorCallCount === workspacePaths.length)
+
+    const firstCalls = deferredByPath.get(workspacePaths[0])!
+    repository.setWorkspacePath(workspacePaths[0])
+    const firstReplacementSearch = service.searchFiles({ query: "replacement" })
+    await waitFor(() => (deferredByPath.get(workspacePaths[0])?.length ?? 0) === 2)
+    const firstReplacement = deferredByPath.get(workspacePaths[0])![1]
+
+    firstCalls[0].resolve({ completed: true, paths: ["evicted-old-success.txt"] })
+    await originalSearches[0]
+    assert.equal(
+      getFileSearchCache(service).get(workspacePaths[0])?.promise,
+      firstReplacement.promise
+    )
+
+    const secondCalls = deferredByPath.get(workspacePaths[1])!
+    repository.setWorkspacePath(workspacePaths[1])
+    const secondReplacementSearch = service.searchFiles({ query: "replacement" })
+    await waitFor(() => (deferredByPath.get(workspacePaths[1])?.length ?? 0) === 2)
+    const secondReplacement = deferredByPath.get(workspacePaths[1])![1]
+
+    secondCalls[0].reject(new Error("evicted old failure"))
+    await originalSearches[1]
+    assert.equal(
+      getFileSearchCache(service).get(workspacePaths[1])?.promise,
+      secondReplacement.promise
+    )
+
+    for (const deferreds of deferredByPath.values()) {
+      for (const deferred of deferreds) {
+        if (!deferred.settled) {
+          deferred.resolve({ completed: true, paths: ["current.txt"] })
+        }
+      }
+    }
+    await Promise.all([...originalSearches, firstReplacementSearch, secondReplacementSearch])
+    assert.equal(getFileSearchCache(service).size, cacheEntryLimit)
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
+test("workspace file search removes expired path collections on the next miss", async () => {
+  const root = await mkdtemp(join(tmpdir(), "jingle-workspace-cache-expiry-"))
+  let now = 0
+
+  try {
+    const workspacePaths = [join(root, "workspace-0"), join(root, "workspace-1")]
+    const repository = new MutableGlobalWorkspaceRepository(workspacePaths[0])
+    const service = createWorkspaceServiceFromRepository(repository, {
+      collectFilePaths: () => Promise.resolve({ completed: true, paths: ["current.txt"] }),
+      now: () => now
+    })
+
+    await service.searchFiles({ query: "current" })
+    now = 30_001
+    repository.setWorkspacePath(workspacePaths[1])
+    await service.searchFiles({ query: "current" })
+
+    assert.deepEqual([...getFileSearchCache(service).keys()], [workspacePaths[1]])
   } finally {
     await rm(root, { force: true, recursive: true })
   }
