@@ -19,6 +19,7 @@ import {
   DurableWindowRestorePolicy
 } from "../durable-window/restore-policy"
 import { getThread } from "../db/threads"
+import { requestWindowPresentation } from "../windows/window-presentation"
 
 const TOKEN = Symbol("DurableWindowRuntime")
 export function registerMainWindowModule(
@@ -55,6 +56,7 @@ export function registerMainWindowModule(
           },
           onWindowClosed: () => lifecycle.windowClosed(),
           onWindowOpened: () => lifecycle.windowOpened(),
+          requestWindowPresentation,
           recordRestoreFailure: (error) =>
             diagnosticsLogger.error("Main window restore failed", {
               error: serializeProcessError(error)

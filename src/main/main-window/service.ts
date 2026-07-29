@@ -20,6 +20,7 @@ export interface PrimaryMainWindowRuntime {
   ) => { kind: "main"; threadId: string | null } | { kind: "replaced" }
   onWindowClosed: () => void
   onWindowOpened: () => void
+  requestWindowPresentation: (window: BrowserWindow) => void
   recordRestoreFailure: (error: unknown) => void
   recordRestoreRepair: (details: DurableWindowRestoreRepairDiagnostic) => void
   repairSessionThreadBinding: (staleThreadId: string) => MainWindowSessionRepairResult
@@ -47,7 +48,7 @@ export class PrimaryMainWindowService {
       return
     }
     if (this.window && !this.window.isDestroyed()) {
-      this.focusWindow(this.window)
+      this.runtime.requestWindowPresentation(this.window)
       return
     }
 
@@ -91,7 +92,7 @@ export class PrimaryMainWindowService {
       return
     }
     if (threadId) this.bindThread(this.window, threadId)
-    this.focusWindow(this.window)
+    this.runtime.requestWindowPresentation(this.window)
   }
 
   bindSenderThread(sender: WebContents, threadId: string): MainWindowThreadBindingSnapshot {
@@ -113,12 +114,6 @@ export class PrimaryMainWindowService {
 
   isSender(sender: WebContents): boolean {
     return Boolean(this.window && !this.window.isDestroyed() && this.window.webContents === sender)
-  }
-
-  private focusWindow(window: BrowserWindow): void {
-    if (window.isMinimized()) window.restore()
-    if (!window.isVisible()) window.show()
-    window.focus()
   }
 
   private async restorePersistedBinding(restore: object, threadId: string): Promise<void> {

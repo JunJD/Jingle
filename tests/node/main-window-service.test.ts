@@ -88,6 +88,40 @@ class DeferredCloseWindow extends FakeWindow {
 }
 
 describe("PrimaryMainWindowService", () => {
+  it("queues a repeated cold-start presentation through the window owner", () => {
+    const window = new FakeWindow()
+    window.visible = false
+    let presentationRequestCount = 0
+    let state = { version: 1 as const, lastActiveThreadId: null as string | null }
+    const service = new PrimaryMainWindowService(
+      {
+        createMainWindow: () => window as never,
+        getSessionState: () => state,
+        getWindowBinding: () => ({ kind: "main", threadId: null }),
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        requestWindowPresentation: (requestedWindow) => {
+          assert.equal(requestedWindow, window as never)
+          presentationRequestCount += 1
+        },
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        repairSessionThreadBinding: () => ({ repaired: false, state }),
+        setSessionState: (next) => (state = next),
+        setWindowThread: () => {}
+      },
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) }),
+      new DurableWindowRestoreGate()
+    )
+
+    service.open()
+    service.open()
+
+    assert.equal(presentationRequestCount, 1)
+    assert.equal(window.visible, false)
+    assert.equal(window.focusCount, 0)
+  })
+
   it("reuses one window and rebinds it to the requested thread", () => {
     const windows: FakeWindow[] = []
     const bindings: string[] = []
@@ -105,6 +139,7 @@ describe("PrimaryMainWindowService", () => {
         getWindowBinding: () => ({ kind: "main", threadId: windowThreadId }),
         onWindowClosed: () => {},
         onWindowOpened: () => {},
+        requestWindowPresentation: () => {},
         recordRestoreFailure: () => {},
         recordRestoreRepair: () => {},
         repairSessionThreadBinding: () => ({ repaired: false, state }),
@@ -151,6 +186,7 @@ describe("PrimaryMainWindowService", () => {
         getWindowBinding: () => ({ kind: "main", threadId: windowThreadId }),
         onWindowClosed: () => {},
         onWindowOpened: () => {},
+        requestWindowPresentation: () => {},
         recordRestoreFailure: () => {},
         recordRestoreRepair: () => {},
         repairSessionThreadBinding: () => ({ repaired: false, state }),
@@ -191,6 +227,7 @@ describe("PrimaryMainWindowService", () => {
         getWindowBinding: () => ({ kind: "main", threadId: state.lastActiveThreadId }),
         onWindowClosed: () => {},
         onWindowOpened: () => {},
+        requestWindowPresentation: () => {},
         recordRestoreFailure: () => {},
         recordRestoreRepair: () => {},
         repairSessionThreadBinding: () => ({ repaired: false, state }),
@@ -230,6 +267,7 @@ describe("PrimaryMainWindowService", () => {
         getWindowBinding: () => ({ kind: "main", threadId: windowThreadId }),
         onWindowClosed: () => {},
         onWindowOpened: () => {},
+        requestWindowPresentation: () => {},
         recordRestoreFailure: () => {},
         recordRestoreRepair: () => {},
         repairSessionThreadBinding: () => ({ repaired: false, state }),
@@ -289,6 +327,7 @@ describe("PrimaryMainWindowService", () => {
         getWindowBinding: () => ({ kind: "main", threadId: windowThreadId }),
         onWindowClosed: () => {},
         onWindowOpened: () => {},
+        requestWindowPresentation: () => {},
         recordRestoreFailure: () => {},
         recordRestoreRepair: () => {},
         repairSessionThreadBinding: () => ({ repaired: false, state }),
@@ -343,6 +382,7 @@ describe("PrimaryMainWindowService", () => {
         },
         onWindowClosed: () => {},
         onWindowOpened: () => {},
+        requestWindowPresentation: () => {},
         recordRestoreFailure: () => {},
         recordRestoreRepair: () => {},
         repairSessionThreadBinding: () => ({ repaired: false, state }),
@@ -414,6 +454,7 @@ describe("PrimaryMainWindowService", () => {
           closeCount += 1
         },
         onWindowOpened: () => {},
+        requestWindowPresentation: () => {},
         recordRestoreFailure: () => {},
         recordRestoreRepair: () => {},
         repairSessionThreadBinding: () => ({ repaired: false, state }),
@@ -492,6 +533,7 @@ describe("PrimaryMainWindowService", () => {
         onWindowOpened: () => {
           openCount += 1
         },
+        requestWindowPresentation: () => {},
         recordRestoreFailure: () => {},
         recordRestoreRepair: () => {},
         repairSessionThreadBinding: () => ({ repaired: false, state }),
@@ -550,6 +592,7 @@ describe("PrimaryMainWindowService", () => {
         getWindowBinding: () => ({ kind: "main", threadId: state.lastActiveThreadId }),
         onWindowClosed: () => {},
         onWindowOpened: () => {},
+        requestWindowPresentation: () => {},
         recordRestoreFailure: () => {},
         recordRestoreRepair: () => {},
         repairSessionThreadBinding: () => ({ repaired: false, state }),
@@ -593,6 +636,7 @@ describe("PrimaryMainWindowService", () => {
         getWindowBinding: () => ({ kind: "main", threadId: state.lastActiveThreadId }),
         onWindowClosed: () => {},
         onWindowOpened: () => {},
+        requestWindowPresentation: () => {},
         recordRestoreFailure: () => {},
         recordRestoreRepair: () => {},
         repairSessionThreadBinding: () => ({ repaired: false, state }),
@@ -623,6 +667,7 @@ describe("PrimaryMainWindowService", () => {
         getWindowBinding: () => ({ kind: "main", threadId: state.lastActiveThreadId }),
         onWindowClosed: () => {},
         onWindowOpened: () => {},
+        requestWindowPresentation: () => {},
         recordRestoreFailure: () => {},
         recordRestoreRepair: (details) => {
           events.push(`diagnostic:${details.archivedBindingCount}`)
@@ -666,6 +711,7 @@ describe("PrimaryMainWindowService", () => {
         getWindowBinding: () => ({ kind: "main", threadId: state.lastActiveThreadId }),
         onWindowClosed: () => {},
         onWindowOpened: () => {},
+        requestWindowPresentation: () => {},
         recordRestoreFailure: () => {},
         recordRestoreRepair: () => {},
         repairSessionThreadBinding: () => ({ repaired: false, state }),
