@@ -1,11 +1,20 @@
 import assert from "node:assert/strict"
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  chmodSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import test from "node:test"
 
 interface InstalledSmokeModule {
+  assertLinuxProtocolHandler(output: string, desktopEntryName: string): string
   assertWindowsPayloadMatchesFreshInstall(expected: unknown, actual: unknown): unknown
   assertUpgradeSentinelThread(
     thread: unknown,
@@ -17,16 +26,18 @@ interface InstalledSmokeModule {
     artifactPath: string,
     installRoot: string
   ): Record<string, unknown>
+  createLinuxXdgEnvironment(root: string): Record<string, string>
   createUpgradeInstallMode(platform: string): "data-only-reinstall" | "nsis-in-place"
   createWindowsPayloadInventory(root: string): {
     payload: Array<{ path: string; sha256: string; size: number }>
     uninstaller: { path: string; sha256: string; size: number }
   }
+  ensureLinuxAppImageExecutable(artifactPath: string): void
   runProcess(
     command: string,
     args: string[],
     options: { cwd: string; logPath: string; timeoutMs: number }
-  ): Promise<void>
+  ): Promise<{ stderr: string; stdout: string }>
   withWindowsInPlaceUpgrade(
     input: {
       beforeCurrent(): Promise<void>
@@ -48,8 +59,9 @@ interface InstalledSmokeModule {
       ): Promise<Record<string, unknown>>
     }
   ): Promise<{ currentResult: unknown; previousResult: unknown }>
-  selectMountedMacApp(mountPath: string): string
   selectInstallerArtifact(root: string, platform: string): string
+  selectLinuxDesktopEntry(appRoot: string): string
+  selectMountedMacApp(mountPath: string): string
 }
 
 const moduleUrl = pathToFileURL(join(process.cwd(), "scripts/release-smoke/installed.mjs")).href
@@ -128,6 +140,49 @@ test("builds fail-closed platform install plans", async () => {
   assert.equal(smokeModule.createUpgradeInstallMode("darwin"), "data-only-reinstall")
   assert.equal(smokeModule.createUpgradeInstallMode("linux"), "data-only-reinstall")
   assert.throws(() => smokeModule.createUpgradeInstallMode("freebsd"), /unsupported/)
+})
+
+test("isolates Linux desktop state and selects the packaged jingle protocol entry", async () => {
+  const smokeModule = await smokeModulePromise
+  const root = mkdtempSync(join(tmpdir(), "jingle-installed-smoke-linux-xdg-"))
+  const appRoot = join(root, "app")
+  mkdirSync(appRoot)
+  writeFileSync(
+    join(appRoot, "jingle.desktop"),
+    "[Desktop Entry]\nName=Jingle\nMimeType=x-scheme-handler/jingle;\n"
+  )
+  writeFileSync(
+    join(appRoot, "other.desktop"),
+    "[Desktop Entry]\nName=Other\nMimeType=text/plain;\n"
+  )
+
+  const environment = smokeModule.createLinuxXdgEnvironment(join(root, "xdg"))
+  assert.equal(environment.HOME, join(root, "xdg", "home"))
+  for (const [name, path] of Object.entries(environment)) {
+    assert.ok(path.startsWith(join(root, "xdg")), `${name} escaped the isolated XDG root`)
+  }
+  assert.equal(smokeModule.selectLinuxDesktopEntry(appRoot), join(appRoot, "jingle.desktop"))
+  assert.equal(
+    smokeModule.assertLinuxProtocolHandler("jingle.desktop\n", "jingle.desktop"),
+    "jingle.desktop"
+  )
+  assert.throws(
+    () => smokeModule.assertLinuxProtocolHandler("other.desktop\n", "jingle.desktop"),
+    /expected x-scheme-handler\/jingle/
+  )
+})
+
+test("makes the downloaded Linux baseline AppImage executable in place", async () => {
+  const smokeModule = await smokeModulePromise
+  const root = mkdtempSync(join(tmpdir(), "jingle-installed-smoke-linux-appimage-"))
+  const artifactPath = join(root, "baseline.AppImage")
+  writeFileSync(artifactPath, "appimage")
+  chmodSync(artifactPath, 0o640)
+
+  smokeModule.ensureLinuxAppImageExecutable(artifactPath)
+
+  assert.equal(statSync(artifactPath).mode & 0o777, 0o751)
+  assert.equal(readFileSync(artifactPath, "utf8"), "appimage")
 })
 
 test("rejects stale or ambiguous payload after a Windows in-place upgrade", async () => {
@@ -362,6 +417,10 @@ test("release candidate workflow uses the installed smoke owner without uploadin
   assert.ok(smokeStep >= 0 && diagnosticsStep > smokeStep)
   assert.match(workflow, /pnpm run release:smoke:installed/)
   assert.match(workflow, /xvfb-run --auto-servernum/)
+  assert.match(workflow, /runner: ubuntu-24\.04/)
+  assert.match(workflow, /sudo apt-get install --no-install-recommends --yes/)
+  assert.match(workflow, /desktop-file-utils[\s\S]*?libfuse2t64[\s\S]*?xdg-utils/)
+  assert.match(workflow, /\[\[ ! -c \/dev\/fuse \]\]/)
   assert.match(workflow, /fetch-depth: 0/)
   assert.match(workflow, /GITHUB_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/)
   assert.match(workflow, /--upgrade-baseline v0\.0\.1/)
@@ -381,6 +440,12 @@ test("release candidate workflow uses the installed smoke owner without uploadin
 
   const smokeSource = readFileSync("scripts/release-smoke/installed.mjs", "utf8")
   assert.match(smokeSource, /chromiumSandbox: true/)
+  assert.match(smokeSource, /executablePath: invocation\.artifactPath/)
+  assert.doesNotMatch(smokeSource, /APPIMAGE_EXTRACT_AND_RUN/)
+  assert.doesNotMatch(smokeSource, /executablePath: join\(appRoot, "AppRun"\)/)
+  assert.match(smokeSource, /XDG_DATA_HOME/)
+  assert.match(smokeSource, /\["default", desktopEntryName, "x-scheme-handler\/jingle"\]/)
+  assert.match(smokeSource, /xdg-mime/)
   assert.match(smokeSource, /`--user-data-dir=\$\{userDataPath\}`/)
   assert.match(smokeSource, /delete env\.JINGLE_BDD/)
   assert.match(smokeSource, /delete process\.env\.GITHUB_TOKEN/)

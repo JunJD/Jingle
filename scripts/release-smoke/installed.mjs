@@ -204,6 +204,8 @@ export function runProcess(command, args, options) {
       windowsVerbatimArguments: options.windowsVerbatimArguments === true
     })
     let settled = false
+    let stderr = ""
+    let stdout = ""
     const timer = setTimeout(async () => {
       if (settled) return
       settled = true
@@ -218,6 +220,8 @@ export function runProcess(command, args, options) {
 
     function record(stream, chunk) {
       appendFileSync(logPath, `[${stream}] ${chunk}`)
+      if (stream === "stdout") stdout += chunk
+      else stderr += chunk
     }
 
     function finish(error) {
@@ -225,7 +229,7 @@ export function runProcess(command, args, options) {
       settled = true
       clearTimeout(timer)
       if (error) reject(error)
-      else resolvePromise()
+      else resolvePromise({ stderr, stdout })
     }
 
     child.stdout?.on("data", (chunk) => record("stdout", chunk))
@@ -241,6 +245,54 @@ export function runProcess(command, args, options) {
       )
     })
   })
+}
+
+export function createLinuxXdgEnvironment(root) {
+  const home = join(root, "home")
+  const environment = {
+    HOME: home,
+    XDG_CACHE_HOME: join(home, ".cache"),
+    XDG_CONFIG_HOME: join(home, ".config"),
+    XDG_DATA_HOME: join(home, ".local", "share"),
+    XDG_RUNTIME_DIR: join(root, "runtime"),
+    XDG_STATE_HOME: join(home, ".local", "state")
+  }
+  for (const path of Object.values(environment)) {
+    mkdirSync(path, { recursive: true })
+  }
+  chmodSync(environment.XDG_RUNTIME_DIR, 0o700)
+  return environment
+}
+
+export function selectLinuxDesktopEntry(appRoot) {
+  const candidates = collectFiles(appRoot, (path) => path.endsWith(".desktop"))
+  const matches = candidates.filter((path) => {
+    const mimeLine = readFileSync(path, "utf8")
+      .split(/\r?\n/)
+      .find((line) => line.startsWith("MimeType="))
+    return mimeLine?.slice("MimeType=".length).split(";").includes("x-scheme-handler/jingle")
+  })
+  if (matches.length !== 1) {
+    fail(`expected exactly one Linux desktop entry for jingle, found ${matches.length}`)
+  }
+  return matches[0]
+}
+
+export function assertLinuxProtocolHandler(output, desktopEntryName) {
+  const registeredDesktopEntry = output.trim()
+  if (registeredDesktopEntry !== desktopEntryName) {
+    fail(
+      `expected x-scheme-handler/jingle to use ${desktopEntryName}, got '${registeredDesktopEntry}'`
+    )
+  }
+  return registeredDesktopEntry
+}
+
+export function ensureLinuxAppImageExecutable(artifactPath) {
+  const artifactStats = statSync(artifactPath)
+  if (!(artifactStats.mode & 0o111)) chmodSync(artifactPath, artifactStats.mode | 0o111)
+  if (!(statSync(artifactPath).mode & 0o111))
+    fail(`AppImage artifact is not executable: ${artifactPath}`)
 }
 
 async function terminateProcessTree(processId) {
@@ -404,17 +456,55 @@ async function installWindows(invocation, workspace, logPath) {
 }
 
 async function installLinux(invocation, workspace, logPath) {
-  const appImagePath = join(invocation.installRoot, "Jingle.AppImage")
   const extractRoot = join(invocation.installRoot, "extracted")
+  ensureLinuxAppImageExecutable(invocation.artifactPath)
   mkdirSync(invocation.installRoot, { recursive: true })
   mkdirSync(extractRoot, { recursive: true })
-  copyFileSync(invocation.artifactPath, appImagePath)
-  chmodSync(appImagePath, 0o755)
-  await runProcess(appImagePath, ["--appimage-extract"], { cwd: extractRoot, logPath })
+  await runProcess(invocation.artifactPath, ["--appimage-extract"], {
+    cwd: extractRoot,
+    logPath
+  })
   const appRoot = join(extractRoot, "squashfs-root")
-  const executablePath = join(appRoot, "AppRun")
-  if (!existsSync(executablePath)) fail(`AppImage extraction missed ${executablePath}`)
-  return { appRoot, executablePath }
+  if (!existsSync(join(appRoot, "AppRun"))) fail(`AppImage extraction missed ${appRoot}/AppRun`)
+
+  const desktopEntrySource = selectLinuxDesktopEntry(appRoot)
+  const desktopEntryName = basename(desktopEntrySource)
+  const launchEnvironment = createLinuxXdgEnvironment(join(invocation.installRoot, "xdg"))
+  const applicationsDirectory = join(launchEnvironment.XDG_DATA_HOME, "applications")
+  mkdirSync(applicationsDirectory, { recursive: true })
+  const environment = { ...process.env, ...launchEnvironment }
+  await runProcess(
+    "desktop-file-install",
+    [
+      `--dir=${applicationsDirectory}`,
+      "--set-key=Exec",
+      `--set-value=${invocation.artifactPath} %U`,
+      desktopEntrySource
+    ],
+    { cwd: workspace, env: environment, logPath }
+  )
+  const installedDesktopEntry = join(applicationsDirectory, desktopEntryName)
+  await runProcess("desktop-file-validate", [installedDesktopEntry], {
+    cwd: workspace,
+    env: environment,
+    logPath
+  })
+  await runProcess("update-desktop-database", [applicationsDirectory], {
+    cwd: workspace,
+    env: environment,
+    logPath
+  })
+  await runProcess("xdg-mime", ["default", desktopEntryName, "x-scheme-handler/jingle"], {
+    cwd: workspace,
+    env: environment,
+    logPath
+  })
+  return {
+    appRoot,
+    desktopEntryName,
+    executablePath: invocation.artifactPath,
+    launchEnvironment
+  }
 }
 
 async function installArtifact(invocation, workspace, logPath) {
@@ -559,9 +649,10 @@ export async function withWindowsInPlaceUpgrade(input, operations = {}) {
   return result
 }
 
-function createLaunchEnvironment(jingleHome) {
+function createLaunchEnvironment(jingleHome, overrides = {}) {
   const env = {
     ...process.env,
+    ...overrides,
     CI: "1",
     JINGLE_HOME: jingleHome,
     JINGLE_REMOTE_DEBUGGING_PORT: ""
@@ -630,7 +721,7 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
   const application = await electron.launch({
     args: [`--user-data-dir=${userDataPath}`],
     chromiumSandbox: true,
-    env: createLaunchEnvironment(jingleHome),
+    env: createLaunchEnvironment(jingleHome, options.environment),
     executablePath,
     timeout: APP_BOOT_TIMEOUT_MS
   })
@@ -722,6 +813,23 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
   } finally {
     await closeApplication(application)
   }
+}
+
+async function launchInstalledAndProbe(installed, jingleHome, logPath, options) {
+  const probe = await launchAndProbe(installed.executablePath, jingleHome, logPath, {
+    ...options,
+    environment: installed.launchEnvironment
+  })
+  if (installed.desktopEntryName) {
+    const environment = { ...process.env, ...installed.launchEnvironment }
+    const result = await runProcess("xdg-mime", ["query", "default", "x-scheme-handler/jingle"], {
+      cwd: process.cwd(),
+      env: environment,
+      logPath
+    })
+    assertLinuxProtocolHandler(result.stdout, installed.desktopEntryName)
+  }
+  return probe
 }
 
 async function verifyFreshDatabase(jingleHome) {
@@ -883,7 +991,7 @@ async function run() {
           { cwd: process.cwd(), logPath: commandLog }
         )
         manifest.phase = "fresh-first-launch"
-        const probe = await launchAndProbe(installed.executablePath, freshHome, appLog, {
+        const probe = await launchInstalledAndProbe(installed, freshHome, appLog, {
           expectedVersion: currentPackageVersion,
           expectedWindowKind: "main"
         })
@@ -932,7 +1040,7 @@ async function run() {
     mkdirSync(sentinel.workspacePath)
     const runPrevious = async (installed) => {
       manifest.phase = "upgrade-previous-ipc-sentinel"
-      const probe = await launchAndProbe(installed.executablePath, upgradeHome, appLog, {
+      const probe = await launchInstalledAndProbe(installed, upgradeHome, appLog, {
         expectedVersion: "0.0.1",
         expectedWindowKind: baseline.windowKind,
         sentinelRequest: {
@@ -963,7 +1071,7 @@ async function run() {
         { cwd: process.cwd(), logPath: commandLog }
       )
       manifest.phase = "upgrade-current-ipc-verification"
-      const probe = await launchAndProbe(installed.executablePath, upgradeHome, appLog, {
+      const probe = await launchInstalledAndProbe(installed, upgradeHome, appLog, {
         expectedVersion: currentPackageVersion,
         expectedWindowKind: "main",
         sentinelRequest: {

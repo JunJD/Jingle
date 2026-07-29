@@ -173,7 +173,7 @@ jobs:
             expected_artifact_arch: x64
             command: pnpm run dist:win
           - name: linux
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
             expected_arch: x64
             expected_artifact_arch: x86_64
             command: pnpm run dist:linux
@@ -287,6 +287,26 @@ jobs:
             echo "- Architecture: \`${{ matrix.expected_arch }}\`"
             echo "- Build-only: no artifact was uploaded."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install Linux installed-smoke prerequisites
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes \
+            desktop-file-utils \
+            libfuse2t64 \
+            xdg-utils
+          if [[ ! -c /dev/fuse ]]; then
+            echo "::error::GitHub runner does not expose /dev/fuse; raw AppImage smoke cannot run."
+            exit 1
+          fi
+          for command in desktop-file-install desktop-file-validate update-desktop-database xdg-mime; do
+            command -v "$command" >/dev/null || {
+              echo "::error::Missing Linux installed-smoke prerequisite: $command"
+              exit 1
+            }
+          done
 
       - name: Run installed first-launch smoke
         shell: bash
