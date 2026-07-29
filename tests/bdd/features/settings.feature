@@ -8,6 +8,7 @@
   场景: Agent config 语言设置重启后仍然保留
     假如 Jingle 桌面应用已启动
     当 我通过 settings API 将语言设置为 "en-US"
+    那么 settings:setAgentConfig Computer Use runtime 状态应为 "applied"
     并且 我重新启动 Jingle 桌面应用
     那么 settings:getAgentConfig 语言应为 "en-US"
 

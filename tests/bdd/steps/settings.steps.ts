@@ -5,7 +5,10 @@ import type { AppLocale } from "../../../src/shared/i18n"
 import type { LauncherWindowMode } from "../../../src/shared/launcher-settings"
 import { JingleWorld } from "../support/world"
 
-async function setAgentLocale(world: JingleWorld, locale: AppLocale): Promise<AppLocale> {
+async function setAgentLocale(
+  world: JingleWorld,
+  locale: AppLocale
+): Promise<AgentConfigUpdateResult> {
   const page = await world.getPageByKind("launcher")
 
   return page.evaluate(async (inputLocale) => {
@@ -19,7 +22,7 @@ async function setAgentLocale(world: JingleWorld, locale: AppLocale): Promise<Ap
       }
     ).api.settings.setAgentConfig({ locale: inputLocale })
 
-    return config.config.locale
+    return config
   }, locale)
 }
 
@@ -85,7 +88,16 @@ async function getLauncherWindowMode(world: JingleWorld): Promise<LauncherWindow
 When(
   "我通过 settings API 将语言设置为 {string}",
   async function (this: JingleWorld, locale: AppLocale) {
-    expect(await setAgentLocale(this, locale)).toBe(locale)
+    const result = await setAgentLocale(this, locale)
+    expect(result.config.locale).toBe(locale)
+    this.setScenarioValue("settings.lastComputerUseRuntimeState", result.computerUseRuntime.state)
+  }
+)
+
+Then(
+  "settings:setAgentConfig Computer Use runtime 状态应为 {string}",
+  function (this: JingleWorld, expectedState: string) {
+    expect(this.getScenarioValue("settings.lastComputerUseRuntimeState")).toBe(expectedState)
   }
 )
 
