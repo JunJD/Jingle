@@ -518,6 +518,29 @@ test("launcher composer invalidates submitted revisions before async input mutat
   )
 })
 
+test("composer keyboard paths share an explicit DOM event contract", async () => {
+  const [keyboardEventSource, composerSource, promptInputSource, pageSource] = await Promise.all([
+    readWorkspaceFile("src/renderer/src/composer-area/keyboard-event.ts"),
+    readWorkspaceFile("src/renderer/src/composer-area/ComposerArea.tsx"),
+    readWorkspaceFile("src/renderer/src/components/agent-ui/PromptInput.tsx"),
+    readWorkspaceFile("src/renderer/src/ai-core/LauncherAiPage.tsx")
+  ])
+
+  assert.equal(composerSource.match(/fromDomKeyboardEvent\(event\)/g)?.length, 3)
+  assert.match(promptInputSource, /onKeyDown=\{onKeyDown\}/)
+  assert.match(promptInputSource, /const composerEvent = fromReactKeyboardEvent\(event\)/)
+  assert.match(keyboardEventSource, /altKey: nativeEvent\.altKey/)
+  assert.match(keyboardEventSource, /isComposing: nativeEvent\.isComposing/)
+  assert.match(keyboardEventSource, /keyCode: nativeEvent\.keyCode/)
+  assert.match(keyboardEventSource, /preventDefault: \(\) => event\.preventDefault\(\)/)
+  assert.match(pageSource, /\(event: ComposerAreaKeyboardEvent\): void =>/)
+  assert.match(pageSource, /!event\.isComposing &&\s*event\.keyCode !== 229/)
+  assert.doesNotMatch(
+    `${composerSource}\n${promptInputSource}\n${pageSource}`,
+    /as unknown as React\.KeyboardEvent|event\.nativeEvent\.isComposing/
+  )
+})
+
 test("chat tool details stay out of the collapsed streaming render path", async () => {
   const [
     actionMessageSource,

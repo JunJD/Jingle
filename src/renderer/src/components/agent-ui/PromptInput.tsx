@@ -20,6 +20,8 @@ import { cn } from "@/lib/utils"
 import {
   ComposerArea,
   type ComposerAreaHandle,
+  type ComposerAreaKeyboardEvent,
+  fromReactKeyboardEvent,
   type ComposerWorkspaceFileMention
 } from "@/composer-area"
 import type { ExtensionSourceMention } from "@shared/extension-sources"
@@ -158,11 +160,12 @@ export function PromptInput(props: PromptInputProps): React.JSX.Element {
 
 export interface PromptInputTextareaProps extends Omit<
   React.TextareaHTMLAttributes<HTMLTextAreaElement>,
-  "onChange" | "value"
+  "onChange" | "onKeyDown" | "value"
 > {
   composerRef?: React.RefObject<ComposerAreaHandle | null>
   disableAutosize?: boolean
   mode?: "textarea" | "composer"
+  onKeyDown?: (event: ComposerAreaKeyboardEvent) => void
   onMentionQueryChange?: (query: string | null) => void
   onVisualLineOverflowChange?: (isOverflowing: boolean) => void
   onValueChange?: (value: string) => void
@@ -361,17 +364,7 @@ export function PromptInputTextarea(props: PromptInputTextareaProps): React.JSX.
         disabled={disabled}
         maxHeight={maxHeight}
         minHeight={minHeight}
-        onKeyDown={(event) => {
-          const keyboardEvent = event as unknown as KeyboardEvent & {
-            nativeEvent?: KeyboardEvent
-          }
-
-          if (!("nativeEvent" in keyboardEvent)) {
-            keyboardEvent.nativeEvent = keyboardEvent
-          }
-
-          onKeyDown?.(keyboardEvent as unknown as React.KeyboardEvent<HTMLTextAreaElement>)
-        }}
+        onKeyDown={onKeyDown}
         onSubmit={onSubmit}
         onMentionQueryChange={onMentionQueryChange}
         onValueChange={(nextValue) => {
@@ -417,28 +410,28 @@ export function PromptInputTextarea(props: PromptInputTextareaProps): React.JSX.
         onCompositionStart?.(event)
       }}
       onKeyDown={(event) => {
-        const nativeEvent = event.nativeEvent as KeyboardEvent & { isComposing?: boolean }
+        const composerEvent = fromReactKeyboardEvent(event)
 
-        if (event.key === "Enter") {
+        if (composerEvent.key === "Enter") {
           if (
-            event.shiftKey ||
-            event.ctrlKey ||
-            event.metaKey ||
-            event.altKey ||
+            composerEvent.shiftKey ||
+            composerEvent.ctrlKey ||
+            composerEvent.metaKey ||
+            composerEvent.altKey ||
             composingRef.current ||
-            nativeEvent.isComposing === true ||
-            nativeEvent.keyCode === 229
+            composerEvent.isComposing ||
+            composerEvent.keyCode === 229
           ) {
-            onKeyDown?.(event)
+            onKeyDown?.(composerEvent)
             return
           }
 
-          event.preventDefault()
+          composerEvent.preventDefault()
           onSubmit?.()
           return
         }
 
-        onKeyDown?.(event)
+        onKeyDown?.(composerEvent)
       }}
       placeholder={placeholder}
       rows={1}

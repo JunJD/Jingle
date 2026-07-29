@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { shouldGoHomeFromComposerKeyDown } from "../../src/renderer/src/ai-core/composer-keyboard"
+import { createComposerAreaKeyboardEvent } from "../../src/renderer/src/composer-area/keyboard-event"
 import {
   isLauncherAiInputEventTarget,
   shouldHandleLauncherAiSubmitShortcut
@@ -13,6 +14,47 @@ const plainEvent = {
   metaKey: false,
   shiftKey: false
 } as const
+
+test("composer keyboard contract forwards native fields and prevention", () => {
+  let defaultPrevented = false
+  const event = createComposerAreaKeyboardEvent({
+    altKey: true,
+    ctrlKey: false,
+    isComposing: true,
+    isDefaultPrevented: () => defaultPrevented,
+    key: "ArrowUp",
+    keyCode: 229,
+    metaKey: true,
+    preventDefault: () => {
+      defaultPrevented = true
+    },
+    shiftKey: false
+  })
+
+  assert.deepEqual(
+    {
+      altKey: event.altKey,
+      ctrlKey: event.ctrlKey,
+      isComposing: event.isComposing,
+      key: event.key,
+      keyCode: event.keyCode,
+      metaKey: event.metaKey,
+      shiftKey: event.shiftKey
+    },
+    {
+      altKey: true,
+      ctrlKey: false,
+      isComposing: true,
+      key: "ArrowUp",
+      keyCode: 229,
+      metaKey: true,
+      shiftKey: false
+    }
+  )
+  assert.equal(event.defaultPrevented, false)
+  event.preventDefault()
+  assert.equal(event.defaultPrevented, true)
+})
 
 test("empty composer delete shortcut goes home", () => {
   assert.equal(
@@ -41,8 +83,7 @@ test("composer delete shortcut does not go home when visible content remains", (
   assert.equal(
     shouldGoHomeFromComposerKeyDown({
       attachmentCount: 0,
-      composerText:
-        "[@apple-reminders](jingle-extension-source://apple-reminders/appleReminders)",
+      composerText: "[@apple-reminders](jingle-extension-source://apple-reminders/appleReminders)",
       event: {
         ...plainEvent,
         key: "Delete"

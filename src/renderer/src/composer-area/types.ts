@@ -1,6 +1,7 @@
 import type { ExtensionSourceMention } from "@shared/extension-sources"
 import type { ComposerMessageRef } from "@shared/message-content"
-import type { KeyboardEvent, Ref } from "react"
+import type { Ref } from "react"
+import type { ComposerAreaKeyboardEvent } from "./keyboard-event"
 
 export interface ComposerWorkspaceFileMention {
   name: string
@@ -26,7 +27,7 @@ export interface ComposerAreaProps {
   workspaceFileSearchEnabled?: boolean
   workspaceFileSearchIncomplete?: boolean
   workspaceFileSearchInProgress?: boolean
-  onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void
+  onKeyDown?: (event: ComposerAreaKeyboardEvent) => void
   onMentionQueryChange?: (query: string | null) => void
   onSubmit?: () => void
   onValueChange?: (value: string) => void

@@ -12,6 +12,7 @@ import { PromptInput, PromptInputAction, PromptInputTextarea } from "@/component
 import { LauncherActionOverlay } from "@/features/launcher-actions/LauncherActionOverlay"
 import { ComposerApprovalPrompt } from "@/components/chat/ComposerApprovalPrompt"
 import { ComposerFollowUpQueue } from "@/components/chat/ComposerFollowUpQueue"
+import { AgentErrorNotice } from "@/components/chat/AgentErrorNotice"
 import { useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { formatShortcutChord } from "@/shortcuts/format-shortcut"
 import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
@@ -81,7 +82,11 @@ import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 import { OpenTargetProvider } from "@/lib/open-target-context"
 import { useNativeSourceMentionsProjection } from "@extension-host/use-native-source-mentions-projection"
 import { isThreadPinned } from "@shared/thread-sidebar"
-import { useWorkspaceFileMentions, type ComposerAreaHandle } from "@/composer-area"
+import {
+  useWorkspaceFileMentions,
+  type ComposerAreaHandle,
+  type ComposerAreaKeyboardEvent
+} from "@/composer-area"
 import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
 import { areComposerCommandInputsEqual } from "@shared/agent-command"
 import {
@@ -668,7 +673,7 @@ export function LauncherAiPage(): React.JSX.Element {
     ]
   )
   const hasPendingApproval = Boolean(pendingApproval)
-  const threadError = agentError ?? attachmentIngestError ?? navigationError
+  const threadError = agentError ?? navigationError
   const composerSubmissionUnavailableReason =
     composerSubmissionAvailability.type === "unavailable"
       ? composerSubmissionAvailability.reason === "provider_file_id_unsupported"
@@ -819,12 +824,8 @@ export function LauncherAiPage(): React.JSX.Element {
       clearVisibleError()
       return
     }
-    if (attachmentIngestError) {
-      setAttachmentIngestError(null)
-      return
-    }
     clearVisibleError()
-  }, [agentError, attachmentIngestError, clearVisibleError])
+  }, [agentError, clearVisibleError])
   const handleComposerValueChange = useCallback(
     (value: string): void => {
       setComposerHistoryCursor(createComposerHistoryCursor(composerHistoryScope))
@@ -1124,7 +1125,7 @@ export function LauncherAiPage(): React.JSX.Element {
     submitApprovalDecision({ type: "user_declined" })
   }, [canDeclineApprovalRun, submitApprovalDecision])
   const handleComposerKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLElement>): void => {
+    (event: ComposerAreaKeyboardEvent): void => {
       const isHistoryKey = event.key === "ArrowUp" || event.key === "ArrowDown"
       if (
         isHistoryKey &&
@@ -1134,7 +1135,8 @@ export function LauncherAiPage(): React.JSX.Element {
         !event.ctrlKey &&
         !event.metaKey &&
         !event.shiftKey &&
-        !event.nativeEvent.isComposing
+        !event.isComposing &&
+        event.keyCode !== 229
       ) {
         const direction = event.key === "ArrowUp" ? "up" : "down"
         if (direction === "down" && composerHistoryIndex < 0) {
@@ -1932,6 +1934,13 @@ export function LauncherAiPage(): React.JSX.Element {
                       onEditQueuedFollowUp={editQueuedFollowUp}
                       onSteerQueuedFollowUp={steerQueuedFollowUp}
                       queue={followUpQueue}
+                    />
+                  ) : null}
+                  {attachmentIngestError ? (
+                    <AgentErrorNotice
+                      className="mx-auto mb-[var(--jingle-space-2)] max-w-[var(--launcher-ai-content-max-width)]"
+                      error={attachmentIngestError}
+                      onDismiss={() => setAttachmentIngestError(null)}
                     />
                   ) : null}
                   <PromptInput

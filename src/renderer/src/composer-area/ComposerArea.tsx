@@ -16,8 +16,10 @@ import {
   $isRangeSelection,
   COMMAND_PRIORITY_BEFORE_EDITOR,
   COMMAND_PRIORITY_EDITOR,
+  KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_LEFT_COMMAND,
   KEY_ARROW_RIGHT_COMMAND,
+  KEY_ARROW_UP_COMMAND,
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
   KEY_ENTER_COMMAND,
@@ -54,6 +56,7 @@ import {
 import { ComposerReferenceTooltipPlugin } from "./reference-tooltip"
 import type { ExtensionSourceMention } from "@shared/extension-sources"
 import type { ComposerAreaHandle, ComposerAreaProps } from "./types"
+import { fromDomKeyboardEvent, type ComposerAreaKeyboardEvent } from "./keyboard-event"
 
 const COMPOSER_AREA_SYNC_TAG = "composer-area-sync"
 const REFERENCE_NODE_SELECTED_CLASS = "jingle-composer-reference--selected"
@@ -280,7 +283,7 @@ function ComposerAreaHandlePlugin(props: {
 function ComposerAreaKeyboardPlugin(props: {
   mentionMenuHasSelectableOptionsRef: React.RefObject<boolean>
   onSubmit?: () => void
-  onUserKeyDown?: (event: React.KeyboardEvent<HTMLElement>) => void
+  onUserKeyDown?: (event: ComposerAreaKeyboardEvent) => void
 }): null {
   const { mentionMenuHasSelectableOptionsRef, onSubmit, onUserKeyDown } = props
   const [editor] = useLexicalComposerContext()
@@ -323,8 +326,9 @@ function ComposerAreaKeyboardPlugin(props: {
         }
       }
 
-      onUserKeyDown?.(event as unknown as React.KeyboardEvent<HTMLElement>)
-      return event.defaultPrevented
+      const composerEvent = fromDomKeyboardEvent(event)
+      onUserKeyDown?.(composerEvent)
+      return composerEvent.defaultPrevented
     },
     [onUserKeyDown]
   )
@@ -366,6 +370,14 @@ function ComposerAreaKeyboardPlugin(props: {
     }
     return true
   }, [])
+  const handleHistoryArrowKey = useCallback(
+    (event: KeyboardEvent): boolean => {
+      const composerEvent = fromDomKeyboardEvent(event)
+      onUserKeyDown?.(composerEvent)
+      return composerEvent.defaultPrevented
+    },
+    [onUserKeyDown]
+  )
 
   useEffect(
     () =>
@@ -379,6 +391,16 @@ function ComposerAreaKeyboardPlugin(props: {
           KEY_ARROW_RIGHT_COMMAND,
           handleArrowRightKey,
           COMMAND_PRIORITY_EDITOR
+        ),
+        editor.registerCommand<KeyboardEvent>(
+          KEY_ARROW_UP_COMMAND,
+          handleHistoryArrowKey,
+          COMMAND_PRIORITY_BEFORE_EDITOR
+        ),
+        editor.registerCommand<KeyboardEvent>(
+          KEY_ARROW_DOWN_COMMAND,
+          handleHistoryArrowKey,
+          COMMAND_PRIORITY_BEFORE_EDITOR
         ),
         editor.registerCommand<KeyboardEvent>(
           KEY_BACKSPACE_COMMAND,
@@ -406,8 +428,9 @@ function ComposerAreaKeyboardPlugin(props: {
               event.isComposing === true ||
               event.keyCode === 229
             ) {
-              onUserKeyDown?.(event as unknown as React.KeyboardEvent<HTMLElement>)
-              return event.defaultPrevented
+              const composerEvent = fromDomKeyboardEvent(event)
+              onUserKeyDown?.(composerEvent)
+              return composerEvent.defaultPrevented
             }
 
             if (mentionMenuHasSelectableOptionsRef.current) {
@@ -426,6 +449,7 @@ function ComposerAreaKeyboardPlugin(props: {
       handleArrowLeftKey,
       handleArrowRightKey,
       handleDeleteKey,
+      handleHistoryArrowKey,
       mentionMenuHasSelectableOptionsRef,
       onSubmit,
       onUserKeyDown
