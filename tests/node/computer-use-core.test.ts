@@ -2525,6 +2525,78 @@ test("coordinator reports bounded causal diagnostics without action content", as
   assert.equal(JSON.stringify(traces).includes("top-secret-input"), false)
 })
 
+test("unconfirmed backend termination settles unknown without observing a successor", async () => {
+  const raw = typeTextObservation()
+  let observeCalls = 0
+  const backend: ComputerUseBackend = {
+    matrix: {
+      capabilities: [
+        {
+          action: "type_text",
+          background: "verified",
+          foreground: "unavailable",
+          route: "ax_value"
+        }
+      ],
+      environment: "macos-quartz",
+      platform: "macos",
+      protocolVersion: 1
+    },
+    disposeSession: resolvedVoid,
+    identify() {
+      return Promise.resolve(targetIdentity(raw))
+    },
+    async execute() {
+      throw Object.assign(
+        new Error("Computer-use native helper termination could not be confirmed."),
+        { successorObservationSafe: false as const }
+      )
+    },
+    async observe() {
+      observeCalls += 1
+      return backendObservation(raw)
+    }
+  }
+  const writes: string[] = []
+  const sessions = new ComputerUseSessionManager(backend)
+  const coordinator = new ComputerUseTransactionCoordinator(
+    backend,
+    new ComputerUseResourceScheduler(),
+    sessions,
+    new ComputerUseActionLedger(
+      actionLedgerPort({
+        onWrite(attempt) {
+          writes.push(`${attempt.phase}:${attempt.result?.outcome ?? "pending"}`)
+        }
+      })
+    )
+  )
+  const base = await identifyAndObserve(coordinator)
+  await sessions.setEnabled(true)
+  const grant = sessions.openSession({
+    observation: base,
+    runId: "run-unconfirmed-termination",
+    threadId: "thread-unconfirmed-termination"
+  })
+
+  const result = await coordinator.execute({
+    actions: [{ kind: "type_text", ref: "@e1", value: "hello" }],
+    baseStateId: base.stateId,
+    runId: "run-unconfirmed-termination",
+    sessionId: grant.sessionId,
+    threadId: "thread-unconfirmed-termination",
+    transactionId: "transaction-unconfirmed-termination"
+  })
+
+  assert.deepEqual(result, {
+    baseStateId: base.stateId,
+    outcome: "unknown",
+    steps: []
+  })
+  assert.equal(observeCalls, 1)
+  assert.deepEqual(writes, ["dispatched:pending", "settled:unknown"])
+})
+
 test("successor identity changes never publish an observation with the old epoch", async () => {
   const baseRaw = typeTextObservation()
   const executeWithReplacement = async (replacement: ComputerUseObservation) => {

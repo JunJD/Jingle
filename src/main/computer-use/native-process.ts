@@ -1,11 +1,14 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import type {
   ComputerUseBackendEnvironment,
+  ComputerUseBackendFailure,
   JingleComputerUseNativeBridge,
   JingleComputerUseNativeRequest
 } from "@jingle/computer-use-core"
 
 const DEFAULT_TIMEOUT_MS = 30_000
+const TERMINATION_GRACE_MS = 100
+const TERMINATION_CONFIRMATION_TIMEOUT_MS = 2_000
 const MAX_REQUEST_BYTES = 40 * 1024 * 1024
 const MAX_STDOUT_BYTES = 40 * 1024 * 1024
 const MAX_STDERR_BYTES = 64 * 1024
@@ -32,11 +35,14 @@ export interface CreateComputerUseNativeProcessBridgeInput {
   timeoutMs?: number
 }
 
-export class ComputerUseNativeProcessError extends Error {
+export class ComputerUseNativeProcessError extends Error implements ComputerUseBackendFailure {
+  readonly successorObservationSafe: boolean
+
   constructor(
     message: string,
     readonly code:
       | "helper_failed"
+      | "helper_termination_unconfirmed"
       | "invalid_response"
       | "permission_required"
       | "request_too_large"
@@ -47,6 +53,7 @@ export class ComputerUseNativeProcessError extends Error {
   ) {
     super(message)
     this.name = "ComputerUseNativeProcessError"
+    this.successorObservationSafe = code !== "helper_termination_unconfirmed"
   }
 }
 
@@ -167,27 +174,58 @@ async function invokeComputerUseProcess(input: {
     let settled = false
     let stdoutBytes = 0
     let stderrBytes = 0
+    let termination: { error: unknown } | null = null
+    let forceKillTimeout: ReturnType<typeof setTimeout> | undefined
+    let terminationConfirmationTimeout: ReturnType<typeof setTimeout> | undefined
     const stdout: Buffer[] = []
     const stderr: Buffer[] = []
     const finish = (callback: () => void): void => {
       if (settled) return
       settled = true
       clearTimeout(timeout)
+      if (forceKillTimeout) clearTimeout(forceKillTimeout)
+      if (terminationConfirmationTimeout) clearTimeout(terminationConfirmationTimeout)
       input.signal?.removeEventListener("abort", abort)
       callback()
     }
     const fail = (error: unknown): void => {
       finish(() => reject(error))
     }
+    const terminate = (error: unknown): void => {
+      if (settled || termination) return
+      termination = { error }
+      try {
+        child.kill()
+      } catch {
+        // The forced termination below remains the authoritative cleanup path.
+      }
+      forceKillTimeout = setTimeout(() => {
+        if (settled) return
+        try {
+          child.kill("SIGKILL")
+        } catch {
+          // The confirmation watchdog below remains authoritative.
+        }
+      }, TERMINATION_GRACE_MS)
+      terminationConfirmationTimeout = setTimeout(() => {
+        fail(
+          new ComputerUseNativeProcessError(
+            "Computer-use native helper termination could not be confirmed.",
+            "helper_termination_unconfirmed"
+          )
+        )
+      }, TERMINATION_CONFIRMATION_TIMEOUT_MS)
+    }
     const abort = (): void => {
-      child.kill()
-      fail(input.signal?.reason ?? new DOMException("Computer use was cancelled.", "AbortError"))
+      terminate(
+        input.signal?.reason ?? new DOMException("Computer use was cancelled.", "AbortError")
+      )
     }
     const timeout = setTimeout(() => {
-      child.kill()
-      fail(new ComputerUseNativeProcessError("Computer-use native helper timed out.", "timeout"))
+      terminate(
+        new ComputerUseNativeProcessError("Computer-use native helper timed out.", "timeout")
+      )
     }, input.timeoutMs)
-    timeout.unref()
 
     input.signal?.addEventListener("abort", abort, { once: true })
     if (input.signal?.aborted) {
@@ -195,6 +233,7 @@ async function invokeComputerUseProcess(input: {
       return
     }
     child.on("error", () => {
+      if (termination) return
       fail(
         new ComputerUseNativeProcessError(
           "Computer-use native helper transport failed.",
@@ -205,8 +244,7 @@ async function invokeComputerUseProcess(input: {
     child.stdout.on("data", (chunk: Buffer) => {
       stdoutBytes += chunk.byteLength
       if (stdoutBytes > MAX_STDOUT_BYTES) {
-        child.kill()
-        fail(
+        terminate(
           new ComputerUseNativeProcessError(
             "Computer-use native response exceeds the bounded transport frame.",
             "response_too_large"
@@ -225,6 +263,10 @@ async function invokeComputerUseProcess(input: {
     })
     child.on("close", (code, processSignal) => {
       if (settled) return
+      if (termination) {
+        fail(termination.error)
+        return
+      }
       if (code !== 0 || processSignal) {
         const nativeCode = readNativeDiagnosticCode(Buffer.concat(stderr, stderrBytes))
         const permissionRequired = nativeCode === "accessibility_permission_required"
@@ -265,7 +307,7 @@ async function invokeComputerUseProcess(input: {
     })
 
     child.stdin.on("error", () => {
-      fail(
+      terminate(
         new ComputerUseNativeProcessError(
           "Computer-use native helper rejected its request frame.",
           "transport_failed"

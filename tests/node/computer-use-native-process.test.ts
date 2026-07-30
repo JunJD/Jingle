@@ -1,7 +1,10 @@
 import assert from "node:assert/strict"
+import type { ChildProcessWithoutNullStreams } from "node:child_process"
+import { EventEmitter } from "node:events"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { PassThrough } from "node:stream"
 import test from "node:test"
 import {
   ComputerUseNativeProcessError,
@@ -9,6 +12,53 @@ import {
   createComputerUseNativeProcessBridge,
   resolveComputerUseBackendEnvironment
 } from "../../src/main/computer-use/native-process"
+
+function controlledTerminationChild(): {
+  child: ChildProcessWithoutNullStreams
+  signals: string[]
+} {
+  const signals: string[] = []
+  const child = new EventEmitter() as ChildProcessWithoutNullStreams
+  Object.assign(child, {
+    stderr: new PassThrough(),
+    stdin: new PassThrough(),
+    stdout: new PassThrough()
+  })
+  child.kill = ((signal?: NodeJS.Signals | number) => {
+    signals.push(typeof signal === "string" ? signal : "SIGTERM")
+    if (signal === undefined) {
+      setImmediate(() => child.emit("error", new Error("termination in progress")))
+    } else if (signal === "SIGKILL") {
+      setImmediate(() => child.emit("close", null, "SIGKILL"))
+    }
+    return true
+  }) as ChildProcessWithoutNullStreams["kill"]
+  return { child, signals }
+}
+
+function unconfirmedTerminationChild(
+  behavior: "descendant-pipe" | "kill-false" | "kill-throws" | "never-close"
+): {
+  child: ChildProcessWithoutNullStreams
+  signals: string[]
+} {
+  const signals: string[] = []
+  const child = new EventEmitter() as ChildProcessWithoutNullStreams
+  Object.assign(child, {
+    stderr: new PassThrough(),
+    stdin: new PassThrough(),
+    stdout: new PassThrough()
+  })
+  child.kill = ((signal?: NodeJS.Signals | number) => {
+    signals.push(typeof signal === "string" ? signal : "SIGTERM")
+    if (behavior === "kill-throws") throw new Error("kill failed")
+    if (behavior === "descendant-pipe" && signal === "SIGKILL") {
+      setImmediate(() => child.emit("exit", null, "SIGKILL"))
+    }
+    return behavior !== "kill-false"
+  }) as ChildProcessWithoutNullStreams["kill"]
+  return { child, signals }
+}
 
 test("native process bridge sends one bounded stdin frame without argv payloads", async () => {
   const directory = await mkdtemp(join(tmpdir(), "jingle-computer-use-transport-"))
@@ -90,6 +140,96 @@ test("native process bridge honors cancellation before spawn and while running",
   } finally {
     await rm(directory, { force: true, recursive: true })
   }
+})
+
+test("native process bridge confirms helper termination before reporting cancellation", async () => {
+  const { child, signals } = controlledTerminationChild()
+  const bridge = createComputerUseNativeProcessBridge({
+    environment: "macos-quartz",
+    invocation: { args: [], command: "/controlled-helper" },
+    spawnProcess: (() => child) as never
+  })
+  const controller = new AbortController()
+  const abortReason = new DOMException("cancelled after dispatch", "AbortError")
+  let rejected = false
+  const invocation = bridge
+    .invoke(
+      {
+        environment: "macos-quartz",
+        method: "probe",
+        protocolVersion: 1,
+        requestPermission: true
+      },
+      controller.signal
+    )
+    .catch((error: unknown) => {
+      rejected = true
+      throw error
+    })
+
+  controller.abort(abortReason)
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(rejected, false)
+  await assert.rejects(invocation, (error) => error === abortReason)
+  assert.deepEqual(signals, ["SIGTERM", "SIGKILL"])
+})
+
+test("native process bridge preserves typed timeout until helper termination is confirmed", async () => {
+  const { child, signals } = controlledTerminationChild()
+  const bridge = createComputerUseNativeProcessBridge({
+    environment: "macos-quartz",
+    invocation: { args: [], command: "/controlled-helper" },
+    spawnProcess: (() => child) as never,
+    timeoutMs: 1_000
+  })
+
+  await assert.rejects(
+    bridge.invoke({
+      environment: "macos-quartz",
+      method: "probe",
+      protocolVersion: 1,
+      requestPermission: true
+    }),
+    (error: unknown) => error instanceof ComputerUseNativeProcessError && error.code === "timeout"
+  )
+  assert.deepEqual(signals, ["SIGTERM", "SIGKILL"])
+})
+
+test("native process bridge bounds unconfirmed helper termination paths", async () => {
+  const fixtures = (["never-close", "kill-false", "kill-throws", "descendant-pipe"] as const).map(
+    (behavior) => {
+      const { child, signals } = unconfirmedTerminationChild(behavior)
+      const bridge = createComputerUseNativeProcessBridge({
+        environment: "macos-quartz",
+        invocation: { args: [], command: `/controlled-${behavior}` },
+        spawnProcess: (() => child) as never
+      })
+      const controller = new AbortController()
+      const invocation = bridge.invoke(
+        {
+          environment: "macos-quartz",
+          method: "probe",
+          protocolVersion: 1,
+          requestPermission: true
+        },
+        controller.signal
+      )
+      controller.abort(new DOMException(`cancelled ${behavior}`, "AbortError"))
+      return { behavior, invocation, signals }
+    }
+  )
+
+  await Promise.all(
+    fixtures.map(async ({ behavior, invocation, signals }) => {
+      await assert.rejects(invocation, (error: unknown) => {
+        assert.ok(error instanceof ComputerUseNativeProcessError, behavior)
+        assert.equal(error.code, "helper_termination_unconfirmed", behavior)
+        assert.equal(error.successorObservationSafe, false, behavior)
+        return true
+      })
+      assert.deepEqual(signals, ["SIGTERM", "SIGKILL"], behavior)
+    })
+  )
 })
 
 test("native process bridge rejects environment drift and invalid response frames", async () => {

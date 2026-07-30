@@ -229,6 +229,20 @@ export type ComputerUseBackendExecutionOutcome = Exclude<
   "cancelled_before_dispatch"
 >
 
+export interface ComputerUseBackendFailure {
+  readonly successorObservationSafe: boolean
+}
+
+export function computerUseBackendFailurePrecludesSuccessorObservation(
+  error: unknown
+): error is ComputerUseBackendFailure & { readonly successorObservationSafe: false } {
+  return (
+    error instanceof Error &&
+    "successorObservationSafe" in error &&
+    error.successorObservationSafe === false
+  )
+}
+
 export type ComputerUseBackendStepResult = Omit<ComputerUseStepResult, "outcome"> & {
   outcome: ComputerUseBackendExecutionOutcome
 }

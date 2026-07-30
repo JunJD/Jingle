@@ -1,14 +1,15 @@
-import type {
-  ComputerUseBackend,
-  ComputerUseBackendExecutionResult,
-  ComputerUseIdentifyRequest,
-  ComputerUseObservation,
-  ComputerUseObserveRequest,
-  ComputerUseSemanticAction,
-  ComputerUseTraceEvent,
-  ComputerUseTraceOperation,
-  ComputerUseTraceSink,
-  ComputerUseTransactionResult
+import {
+  computerUseBackendFailurePrecludesSuccessorObservation,
+  type ComputerUseBackend,
+  type ComputerUseBackendExecutionResult,
+  type ComputerUseIdentifyRequest,
+  type ComputerUseObservation,
+  type ComputerUseObserveRequest,
+  type ComputerUseSemanticAction,
+  type ComputerUseTraceEvent,
+  type ComputerUseTraceOperation,
+  type ComputerUseTraceSink,
+  type ComputerUseTransactionResult
 } from "./contract"
 import { sameComputerUseWindowIdentity } from "./authorization"
 import { ComputerUseActionLedger, type ComputerUseActionAttemptClaim } from "./action-ledger"
@@ -222,16 +223,18 @@ export class ComputerUseTransactionCoordinator {
         throw error
       }
       if (current?.phase === "queued") return this.ledger.cancel(attempt.attemptId)
-      const successor = await this.observeAfterUnknown(base, {
-        runId: input.runId,
-        threadId: input.threadId,
-        transactionId: input.transactionId
-      })
+      const successor = computerUseBackendFailurePrecludesSuccessorObservation(error)
+        ? undefined
+        : await this.observeAfterUnknown(base, {
+            runId: input.runId,
+            threadId: input.threadId,
+            transactionId: input.transactionId
+          })
       return this.ledger.settle(attempt.attemptId, {
         baseStateId: base.stateId,
         outcome: "unknown",
         steps: execution?.steps ?? [],
-        successor
+        ...(successor ? { successor } : {})
       })
     }
   }
