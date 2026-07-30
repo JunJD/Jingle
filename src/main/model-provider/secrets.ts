@@ -3,6 +3,7 @@ import {
   deleteProviderCredentials as deleteStoredProviderCredentials,
   getProviderCredential as getStoredProviderCredential,
   hasProviderCredentials as hasStoredProviderCredentials,
+  replaceProviderCredentials as replaceStoredProviderCredentials,
   setProviderCredential as setStoredProviderCredential
 } from "./auth-store"
 import type { ProviderId } from "./types"
@@ -20,6 +21,13 @@ export function setProviderCredential(
   value: string
 ): void {
   setStoredProviderCredential(providerId, variable, value.trim())
+}
+
+export function replaceProviderCredentials(
+  providerId: ProviderId,
+  credentials: Record<string, string>
+): void {
+  replaceStoredProviderCredentials(providerId, credentials)
 }
 
 export function hasProviderCredentials(providerId: ProviderId, variables: string[]): boolean {

@@ -60,6 +60,43 @@ test("model provider credentials can be read back for settings edits", async () 
   assert.match(await readFile(paths.configPath, "utf8"), /active_provider: deepseek/)
 })
 
+test("saving credentials removes cleared optional provider fields", async () => {
+  const { getProviderCredentialsForUI, setProviderCredentialsForUI } =
+    await import("../../src/main/model-provider/service")
+  const { getModelProviderPaths } = await import("../../src/main/model-provider/paths")
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ data: [{ id: "openai/gpt-oss-120b" }] }), {
+      status: 200,
+      statusText: "OK"
+    })
+
+  await setProviderCredentialsForUI("tanzu_ai", {
+    apiKey: "sk-tanzu-initial",
+    TANZU_AI_ENDPOINT: "https://tanzu.example.test",
+    TANZU_AI_STREAMING: "false"
+  })
+  assert.deepEqual(getProviderCredentialsForUI("tanzu_ai"), {
+    apiKey: "sk-tanzu-initial",
+    TANZU_AI_ENDPOINT: "https://tanzu.example.test",
+    TANZU_AI_STREAMING: "false"
+  })
+
+  await setProviderCredentialsForUI("tanzu_ai", {
+    apiKey: "sk-tanzu-updated",
+    TANZU_AI_ENDPOINT: "https://tanzu.example.test",
+    TANZU_AI_STREAMING: ""
+  })
+  assert.deepEqual(getProviderCredentialsForUI("tanzu_ai"), {
+    apiKey: "sk-tanzu-updated",
+    TANZU_AI_ENDPOINT: "https://tanzu.example.test"
+  })
+
+  const authJson = JSON.parse(await readFile(getModelProviderPaths().authPath, "utf8")) as {
+    providers?: Record<string, Record<string, unknown>>
+  }
+  assert.equal(authJson.providers?.tanzu_ai?.TANZU_AI_STREAMING, undefined)
+})
+
 test("retired safeStorage credential entries are ignored without Electron decryption", async () => {
   const {
     deleteProviderCredentialsForUI,

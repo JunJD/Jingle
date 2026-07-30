@@ -9,7 +9,7 @@ import {
   deleteProviderCredentials as deleteStoredProviderCredentials,
   getProviderCredential,
   hasProviderCredentials,
-  setProviderCredential
+  replaceProviderCredentials
 } from "./secrets"
 import {
   fetchAnthropicModels,
@@ -259,9 +259,7 @@ function createApiKeyProviderAdapter(config: ProviderAdapterConfig): ProviderAda
     normalizeCredentials: (credentials) => normalizeProviderCredentials(definition, credentials),
     saveCredentials: (credentials) => {
       const normalizedCredentials = normalizeProviderCredentials(definition, credentials)
-      Object.entries(normalizedCredentials).forEach(([variable, value]) => {
-        setProviderCredential(definition.id, variable, value)
-      })
+      replaceProviderCredentials(definition.id, normalizedCredentials)
     },
     validateCredentials: async (credentials) => {
       await listModels(credentials)
@@ -376,9 +374,7 @@ function createProviderConfigAdapter(
     normalizeCredentials: (credentials) => normalizeProviderCredentials(definition, credentials),
     saveCredentials: (credentials) => {
       const normalizedCredentials = normalizeProviderCredentials(definition, credentials)
-      Object.entries(normalizedCredentials).forEach(([variable, value]) => {
-        setProviderCredential(definition.id, variable, value)
-      })
+      replaceProviderCredentials(definition.id, normalizedCredentials)
     },
     validateCredentials: async (credentials) => {
       await listModels(credentials)

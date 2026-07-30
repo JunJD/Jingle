@@ -47,6 +47,27 @@ export function setProviderCredential(
   })
 }
 
+export function replaceProviderCredentials(
+  providerId: ProviderId,
+  credentials: Record<string, string>
+): void {
+  const state = readAuthState()
+  const providerAuth = Object.fromEntries(
+    Object.entries(credentials).flatMap(([variable, value]) => {
+      const normalizedValue = value.trim()
+      return normalizedValue ? [[variable, { value: normalizedValue }]] : []
+    })
+  )
+  const providers = { ...state.providers }
+  if (Object.keys(providerAuth).length > 0) {
+    providers[providerId] = providerAuth
+  } else {
+    delete providers[providerId]
+  }
+
+  writeAuthState({ providers })
+}
+
 export function deleteProviderCredential(providerId: ProviderId, variable: string): void {
   deleteProviderCredentials(providerId, [variable])
 }
