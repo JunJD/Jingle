@@ -331,7 +331,7 @@ model AgentMemorySuggestion {
   sourceRun     Run?    @relation(fields: [sourceRunId], references: [runId], onDelete: SetNull)
 
   @@index([status, updatedAt], map: "idx_agent_memory_suggestions_status_updated_at")
-  @@index([threadId, status, updatedAt], map: "idx_agent_memory_suggestions_thread_status_updated_at")
+  @@index([threadId, status, updatedAt, scope], map: "idx_agent_memory_suggestions_thread_status_updated_at")
   @@index([scope, workspaceKey, status, updatedAt], map: "idx_agent_memory_suggestions_scope_workspace_status_updated_at")
   @@map("agent_memory_suggestions")
 }

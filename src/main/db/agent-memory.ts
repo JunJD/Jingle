@@ -254,7 +254,10 @@ export async function listAgentMemorySuggestions(
 
 export async function hasPendingWorkspaceMemorySuggestions(threadId: string): Promise<boolean> {
   const prisma = getPrismaClient()
-  const count = await prisma.agentMemorySuggestion.count({
+  const suggestion = await prisma.agentMemorySuggestion.findFirst({
+    select: {
+      threadId: true
+    },
     where: {
       scope: "workspace",
       status: "pending",
@@ -262,7 +265,7 @@ export async function hasPendingWorkspaceMemorySuggestions(threadId: string): Pr
     }
   })
 
-  return count > 0
+  return suggestion !== null
 }
 
 export async function acceptAgentMemorySuggestion(
