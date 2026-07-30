@@ -86,6 +86,8 @@ class FakeBrowserWindow extends EventEmitter {
   loadFilePromise: Promise<void> = new Promise(() => undefined)
   loadFileResults: Promise<void>[] = []
   minimized = false
+  maximized = false
+  maximizeCount = 0
   restoreCount = 0
   showCount = 0
   showInactiveCount = 0
@@ -102,6 +104,7 @@ class FakeBrowserWindow extends EventEmitter {
 
   focus(): void {
     this.focusCount += 1
+    this.emit("focus")
   }
 
   isDestroyed(): boolean {
@@ -110,6 +113,10 @@ class FakeBrowserWindow extends EventEmitter {
 
   isMinimized(): boolean {
     return this.minimized
+  }
+
+  isMaximized(): boolean {
+    return this.maximized
   }
 
   isVisible(): boolean {
@@ -125,6 +132,11 @@ class FakeBrowserWindow extends EventEmitter {
   loadURL(): Promise<void> {
     this.loadFileCount += 1
     return this.loadFileResults.shift() ?? this.loadFilePromise
+  }
+
+  maximize(): void {
+    this.maximized = true
+    this.maximizeCount += 1
   }
 
   restore(): void {
@@ -206,6 +218,48 @@ describe("window presentation", () => {
     window.emit("ready-to-show")
 
     assert.deepEqual([window.showInactiveCount, window.showCount, window.focusCount], [1, 0, 0])
+  })
+
+  it("downgrades delayed activation after another installed window receives focus", () => {
+    const delayedWindow = new FakeBrowserWindow()
+    const focusedWindow = new FakeBrowserWindow()
+    installWindowPresentation(asBrowserWindow(delayedWindow), { maximizeOnActivation: true })
+    installWindowPresentation(asBrowserWindow(focusedWindow))
+    requestWindowPresentation(asBrowserWindow(delayedWindow))
+
+    focusedWindow.emit("focus")
+    delayedWindow.emit("ready-to-show")
+
+    assert.deepEqual(
+      [
+        delayedWindow.showInactiveCount,
+        delayedWindow.showCount,
+        delayedWindow.focusCount,
+        delayedWindow.maximizeCount
+      ],
+      [1, 0, 0, 0]
+    )
+
+    delayedWindow.emit("focus")
+    assert.equal(delayedWindow.maximizeCount, 1)
+  })
+
+  it("records presentation-driven focus once and invalidates older installed activation", () => {
+    const delayedWindow = new FakeBrowserWindow()
+    const presentedWindow = new FakeBrowserWindow()
+    installWindowPresentation(asBrowserWindow(delayedWindow))
+    installWindowPresentation(asBrowserWindow(presentedWindow))
+    requestWindowPresentation(asBrowserWindow(delayedWindow))
+    presentedWindow.emit("ready-to-show")
+
+    requestWindowPresentation(asBrowserWindow(presentedWindow))
+    delayedWindow.emit("ready-to-show")
+
+    assert.equal(presentedWindow.focusCount, 1)
+    assert.deepEqual(
+      [delayedWindow.showInactiveCount, delayedWindow.showCount, delayedWindow.focusCount],
+      [1, 0, 0]
+    )
   })
 
   it("restores minimized windows and does not reshow visible windows", () => {
@@ -691,7 +745,9 @@ describe("renderer window load lifecycle", () => {
 
     const pendingActivePresentationWindow = new FakeBrowserWindow()
     pendingActivePresentationWindow.minimized = true
-    installWindowPresentation(asBrowserWindow(pendingActivePresentationWindow))
+    installWindowPresentation(asBrowserWindow(pendingActivePresentationWindow), {
+      maximizeOnActivation: true
+    })
     requestWindowPresentation(asBrowserWindow(pendingActivePresentationWindow))
     const pendingInactivePresentationWindow = new FakeBrowserWindow()
     installWindowPresentation(asBrowserWindow(pendingInactivePresentationWindow))
@@ -701,6 +757,7 @@ describe("renderer window load lifecycle", () => {
 
     beginRendererWindowShutdown()
     pendingActivePresentationWindow.emit("ready-to-show")
+    pendingActivePresentationWindow.emit("focus")
     pendingInactivePresentationWindow.emit("ready-to-show")
     requestWindowPresentation(asBrowserWindow(pendingActivePresentationWindow))
     requestWindowPresentation(asBrowserWindow(pendingInactivePresentationWindow), {
@@ -725,9 +782,10 @@ describe("renderer window load lifecycle", () => {
         pendingActivePresentationWindow.showCount,
         pendingActivePresentationWindow.focusCount,
         pendingActivePresentationWindow.restoreCount,
+        pendingActivePresentationWindow.maximizeCount,
         pendingInactivePresentationWindow.showInactiveCount
       ],
-      [0, 0, 0, 0]
+      [0, 0, 0, 0, 0]
     )
   })
 })

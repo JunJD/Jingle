@@ -14,6 +14,7 @@ import { attachLauncherWindowDragController } from "./launcher-window-drag-contr
 import type { LauncherShownEvent } from "@shared/launcher-presentation"
 import { diagnosticsLogger } from "../diagnostics/instance"
 import { registerWindowIdentity } from "./window-identity"
+import { installWindowActivationTracking } from "./window-presentation"
 
 const LAUNCHER_CONTENT_WIDTH = 760
 const LAUNCHER_HORIZONTAL_MARGIN = 24
@@ -420,6 +421,7 @@ export function createLauncherWindow(): BrowserWindow {
     }
   })
   registerWindowIdentity(launcherWindow.webContents, { kind: "launcher" })
+  installWindowActivationTracking(launcherWindow)
   const observeRendererWindowLoadFailure = attachWindowDiagnostics(launcherWindow, "launcher")
   lockFixedWindowZoom(launcherWindow)
 
