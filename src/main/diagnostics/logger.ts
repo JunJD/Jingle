@@ -13,6 +13,7 @@ import {
   sanitizeDiagnosticValue,
   serializeDiagnosticEvidence
 } from "./redaction"
+import { normalizeDiagnosticExitSignal } from "./exit-signal"
 import type { DiagnosticGraphEvent } from "./schema"
 
 export type DiagnosticsLevel = "info" | "warn" | "error"
@@ -199,6 +200,10 @@ function sanitizeKnownLogFields(
     if (value !== undefined) {
       sanitized[key] = value
     }
+  }
+  const signal = readOwnDataField(fields, "signal")
+  if (signal !== undefined) {
+    sanitized["signal"] = normalizeDiagnosticExitSignal(signal)
   }
   const presentationId = sanitizeDiagnosticValue(
     readOwnDataField(fields, "presentationId"),

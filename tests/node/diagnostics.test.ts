@@ -130,6 +130,30 @@ test("diagnostics logger writes structured local log records", async () => {
   }
 })
 
+test("diagnostics logger persists only normalized native exit signals", async () => {
+  const { logDir, rootDir } = createTempLogPaths()
+  const secret = "native-signal-secret"
+  try {
+    const logger = new DiagnosticsLogger({ logDir, rootDir })
+    logger.error("Native helper exited", { signal: "SIGTERM" })
+    logger.error("Native helper exit signal was invalid", { signal: secret })
+    await logger.flush()
+
+    const serialized = readFileSync(logger.getLogFilePath(), "utf8")
+    const records = serialized
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+    assert.deepEqual(
+      records.map((record) => record["signal"]),
+      ["SIGTERM", "unknown"]
+    )
+    assert.equal(serialized.includes(secret), false)
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true })
+  }
+})
+
 test("diagnostics logger rotates old local log files", async () => {
   const { logDir, rootDir } = createTempLogPaths()
   try {

@@ -10,6 +10,7 @@ import type {
   DiagnosticGraphSink,
   DiagnosticResourceRef
 } from "./schema"
+import { normalizeDiagnosticExitSignal } from "./exit-signal"
 
 const PROCESS_GONE_REASONS = new Set([
   "abnormal-exit",
@@ -59,6 +60,12 @@ type ElectronFailureInput =
       error: unknown
       helper: "minimal-island" | "selection-capture"
       kind: "native-helper-stdin-failed"
+    }
+  | {
+      exitCode: unknown
+      helper: "minimal-island" | "selection-capture"
+      kind: "native-helper-unexpected-exit"
+      signal: unknown
     }
   | {
       errorCode?: unknown
@@ -213,6 +220,10 @@ function normalizeNativeHelperStdinErrorCode(error: Error | null): string {
   }
 }
 
+function normalizeNativeHelper(value: unknown): string {
+  return value === "minimal-island" || value === "selection-capture" ? value : "unknown"
+}
+
 function toPositiveIntegerRef(kind: string, value: unknown): DiagnosticResourceRef | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0
     ? { id: String(value), kind }
@@ -323,10 +334,7 @@ function captureNativeHelperStdinFailure(
   sink: DiagnosticGraphSink,
   input: Extract<ElectronFailureInput, { kind: "native-helper-stdin-failed" }>
 ): DiagnosticEventRef {
-  const helper =
-    input.helper === "minimal-island" || input.helper === "selection-capture"
-      ? input.helper
-      : "unknown"
+  const helper = normalizeNativeHelper(input.helper)
   const error = readTrustedMainProcessError(input.error)
   return sink.capture({
     component: "native",
@@ -342,6 +350,32 @@ function captureNativeHelperStdinFailure(
     refs: [{ id: helper, kind: "native-helper" }],
     stateImpact: "native_helper_unavailable",
     summary: "Native helper stdin transport failed"
+  })
+}
+
+function captureNativeHelperUnexpectedExit(
+  sink: DiagnosticGraphSink,
+  input: Extract<ElectronFailureInput, { kind: "native-helper-unexpected-exit" }>
+): DiagnosticEventRef {
+  const helper = normalizeNativeHelper(input.helper)
+  return sink.capture({
+    component: "native",
+    dimensionEntries: withOptionalNumber(
+      [
+        { key: "helper", value: helper },
+        { key: "signal", value: normalizeDiagnosticExitSignal(input.signal) }
+      ],
+      "exitCode",
+      input.exitCode
+    ),
+    eventCode: "native.helper_unexpected_exit",
+    fingerprint: `native.helper_unexpected_exit:${helper}`,
+    level: "error",
+    operation: "observe-helper-process",
+    recoverable: true,
+    refs: [{ id: helper, kind: "native-helper" }],
+    stateImpact: "native_helper_unavailable",
+    summary: "Native helper process exited unexpectedly"
   })
 }
 
@@ -493,6 +527,8 @@ export function captureElectronFailure(
         return captureMainProcessShutdownFailure(sink, input)
       case "native-helper-stdin-failed":
         return captureNativeHelperStdinFailure(sink, input)
+      case "native-helper-unexpected-exit":
+        return captureNativeHelperUnexpectedExit(sink, input)
       case "child-process-gone":
         return captureChildProcessFailure(sink, input)
       case "renderer-window-failure":

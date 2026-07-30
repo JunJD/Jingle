@@ -454,6 +454,69 @@ test("Electron failure producers only attach evidence for trusted main errors", 
   }
 })
 
+test("native helper exits retain only typed process status", () => {
+  const sink = new CapturingDiagnosticSink()
+  const hostile = `${SECRET_VALUES.join(" ")} invented signal`
+
+  captureElectronFailure(sink, {
+    exitCode: 23,
+    helper: "minimal-island",
+    kind: "native-helper-unexpected-exit",
+    signal: null
+  })
+  captureElectronFailure(sink, {
+    exitCode: null,
+    helper: "selection-capture",
+    kind: "native-helper-unexpected-exit",
+    signal: "SIGTERM"
+  })
+  captureElectronFailure(sink, {
+    exitCode: Number.POSITIVE_INFINITY,
+    helper: "selection-capture",
+    kind: "native-helper-unexpected-exit",
+    signal: hostile
+  })
+
+  assert.deepEqual(
+    sink.inputs.map(({ dimensionEntries, eventCode, refs }) => ({
+      dimensionEntries,
+      eventCode,
+      refs
+    })),
+    [
+      {
+        dimensionEntries: [
+          { key: "helper", value: "minimal-island" },
+          { key: "signal", value: "none" },
+          { key: "exitCode", value: 23 }
+        ],
+        eventCode: "native.helper_unexpected_exit",
+        refs: [{ id: "minimal-island", kind: "native-helper" }]
+      },
+      {
+        dimensionEntries: [
+          { key: "helper", value: "selection-capture" },
+          { key: "signal", value: "SIGTERM" }
+        ],
+        eventCode: "native.helper_unexpected_exit",
+        refs: [{ id: "selection-capture", kind: "native-helper" }]
+      },
+      {
+        dimensionEntries: [
+          { key: "helper", value: "selection-capture" },
+          { key: "signal", value: "unknown" }
+        ],
+        eventCode: "native.helper_unexpected_exit",
+        refs: [{ id: "selection-capture", kind: "native-helper" }]
+      }
+    ]
+  )
+  assertSecretsAbsent(JSON.stringify(sink.inputs))
+  for (const input of sink.inputs) {
+    assert.equal(input.evidence, undefined)
+  }
+})
+
 test("renderer global errors keep only main-owned identity in causal diagnostics", () => {
   const hostile = `${SECRET_VALUES.join(" ")} renderer-controlled`
   const input = createRendererErrorDiagnostic(

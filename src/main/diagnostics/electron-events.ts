@@ -167,6 +167,32 @@ export function recordNativeHelperStdinFailure(
   }
 }
 
+export function recordNativeHelperUnexpectedExit(
+  helper: NativeHelperDiagnosticIdentity,
+  exitCode: number | null,
+  signal: NodeJS.Signals | null
+): void {
+  captureElectronFailure(diagnosticsGraph, {
+    exitCode,
+    helper,
+    kind: "native-helper-unexpected-exit",
+    signal
+  })
+  try {
+    diagnosticsLogger.error("Native helper process exited unexpectedly", {
+      exitCode,
+      eventCode: "native.helper_unexpected_exit",
+      fingerprint: `native.helper_unexpected_exit:${helper}`,
+      recoverable: true,
+      serviceName: helper,
+      signal,
+      stateImpact: "native_helper_unavailable"
+    })
+  } catch {
+    console.error("[Diagnostics] Failed to record native helper process exit.")
+  }
+}
+
 export function attachWindowDiagnostics(
   browserWindow: BrowserWindow,
   windowKind: AppWindowKind
