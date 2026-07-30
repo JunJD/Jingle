@@ -40,6 +40,12 @@ export function parseInstalledExtensionVersion(value) {
   return value
 }
 
+export function compareInstalledExtensionVersionPrecedence(left, right) {
+  const leftVersion = parseInstalledExtensionVersion(left)
+  const rightVersion = parseInstalledExtensionVersion(right)
+  return semver.compare(leftVersion, rightVersion)
+}
+
 export function resolveInstalledExtensionPackageRoot(outputRoot, identity) {
   const id = parseInstalledExtensionId(identity?.id)
   const version = parseInstalledExtensionVersion(identity?.version)

@@ -11,6 +11,7 @@ export function isInstalledExtensionId(value: unknown): value is string
 export function isInstalledExtensionVersion(value: unknown): value is string
 export function parseInstalledExtensionId(value: unknown): string
 export function parseInstalledExtensionVersion(value: unknown): string
+export function compareInstalledExtensionVersionPrecedence(left: string, right: string): number
 export function resolveInstalledExtensionPackageRoot(
   outputRoot: string,
   identity: InstalledExtensionPackageIdentity

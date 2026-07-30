@@ -4,6 +4,7 @@ import { nativeExtensionManifests } from "@extensions/index"
 import { nativeExtensionMainDefinitions } from "@extensions/main"
 import { nativeExtensionRuntimeMetadataPackages } from "@extensions/runtime-metadata-packages"
 import { nativeExtensionRuntimePackages } from "@extensions/runtime-packages"
+import { compareInstalledExtensionVersionPrecedence } from "@jingle/extension-cli/installed-package-path"
 import { getJingleHomeDir } from "../../storage"
 import { BuiltInExtensionProvider } from "./built-in-provider"
 import { InstalledExtensionProvider } from "./installed-provider"
@@ -103,10 +104,19 @@ function shouldReplaceInstalledOwnerPackage(
     return candidateRank > currentRank
   }
 
-  const candidateVersion = candidate.version ?? ""
-  const currentVersion = current.version ?? ""
+  const candidateVersion = candidate.version
+  const currentVersion = current.version
   if (candidateVersion !== currentVersion) {
-    return candidateVersion.localeCompare(currentVersion) > 0
+    if (candidateVersion === null || currentVersion === null) {
+      return candidateVersion !== null
+    }
+    const versionPrecedence = compareInstalledExtensionVersionPrecedence(
+      candidateVersion,
+      currentVersion
+    )
+    if (versionPrecedence !== 0) {
+      return versionPrecedence > 0
+    }
   }
 
   return true

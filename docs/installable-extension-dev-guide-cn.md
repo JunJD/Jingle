@@ -67,6 +67,8 @@ package 必须通过 `@jingle/extension-api` 暴露四个入口：
 
 `package.json.name` 是 npm package name，可以使用合法 scoped name，例如 `@jingle/extension-my-extension`；它不决定安装目录。安装身份来自 `manifest.ts` 的 `name`，必须是 flat lowercase id：以小写字母开头，只包含小写字母、数字和单个连字符，不能使用 npm scope、斜杠、反斜杠或嵌套路径。`package.json.version` 必须是 lowercase canonical SemVer。CLI、descriptor parser 和 installed registry 共同使用这套路径契约：`<installed-root>/<extension-id>/<version>/`。
 
+同一个 extension id 安装多个健康版本时，registry 按 SemVer precedence 选择 owner；例如 `10.0.0` 高于 `2.0.0`，stable `1.0.0` 高于 `1.0.0-beta.1`。版本字符串的字典序不参与 owner 选择。
+
 ## 写一个最小 Command
 
 `manifest.ts`：
