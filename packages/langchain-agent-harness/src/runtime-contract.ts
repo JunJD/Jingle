@@ -144,6 +144,7 @@ export interface RuntimeRunLifecycleControllerContract<
   ) =>
     | Promise<JingleRunCompletionFacts<TContextInclusion>>
     | JingleRunCompletionFacts<TContextInclusion>
+  /** Atomically commits the aborted Run, Thread, HITL, and durable lifecycle facts. */
   markRunAborted: (input: { runId: string; threadId: string }) => Promise<void> | void
   markRunCancelled: (input: { runId: string; threadId: string }) => Promise<void> | void
   markRunFailed: (input: {

@@ -6,10 +6,7 @@ import {
   withModelRuntimeSelection
 } from "@shared/model-runtime-selection"
 import { AGENT_RUN_FAILURE_METADATA_KEY, type AgentRunFailure } from "@shared/agent-run-failure"
-import {
-  buildJingleCheckpointLookupConfig,
-  resolveJingleCheckpointRunStatus
-} from "@jingle/langchain-agent-harness/transitional"
+import { buildJingleCheckpointLookupConfig } from "@jingle/langchain-agent-harness/transitional"
 import {
   createRunExtensionAiCapabilitiesSnapshot,
   RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY,
@@ -43,11 +40,13 @@ import {
 import {
   createApprovalResolvedEventInput,
   createRunFinishedEventInput,
+  createRunInterruptedEventInput,
   createRunResumedEventInput,
   createRunStartedEventInput,
   createUserMessageCreatedEventInput
 } from "./event-recorder"
 import type { RunModelRuntimeSelectionResumeAdmission } from "../model-provider/runtime-selection-admission"
+import { isDurableTerminalRunFinishedPayload } from "./run-lifecycle-facts"
 
 type PersistedRunStatus = "pending" | "running" | "error" | "success" | "interrupted" | "cancelled"
 type ExistingRun = NonNullable<Awaited<ReturnType<typeof getRun>>>
@@ -385,6 +384,17 @@ export async function commitAgentResumeDecision(
           `[Agent] Cannot resume run "${runId}" from thread "${threadId}"; actual thread is "${existing.thread_id}".`
         )
       }
+      const finishedEvents = await transaction.agentEvent.findMany({
+        select: { payload: true },
+        where: { runId, type: "run.finished" }
+      })
+      if (finishedEvents.some((event) => isDurableTerminalRunFinishedPayload(event.payload))) {
+        throw new JingleIpcError({
+          channel: "agent:resume",
+          code: "CONFLICT",
+          message: `[Agent] Cannot resume terminal run "${runId}".`
+        })
+      }
       if (existing.status && !["pending", "running", "interrupted"].includes(existing.status)) {
         throw new Error(`[Agent] Cannot resume run "${runId}" from status "${existing.status}".`)
       }
@@ -487,6 +497,36 @@ export async function syncRunFromLatestCheckpointFacts(
     interrupted?: boolean
   }
 ): Promise<SyncedRunCheckpointFacts> {
+  await commitRunLifecycleTerminal({
+    operation: "complete",
+    runId,
+    status: options?.interrupted ? "interrupted" : "success",
+    threadId
+  })
+
+  try {
+    return await projectRunCompletionCheckpointFacts(threadId, runId, options)
+  } catch (error) {
+    console.error(
+      `[Agent] Run "${runId}" reached durable terminal state but checkpoint projection failed:`,
+      error
+    )
+    return {
+      facts: extractThreadFactsFromCheckpoint(threadId, undefined, { runId }),
+      hasCheckpoint: false,
+      status: options?.interrupted ? "interrupted" : "success"
+    }
+  }
+}
+
+export async function projectRunCompletionCheckpointFacts(
+  threadId: string,
+  runId: string,
+  options?: {
+    expectedMessageId?: string
+    interrupted?: boolean
+  }
+): Promise<SyncedRunCheckpointFacts> {
   const checkpointer = await getCheckpointer(threadId)
   const latest = await checkpointer.getTuple(
     buildJingleCheckpointLookupConfig({
@@ -494,11 +534,9 @@ export async function syncRunFromLatestCheckpointFacts(
       threadId
     })
   )
-
   if (!latest && !options?.interrupted) {
     throw new Error(`[Agent] Missing checkpoint for run "${runId}" in thread "${threadId}".`)
   }
-
   if (options?.expectedMessageId) {
     const canonicalMessages = await listCanonicalMainThreadMessages(threadId)
     const includesMessage = canonicalMessages.some(
@@ -511,32 +549,21 @@ export async function syncRunFromLatestCheckpointFacts(
     }
   }
 
-  const status = options?.interrupted ? "interrupted" : resolveJingleCheckpointRunStatus(latest)
   const facts = extractThreadFactsFromCheckpoint(threadId, latest, { runId })
-  const generatedTitle = facts.title
-
-  await updateRunMetadata(runId, {
-    merge: mergeRunMetadataWithoutFailure,
-    status
-  })
-
-  const thread = await getThread(threadId)
-  const shouldSyncTitle =
-    generatedTitle !== null &&
-    shouldAutoGenerateThreadTitle({
+  if (facts.title !== null) {
+    const thread = await getThread(threadId)
+    const shouldSyncTitle = shouldAutoGenerateThreadTitle({
       metadata: thread?.metadata ? JSON.parse(thread.metadata) : undefined,
       title: thread?.title ?? undefined
     })
-
-  await updateThread(threadId, {
-    status: status === "interrupted" ? "interrupted" : "idle",
-    ...(shouldSyncTitle ? { title: generatedTitle } : {})
-  })
-
+    if (shouldSyncTitle) {
+      await updateThread(threadId, { title: facts.title })
+    }
+  }
   return {
     facts,
     hasCheckpoint: latest !== undefined,
-    status
+    status: options?.interrupted ? "interrupted" : "success"
   }
 }
 
@@ -560,14 +587,11 @@ export async function finalizeRunWithoutCheckpoint(
   }
 ): Promise<PersistedRunStatus> {
   const status: PersistedRunStatus = options?.interrupted ? "interrupted" : "success"
-
-  await updateRunMetadata(runId, {
-    merge: mergeRunMetadataWithoutFailure,
-    status
-  })
-
-  await updateThread(threadId, {
-    status: status === "interrupted" ? "interrupted" : "idle"
+  await commitRunLifecycleTerminal({
+    operation: "complete",
+    runId,
+    status,
+    threadId
   })
 
   return status
@@ -640,23 +664,136 @@ export async function markRunFailed(
 }
 
 export async function markRunCancelled(threadId: string, runId: string): Promise<void> {
-  await updateRun(runId, { status: "cancelled" })
-  await updateThread(threadId, { status: "idle" })
+  await commitRunLifecycleTerminal({
+    completionReason: "user_declined",
+    operation: "cancel",
+    runId,
+    status: "cancelled",
+    threadId
+  })
 }
 
 export async function markRunAborted(threadId: string, runId: string): Promise<void> {
+  await commitRunLifecycleTerminal({
+    completionReason: "aborted",
+    operation: "abort",
+    runId,
+    status: "interrupted",
+    threadId
+  })
+}
+
+async function commitRunLifecycleTerminal(input: {
+  completionReason?: "aborted" | "user_declined"
+  operation: "abort" | "cancel" | "complete"
+  runId: string
+  status: "cancelled" | "interrupted" | "success"
+  threadId: string
+}): Promise<void> {
+  const durableTerminal = input.status !== "interrupted" || input.completionReason === "aborted"
+  const eventInputs: AppendAgentEventInput[] = [
+    ...(input.status === "interrupted"
+      ? [
+          createRunInterruptedEventInput({
+            runId: input.runId,
+            status: "interrupted" as const,
+            threadId: input.threadId
+          })
+        ]
+      : []),
+    createRunFinishedEventInput({
+      ...(input.completionReason ? { completionReason: input.completionReason } : {}),
+      runId: input.runId,
+      status: input.status,
+      threadId: input.threadId
+    })
+  ]
+
+  await withRunMetadataLock(input.runId, async () => {
+    const prisma = getPrismaClient()
+    await prisma.$transaction(async (transaction) => {
+      const [existingRow, threadRow, existingFinishedEvents] = await Promise.all([
+        transaction.run.findUnique({ where: { runId: input.runId } }),
+        transaction.thread.findUnique({ where: { threadId: input.threadId } }),
+        transaction.agentEvent.findMany({
+          select: { payload: true },
+          where: { runId: input.runId, type: "run.finished" }
+        })
+      ])
+      if (!existingRow) {
+        throw new Error(`[Agent] Cannot ${input.operation} missing run "${input.runId}".`)
+      }
+      const existing = mapRunRow(existingRow)
+      if (existing.thread_id !== input.threadId) {
+        throw new Error(
+          `[Agent] Cannot ${input.operation} run "${input.runId}" from thread "${input.threadId}"; actual thread is "${existing.thread_id}".`
+        )
+      }
+      if (!threadRow) {
+        throw new Error(
+          `[Agent] Cannot ${input.operation} run "${input.runId}" without its thread.`
+        )
+      }
+      if (
+        existingFinishedEvents.some((event) =>
+          isDurableTerminalRunFinishedPayload(event.payload)
+        ) ||
+        (existing.status !== "pending" && existing.status !== "running")
+      ) {
+        throw new JingleIpcError({
+          channel: "agent:runtime",
+          code: "CONFLICT",
+          message: `[Agent] Cannot ${input.operation} terminal run "${input.runId}" from status "${existing.status ?? "unknown"}".`
+        })
+      }
+
+      const now = BigInt(Date.now())
+      const transition = await transaction.run.updateMany({
+        data: {
+          metadata: serializeJsonValue(mergeRunMetadataWithoutFailure(existing)),
+          status: input.status,
+          updatedAt: now
+        },
+        where: { runId: input.runId, status: { in: ["pending", "running"] } }
+      })
+      if (transition.count === 0) {
+        throw new JingleIpcError({
+          channel: "agent:runtime",
+          code: "CONFLICT",
+          message: `[Agent] Run "${input.runId}" reached another terminal state before ${input.status} commit.`
+        })
+      }
+
+      if (durableTerminal) {
+        await transaction.hitlRequest.updateMany({
+          data: {
+            decision: serializeJsonValue({
+              type: input.completionReason === "aborted" ? "run_aborted" : "run_terminal"
+            }),
+            resolvedAt: now,
+            status: "cancelled",
+            updatedAt: now
+          },
+          where: { runId: input.runId, status: "pending", threadId: input.threadId }
+        })
+      }
+
+      await appendAgentEventsInTransaction(transaction, eventInputs, { now })
+      await transaction.thread.update({
+        data: {
+          status: input.status === "interrupted" ? "interrupted" : "idle",
+          updatedAt: now
+        },
+        where: { threadId: input.threadId }
+      })
+    })
+  })
   try {
-    await syncRunFromLatestCheckpoint(threadId, runId)
-  } catch {
-    // Ignore checkpoint sync failures on abort and just preserve the status.
+    commitAgentEventProjectionState(eventInputs)
+  } catch (error) {
+    console.error(
+      `[Agent] Run "${input.runId}" reached durable ${input.status} state but trace projection scheduling failed:`,
+      error
+    )
   }
-
-  await updateRunMetadata(runId, {
-    merge: mergeRunMetadataWithoutFailure,
-    status: "interrupted"
-  })
-
-  await updateThread(threadId, {
-    status: "interrupted"
-  })
 }

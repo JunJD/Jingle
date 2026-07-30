@@ -2,6 +2,7 @@ import type { HitlRequest } from "@prisma/client"
 import { isHitlDecisionType, type HITLDecisionType } from "@shared/hitl"
 import { getPrismaClient } from "./client"
 import { serializeJsonValue, toNumber } from "./utils"
+import { isDurableTerminalRunFinishedPayload } from "../agent/run-lifecycle-facts"
 
 export interface HitlRequestRow {
   request_id: string
@@ -21,7 +22,7 @@ export interface HitlRequestRow {
 }
 
 export type HitlRequestStatus = "pending" | HitlRequestTerminalStatus
-export type HitlRequestTerminalStatus = "approved" | "user_declined" | "corrected"
+export type HitlRequestTerminalStatus = "approved" | "cancelled" | "user_declined" | "corrected"
 
 export interface UpsertHitlRequestInput {
   request_id: string
@@ -143,6 +144,28 @@ export async function upsertHitlRequest(input: UpsertHitlRequestInput): Promise<
         requestId: input.request_id
       }
     })
+    if (refreshed.runId !== null) {
+      const [run, finishedEvents] = await Promise.all([
+        tx.run.findUnique({
+          select: { status: true },
+          where: { runId: refreshed.runId }
+        }),
+        tx.agentEvent.findMany({
+          select: { payload: true },
+          where: { runId: refreshed.runId, type: "run.finished" }
+        })
+      ])
+      if (
+        run?.status === "cancelled" ||
+        run?.status === "error" ||
+        run?.status === "success" ||
+        finishedEvents.some((event) => isDurableTerminalRunFinishedPayload(event.payload))
+      ) {
+        throw new Error(
+          `[HITL] Cannot persist pending request "${input.request_id}" for terminal run "${refreshed.runId}".`
+        )
+      }
+    }
     return { row: refreshed, staleReplay: refreshed.status !== "pending" }
   })
 
@@ -175,52 +198,64 @@ export async function getLatestHitlRequest(threadId: string): Promise<HitlReques
 export async function getLatestPendingHitlRequest(
   threadId: string
 ): Promise<HitlRequestRow | null> {
-  const prisma = getPrismaClient()
-  const row = await prisma.hitlRequest.findFirst({
-    where: {
-      threadId,
-      status: "pending"
-    },
-    orderBy: {
-      updatedAt: "desc"
-    }
-  })
-
+  const row = await findLatestActionablePendingHitlRequest({ threadId })
   return row ? mapHitlRequestRow(row) : null
 }
 
 export async function hasPendingHitlRequest(threadId: string): Promise<boolean> {
-  const prisma = getPrismaClient()
-  const row = await prisma.hitlRequest.findFirst({
-    select: {
-      requestId: true
-    },
-    where: {
-      threadId,
-      status: "pending"
-    }
-  })
-
-  return row !== null
+  return (await findLatestActionablePendingHitlRequest({ threadId })) !== null
 }
 
 export async function hasPendingHitlRequestForRun(
   threadId: string,
   runId: string
 ): Promise<boolean> {
-  const prisma = getPrismaClient()
-  const row = await prisma.hitlRequest.findFirst({
-    select: {
-      requestId: true
-    },
-    where: {
-      runId,
-      threadId,
-      status: "pending"
-    }
-  })
+  return (await findLatestActionablePendingHitlRequest({ runId, threadId })) !== null
+}
 
-  return row !== null
+async function findLatestActionablePendingHitlRequest(input: {
+  runId?: string
+  threadId: string
+}): Promise<HitlRequest | null> {
+  const prisma = getPrismaClient()
+  let cursorRequestId: string | undefined
+  while (true) {
+    const row = await prisma.hitlRequest.findFirst({
+      ...(cursorRequestId
+        ? {
+            cursor: { requestId: cursorRequestId },
+            skip: 1
+          }
+        : {}),
+      where: {
+        ...(input.runId ? { runId: input.runId } : {}),
+        threadId: input.threadId,
+        status: "pending"
+      },
+      orderBy: [{ updatedAt: "desc" }, { requestId: "desc" }]
+    })
+    if (!row || row.runId === null) return row
+
+    const [run, finishedEvents] = await Promise.all([
+      prisma.run.findUnique({
+        select: { status: true },
+        where: { runId: row.runId }
+      }),
+      prisma.agentEvent.findMany({
+        select: { payload: true },
+        where: { runId: row.runId, type: "run.finished" }
+      })
+    ])
+    if (
+      run?.status !== "cancelled" &&
+      run?.status !== "error" &&
+      run?.status !== "success" &&
+      !finishedEvents.some((event) => isDurableTerminalRunFinishedPayload(event.payload))
+    ) {
+      return row
+    }
+    cursorRequestId = row.requestId
+  }
 }
 
 export async function getHitlRequest(requestId: string): Promise<HitlRequestRow | null> {

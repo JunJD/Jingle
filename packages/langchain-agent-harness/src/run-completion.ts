@@ -10,16 +10,6 @@ export interface JingleRunCompletionFacts<TContextInclusion = unknown> {
 export interface CompleteJingleAgentRunInput<TContextInclusion = unknown> {
   expectedMessageId?: string
   interrupted: boolean
-  recordRunFinished: (event: {
-    runId: string
-    status: JingleRunCompletionStatus
-    threadId: string
-  }) => Promise<void> | void
-  recordRunInterrupted: (event: {
-    runId: string
-    status: "interrupted"
-    threadId: string
-  }) => Promise<void> | void
   runId: string
   threadId: string
   useCheckpointPersistence: boolean
@@ -42,17 +32,6 @@ export interface CompleteJingleAgentRunInput<TContextInclusion = unknown> {
 
 export interface AbortJingleAgentRunInput {
   markRunAborted: (input: { runId: string; threadId: string }) => Promise<void> | void
-  recordRunFinished: (event: {
-    completionReason: "aborted"
-    runId: string
-    status: "interrupted"
-    threadId: string
-  }) => Promise<void> | void
-  recordRunInterrupted: (event: {
-    runId: string
-    status: "interrupted"
-    threadId: string
-  }) => Promise<void> | void
   runId: string
   threadId: string
 }
@@ -93,20 +72,6 @@ export async function completeJingleAgentRun<TContextInclusion>(
   }
 
   const status = input.interrupted ? "interrupted" : "success"
-  if (input.interrupted) {
-    await input.recordRunInterrupted({
-      runId: input.runId,
-      status: "interrupted",
-      threadId: input.threadId
-    })
-  }
-
-  await input.recordRunFinished({
-    runId: input.runId,
-    status,
-    threadId: input.threadId
-  })
-
   return {
     facts,
     status
@@ -116,17 +81,6 @@ export async function completeJingleAgentRun<TContextInclusion>(
 export async function abortJingleAgentRun(input: AbortJingleAgentRunInput): Promise<void> {
   await input.markRunAborted({
     runId: input.runId,
-    threadId: input.threadId
-  })
-  await input.recordRunInterrupted({
-    runId: input.runId,
-    status: "interrupted",
-    threadId: input.threadId
-  })
-  await input.recordRunFinished({
-    completionReason: "aborted",
-    runId: input.runId,
-    status: "interrupted",
     threadId: input.threadId
   })
 }

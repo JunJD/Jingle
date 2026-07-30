@@ -328,14 +328,22 @@ export async function recordRunInterrupted(input: {
   status: "interrupted"
   threadId: string
 }): Promise<void> {
-  await appendAgentEventSafely({
+  await appendAgentEventSafely(createRunInterruptedEventInput(input))
+}
+
+export function createRunInterruptedEventInput(input: {
+  runId: string
+  status: "interrupted"
+  threadId: string
+}): AppendAgentEventInput {
+  return {
     payload: {
       status: input.status
     },
     runId: input.runId,
     threadId: input.threadId,
     type: "run.interrupted"
-  })
+  }
 }
 
 export async function recordRunFinished(input: {

@@ -78,19 +78,11 @@ export function createRuntimeThreadRunLifecycleControlFromController<
     abortRun: (abortInput) =>
       abortJingleAgentRun({
         markRunAborted: lifecycle.markRunAborted,
-        recordRunFinished: lifecycle.recordRunFinished,
-        recordRunInterrupted: lifecycle.recordRunInterrupted,
         runId: abortInput.runId,
         threadId: thread.threadId
       }),
     cancelRun: async ({ runId }) => {
       await lifecycle.markRunCancelled({ runId, threadId: thread.threadId })
-      await lifecycle.recordRunFinished({
-        completionReason: "user_declined",
-        runId,
-        status: "cancelled",
-        threadId: thread.threadId
-      })
     },
     beginInvokeRun: async (beginInput) => {
       const reservation = input.context.reserveRun()
@@ -196,8 +188,6 @@ export function createRuntimeThreadRunLifecycleControlFromController<
             submittedRecordingRefs: completionInput.submittedRecordingRefs
           }),
         interrupted: completionInput.interrupted,
-        recordRunFinished: lifecycle.recordRunFinished,
-        recordRunInterrupted: lifecycle.recordRunInterrupted,
         runId: completionInput.runId,
         syncRunFromLatestCheckpoint: (runInput) =>
           lifecycle.syncRunFromLatestCheckpoint({

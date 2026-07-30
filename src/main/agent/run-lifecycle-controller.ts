@@ -110,9 +110,18 @@ export async function commitTerminalAgentResumeDecision(input: {
     ],
     runId,
     scheduleProjection: () => {
-      void enqueueAssistantContentProjection({ runId })
+      scheduleAssistantContentProjection(runId)
     }
   }
+}
+
+function scheduleAssistantContentProjection(runId: string): void {
+  void enqueueAssistantContentProjection({ runId }).catch((error) => {
+    console.error(
+      `[Agent] Run "${runId}" reached durable terminal state but assistant content projection scheduling failed:`,
+      error
+    )
+  })
 }
 
 export function createRuntimeRunLifecycleController(input: {
@@ -221,6 +230,7 @@ export function createRuntimeRunLifecycleController(input: {
       threadId
     }) => {
       await finalizeRunWithoutCheckpoint(threadId, runId, { interrupted })
+      scheduleAssistantContentProjection(runId)
       return {
         contextInclusions: [...submittedContextInclusions],
         recordingRefs: [...submittedRecordingRefs]
@@ -228,15 +238,17 @@ export function createRuntimeRunLifecycleController(input: {
     },
     markRunAborted: async ({ runId, threadId }) => {
       await markRunAborted(threadId, runId)
+      scheduleAssistantContentProjection(runId)
     },
     markRunFailed: async ({ error, runId, threadId }) => {
       const failure = toAgentRunFailure("agent:runtime", error)
       const status = await markRunFailed(threadId, runId, failure)
-      void enqueueAssistantContentProjection({ runId })
+      scheduleAssistantContentProjection(runId)
       return { failure, status }
     },
     markRunCancelled: async ({ runId, threadId }) => {
       await markRunCancelled(threadId, runId)
+      scheduleAssistantContentProjection(runId)
     },
     recordMemoryRecordingRefs: ({ recordingRefs, runId, threadId }) =>
       recordJingleMemoryRecordingRefs({
@@ -247,7 +259,7 @@ export function createRuntimeRunLifecycleController(input: {
       }),
     recordRunFinished: async (event) => {
       await recordRunFinished(event)
-      void enqueueAssistantContentProjection({ runId: event.runId })
+      scheduleAssistantContentProjection(event.runId)
     },
     recordRunInterrupted,
     settleRun: ({ retainSuspendedResources, runId }) =>
@@ -264,6 +276,7 @@ export function createRuntimeRunLifecycleController(input: {
         expectedMessageId,
         interrupted
       })
+      scheduleAssistantContentProjection(runId)
       if (!syncedFacts.hasCheckpoint) {
         return {
           contextInclusions: [...submittedContextInclusions],

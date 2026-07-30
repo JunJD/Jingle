@@ -1876,12 +1876,11 @@ export class AgentService {
     }
 
     activeRun.controller.abort()
-    let didAbort = true
     try {
       await activeRun.preparationSettled
       if (activeRun.run) {
         try {
-          didAbort = await activeRun.run.abort()
+          await activeRun.run.abort()
         } catch (error) {
           if (
             !isRuntimeThreadOwnershipCleanupError(error) ||
@@ -1889,13 +1888,12 @@ export class AgentService {
           ) {
             throw error
           }
-          didAbort = true
         }
       }
     } finally {
       await activeRun.settled
     }
-    return didAbort
+    return true
   }
 
   async steerActiveRun(

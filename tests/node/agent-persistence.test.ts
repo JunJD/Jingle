@@ -3486,6 +3486,43 @@ test("agent cancel releases pending invoke setup and ignores its late fulfillmen
   }
 })
 
+test("agent cancel keeps controller ownership when the runtime abort already lost", async () => {
+  const agentService = await createAgentServiceForTest()
+  const threadId = "thread-cancel-runtime-abort-lost"
+  const controller = new AbortController()
+  let abortCalls = 0
+  const activeRuns = (
+    agentService as unknown as {
+      activeRuns: Map<
+        string,
+        {
+          controller: AbortController
+          preparationSettled: Promise<void>
+          run: { abort: () => Promise<boolean> }
+          settled: Promise<void>
+        }
+      >
+    }
+  ).activeRuns
+  activeRuns.set(threadId, {
+    controller,
+    preparationSettled: Promise.resolve(),
+    run: {
+      abort: async () => {
+        abortCalls += 1
+        return false
+      }
+    },
+    settled: Promise.resolve()
+  })
+
+  const ownerCancel = agentService.cancel({ threadId })
+  const duplicateCancel = agentService.cancel({ threadId })
+  assert.equal(await ownerCancel, true)
+  assert.equal(await duplicateCancel, false)
+  assert.equal(abortCalls, 1)
+})
+
 test("agent cancel releases pending resume setup and observes its late rejection", async () => {
   const { createThread, getPrismaClient } = await loadDbModules()
   const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
@@ -4643,12 +4680,27 @@ test("resume and successful completion clear a stale durable run failure", async
   assert.equal((await threadsService.getLatestRunSummary(threadId)).error, null)
 })
 
-test("abort clears stale durable failure even when checkpoint sync cannot complete", async () => {
-  const { createRun, createThread, getRun } = await loadDbModules()
-  const { markRunAborted } = await import("../../src/main/agent/persistence")
+test("abort atomically seals pending HITL and rejects every later resume decision", async () => {
+  const {
+    createRun,
+    createThread,
+    getHitlRequest,
+    getLatestPendingHitlRequest,
+    getPrismaClient,
+    getRun,
+    getThread,
+    hasPendingHitlRequest,
+    hasPendingHitlRequestForRun,
+    upsertHitlRequest
+  } = await loadDbModules()
+  const { commitAgentResumeDecision, markRunAborted } =
+    await import("../../src/main/agent/persistence")
   const threadId = "thread-abort-clears-stale-run-failure"
   const runId = "run-abort-clears-stale-run-failure"
+  const pendingRequestId = "request-abort-seals-hitl"
+  const prisma = getPrismaClient()
   await createThread(threadId)
+  await prisma.thread.update({ data: { status: "busy" }, where: { threadId } })
   await createRun(runId, threadId, {
     metadata: {
       [AGENT_RUN_FAILURE_METADATA_KEY]: toAgentRunFailure(
@@ -4659,11 +4711,157 @@ test("abort clears stale durable failure even when checkpoint sync cannot comple
     },
     status: "running"
   })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve", "user_declined", "corrected"],
+    request_id: pendingRequestId,
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: "tool-abort-seals-hitl",
+    tool_name: "write_file"
+  })
 
   await markRunAborted(threadId, runId)
-  const metadata = JSON.parse((await getRun(runId))?.metadata ?? "{}") as Record<string, unknown>
+  const run = await getRun(runId)
+  const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+  assert.equal(run?.status, "interrupted")
+  assert.equal((await getThread(threadId))?.status, "interrupted")
   assert.equal(Object.hasOwn(metadata, AGENT_RUN_FAILURE_METADATA_KEY), false)
   assert.equal(Object.hasOwn(metadata, "error"), false)
+  assert.equal((await getHitlRequest(pendingRequestId))?.status, "cancelled")
+
+  const terminalEvents = await prisma.agentEvent.findMany({
+    orderBy: { seq: "asc" },
+    where: { runId, type: { in: ["run.interrupted", "run.finished"] } }
+  })
+  assert.deepEqual(
+    terminalEvents.map((event) => [event.type, JSON.parse(event.payload)]),
+    [
+      ["run.interrupted", { status: "interrupted" }],
+      [
+        "run.finished",
+        {
+          completionReason: "aborted",
+          errorMessage: null,
+          errorType: null,
+          status: "interrupted"
+        }
+      ]
+    ]
+  )
+
+  const decisions = [
+    { type: "approve" as const },
+    { correction: "retry after abort", type: "corrected" as const },
+    { type: "user_declined" as const }
+  ]
+  for (const [index, decision] of decisions.entries()) {
+    const requestId = `request-after-abort-${decision.type}`
+    const toolCallId = `tool-after-abort-${decision.type}`
+    await assert.rejects(
+      upsertHitlRequest({
+        allowed_decisions: ["approve", "user_declined", "corrected"],
+        request_id: requestId,
+        run_id: runId,
+        status: "pending",
+        thread_id: threadId,
+        tool_args: {},
+        tool_call_id: toolCallId,
+        tool_name: "write_file"
+      }),
+      /Cannot persist pending request .* for terminal run/
+    )
+    assert.equal(await getHitlRequest(requestId), null, `write fence ${index}`)
+
+    const now = BigInt(Date.now() + index)
+    await prisma.hitlRequest.create({
+      data: {
+        allowedDecisions: JSON.stringify(["approve", "user_declined", "corrected"]),
+        createdAt: now,
+        decision: null,
+        requestId,
+        resolvedAt: null,
+        runId,
+        status: "pending",
+        threadId,
+        toolArgs: "{}",
+        toolCallId,
+        toolName: "write_file",
+        updatedAt: now
+      }
+    })
+    await assert.rejects(
+      commitAgentResumeDecision(
+        threadId,
+        runId,
+        { ...decision, request_id: requestId, tool_call_id: toolCallId },
+        undefined,
+        decision.type === "user_declined"
+          ? {}
+          : { modelRuntimeSelectionAdmission: createTestPersistedResumeAdmission() }
+      ),
+      /Cannot resume terminal run/
+    )
+    assert.equal((await getHitlRequest(requestId))?.status, "pending", `decision ${index}`)
+  }
+
+  assert.equal(await getLatestPendingHitlRequest(threadId), null)
+  assert.equal(await hasPendingHitlRequest(threadId), false)
+  assert.equal(await hasPendingHitlRequestForRun(threadId, runId), false)
+  await assert.rejects(markRunAborted(threadId, runId), /Cannot abort terminal run/)
+  assert.equal(await prisma.agentEvent.count({ where: { runId, type: "run.finished" } }), 1)
+  assert.equal(await prisma.agentEvent.count({ where: { runId, type: "run.resumed" } }), 0)
+})
+
+test("abort terminal transaction rolls back HITL, Run, Thread, and events together", async () => {
+  const {
+    createRun,
+    createThread,
+    getHitlRequest,
+    getPrismaClient,
+    getRun,
+    getThread,
+    upsertHitlRequest
+  } = await loadDbModules()
+  const { markRunAborted } = await import("../../src/main/agent/persistence")
+  const threadId = "thread-abort-terminal-rollback"
+  const runId = "run-abort-terminal-rollback"
+  const requestId = "request-abort-terminal-rollback"
+  const triggerName = "fail_abort_run_finished_append"
+  const prisma = getPrismaClient()
+  await createThread(threadId)
+  await prisma.thread.update({ data: { status: "busy" }, where: { threadId } })
+  await createRun(runId, threadId, { status: "running" })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve", "user_declined", "corrected"],
+    request_id: requestId,
+    run_id: runId,
+    status: "pending",
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: "tool-abort-terminal-rollback",
+    tool_name: "write_file"
+  })
+  await prisma.$executeRawUnsafe(`
+    CREATE TRIGGER "${triggerName}"
+    BEFORE INSERT ON "agent_events"
+    WHEN NEW."run_id" = '${runId}' AND NEW."type" = 'run.finished'
+    BEGIN
+      SELECT RAISE(FAIL, 'injected abort run.finished append failure');
+    END
+  `)
+
+  try {
+    await assert.rejects(markRunAborted(threadId, runId))
+  } finally {
+    await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${triggerName}"`)
+  }
+
+  assert.equal((await getRun(runId))?.status, "running")
+  assert.equal((await getThread(threadId))?.status, "busy")
+  assert.equal((await getHitlRequest(requestId))?.status, "pending")
+  assert.equal(await prisma.agentEvent.count({ where: { runId } }), 0)
 })
 
 test("agent run metadata snapshots permission mode and preserves it through resume", async () => {
@@ -5280,7 +5478,7 @@ test("run metadata updates preserve loaded extension snapshots and resume metada
   )
 })
 
-test("syncRunFromLatestCheckpoint reads the latest checkpoint for that run only", async () => {
+test("checkpoint projection reads only the run selected by the core interrupted outcome", async () => {
   const { createRun, createThread, getRun } = await loadDbModules()
   const { syncRunFromLatestCheckpoint } = await import("../../src/main/agent/persistence")
   const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
@@ -5345,7 +5543,9 @@ test("syncRunFromLatestCheckpoint reads the latest checkpoint for that run only"
     }
   )
 
-  const status = await syncRunFromLatestCheckpoint(threadId, interruptedRunId)
+  const status = await syncRunFromLatestCheckpoint(threadId, interruptedRunId, {
+    interrupted: true
+  })
   const interruptedRun = await getRun(interruptedRunId)
   const successRun = await getRun(successRunId)
 
@@ -6037,8 +6237,8 @@ test("syncRunFromLatestCheckpoint accepts submitted canonical message without it
   assert.equal((await getRun(runId))?.status, "success")
 })
 
-test("syncRunFromLatestCheckpoint rejects success when submitted message is missing", async () => {
-  const { createRun, createThread, getRun } = await loadDbModules()
+test("checkpoint projection validation cannot roll back durable completion", async () => {
+  const { createRun, createThread, getPrismaClient, getRun, getThread } = await loadDbModules()
   const { syncRunFromLatestCheckpoint } = await import("../../src/main/agent/persistence")
   const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
 
@@ -6072,13 +6272,27 @@ test("syncRunFromLatestCheckpoint rejects success when submitted message is miss
     }
   )
 
-  await assert.rejects(
+  const projectionErrors: unknown[][] = []
+  const consoleError = mock.method(console, "error", (...args: unknown[]) => {
+    projectionErrors.push(args)
+  })
+  await assert.doesNotReject(
     syncRunFromLatestCheckpoint(threadId, runId, {
       expectedMessageId: "message-new"
-    }),
-    /does not include submitted message/
+    })
   )
-  assert.equal((await getRun(runId))?.status, "running")
+  consoleError.mock.restore()
+
+  assert.equal((await getRun(runId))?.status, "success")
+  assert.equal((await getThread(threadId))?.status, "idle")
+  assert.equal(
+    await getPrismaClient().agentEvent.count({ where: { runId, type: "run.finished" } }),
+    1
+  )
+  assert.equal(
+    projectionErrors.some((args) => String(args[0]).includes("checkpoint projection failed")),
+    true
+  )
 })
 
 test("runtime checkpointer syncs derived thread state after checkpoint writes", async () => {
@@ -6146,6 +6360,124 @@ test("runtime checkpointer syncs derived thread state after checkpoint writes", 
   } finally {
     await saver.close()
   }
+})
+
+test("completion and cancellation terminal writes roll back as one transaction", async () => {
+  const { createRun, createThread, getPrismaClient, getRun, getThread } = await loadDbModules()
+  const { finalizeRunWithoutCheckpoint, markRunCancelled } =
+    await import("../../src/main/agent/persistence")
+  const prisma = getPrismaClient()
+
+  for (const terminal of ["completion", "cancellation"] as const) {
+    const threadId = `thread-${terminal}-terminal-rollback`
+    const runId = `run-${terminal}-terminal-rollback`
+    const triggerName = `fail_${terminal}_run_finished_append`
+    await createThread(threadId)
+    await prisma.thread.update({ data: { status: "busy" }, where: { threadId } })
+    await createRun(runId, threadId, { status: "running" })
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER "${triggerName}"
+      BEFORE INSERT ON "agent_events"
+      WHEN NEW."run_id" = '${runId}' AND NEW."type" = 'run.finished'
+      BEGIN
+        SELECT RAISE(FAIL, 'injected ${terminal} run.finished append failure');
+      END
+    `)
+
+    try {
+      await assert.rejects(
+        terminal === "completion"
+          ? finalizeRunWithoutCheckpoint(threadId, runId)
+          : markRunCancelled(threadId, runId)
+      )
+      assert.equal((await getRun(runId))?.status, "running")
+      assert.equal((await getThread(threadId))?.status, "busy")
+      assert.equal(
+        await prisma.agentEvent.count({
+          where: { runId, type: { in: ["run.interrupted", "run.finished"] } }
+        }),
+        0
+      )
+    } finally {
+      await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${triggerName}"`)
+    }
+  }
+})
+
+test("completion, cancellation, and abort share one durable terminal winner", async () => {
+  const { createRun, createThread, getPrismaClient, getRun, getThread } = await loadDbModules()
+  const { finalizeRunWithoutCheckpoint, markRunAborted, markRunCancelled } =
+    await import("../../src/main/agent/persistence")
+  const prisma = getPrismaClient()
+  const threadId = "thread-terminal-race"
+  const runId = "run-terminal-race"
+  await createThread(threadId)
+  await prisma.thread.update({ data: { status: "busy" }, where: { threadId } })
+  await createRun(runId, threadId, { status: "running" })
+
+  const results = await Promise.allSettled([
+    finalizeRunWithoutCheckpoint(threadId, runId),
+    markRunCancelled(threadId, runId),
+    markRunAborted(threadId, runId)
+  ])
+  assert.equal(results.filter((result) => result.status === "fulfilled").length, 1)
+  assert.equal(results.filter((result) => result.status === "rejected").length, 2)
+
+  const finishedEvents = await prisma.agentEvent.findMany({
+    where: { runId, type: "run.finished" }
+  })
+  assert.equal(finishedEvents.length, 1)
+  const payload = JSON.parse(finishedEvents[0]!.payload) as {
+    completionReason: string | null
+    status: string
+  }
+  const run = await getRun(runId)
+  const thread = await getThread(threadId)
+  assert.equal(run?.status, payload.status)
+  assert.equal(thread?.status, payload.status === "interrupted" ? "interrupted" : "idle")
+  assert.equal(
+    await prisma.agentEvent.count({ where: { runId, type: "run.interrupted" } }),
+    payload.status === "interrupted" ? 1 : 0
+  )
+})
+
+test("pending HITL creation racing abort cannot survive the terminal fence", async () => {
+  const {
+    createRun,
+    createThread,
+    getHitlRequest,
+    getPrismaClient,
+    hasPendingHitlRequestForRun,
+    upsertHitlRequest
+  } = await loadDbModules()
+  const { markRunAborted } = await import("../../src/main/agent/persistence")
+  const prisma = getPrismaClient()
+  const threadId = "thread-hitl-abort-fence-race"
+  const runId = "run-hitl-abort-fence-race"
+  const requestId = "request-hitl-abort-fence-race"
+  await createThread(threadId)
+  await prisma.thread.update({ data: { status: "busy" }, where: { threadId } })
+  await createRun(runId, threadId, { status: "running" })
+
+  const [hitlResult, abortResult] = await Promise.allSettled([
+    upsertHitlRequest({
+      allowed_decisions: ["approve"],
+      request_id: requestId,
+      run_id: runId,
+      status: "pending",
+      thread_id: threadId,
+      tool_args: {},
+      tool_call_id: "tool-hitl-abort-fence-race",
+      tool_name: "write_file"
+    }),
+    markRunAborted(threadId, runId)
+  ])
+  assert.equal(abortResult.status, "fulfilled")
+  assert.ok(
+    hitlResult.status === "rejected" || (await getHitlRequest(requestId))?.status === "cancelled"
+  )
+  assert.equal(await hasPendingHitlRequestForRun(threadId, runId), false)
+  assert.equal(await prisma.hitlRequest.count({ where: { runId, status: "pending", threadId } }), 0)
 })
 
 test("runtime checkpointer stores message facts in the checkpoint transaction", async () => {
@@ -6445,6 +6777,65 @@ test("syncRunFromLatestCheckpoint preserves manually renamed launcher titles", a
 
   const thread = await getThread(threadId)
   assert.equal(thread?.title, "我改过的标题")
+})
+
+test("generated title projection failure preserves terminal and remains retryable", async () => {
+  const { createRun, createThread, getPrismaClient, getRun, getThread } = await loadDbModules()
+  const { projectRunCompletionCheckpointFacts, syncRunFromLatestCheckpoint } =
+    await import("../../src/main/agent/persistence")
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+  const prisma = getPrismaClient()
+  const threadId = "thread-title-projection-failure"
+  const runId = "run-title-projection-failure"
+  const triggerName = "fail_generated_title_projection"
+
+  await createThread(threadId, {
+    metadata: { source: "launcher-ai" },
+    title: "快速提问"
+  })
+  await createRun(runId, threadId, { status: "running" })
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-title-projection-failure"
+  checkpoint.channel_values = {
+    messages: [
+      { type: "human", content: "帮我整理一下这次发布的标题和摘要" },
+      { type: "ai", content: "好，开始整理" }
+    ],
+    title: "发布摘要整理"
+  }
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: { thread_id: threadId },
+      metadata: { run_id: runId }
+    },
+    checkpoint,
+    { parents: {}, source: "update", step: 0 }
+  )
+  await prisma.$executeRawUnsafe(`
+    CREATE TRIGGER "${triggerName}"
+    BEFORE UPDATE OF "title" ON "threads"
+    WHEN NEW."thread_id" = '${threadId}'
+    BEGIN
+      SELECT RAISE(FAIL, 'injected title projection failure');
+    END
+  `)
+  const consoleError = mock.method(console, "error", () => {})
+  try {
+    await assert.doesNotReject(syncRunFromLatestCheckpoint(threadId, runId))
+  } finally {
+    consoleError.mock.restore()
+    await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${triggerName}"`)
+  }
+
+  assert.equal((await getRun(runId))?.status, "success")
+  assert.equal((await getThread(threadId))?.status, "idle")
+  assert.equal((await getThread(threadId))?.title, "快速提问")
+  assert.equal(await prisma.agentEvent.count({ where: { runId, type: "run.finished" } }), 1)
+
+  await projectRunCompletionCheckpointFacts(threadId, runId)
+  assert.equal((await getThread(threadId))?.title, "发布摘要整理")
+  assert.equal(await prisma.agentEvent.count({ where: { runId, type: "run.finished" } }), 1)
 })
 
 test("thread-scoped checkpoint reads keep run ids out of conversation resume config", async () => {
