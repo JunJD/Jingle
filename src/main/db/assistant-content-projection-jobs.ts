@@ -65,6 +65,70 @@ async function readCanonicalAssistantMessagesForTerminalRun(
   return { messages, threadId: run.threadId }
 }
 
+async function blockedSourceNeedsProjection(
+  transaction: Prisma.TransactionClient,
+  runId: string,
+  source: NonNullable<Awaited<ReturnType<typeof readCanonicalAssistantMessagesForTerminalRun>>>,
+  signal?: AbortSignal
+): Promise<boolean | null> {
+  const blockedInputs = await transaction.assistantContentProjectionBlockedInput.findMany({
+    select: { messageId: true, sourceRevision: true },
+    where: { runId }
+  })
+  const blockedByMessageId = new Map(
+    blockedInputs.map((input) => [input.messageId, input.sourceRevision])
+  )
+  let matchedBlockedInputCount = 0
+  for (
+    let offset = 0;
+    offset < source.messages.length;
+    offset += ASSISTANT_CONTENT_PROJECTION_RECOVERY_BATCH_SIZE
+  ) {
+    if (signal?.aborted) return null
+    const messages = source.messages.slice(
+      offset,
+      offset + ASSISTANT_CONTENT_PROJECTION_RECOVERY_BATCH_SIZE
+    )
+    const projections = await transaction.assistantContentProjection.findMany({
+      select: { contentRevision: true, messageId: true },
+      where: {
+        messageId: { in: messages.map((message) => message.message_id) },
+        threadId: source.threadId
+      }
+    })
+    const projectionByMessageId = new Map(
+      projections.map((projection) => [projection.messageId, projection.contentRevision])
+    )
+    for (const message of messages) {
+      const blockedSourceRevision = blockedByMessageId.get(message.message_id)
+      if (blockedSourceRevision) {
+        matchedBlockedInputCount += 1
+        if (assistantContentProjectionSourceRevision(message.content) !== blockedSourceRevision) {
+          return true
+        }
+        continue
+      }
+      try {
+        const revision = assistantContentRevision(message.content)
+        if (projectionByMessageId.get(message.message_id) !== revision) return true
+        try {
+          await readAssistantContentPartsProjection(
+            { messageId: message.message_id, threadId: source.threadId },
+            transaction
+          )
+        } catch (error) {
+          if (!isAssistantContentProjectionDecodeError(error)) throw error
+          return true
+        }
+      } catch (error) {
+        if (!isAssistantContentProjectionInputError(error)) throw error
+        return true
+      }
+    }
+  }
+  return blockedInputs.length === 0 || blockedInputs.length !== matchedBlockedInputCount
+}
+
 export function assistantContentProjectionRetryDelayMs(attemptCount: number): number {
   return Math.min(
     ASSISTANT_CONTENT_PROJECTION_MAX_RETRY_DELAY_MS,
@@ -160,22 +224,8 @@ export async function ensureAssistantContentProjectionPending(
     `
     if (refreshed === 1) return true
     if (options.allowBlockedRetry) {
-      const blockedInputs = await transaction.assistantContentProjectionBlockedInput.findMany({
-        select: { messageId: true, sourceRevision: true },
-        where: { runId }
-      })
-      const canonicalMessagesById = new Map(
-        source.messages.map((message) => [message.message_id, message])
-      )
-      const canonicalSourceChanged = blockedInputs.some((blockedInput) => {
-        const canonicalMessage = canonicalMessagesById.get(blockedInput.messageId)
-        return (
-          !canonicalMessage ||
-          assistantContentProjectionSourceRevision(canonicalMessage.content) !==
-            blockedInput.sourceRevision
-        )
-      })
-      if (!canonicalSourceChanged) return false
+      const needsProjection = await blockedSourceNeedsProjection(transaction, runId, source)
+      if (!needsProjection) return false
       const unblocked = await transaction.assistantContentProjectionJob.updateMany({
         data: {
           failureCode: null,
@@ -469,62 +519,7 @@ async function blockedRunNeedsProjection(
     if (signal?.aborted) return null
     const source = await readCanonicalAssistantMessagesForTerminalRun(transaction, runId)
     if (!source) return false
-    const blockedInputs = await transaction.assistantContentProjectionBlockedInput.findMany({
-      select: { messageId: true, sourceRevision: true },
-      where: { runId }
-    })
-    const blockedByMessageId = new Map(
-      blockedInputs.map((input) => [input.messageId, input.sourceRevision])
-    )
-    let matchedBlockedInputCount = 0
-    for (
-      let offset = 0;
-      offset < source.messages.length;
-      offset += ASSISTANT_CONTENT_PROJECTION_RECOVERY_BATCH_SIZE
-    ) {
-      if (signal?.aborted) return null
-      const messages = source.messages.slice(
-        offset,
-        offset + ASSISTANT_CONTENT_PROJECTION_RECOVERY_BATCH_SIZE
-      )
-      const projections = await transaction.assistantContentProjection.findMany({
-        select: { contentRevision: true, messageId: true },
-        where: {
-          messageId: { in: messages.map((message) => message.message_id) },
-          threadId: source.threadId
-        }
-      })
-      const projectionByMessageId = new Map(
-        projections.map((projection) => [projection.messageId, projection.contentRevision])
-      )
-      for (const message of messages) {
-        const blockedSourceRevision = blockedByMessageId.get(message.message_id)
-        if (blockedSourceRevision) {
-          matchedBlockedInputCount += 1
-          if (assistantContentProjectionSourceRevision(message.content) !== blockedSourceRevision) {
-            return true
-          }
-          continue
-        }
-        try {
-          const revision = assistantContentRevision(message.content)
-          if (projectionByMessageId.get(message.message_id) !== revision) return true
-          try {
-            await readAssistantContentPartsProjection(
-              { messageId: message.message_id, threadId: source.threadId },
-              transaction
-            )
-          } catch (error) {
-            if (!isAssistantContentProjectionDecodeError(error)) throw error
-            return true
-          }
-        } catch (error) {
-          if (!isAssistantContentProjectionInputError(error)) throw error
-          return true
-        }
-      }
-    }
-    return blockedInputs.length === 0 || blockedInputs.length !== matchedBlockedInputCount
+    return blockedSourceNeedsProjection(transaction, runId, source, signal)
   })
 }
 

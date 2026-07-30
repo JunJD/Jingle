@@ -1400,6 +1400,18 @@ test("a malformed assistant message blocks once while valid siblings remain repa
     1
   )
 
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE blocked_sibling_projection_backup AS
+    SELECT * FROM assistant_content_projections
+    WHERE thread_id = 'thread-content-projection-core-boundary'
+      AND message_id = 'assistant-message-core-boundary-good'
+  `)
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE blocked_sibling_parts_backup AS
+    SELECT * FROM assistant_content_parts
+    WHERE thread_id = 'thread-content-projection-core-boundary'
+      AND message_id = 'assistant-message-core-boundary-good'
+  `)
   await prisma.assistantContentProjection.delete({
     where: {
       threadId_messageId: {
@@ -1408,25 +1420,104 @@ test("a malformed assistant message blocks once while valid siblings remain repa
       }
     }
   })
-  await assert.rejects(
-    () =>
-      new ContentCardsService().getAssistantParts({
+  const siblingRepairEvents: Array<
+    { kind: "issue"; status: string } | { kind: "ready"; messageId: string }
+  > = []
+  const stopSiblingRepairEvents = assistantContentProjectionEvents.onChanged((event) => {
+    if (event.threadId !== "thread-content-projection-core-boundary") return
+    siblingRepairEvents.push(
+      event.kind === "ready"
+        ? { kind: event.kind, messageId: event.messageId }
+        : { kind: event.kind, status: event.status }
+    )
+  })
+  await prisma.$executeRawUnsafe(`
+    CREATE TRIGGER fail_blocked_sibling_repair
+    BEFORE UPDATE OF status ON assistant_content_projection_jobs
+    WHEN OLD.status = 'blocked' AND NEW.status = 'pending'
+    BEGIN
+      SELECT RAISE(FAIL, 'sk-projection-sibling-secret /Users/alice/private/project.ts');
+    END
+  `)
+  const failedRepair = await new ContentCardsService().getAssistantParts({
+    messageId: "assistant-message-core-boundary-good",
+    threadId: "thread-content-projection-core-boundary"
+  })
+  assert.equal(failedRepair.status, "failed")
+  if (failedRepair.status !== "failed") assert.fail("Expected a typed scheduling failure.")
+  assert.equal(failedRepair.issue.code, "retryable-failure")
+  assert.equal(failedRepair.issue.reason, "persistence-unavailable")
+  assert.ok(failedRepair.issue.detail.length > 0)
+  assert.ok(failedRepair.issue.detail.length <= ASSISTANT_CONTENT_PROJECTION_ERROR_MAX_LENGTH)
+  assert.doesNotMatch(failedRepair.issue.detail, /sk-projection-sibling-secret/)
+  assert.doesNotMatch(failedRepair.issue.detail, /\/Users\/alice\/private\/project\.ts/)
+  assert.deepEqual(siblingRepairEvents, [])
+  assert.equal(
+    (await readAssistantContentProjectionJob("run-content-projection-core-boundary"))?.status,
+    "blocked"
+  )
+  await prisma.$executeRawUnsafe("DROP TRIGGER fail_blocked_sibling_repair")
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TRIGGER finish_blocked_sibling_repair_concurrently
+    BEFORE UPDATE OF status ON assistant_content_projection_jobs
+    WHEN OLD.status = 'blocked' AND NEW.status = 'pending'
+    BEGIN
+      INSERT INTO assistant_content_projections
+        SELECT * FROM blocked_sibling_projection_backup;
+      INSERT INTO assistant_content_parts
+        SELECT * FROM blocked_sibling_parts_backup;
+      SELECT RAISE(IGNORE);
+    END
+  `)
+  assert.deepEqual(
+    await new ContentCardsService().getAssistantParts({
+      messageId: "assistant-message-core-boundary-good",
+      threadId: "thread-content-projection-core-boundary"
+    }),
+    {
+      projection: await readAssistantContentPartsProjection({
         messageId: "assistant-message-core-boundary-good",
         threadId: "thread-content-projection-core-boundary"
       }),
-    {
-      message: "Blocked assistant content projection has no durable blocked input for the message."
+      status: "ready"
     }
   )
+  assert.deepEqual(siblingRepairEvents, [])
   assert.equal(
-    (await readAssistantContentProjectionJob("run-content-projection-core-boundary"))?.attemptCount,
-    1
+    (await readAssistantContentProjectionJob("run-content-projection-core-boundary"))?.status,
+    "blocked"
+  )
+  await prisma.$executeRawUnsafe("DROP TRIGGER finish_blocked_sibling_repair_concurrently")
+  await prisma.$executeRawUnsafe("DROP TABLE blocked_sibling_projection_backup")
+  await prisma.$executeRawUnsafe("DROP TABLE blocked_sibling_parts_backup")
+  await prisma.assistantContentProjection.delete({
+    where: {
+      threadId_messageId: {
+        messageId: "assistant-message-core-boundary-good",
+        threadId: "thread-content-projection-core-boundary"
+      }
+    }
+  })
+  const concurrentWindowRepairs = await Promise.all(
+    [new ContentCardsService(), new ContentCardsService()].map((contentCardsService) =>
+      contentCardsService.getAssistantParts({
+        messageId: "assistant-message-core-boundary-good",
+        threadId: "thread-content-projection-core-boundary"
+      })
+    )
+  )
+  assert.ok(
+    concurrentWindowRepairs.every(
+      (result) => result.status === "pending-stream" || result.status === "ready"
+    )
   )
   await flushAssistantContentProjection()
-  await closeDatabase()
-  await initializeDatabase()
-  await startAssistantContentProjectionLifecycle()
-  await flushAssistantContentProjection()
+  stopSiblingRepairEvents()
+  assert.deepEqual(siblingRepairEvents, [
+    { kind: "ready", messageId: "assistant-message-core-boundary-good" },
+    { kind: "issue", status: "blocked" }
+  ])
 
   const repairedSiblingJob = await readAssistantContentProjectionJob(
     "run-content-projection-core-boundary"

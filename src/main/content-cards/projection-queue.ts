@@ -18,7 +18,9 @@ import { assistantContentProjectionEvents } from "./events"
 import {
   asAssistantContentProjectionPersistenceFailure,
   assistantContentProjectionFailureCause,
-  classifyAssistantContentProjectionFailure
+  classifyAssistantContentProjectionFailure,
+  summarizeAssistantContentProjectionError,
+  type ProjectionFailure
 } from "./projection-error"
 
 interface AssistantContentProjectionJob {
@@ -38,7 +40,7 @@ type ProjectionPersistenceRequest =
 const PERSISTENCE_RETRY_DELAY_MS = 1_000
 const MAX_RECOVERY_RETRY_DELAY_MS = 30_000
 const MAX_TIMER_DELAY_MS = 2_147_483_647
-const persistenceTasks = new Set<Promise<void>>()
+const persistenceTasks = new Set<Promise<unknown>>()
 const persistenceRetryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 let durableRetryDeadline: bigint | null = null
 let durableRetryTimer: ReturnType<typeof setTimeout> | null = null
@@ -331,7 +333,14 @@ const assistantContentProjectionQueue = createProjectionQueue<AssistantContentPr
   stateKey: "assistant-content-parts"
 })
 
-async function persistAndWake(input: ProjectionPersistenceRequest): Promise<void> {
+export type AssistantContentProjectionScheduleOutcome =
+  | { status: "active" }
+  | { status: "inactive" }
+  | { detail: string; failure: ProjectionFailure; status: "failed" }
+
+async function persistAndWake(
+  input: ProjectionPersistenceRequest
+): Promise<AssistantContentProjectionScheduleOutcome> {
   try {
     let scheduled: boolean
     if (input.mode === "dirty") {
@@ -347,9 +356,10 @@ async function persistAndWake(input: ProjectionPersistenceRequest): Promise<void
         input.messageId
       )
     }
-    if (!scheduled) return
+    if (!scheduled) return { status: "inactive" }
     clearPersistenceRetry(input.runId)
     assistantContentProjectionQueue.enqueue({ runId: input.runId })
+    return { status: "active" }
   } catch (error) {
     const failureError = asAssistantContentProjectionPersistenceFailure(error)
     const failure = classifyAssistantContentProjectionFailure(failureError)
@@ -362,10 +372,17 @@ async function persistAndWake(input: ProjectionPersistenceRequest): Promise<void
       summary: "Assistant content projection dirty state could not be persisted"
     })
     if (failure.kind === "retryable") schedulePersistenceRetry(input)
+    return {
+      detail: summarizeAssistantContentProjectionError(
+        assistantContentProjectionFailureCause(failureError)
+      ),
+      failure,
+      status: "failed"
+    }
   }
 }
 
-function trackPersistence(task: Promise<void>): Promise<void> {
+function trackPersistence<T>(task: Promise<T>): Promise<T> {
   persistenceTasks.add(task)
   void task.then(
     () => persistenceTasks.delete(task),
@@ -384,8 +401,8 @@ export async function ensureAssistantContentProjectionScheduled(
     allowBlockedRetry: boolean
     blockedSource?: { messageId: string; sourceRevision: string }
   }
-): Promise<void> {
-  await trackPersistence(
+): Promise<AssistantContentProjectionScheduleOutcome> {
+  return trackPersistence(
     persistAndWake({
       allowBlockedRetry: options.allowBlockedRetry,
       blockedSource: options.blockedSource,
@@ -398,8 +415,8 @@ export async function ensureAssistantContentProjectionScheduled(
 export async function resumeAssistantContentProjectionForRepairedSource(
   runId: string,
   messageId: string
-): Promise<void> {
-  await trackPersistence(persistAndWake({ messageId, mode: "resume-blocked-message", runId }))
+): Promise<AssistantContentProjectionScheduleOutcome> {
+  return trackPersistence(persistAndWake({ messageId, mode: "resume-blocked-message", runId }))
 }
 
 function scheduleRecoveryRetry(): void {
