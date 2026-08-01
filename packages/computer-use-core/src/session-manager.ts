@@ -1,13 +1,17 @@
 import { randomUUID } from "node:crypto"
-import type {
-  ComputerUseAuthorizationGrant,
-  ComputerUseBackend,
-  ComputerUseObservation
+import {
+  computerUseBackendFailurePrecludesSuccessorObservation,
+  computerUseBackendFailureTerminationConfirmation,
+  type ComputerUseAuthorizationGrant,
+  type ComputerUseBackend,
+  type ComputerUseObservation
 } from "./contract"
 import { ComputerUseAuthorizationRegistry } from "./authorization"
+import { ComputerUseBackendQuarantinedError } from "./scheduler"
 
 interface ActiveSession {
   abortController: AbortController
+  resourceKey: string
   runId: string
   sessionId: string
 }
@@ -18,10 +22,12 @@ const MAX_SESSION_TTL_MS = 30 * 60_000
 export class ComputerUseSessionManager {
   private readonly active = new Map<string, ActiveSession>()
   private readonly closing = new Map<string, Promise<void>>()
+  private readonly quarantines = new Map<Error, { resourceKey: string }>()
   private desiredEnabled = false
   private enabled = false
   private disabling: Promise<void> | null = null
   private enablementGeneration = 0
+  private quarantineHandler: ((error: unknown, resourceKey: string) => void) | null = null
 
   constructor(
     private readonly backend: ComputerUseBackend,
@@ -29,7 +35,21 @@ export class ComputerUseSessionManager {
   ) {}
 
   isEnabled(): boolean {
-    return this.enabled && !this.disabling
+    return this.enabled && !this.disabling && this.quarantines.size === 0
+  }
+
+  assertBackendAvailable(): void {
+    const quarantine = this.quarantines.values().next().value
+    if (quarantine) {
+      throw new ComputerUseBackendQuarantinedError(quarantine.resourceKey)
+    }
+  }
+
+  bindQuarantineHandler(handler: (error: unknown, resourceKey: string) => void): void {
+    if (this.quarantineHandler && this.quarantineHandler !== handler) {
+      throw new Error("Computer-use session quarantine handler was already bound.")
+    }
+    this.quarantineHandler = handler
   }
 
   async setEnabled(enabled: boolean): Promise<void> {
@@ -53,6 +73,7 @@ export class ComputerUseSessionManager {
     threadId: string
     ttlMs?: number
   }): ComputerUseAuthorizationGrant {
+    this.assertBackendAvailable()
     if (!this.isEnabled()) throw new Error("Computer use is disabled.")
     const ttlMs = input.ttlMs ?? MAX_SESSION_TTL_MS
     if (!Number.isFinite(ttlMs) || ttlMs < MIN_SESSION_TTL_MS || ttlMs > MAX_SESSION_TTL_MS) {
@@ -69,6 +90,7 @@ export class ComputerUseSessionManager {
     this.authorization.grant(grant)
     this.active.set(sessionId, {
       abortController: new AbortController(),
+      resourceKey: input.observation.resourceKey,
       runId: input.runId,
       sessionId
     })
@@ -81,6 +103,7 @@ export class ComputerUseSessionManager {
     sessionId: string
     threadId: string
   }): ComputerUseAuthorizationGrant {
+    this.assertBackendAvailable()
     if (!this.isEnabled()) throw new Error("Computer use is disabled.")
     return this.authorization.assertAuthorized(input)
   }
@@ -96,6 +119,10 @@ export class ComputerUseSessionManager {
       .disposeSession(sessionId)
       .then(() => {
         this.active.delete(sessionId)
+      })
+      .catch((error: unknown) => {
+        this.quarantineHandler?.(error, session.resourceKey)
+        throw error
       })
       .finally(() => {
         if (this.closing.get(sessionId) === close) this.closing.delete(sessionId)
@@ -114,6 +141,21 @@ export class ComputerUseSessionManager {
     this.authorization.revokeRun(runId)
     const sessions = [...this.active.values()].filter((session) => session.runId === runId)
     await Promise.all(sessions.map((session) => this.closeSession(session.sessionId)))
+  }
+
+  quarantineAfterUnsafeTermination(error: unknown, resourceKey: string): void {
+    if (!computerUseBackendFailurePrecludesSuccessorObservation(error)) return
+    if (this.quarantines.has(error)) return
+    this.quarantines.set(error, { resourceKey })
+    this.authorization.clear()
+    for (const session of this.active.values()) {
+      session.abortController.abort(new ComputerUseBackendQuarantinedError(resourceKey))
+    }
+    this.active.clear()
+    const confirmation = computerUseBackendFailureTerminationConfirmation(error)
+    void confirmation?.then(() => {
+      this.quarantines.delete(error)
+    })
   }
 
   private async disposeAll(): Promise<void> {

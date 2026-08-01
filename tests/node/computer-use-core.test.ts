@@ -338,6 +338,55 @@ test("queued computer-use work observes cancellation before dispatch", async () 
   assert.equal(dispatched, false)
 })
 
+test("unsafe physical failure quarantines queued cross-resource work before lane release", async () => {
+  const scheduler = new ComputerUseResourceScheduler()
+  let quarantineObserved = false
+  scheduler.bindQuarantineListener(() => {
+    quarantineObserved = true
+  })
+  let release!: () => void
+  let markStarted!: () => void
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve
+  })
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const unsafeFailure = Object.assign(new Error("native termination remains unconfirmed"), {
+    successorObservationSafe: false as const
+  })
+  const first = scheduler.write({
+    expectedEpoch: 0,
+    physicalInput: true,
+    resourceKey: "window:first",
+    work: async () => {
+      markStarted()
+      await gate
+      throw unsafeFailure
+    }
+  })
+  await started
+  let secondDispatches = 0
+  const second = scheduler.write({
+    expectedEpoch: 0,
+    physicalInput: true,
+    resourceKey: "window:second",
+    work: async () => {
+      secondDispatches += 1
+    }
+  })
+
+  release()
+  await assert.rejects(first, (error) => error === unsafeFailure)
+  assert.equal(quarantineObserved, true)
+  await assert.rejects(second, /backend is quarantined/)
+  await assert.rejects(
+    scheduler.read("window:third", async () => undefined),
+    /backend is quarantined/
+  )
+  assert.equal(secondDispatches, 0)
+})
+
 test("foreground retry requires an explicit side-effect-free didnt", () => {
   const base = {
     action: { kind: "type_text", ref: "@e1", value: "hello" } as const,
@@ -2459,6 +2508,7 @@ test("coordinator reports bounded causal diagnostics without action content", as
     async execute() {
       throw Object.assign(new Error("secret action value must never be recorded"), {
         code: "helper_failed",
+        exitCode: 23,
         nativeCode: "accessibility_permission_denied"
       })
     },
@@ -2466,7 +2516,8 @@ test("coordinator reports bounded causal diagnostics without action content", as
       observeCalls += 1
       if (observeCalls > 1) {
         throw Object.assign(new Error("secret observed title must never be recorded"), {
-          code: "observation_failed"
+          code: "observation_failed",
+          processSignal: "SIGKILL"
         })
       }
       return backendObservation(base)
@@ -2500,24 +2551,32 @@ test("coordinator reports bounded causal diagnostics without action content", as
 
   assert.equal(result.outcome, "unknown")
   assert.deepEqual(
-    traces.map(({ dispatchOccurred, errorCode, nativeCode, operation }) => ({
-      dispatchOccurred,
-      errorCode,
-      nativeCode,
-      operation
-    })),
+    traces.map(
+      ({ dispatchOccurred, errorCode, exitCode, nativeCode, operation, processSignal }) => ({
+        dispatchOccurred,
+        errorCode,
+        exitCode,
+        nativeCode,
+        operation,
+        processSignal
+      })
+    ),
     [
       {
         dispatchOccurred: true,
         errorCode: "helper_failed",
+        exitCode: 23,
         nativeCode: "accessibility_permission_denied",
-        operation: "execute_background"
+        operation: "execute_background",
+        processSignal: undefined
       },
       {
         dispatchOccurred: true,
         errorCode: "observation_failed",
+        exitCode: undefined,
         nativeCode: undefined,
-        operation: "observe_recovery"
+        operation: "observe_recovery",
+        processSignal: "SIGKILL"
       }
     ]
   )
@@ -2525,8 +2584,13 @@ test("coordinator reports bounded causal diagnostics without action content", as
   assert.equal(JSON.stringify(traces).includes("top-secret-input"), false)
 })
 
-test("unconfirmed backend termination settles unknown without observing a successor", async () => {
+test("unconfirmed backend termination quarantines admission until late close", async () => {
   const raw = typeTextObservation()
+  let resolveTermination!: () => void
+  const terminationConfirmation = new Promise<void>((resolve) => {
+    resolveTermination = resolve
+  })
+  let executeCalls = 0
   let observeCalls = 0
   const backend: ComputerUseBackend = {
     matrix: {
@@ -2546,11 +2610,33 @@ test("unconfirmed backend termination settles unknown without observing a succes
     identify() {
       return Promise.resolve(targetIdentity(raw))
     },
-    async execute() {
-      throw Object.assign(
-        new Error("Computer-use native helper termination could not be confirmed."),
-        { successorObservationSafe: false as const }
-      )
+    async execute(request) {
+      executeCalls += 1
+      if (executeCalls === 1) {
+        throw Object.assign(
+          new Error("Computer-use native helper termination could not be confirmed."),
+          {
+            successorObservationSafe: false as const,
+            terminationConfirmation
+          }
+        )
+      }
+      return {
+        baseStateId: request.base.stateId,
+        outcome: "worked",
+        steps: [
+          {
+            action: request.actions[0]!,
+            evidence: {
+              delivery: "semantic",
+              noSideEffectProof: false,
+              route: "ax_value",
+              verification: "verified"
+            },
+            outcome: "worked"
+          }
+        ]
+      }
     },
     async observe() {
       observeCalls += 1
@@ -2559,9 +2645,10 @@ test("unconfirmed backend termination settles unknown without observing a succes
   }
   const writes: string[] = []
   const sessions = new ComputerUseSessionManager(backend)
+  const scheduler = new ComputerUseResourceScheduler()
   const coordinator = new ComputerUseTransactionCoordinator(
     backend,
-    new ComputerUseResourceScheduler(),
+    scheduler,
     sessions,
     new ComputerUseActionLedger(
       actionLedgerPort({
@@ -2595,6 +2682,218 @@ test("unconfirmed backend termination settles unknown without observing a succes
   })
   assert.equal(observeCalls, 1)
   assert.deepEqual(writes, ["dispatched:pending", "settled:unknown"])
+
+  await assert.rejects(
+    coordinator.identify({ applicationId: raw.application.id }),
+    /backend is quarantined/
+  )
+  await assert.rejects(
+    scheduler.read("another-resource", async () => undefined),
+    /backend is quarantined/
+  )
+  assert.throws(
+    () =>
+      sessions.openSession({
+        observation: base,
+        runId: "blocked-run",
+        threadId: "blocked-thread"
+      }),
+    /backend is quarantined/
+  )
+  assert.throws(() => sessions.signal(grant.sessionId), /not active/)
+  assert.equal(sessions.isEnabled(), false)
+  assert.equal(executeCalls, 1)
+
+  resolveTermination()
+  await terminationConfirmation
+  assert.equal(sessions.isEnabled(), true)
+  const recoveredBase = await coordinator.observe({ target: targetIdentity(base) })
+  const recoveredGrant = sessions.openSession({
+    observation: recoveredBase,
+    runId: "recovered-run",
+    threadId: "recovered-thread"
+  })
+  const recovered = await coordinator.execute({
+    actions: [{ kind: "type_text", ref: "@e1", value: "after-late-close" }],
+    baseStateId: recoveredBase.stateId,
+    runId: "recovered-run",
+    sessionId: recoveredGrant.sessionId,
+    threadId: "recovered-thread",
+    transactionId: "transaction-after-late-close"
+  })
+
+  assert.equal(recovered.outcome, "worked")
+  assert.equal(executeCalls, 2)
+  assert.equal(observeCalls, 3)
+  assert.deepEqual(writes, [
+    "dispatched:pending",
+    "settled:unknown",
+    "dispatched:pending",
+    "settled:worked"
+  ])
+})
+
+test("identify observe and dispose termination failures quarantine backend admission", async () => {
+  for (const operation of ["identify", "observe", "dispose"] as const) {
+    let resolveTermination!: () => void
+    const terminationConfirmation = new Promise<void>((resolve) => {
+      resolveTermination = resolve
+    })
+    const unsafeFailure = Object.assign(
+      new Error(`${operation} helper termination remains unconfirmed`),
+      {
+        successorObservationSafe: false as const,
+        terminationConfirmation
+      }
+    )
+    let recovered = false
+    const calls = { dispose: 0, identify: 0, observe: 0 }
+    const raw = typeTextObservation()
+    const backend: ComputerUseBackend = {
+      matrix: probedMatrix("macos-quartz"),
+      async disposeSession() {
+        calls.dispose += 1
+        if (operation === "dispose" && !recovered) throw unsafeFailure
+      },
+      async execute() {
+        throw new Error("coverage transaction must not execute")
+      },
+      async identify() {
+        calls.identify += 1
+        if (operation === "identify" && !recovered) throw unsafeFailure
+        return targetIdentity(raw)
+      },
+      async observe() {
+        calls.observe += 1
+        if (operation === "observe" && !recovered) throw unsafeFailure
+        return backendObservation(raw)
+      }
+    }
+    const scheduler = new ComputerUseResourceScheduler()
+    const sessions = new ComputerUseSessionManager(backend)
+    const coordinator = new ComputerUseTransactionCoordinator(
+      backend,
+      scheduler,
+      sessions,
+      new ComputerUseActionLedger(actionLedgerPort())
+    )
+    await sessions.setEnabled(true)
+
+    if (operation === "identify") {
+      await assert.rejects(
+        coordinator.identify({ applicationId: raw.application.id }),
+        (error) => error === unsafeFailure
+      )
+    } else if (operation === "observe") {
+      await assert.rejects(
+        coordinator.observe({ target: targetIdentity(raw) }),
+        (error) => error === unsafeFailure
+      )
+    } else {
+      const grant = sessions.openSession({
+        observation: raw,
+        runId: "dispose-run",
+        threadId: "dispose-thread"
+      })
+      await assert.rejects(
+        sessions.closeSession(grant.sessionId),
+        (error) => error === unsafeFailure
+      )
+    }
+
+    const identifyCalls = calls.identify
+    await assert.rejects(
+      coordinator.identify({ applicationId: raw.application.id }),
+      /backend is quarantined/
+    )
+    assert.equal(calls.identify, identifyCalls)
+
+    recovered = true
+    resolveTermination()
+    await terminationConfirmation
+    assert.deepEqual(
+      await coordinator.identify({ applicationId: raw.application.id }),
+      targetIdentity(raw)
+    )
+  }
+})
+
+test("overlapping unconfirmed helpers keep quarantine until every late close", async () => {
+  const raw = typeTextObservation()
+  let releaseFailures!: () => void
+  let markBothEntered!: () => void
+  const failureGate = new Promise<void>((resolve) => {
+    releaseFailures = resolve
+  })
+  const bothEntered = new Promise<void>((resolve) => {
+    markBothEntered = resolve
+  })
+  const confirmations = [0, 1].map(() => {
+    let resolve!: () => void
+    const promise = new Promise<void>((settle) => {
+      resolve = settle
+    })
+    return { promise, resolve }
+  })
+  const failures = confirmations.map((confirmation, index) =>
+    Object.assign(new Error(`helper ${index} termination remains unconfirmed`), {
+      successorObservationSafe: false as const,
+      terminationConfirmation: confirmation.promise
+    })
+  )
+  let identifyCalls = 0
+  let recovered = false
+  const backend: ComputerUseBackend = {
+    matrix: probedMatrix("macos-quartz"),
+    disposeSession: resolvedVoid,
+    async execute() {
+      throw new Error("overlap coverage must not execute")
+    },
+    async identify() {
+      const index = identifyCalls
+      identifyCalls += 1
+      if (index < failures.length && !recovered) {
+        if (identifyCalls === failures.length) markBothEntered()
+        await failureGate
+        throw failures[index]
+      }
+      return targetIdentity(raw)
+    },
+    async observe() {
+      return backendObservation(raw)
+    }
+  }
+  const scheduler = new ComputerUseResourceScheduler()
+  const sessions = new ComputerUseSessionManager(backend)
+  const coordinator = new ComputerUseTransactionCoordinator(
+    backend,
+    scheduler,
+    sessions,
+    new ComputerUseActionLedger(actionLedgerPort())
+  )
+  const first = coordinator.identify({ applicationId: raw.application.id })
+  const second = coordinator.identify({ applicationId: raw.application.id })
+  await bothEntered
+  releaseFailures()
+  await assert.rejects(first, (error) => error === failures[0])
+  await assert.rejects(second, (error) => error === failures[1])
+
+  confirmations[0]!.resolve()
+  await confirmations[0]!.promise
+  await assert.rejects(
+    coordinator.identify({ applicationId: raw.application.id }),
+    /backend is quarantined/
+  )
+  assert.equal(identifyCalls, 2)
+
+  recovered = true
+  confirmations[1]!.resolve()
+  await confirmations[1]!.promise
+  assert.deepEqual(
+    await coordinator.identify({ applicationId: raw.application.id }),
+    targetIdentity(raw)
+  )
+  assert.equal(identifyCalls, 3)
 })
 
 test("successor identity changes never publish an observation with the old epoch", async () => {

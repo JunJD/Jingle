@@ -60,6 +60,24 @@ function unconfirmedTerminationChild(
   return { child, signals }
 }
 
+function terminalStatusChild(
+  exitCode: number | null,
+  processSignal: NodeJS.Signals | null
+): ChildProcessWithoutNullStreams {
+  const child = new EventEmitter() as ChildProcessWithoutNullStreams
+  const stdin = new PassThrough()
+  Object.assign(child, {
+    stderr: new PassThrough(),
+    stdin,
+    stdout: new PassThrough()
+  })
+  child.kill = (() => true) as ChildProcessWithoutNullStreams["kill"]
+  stdin.once("finish", () => {
+    setImmediate(() => child.emit("close", exitCode, processSignal))
+  })
+  return child
+}
+
 test("native process bridge sends one bounded stdin frame without argv payloads", async () => {
   const directory = await mkdtemp(join(tmpdir(), "jingle-computer-use-transport-"))
   const helper = join(directory, "helper.mjs")
@@ -215,21 +233,74 @@ test("native process bridge bounds unconfirmed helper termination paths", async 
         controller.signal
       )
       controller.abort(new DOMException(`cancelled ${behavior}`, "AbortError"))
-      return { behavior, invocation, signals }
+      return { behavior, child, invocation, signals }
     }
   )
 
   await Promise.all(
-    fixtures.map(async ({ behavior, invocation, signals }) => {
+    fixtures.map(async ({ behavior, child, invocation, signals }) => {
+      let terminationConfirmation: Promise<void> | undefined
       await assert.rejects(invocation, (error: unknown) => {
         assert.ok(error instanceof ComputerUseNativeProcessError, behavior)
         assert.equal(error.code, "helper_termination_unconfirmed", behavior)
         assert.equal(error.successorObservationSafe, false, behavior)
+        terminationConfirmation = error.terminationConfirmation
         return true
       })
       assert.deepEqual(signals, ["SIGTERM", "SIGKILL"], behavior)
+      assert.ok(terminationConfirmation, behavior)
+      if (behavior === "never-close") {
+        let confirmed = false
+        void terminationConfirmation.then(() => {
+          confirmed = true
+        })
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        assert.equal(confirmed, false)
+        child.emit("close", null, "SIGKILL")
+        await terminationConfirmation
+        assert.equal(confirmed, true)
+      }
     })
   )
+})
+
+test("native process bridge preserves bounded exit and signal evidence", async () => {
+  const request = {
+    environment: "macos-quartz",
+    method: "probe",
+    protocolVersion: 1,
+    requestPermission: true
+  } as const
+  const fixtures = [
+    {
+      child: terminalStatusChild(23, null),
+      expected: { exitCode: 23, processSignal: undefined }
+    },
+    {
+      child: terminalStatusChild(null, "SIGKILL"),
+      expected: { exitCode: undefined, processSignal: "SIGKILL" }
+    },
+    {
+      child: terminalStatusChild(Number.MAX_SAFE_INTEGER, "SIGCUSTOM" as NodeJS.Signals),
+      expected: { exitCode: undefined, processSignal: undefined }
+    }
+  ] as const
+
+  for (const fixture of fixtures) {
+    const bridge = createComputerUseNativeProcessBridge({
+      environment: "macos-quartz",
+      invocation: { args: [], command: "/controlled-terminal-status" },
+      spawnProcess: (() => fixture.child) as never
+    })
+    await assert.rejects(bridge.invoke(request), (error: unknown) => {
+      assert.ok(error instanceof ComputerUseNativeProcessError)
+      assert.equal(error.code, "helper_failed")
+      assert.equal(error.exitCode, fixture.expected.exitCode)
+      assert.equal(error.processSignal, fixture.expected.processSignal)
+      assert.equal(JSON.stringify(error).includes("stderr"), false)
+      return true
+    })
+  }
 })
 
 test("native process bridge rejects environment drift and invalid response frames", async () => {

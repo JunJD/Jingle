@@ -46,9 +46,13 @@ export async function createProductionComputerUseApplicationService(input: {
             { key: "dispatchOccurred", value: String(event.dispatchOccurred) },
             { key: "environment", value: event.environment },
             { key: "errorCode", value: event.errorCode },
+            ...(event.exitCode === undefined
+              ? []
+              : [{ key: "exitCode", value: String(event.exitCode) }]),
             ...(event.nativeCode ? [{ key: "nativeCode", value: event.nativeCode }] : []),
             { key: "operation", value: event.operation },
             { key: "platform", value: event.platform },
+            ...(event.processSignal ? [{ key: "processSignal", value: event.processSignal }] : []),
             { key: "transactionId", value: event.transactionId }
           ],
           eventCode: "computer_use.operation_failed",

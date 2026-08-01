@@ -32,6 +32,21 @@ export type ComputerUseTraceOperation =
   | "execute_foreground"
   | "observe_successor"
   | "observe_recovery"
+export const COMPUTER_USE_PROCESS_SIGNALS = Object.freeze([
+  "SIGABRT",
+  "SIGBUS",
+  "SIGFPE",
+  "SIGHUP",
+  "SIGILL",
+  "SIGINT",
+  "SIGKILL",
+  "SIGPIPE",
+  "SIGQUIT",
+  "SIGSEGV",
+  "SIGTERM",
+  "SIGTRAP"
+] as const)
+export type ComputerUseProcessSignal = (typeof COMPUTER_USE_PROCESS_SIGNALS)[number]
 export type ComputerUseOutcome =
   | "worked"
   | "didnt"
@@ -44,10 +59,12 @@ export interface ComputerUseTraceEvent {
   dispatchOccurred: boolean
   environment: ComputerUseBackendEnvironment
   errorCode: string
+  exitCode?: number
   kind: "operation_failed"
   nativeCode?: string
   operation: ComputerUseTraceOperation
   platform: ComputerUsePlatform
+  processSignal?: ComputerUseProcessSignal
   runId: string
   threadId: string
   transactionId: string
@@ -230,17 +247,28 @@ export type ComputerUseBackendExecutionOutcome = Exclude<
 >
 
 export interface ComputerUseBackendFailure {
+  readonly exitCode?: number
+  readonly processSignal?: ComputerUseProcessSignal
   readonly successorObservationSafe: boolean
+  readonly terminationConfirmation?: Promise<void>
 }
 
 export function computerUseBackendFailurePrecludesSuccessorObservation(
   error: unknown
-): error is ComputerUseBackendFailure & { readonly successorObservationSafe: false } {
+): error is Error & ComputerUseBackendFailure & { readonly successorObservationSafe: false } {
   return (
     error instanceof Error &&
     "successorObservationSafe" in error &&
     error.successorObservationSafe === false
   )
+}
+
+export function computerUseBackendFailureTerminationConfirmation(
+  error: unknown
+): Promise<void> | null {
+  if (!computerUseBackendFailurePrecludesSuccessorObservation(error)) return null
+  const confirmation = error.terminationConfirmation
+  return confirmation instanceof Promise ? confirmation : null
 }
 
 export type ComputerUseBackendStepResult = Omit<ComputerUseStepResult, "outcome"> & {

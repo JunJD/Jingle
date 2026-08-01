@@ -1,10 +1,12 @@
 import {
+  COMPUTER_USE_PROCESS_SIGNALS,
   computerUseBackendFailurePrecludesSuccessorObservation,
   type ComputerUseBackend,
   type ComputerUseBackendExecutionResult,
   type ComputerUseIdentifyRequest,
   type ComputerUseObservation,
   type ComputerUseObserveRequest,
+  type ComputerUseProcessSignal,
   type ComputerUseSemanticAction,
   type ComputerUseTraceEvent,
   type ComputerUseTraceOperation,
@@ -27,20 +29,40 @@ export class ComputerUseTransactionCoordinator {
     private readonly ledger: ComputerUseActionLedger,
     private readonly observations = new ComputerUseObservationStore(),
     private readonly traceSink: ComputerUseTraceSink = { record: () => undefined }
-  ) {}
+  ) {
+    this.scheduler.bindQuarantineListener((error, resourceKey) => {
+      this.sessions.quarantineAfterUnsafeTermination(error, resourceKey)
+    })
+    this.sessions.bindQuarantineHandler((error, resourceKey) => {
+      this.scheduler.quarantineAfterUnsafeTermination(error, resourceKey)
+    })
+  }
 
   async identify(request: ComputerUseIdentifyRequest) {
+    this.sessions.assertBackendAvailable()
     request.signal?.throwIfAborted()
-    return this.backend.identify(request)
+    try {
+      return await this.backend.identify(request)
+    } catch (error) {
+      this.scheduler.quarantineAfterUnsafeTermination(error, "backend-identify")
+      throw error
+    }
   }
 
   async observe(request: ComputerUseObserveRequest): Promise<ComputerUseObservation> {
+    this.sessions.assertBackendAvailable()
     request.signal?.throwIfAborted()
     return this.scheduler.read(
       request.target.resourceKey,
       async (epoch) => {
         request.signal?.throwIfAborted()
-        const current = await this.backend.observe(request)
+        let current
+        try {
+          current = await this.backend.observe(request)
+        } catch (error) {
+          this.scheduler.quarantineAfterUnsafeTermination(error, request.target.resourceKey)
+          throw error
+        }
         if (
           current.application.id !== request.target.application.id ||
           current.resourceKey !== request.target.resourceKey ||
@@ -304,6 +326,7 @@ export class ComputerUseTransactionCoordinator {
         return this.observations.create({ ...successor, epoch })
       })
     } catch (error) {
+      this.scheduler.quarantineAfterUnsafeTermination(error, base.resourceKey)
       this.recordFailure({
         dispatchOccurred: true,
         error,
@@ -322,16 +345,19 @@ export class ComputerUseTransactionCoordinator {
     threadId: string
     transactionId: string
   }): void {
+    const exitCode = readDiagnosticExitCode(input.error)
+    const nativeCode = readDiagnosticCode(input.error, "nativeCode")
+    const processSignal = readDiagnosticProcessSignal(input.error)
     const event: ComputerUseTraceEvent = {
       dispatchOccurred: input.dispatchOccurred,
       environment: this.backend.matrix.environment,
       errorCode: readDiagnosticCode(input.error, "code") ?? readErrorName(input.error),
+      ...(exitCode === null ? {} : { exitCode }),
       kind: "operation_failed",
-      ...(readDiagnosticCode(input.error, "nativeCode")
-        ? { nativeCode: readDiagnosticCode(input.error, "nativeCode")! }
-        : {}),
+      ...(nativeCode ? { nativeCode } : {}),
       operation: input.operation,
       platform: this.backend.matrix.platform,
+      ...(processSignal ? { processSignal } : {}),
       runId: input.runId,
       threadId: input.threadId,
       transactionId: input.transactionId
@@ -491,6 +517,25 @@ function readDiagnosticCode(error: unknown, key: "code" | "nativeCode"): string 
   if (!error || typeof error !== "object") return null
   const value = (error as Record<string, unknown>)[key]
   return typeof value === "string" && /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(value) ? value : null
+}
+
+function readDiagnosticExitCode(error: unknown): number | null {
+  if (!error || typeof error !== "object") return null
+  const value = (error as Record<string, unknown>).exitCode
+  return Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= 0x7fffffff
+    ? (value as number)
+    : null
+}
+
+function readDiagnosticProcessSignal(
+  error: unknown
+): ComputerUseTraceEvent["processSignal"] | null {
+  if (!error || typeof error !== "object") return null
+  const value = (error as Record<string, unknown>).processSignal
+  return typeof value === "string" &&
+    COMPUTER_USE_PROCESS_SIGNALS.includes(value as ComputerUseProcessSignal)
+    ? (value as ComputerUseProcessSignal)
+    : null
 }
 
 function readErrorName(error: unknown): string {

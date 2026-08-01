@@ -1,3 +1,8 @@
+import {
+  computerUseBackendFailurePrecludesSuccessorObservation,
+  computerUseBackendFailureTerminationConfirmation
+} from "./contract"
+
 export class StaleComputerUseStateError extends Error {
   constructor(
     readonly resourceKey: string,
@@ -8,6 +13,17 @@ export class StaleComputerUseStateError extends Error {
       `Computer-use state is stale for ${resourceKey}: expected epoch ${expectedEpoch}, current epoch ${actualEpoch}.`
     )
     this.name = "StaleComputerUseStateError"
+  }
+}
+
+export class ComputerUseBackendQuarantinedError extends Error {
+  readonly code = "backend_quarantined"
+
+  constructor(readonly resourceKey: string) {
+    super(
+      `Computer-use backend is quarantined after unconfirmed native termination for ${resourceKey}.`
+    )
+    this.name = "ComputerUseBackendQuarantinedError"
   }
 }
 
@@ -73,11 +89,31 @@ function enqueueAfter<T>(
 
 export class ComputerUseResourceScheduler {
   private readonly resources = new Map<string, ResourceRecord>()
+  private readonly quarantines = new Map<Error, { resourceKey: string }>()
   private globalPhysicalInputTail = Promise.resolve()
+  private quarantineListener: ((error: unknown, resourceKey: string) => void) | null = null
   private closed = false
 
   epoch(resourceKey: string): number {
     return this.resource(resourceKey).epoch
+  }
+
+  bindQuarantineListener(listener: (error: unknown, resourceKey: string) => void): void {
+    if (this.quarantineListener && this.quarantineListener !== listener) {
+      throw new Error("Computer-use scheduler quarantine listener was already bound.")
+    }
+    this.quarantineListener = listener
+  }
+
+  quarantineAfterUnsafeTermination(error: unknown, resourceKey: string): void {
+    if (!computerUseBackendFailurePrecludesSuccessorObservation(error)) return
+    if (this.quarantines.has(error)) return
+    this.quarantines.set(error, { resourceKey })
+    this.quarantineListener?.(error, resourceKey)
+    const confirmation = computerUseBackendFailureTerminationConfirmation(error)
+    void confirmation?.then(() => {
+      this.quarantines.delete(error)
+    })
   }
 
   async read<T>(
@@ -123,15 +159,18 @@ export class ComputerUseResourceScheduler {
         return input.work(commit)
       }
       if (!input.physicalInput) return dispatch()
-      return this.withGlobalPhysicalInput(input.signal, dispatch)
+      return this.withGlobalPhysicalInput(input.resourceKey, input.signal, dispatch)
     })
   }
 
   async close(): Promise<void> {
     this.closed = true
-    await Promise.all([...this.resources.values()].map((record) => record.tail.catch(() => undefined)))
+    await Promise.all(
+      [...this.resources.values()].map((record) => record.tail.catch(() => undefined))
+    )
     await this.globalPhysicalInputTail.catch(() => undefined)
     this.resources.clear()
+    this.quarantines.clear()
   }
 
   private assertEpoch(resourceKey: string, expectedEpoch: number, record: ResourceRecord): void {
@@ -154,19 +193,39 @@ export class ComputerUseResourceScheduler {
     work: (record: ResourceRecord) => Promise<T>
   ): Promise<T> {
     if (this.closed) throw new Error("Computer-use scheduler is closed.")
+    this.assertBackendAvailable()
     signal?.throwIfAborted()
     const record = this.resource(resourceKey)
-    const queued = enqueueAfter(record.tail, signal, () => work(record))
+    const queued = enqueueAfter(record.tail, signal, () => {
+      this.assertBackendAvailable()
+      return work(record)
+    })
     record.tail = queued.tail
     return queued.result
   }
 
   private async withGlobalPhysicalInput<T>(
+    resourceKey: string,
     signal: AbortSignal | undefined,
     work: () => Promise<T>
   ): Promise<T> {
-    const queued = enqueueAfter(this.globalPhysicalInputTail, signal, work)
+    const queued = enqueueAfter(this.globalPhysicalInputTail, signal, async () => {
+      this.assertBackendAvailable()
+      try {
+        return await work()
+      } catch (error) {
+        this.quarantineAfterUnsafeTermination(error, resourceKey)
+        throw error
+      }
+    })
     this.globalPhysicalInputTail = queued.tail
     return queued.result
+  }
+
+  private assertBackendAvailable(): void {
+    const quarantine = this.quarantines.values().next().value
+    if (quarantine) {
+      throw new ComputerUseBackendQuarantinedError(quarantine.resourceKey)
+    }
   }
 }

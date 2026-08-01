@@ -1,9 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
-import type {
-  ComputerUseBackendEnvironment,
-  ComputerUseBackendFailure,
-  JingleComputerUseNativeBridge,
-  JingleComputerUseNativeRequest
+import {
+  COMPUTER_USE_PROCESS_SIGNALS,
+  type ComputerUseBackendEnvironment,
+  type ComputerUseBackendFailure,
+  type ComputerUseProcessSignal,
+  type JingleComputerUseNativeBridge,
+  type JingleComputerUseNativeRequest
 } from "@jingle/computer-use-core"
 
 const DEFAULT_TIMEOUT_MS = 30_000
@@ -35,8 +37,17 @@ export interface CreateComputerUseNativeProcessBridgeInput {
   timeoutMs?: number
 }
 
+interface ComputerUseNativeProcessEvidence {
+  exitCode?: number
+  processSignal?: ComputerUseProcessSignal
+  terminationConfirmation?: Promise<void>
+}
+
 export class ComputerUseNativeProcessError extends Error implements ComputerUseBackendFailure {
+  readonly exitCode: number | undefined
+  readonly processSignal: ComputerUseProcessSignal | undefined
   readonly successorObservationSafe: boolean
+  readonly terminationConfirmation: Promise<void> | undefined
 
   constructor(
     message: string,
@@ -49,11 +60,15 @@ export class ComputerUseNativeProcessError extends Error implements ComputerUseB
       | "response_too_large"
       | "timeout"
       | "transport_failed",
-    readonly nativeCode: string | null = null
+    readonly nativeCode: string | null = null,
+    evidence: ComputerUseNativeProcessEvidence = {}
   ) {
     super(message)
     this.name = "ComputerUseNativeProcessError"
+    this.exitCode = evidence.exitCode
+    this.processSignal = evidence.processSignal
     this.successorObservationSafe = code !== "helper_termination_unconfirmed"
+    this.terminationConfirmation = evidence.terminationConfirmation
   }
 }
 
@@ -177,6 +192,11 @@ async function invokeComputerUseProcess(input: {
     let termination: { error: unknown } | null = null
     let forceKillTimeout: ReturnType<typeof setTimeout> | undefined
     let terminationConfirmationTimeout: ReturnType<typeof setTimeout> | undefined
+    let resolveTerminationConfirmation!: () => void
+    let terminationConfirmed = false
+    const terminationConfirmation = new Promise<void>((resolve) => {
+      resolveTerminationConfirmation = resolve
+    })
     const stdout: Buffer[] = []
     const stderr: Buffer[] = []
     const finish = (callback: () => void): void => {
@@ -190,6 +210,11 @@ async function invokeComputerUseProcess(input: {
     }
     const fail = (error: unknown): void => {
       finish(() => reject(error))
+    }
+    const confirmTermination = (): void => {
+      if (terminationConfirmed) return
+      terminationConfirmed = true
+      resolveTerminationConfirmation()
     }
     const terminate = (error: unknown): void => {
       if (settled || termination) return
@@ -211,7 +236,9 @@ async function invokeComputerUseProcess(input: {
         fail(
           new ComputerUseNativeProcessError(
             "Computer-use native helper termination could not be confirmed.",
-            "helper_termination_unconfirmed"
+            "helper_termination_unconfirmed",
+            null,
+            { terminationConfirmation }
           )
         )
       }, TERMINATION_CONFIRMATION_TIMEOUT_MS)
@@ -262,6 +289,7 @@ async function invokeComputerUseProcess(input: {
       stderr.push(bounded)
     })
     child.on("close", (code, processSignal) => {
+      if (termination) confirmTermination()
       if (settled) return
       if (termination) {
         fail(termination.error)
@@ -278,7 +306,8 @@ async function invokeComputerUseProcess(input: {
                 ? `Computer-use native helper failed with diagnostic code ${nativeCode}.`
                 : "Computer-use native helper returned a failed terminal status.",
             permissionRequired ? "permission_required" : "helper_failed",
-            nativeCode
+            nativeCode,
+            readNativeProcessEvidence(code, processSignal)
           )
         )
         return
@@ -316,6 +345,21 @@ async function invokeComputerUseProcess(input: {
     })
     child.stdin.end(input.frame)
   })
+}
+
+function readNativeProcessEvidence(
+  exitCode: number | null,
+  processSignal: NodeJS.Signals | null
+): ComputerUseNativeProcessEvidence {
+  return {
+    ...(Number.isSafeInteger(exitCode) && exitCode! >= 0 && exitCode! <= 0x7fffffff
+      ? { exitCode: exitCode! }
+      : {}),
+    ...(processSignal &&
+    COMPUTER_USE_PROCESS_SIGNALS.includes(processSignal as ComputerUseProcessSignal)
+      ? { processSignal: processSignal as ComputerUseProcessSignal }
+      : {})
+  }
 }
 
 function readNativeDiagnosticCode(stderr: Buffer): string | null {
