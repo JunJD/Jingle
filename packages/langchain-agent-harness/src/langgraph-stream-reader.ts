@@ -3,6 +3,7 @@ import {
   JINGLE_COMPOSER_TEXT_METADATA_KEY,
   JINGLE_USER_MESSAGE_ADMISSION_METADATA_KEY
 } from "./message-metadata"
+import { readJingleLangGraphSerializedMessageContent } from "./langgraph-checkpoint-reader"
 
 export interface JingleLangGraphUsageMetadata {
   input_token_details?: {
@@ -48,7 +49,7 @@ export interface JingleLangGraphSerializedMessageChunk {
     refs?: unknown
     tool_calls?: JingleLangGraphOpenAiToolCall[]
   }
-  content?: string | unknown[]
+  content?: unknown
   id?: string | string[]
   kwargs?: {
     additional_kwargs?: {
@@ -56,7 +57,7 @@ export interface JingleLangGraphSerializedMessageChunk {
       refs?: unknown
       tool_calls?: JingleLangGraphOpenAiToolCall[]
     }
-    content?: string | unknown[]
+    content?: unknown
     id?: string
     name?: string
     response_metadata?: {
@@ -177,6 +178,13 @@ export interface JingleLangGraphValuesStateRead {
   todos: Array<{ content?: string; id?: string; status?: string }> | null
 }
 
+type JingleLangGraphSerializedMessageKwargsRead = Omit<
+  NonNullable<JingleLangGraphSerializedMessageChunk["kwargs"]>,
+  "content"
+> & {
+  content: string | unknown[]
+}
+
 function parseRequiredToolCallArgs(value: string | undefined): Record<string, unknown> | null {
   if (typeof value !== "string" || value.length === 0) {
     return null
@@ -275,10 +283,10 @@ function getSerializedMessageClassName(message: JingleLangGraphSerializedMessage
 
 function readSerializedMessageKwargs(
   message: JingleLangGraphSerializedMessageChunk
-): NonNullable<JingleLangGraphSerializedMessageChunk["kwargs"]> {
+): JingleLangGraphSerializedMessageKwargsRead {
   return {
     ...(message.kwargs ?? message.lc_kwargs ?? {}),
-    ...(message.content !== undefined ? { content: message.content } : {}),
+    content: readJingleLangGraphSerializedMessageContent(message),
     ...(message.id !== undefined && typeof message.id === "string" ? { id: message.id } : {}),
     ...(message.name !== undefined ? { name: message.name } : {}),
     ...(message.additional_kwargs !== undefined

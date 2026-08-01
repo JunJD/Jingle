@@ -1052,7 +1052,7 @@ export function toDisplayMessageContent(
   if (typeof content === "string") {
     return content
   }
-  if (content === undefined || content === null) {
+  if (content === undefined) {
     return ""
   }
   const blocks = readSafeArray(content)

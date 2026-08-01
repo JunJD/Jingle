@@ -4,10 +4,35 @@ import {
   readJingleLangGraphCheckpointMessages,
   readJingleLangGraphSerializedMessage
 } from "../../packages/langchain-agent-harness/src/langgraph-checkpoint-reader"
+import {
+  decodeJingleLangGraphMessagesStreamChunk,
+  readJingleLangGraphValuesState
+} from "../../packages/langchain-agent-harness/src/langgraph-stream-reader"
 
 const invalidContentError = {
   message:
     "[LangGraphCheckpointReader] Serialized message content must be a string or array when present."
+}
+
+function getContentBoundaryReaders(message: unknown): Array<() => unknown> {
+  return [
+    () =>
+      readJingleLangGraphSerializedMessage({
+        message,
+        order: 1,
+        rawHash: "raw-hash"
+      }).content,
+    () =>
+      readJingleLangGraphCheckpointMessages({
+        checkpoint: { channel_values: { messages: [message] } }
+      } as never)?.[0]?.content,
+    () => readJingleLangGraphValuesState({ messages: [message] }).messages?.[0]?.content,
+    () => decodeJingleLangGraphMessagesStreamChunk([message]).assistant?.content
+  ]
+}
+
+function readAllContentBoundaries(message: unknown): unknown[] {
+  return getContentBoundaryReaders(message).map((read) => read())
 }
 
 test("checkpoint reader preserves valid content and message metadata hints", () => {
@@ -49,71 +74,57 @@ test("checkpoint reader preserves valid content and message metadata hints", () 
 
 test("checkpoint reader maps only absent or undefined content to an empty string", () => {
   for (const message of [
-    { id: ["HumanMessage"], kwargs: { id: "absent" } },
-    { id: ["HumanMessage"], kwargs: { content: undefined, id: "undefined" } }
+    { id: ["AIMessage"], kwargs: { id: "absent" } },
+    { id: ["AIMessage"], kwargs: { content: undefined, id: "undefined" } }
   ]) {
-    assert.equal(
-      readJingleLangGraphSerializedMessage({
-        message,
-        order: 1,
-        rawHash: "raw-hash"
-      }).content,
-      ""
-    )
+    assert.deepEqual(readAllContentBoundaries(message), ["", "", "", ""])
   }
 })
 
-test("checkpoint reader fails closed for present malformed content", () => {
+test("live and checkpoint readers fail closed for present malformed content", () => {
   for (const content of [{ unexpected: true }, 42, null, false]) {
     for (const message of [
-      { id: ["HumanMessage"], kwargs: { content, id: "user-1" } },
-      { content, id: ["HumanMessage"], kwargs: { id: "user-1" } }
+      { id: ["AIMessage"], kwargs: { content, id: "assistant-1" } },
+      { content, id: ["AIMessage"], kwargs: { id: "assistant-1" } }
     ]) {
-      assert.throws(
-        () =>
-          readJingleLangGraphSerializedMessage({
-            message,
-            order: 1,
-            rawHash: "raw-hash"
-          }),
-        invalidContentError
-      )
-      assert.throws(
-        () =>
-          readJingleLangGraphCheckpointMessages({
-            checkpoint: { channel_values: { messages: [message] } }
-          } as never),
-        invalidContentError
-      )
+      for (const read of getContentBoundaryReaders(message)) {
+        assert.throws(read, invalidContentError)
+      }
     }
   }
 })
 
-test("checkpoint reader validates the selected serialized content owner", () => {
-  assert.throws(
-    () =>
-      readJingleLangGraphSerializedMessage({
-        message: {
-          content: "top-level fallback",
-          id: ["HumanMessage"],
-          kwargs: { content: { malformed: true }, id: "user-1" }
-        },
-        order: 1,
-        rawHash: "raw-hash"
-      }),
-    invalidContentError
-  )
+test("live and checkpoint readers share one serialized content owner", () => {
+  const malformedKwargs = {
+    content: "top-level fallback",
+    id: ["AIMessage"],
+    kwargs: { content: { malformed: true }, id: "assistant-1" }
+  }
+  for (const read of getContentBoundaryReaders(malformedKwargs)) {
+    assert.throws(read, invalidContentError)
+  }
 
-  assert.equal(
-    readJingleLangGraphSerializedMessage({
-      message: {
-        content: "top-level fallback",
-        id: ["HumanMessage"],
-        kwargs: { content: undefined, id: "user-1" }
-      },
-      order: 1,
-      rawHash: "raw-hash"
-    }).content,
-    "top-level fallback"
+  assert.deepEqual(
+    readAllContentBoundaries({
+      content: null,
+      id: ["AIMessage"],
+      kwargs: { content: "kwargs content", id: "assistant-1" }
+    }),
+    ["kwargs content", "kwargs content", "kwargs content", "kwargs content"]
+  )
+  assert.deepEqual(
+    readAllContentBoundaries({
+      content: "top-level fallback",
+      id: ["AIMessage"],
+      kwargs: { content: undefined, id: "assistant-1" }
+    }),
+    ["top-level fallback", "top-level fallback", "top-level fallback", "top-level fallback"]
+  )
+  assert.deepEqual(
+    readAllContentBoundaries({
+      id: ["AIMessage"],
+      lc_kwargs: { content: "lc kwargs content", id: "assistant-1" }
+    }),
+    ["lc kwargs content", "lc kwargs content", "lc kwargs content", "lc kwargs content"]
   )
 })

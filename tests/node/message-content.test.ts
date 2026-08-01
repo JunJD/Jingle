@@ -173,6 +173,10 @@ test("toDisplayUserMessageContent reconstructs file blocks from metadata refs", 
 })
 
 test("canonical codec applies role boundaries and recursively unwraps tool results", () => {
+  assert.equal(toDisplayMessageContent(undefined, { role: "user" }), "")
+  assert.deepEqual(toDisplayMessageContent(null, { role: "user" }), [
+    { reason: "malformed", sourceType: null, type: "unrenderable" }
+  ])
   assert.deepEqual(
     toDisplayMessageContent([{ text: "system fact", type: "text" }], { role: "system" }),
     [{ text: "system fact", type: "text" }]

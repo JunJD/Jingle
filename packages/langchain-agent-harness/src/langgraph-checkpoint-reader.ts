@@ -125,11 +125,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function readKwargs(message: unknown): Record<string, unknown> {
-  if (!isRecord(message) || !isRecord(message.kwargs)) {
+  if (!isRecord(message)) {
     return {}
   }
 
-  return message.kwargs
+  if (isRecord(message.kwargs)) {
+    return message.kwargs
+  }
+
+  return isRecord(message.lc_kwargs) ? message.lc_kwargs : {}
 }
 
 function getSerializedMessageClassName(message: unknown): string {
@@ -141,7 +145,7 @@ function getSerializedMessageClassName(message: unknown): string {
   return Array.isArray(id) ? String(id[id.length - 1] ?? "") : ""
 }
 
-function readSerializedMessageContent(message: unknown): string | unknown[] {
+export function readJingleLangGraphSerializedMessageContent(message: unknown): string | unknown[] {
   const kwargs = readKwargs(message)
   const value =
     Object.prototype.hasOwnProperty.call(kwargs, "content") && kwargs.content !== undefined
@@ -165,7 +169,7 @@ function readSerializedMessageContent(message: unknown): string | unknown[] {
 function getCheckpointMessageContent(
   message: JingleLangGraphCheckpointChannelMessage
 ): string | unknown[] {
-  return readSerializedMessageContent(message)
+  return readJingleLangGraphSerializedMessageContent(message)
 }
 
 function readSerializedMessageToolCalls(message: unknown): unknown[] {
@@ -265,7 +269,7 @@ export function readJingleLangGraphSerializedMessage(
     (isRecord(input.message) ? input.message.response_metadata : undefined)
 
   return {
-    content: readSerializedMessageContent(input.message),
+    content: readJingleLangGraphSerializedMessageContent(input.message),
     displayContext: {
       additional_kwargs: additionalKwargs,
       ...(responseMetadata !== undefined ? { response_metadata: responseMetadata } : {})
