@@ -26,6 +26,7 @@ const SERVICE_NAME_IDENTITIES = new Map<string, ElectronUtilityServiceIdentity>(
   ["audio.mojom.AudioService", "audio-service"],
   ["Audio Service", "audio-service"],
   ["Jingle Extension Runtime", "extension-runtime"],
+  ["node.mojom.NodeService", "node-utility-process"],
   ["Node Utility Process", "node-utility-process"],
   ["network.mojom.NetworkService", "network-service"],
   ["Network Service", "network-service"],
@@ -100,7 +101,9 @@ function normalizeServiceIdentity(
     serviceNameIdentity && nameIdentity
       ? serviceNameIdentity === nameIdentity
         ? serviceNameIdentity
-        : "unknown"
+        : serviceNameIdentity === "node-utility-process" && nameIdentity === "extension-runtime"
+          ? nameIdentity
+          : "unknown"
       : (serviceNameIdentity ?? nameIdentity ?? "unknown")
 
   // Never carry a source value that did not participate in a recognized,

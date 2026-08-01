@@ -476,6 +476,23 @@ test("Electron Utility failures retain only coherent allowlisted service identit
       serviceName: "network.mojom.NetworkService"
     }
   )
+  assert.deepEqual(
+    normalizeElectronChildProcessGoneEvent({
+      exitCode: 1792,
+      name: "Jingle Extension Runtime",
+      reason: "abnormal-exit",
+      serviceName: "node.mojom.NodeService",
+      type: "Utility"
+    }),
+    {
+      exitCode: 1792,
+      name: "Jingle Extension Runtime",
+      processType: "utility",
+      reason: "abnormal-exit",
+      serviceIdentity: "extension-runtime",
+      serviceName: "node.mojom.NodeService"
+    }
+  )
 
   captureElectronFailure(sink, {
     exitCode: 9,
