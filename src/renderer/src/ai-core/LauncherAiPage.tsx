@@ -1373,26 +1373,6 @@ export function LauncherAiPage(): React.JSX.Element {
   const closeThreadSearch = useCallback((): void => {
     dispatchThreadSearch({ type: "close" })
   }, [])
-  const handleSelectSidebarThread = useCallback(
-    async (nextThreadId: string): Promise<void> => {
-      if (nextThreadId === threadId) {
-        return
-      }
-
-      await openThread(nextThreadId)
-      clearTransientInputState()
-      setShowModelPicker(false)
-      focusComposerOnNextFrame()
-    },
-    [clearTransientInputState, focusComposerOnNextFrame, openThread, threadId]
-  )
-  const handleSelectThreadSearchResult = useCallback(
-    async (nextThreadId: string): Promise<void> => {
-      closeThreadSearch()
-      await handleSelectSidebarThread(nextThreadId)
-    },
-    [closeThreadSearch, handleSelectSidebarThread]
-  )
   const runSidebarThreadAction = useCallback(async (action: () => Promise<void>): Promise<void> => {
     try {
       setNavigationError(null)
@@ -1401,6 +1381,34 @@ export function LauncherAiPage(): React.JSX.Element {
       setNavigationError(toErrorMessage(error))
     }
   }, [])
+  const handleSelectSidebarThread = useCallback(
+    async (nextThreadId: string): Promise<void> => {
+      if (nextThreadId === threadId) {
+        return
+      }
+
+      await runSidebarThreadAction(async () => {
+        await openThread(nextThreadId)
+        clearTransientInputState()
+        setShowModelPicker(false)
+        focusComposerOnNextFrame()
+      })
+    },
+    [
+      clearTransientInputState,
+      focusComposerOnNextFrame,
+      openThread,
+      runSidebarThreadAction,
+      threadId
+    ]
+  )
+  const handleSelectThreadSearchResult = useCallback(
+    async (nextThreadId: string): Promise<void> => {
+      closeThreadSearch()
+      await handleSelectSidebarThread(nextThreadId)
+    },
+    [closeThreadSearch, handleSelectSidebarThread]
+  )
   const addSidebarProjectFromPicker = useCallback(async (): Promise<void> => {
     await runSidebarThreadAction(addSidebarProject)
   }, [addSidebarProject, runSidebarThreadAction])

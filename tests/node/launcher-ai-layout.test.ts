@@ -416,6 +416,20 @@ test("launcher AI thread search overlay stays idle before query input", async ()
   assert.match(overlaySource, /visibleState === "loading"/)
 })
 
+test("launcher AI thread selection reports activation failures through the sidebar boundary", async () => {
+  const pageSource = await readWorkspaceFile("src/renderer/src/ai-core/LauncherAiPage.tsx")
+  const selectionBody = pageSource.match(
+    /const handleSelectSidebarThread = useCallback\([\s\S]*?const handleSelectThreadSearchResult = useCallback/
+  )
+
+  assert.ok(selectionBody, "sidebar thread selection callback should exist")
+  assert.match(
+    selectionBody[0],
+    /await runSidebarThreadAction\(async \(\) => \{[\s\S]*?await openThread\(nextThreadId\)/
+  )
+  assert.match(selectionBody[0], /runSidebarThreadAction,[\s\S]*?threadId/)
+})
+
 test("launcher AI thread loading copy distinguishes restore from opening", async () => {
   const [navigationSource, conversationSource, messagesSource] = await Promise.all([
     readWorkspaceFile("src/renderer/src/ai-core/useLauncherAiThreadNavigation.ts"),
