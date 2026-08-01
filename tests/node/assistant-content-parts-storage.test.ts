@@ -2026,3 +2026,29 @@ test("content-card hydrate schedules a missing terminal projection", async () =>
     }
   )
 })
+
+test("content-card hydrate keeps non-terminal runs pending when scheduling is inactive", async () => {
+  const { createRun, createThread, persistMessageStateVersion } = await loadDb()
+  const service = new ContentCardsService()
+
+  for (const status of ["running", "interrupted"] as const) {
+    const suffix = status === "running" ? "running" : "interrupted"
+    const threadId = `thread-content-projection-${suffix}-hydrate`
+    const runId = `run-content-projection-${suffix}-hydrate`
+    const messageId = `assistant-message-${suffix}-hydrate`
+    await createThread(threadId)
+    await createRun(runId, threadId, { status })
+    await persistMessageStateVersion({
+      checkpointId: `checkpoint-${suffix}-hydrate`,
+      checkpointNs: "",
+      messages: [{ ...assistantItem(`raw-${suffix}-hydrate`, null), messageId }],
+      runId,
+      threadId,
+      version: "1"
+    })
+
+    assert.deepEqual(await service.getAssistantParts({ messageId, threadId }), {
+      status: "pending-stream"
+    })
+  }
+})

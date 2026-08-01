@@ -26,6 +26,7 @@ import {
   isAssistantContentProjectionDecodeError,
   isAssistantContentProjectionInputError
 } from "./projection-error"
+import { isAssistantContentProjectionTerminalRunStatus } from "./projection-status"
 import {
   ensureAssistantContentProjectionScheduled,
   resumeAssistantContentProjectionForRepairedSource,
@@ -180,6 +181,14 @@ export class ContentCardsService {
           message: "Content cards require an assistant message."
         })
       }
+      const runStatus = message.run_id
+        ? (
+            await transaction.run.findUnique({
+              select: { status: true },
+              where: { runId: message.run_id }
+            })
+          )?.status ?? null
+        : null
       const job = message.run_id
         ? parseProjectionJobSnapshot(
             await transaction.assistantContentProjectionJob.findUnique({
@@ -208,7 +217,8 @@ export class ContentCardsService {
           },
           job,
           kind: "invalid" as const,
-          runId: message.run_id
+          runId: message.run_id,
+          runStatus
         }
       }
       try {
@@ -219,6 +229,7 @@ export class ContentCardsService {
             kind: "ready" as const,
             projection,
             runId: message.run_id,
+            runStatus,
             shouldResumeBlockedSource:
               job?.status === "blocked" &&
               job.blockedInputs.some((blockedInput) => blockedInput.messageId === input.messageId)
@@ -227,7 +238,7 @@ export class ContentCardsService {
       } catch (error) {
         if (!isAssistantContentProjectionDecodeError(error)) throw error
       }
-      return { job, kind: "stale" as const, runId: message.run_id }
+      return { job, kind: "stale" as const, runId: message.run_id, runStatus }
     })
 
     if (inspection.kind === "ready") {
@@ -290,7 +301,8 @@ export class ContentCardsService {
             allowBlockedRetry: false,
             blockedSource: inspection.blockedSource
           }),
-          allowInactiveReread
+          allowInactiveReread,
+          isAssistantContentProjectionTerminalRunStatus(inspection.runStatus)
         )
       }
       if (inspection.kind === "stale" && blockedInput) {
@@ -300,7 +312,8 @@ export class ContentCardsService {
             inspection.runId,
             input.messageId
           ),
-          allowInactiveReread
+          allowInactiveReread,
+          isAssistantContentProjectionTerminalRunStatus(inspection.runStatus)
         )
       }
       if (!blockedInput) {
@@ -309,7 +322,8 @@ export class ContentCardsService {
           await ensureAssistantContentProjectionScheduled(inspection.runId, {
             allowBlockedRetry: true
           }),
-          allowInactiveReread
+          allowInactiveReread,
+          isAssistantContentProjectionTerminalRunStatus(inspection.runStatus)
         )
       }
       return {
@@ -328,7 +342,8 @@ export class ContentCardsService {
           allowBlockedRetry: false,
           blockedSource: inspection.blockedSource
         }),
-        allowInactiveReread
+        allowInactiveReread,
+        isAssistantContentProjectionTerminalRunStatus(inspection.runStatus)
       )
     } else if (inspection.kind === "stale" && inspection.runId) {
       return this.resolveProjectionSchedule(
@@ -336,7 +351,8 @@ export class ContentCardsService {
         await ensureAssistantContentProjectionScheduled(inspection.runId, {
           allowBlockedRetry: true
         }),
-        allowInactiveReread
+        allowInactiveReread,
+        isAssistantContentProjectionTerminalRunStatus(inspection.runStatus)
       )
     }
     return { status: "pending-stream" }
@@ -348,10 +364,12 @@ export class ContentCardsService {
       threadId: string
     },
     outcome: AssistantContentProjectionScheduleOutcome,
-    allowInactiveReread: boolean
+    allowInactiveReread: boolean,
+    terminalRun: boolean
   ): Promise<AssistantContentPartsResult> {
     const result = projectionScheduleResult(outcome)
     if (result) return result
+    if (!terminalRun) return { status: "pending-stream" }
     if (allowInactiveReread) return this.getAssistantPartsAttempt(input, false)
     throw new Error(
       "Assistant content projection scheduling remained inactive after durable state was re-read."
