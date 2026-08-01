@@ -1,5 +1,8 @@
-import type { RuntimeRecordingRef } from "@jingle/langchain-agent-harness"
-import type { RuntimeRunLifecycleController } from "@jingle/langchain-agent-harness"
+import {
+  RuntimeThreadDurableFailureError,
+  type RuntimeRecordingRef,
+  type RuntimeRunLifecycleController
+} from "@jingle/langchain-agent-harness"
 import { createJingleAgentTraceRecordingRef } from "@jingle/langchain-agent-harness/transitional"
 import type { HITLDecision } from "@shared/hitl"
 import type { AgentContextInclusion } from "@shared/jingle-memory"
@@ -25,6 +28,7 @@ import {
   markRunAborted,
   markRunCancelled,
   markRunFailed,
+  RunCompletionCoreValidationError,
   syncRunFromLatestCheckpointFacts
 } from "./persistence"
 import { toAgentRunFailure } from "./errors"
@@ -272,10 +276,23 @@ export function createRuntimeRunLifecycleController(input: {
       submittedRecordingRefs,
       threadId
     }) => {
-      const syncedFacts = await syncRunFromLatestCheckpointFacts(threadId, runId, {
-        expectedMessageId,
-        interrupted
-      })
+      let syncedFacts: Awaited<ReturnType<typeof syncRunFromLatestCheckpointFacts>>
+      try {
+        syncedFacts = await syncRunFromLatestCheckpointFacts(threadId, runId, {
+          expectedMessageId,
+          interrupted
+        })
+      } catch (error) {
+        if (error instanceof RunCompletionCoreValidationError) {
+          scheduleAssistantContentProjection(runId)
+          throw new RuntimeThreadDurableFailureError({
+            cause: error.cause ?? error,
+            durableFailure: error.durableFailure,
+            runId
+          })
+        }
+        throw error
+      }
       scheduleAssistantContentProjection(runId)
       if (!syncedFacts.hasCheckpoint) {
         return {

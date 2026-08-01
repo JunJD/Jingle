@@ -473,6 +473,50 @@ test("RuntimeThreadRun keeps completion when completion claims the terminal stat
   assert.equal(settleCount, 1)
 })
 
+test("RuntimeThreadRun preserves a failure already committed during core completion validation", async () => {
+  const coreError = new Error("missing core checkpoint")
+  const durableFailure = { failure: { kind: "unknown" }, status: "error" }
+  let failCount = 0
+  let settleCount = 0
+  const run = createRuntimeThreadInvokeRun({
+    controls: {
+      lifecycle: createLifecycleControl({
+        completeRun: async () => {
+          throw new RuntimeThreadDurableFailureError({
+            cause: coreError,
+            durableFailure,
+            runId: "run-core-validation-failure"
+          })
+        },
+        failRun: async () => {
+          failCount += 1
+        },
+        settleRun: async () => {
+          settleCount += 1
+        }
+      }),
+      operations: createOperationControl(),
+      stream: {
+        drainRunStream: async () => ({ interrupted: false })
+      }
+    },
+    start: {
+      modelId: "model-1",
+      recordingRefs: [],
+      runId: "run-core-validation-failure"
+    }
+  })
+
+  await assert.rejects(run.execute(createInvokeExecutionInput()), (error) => {
+    assert.ok(error instanceof RuntimeThreadDurableFailureError)
+    assert.equal(error.cause, coreError)
+    assert.equal(error.durableFailure, durableFailure)
+    return true
+  })
+  assert.equal(failCount, 0)
+  assert.equal(settleCount, 1)
+})
+
 test("RuntimeThreadRun keeps an explicit failure when abort follows during stream work", async () => {
   const chunkStarted = createDeferred<void>()
   const releaseChunk = createDeferred<void>()

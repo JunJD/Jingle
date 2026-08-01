@@ -47,6 +47,7 @@ import {
 } from "./event-recorder"
 import type { RunModelRuntimeSelectionResumeAdmission } from "../model-provider/runtime-selection-admission"
 import { isDurableTerminalRunFinishedPayload } from "./run-lifecycle-facts"
+import { toAgentRunFailure } from "./errors"
 
 type PersistedRunStatus = "pending" | "running" | "error" | "success" | "interrupted" | "cancelled"
 type ExistingRun = NonNullable<Awaited<ReturnType<typeof getRun>>>
@@ -56,6 +57,30 @@ export interface SyncedRunCheckpointFacts {
   facts: AgentRunCheckpointFacts
   hasCheckpoint: boolean
   status: PersistedRunStatus
+}
+
+export class RunCompletionCoreValidationError extends Error {
+  readonly durableFailure: {
+    failure: AgentRunFailure
+    status: "error"
+  }
+  readonly runId: string
+
+  constructor(input: {
+    cause: unknown
+    durableFailure: {
+      failure: AgentRunFailure
+      status: "error"
+    }
+    runId: string
+  }) {
+    super(`[Agent] Core completion validation failed for run "${input.runId}".`, {
+      cause: input.cause
+    })
+    this.name = "RunCompletionCoreValidationError"
+    this.durableFailure = input.durableFailure
+    this.runId = input.runId
+  }
 }
 
 interface BeginAgentRunOptions {
@@ -497,6 +522,24 @@ export async function syncRunFromLatestCheckpointFacts(
     interrupted?: boolean
   }
 ): Promise<SyncedRunCheckpointFacts> {
+  let synced: SyncedRunCheckpointFacts
+  try {
+    synced = await readRunCompletionCheckpointFacts(threadId, runId, options)
+  } catch (error) {
+    const failure = toAgentRunFailure("agent:runtime", error)
+    const status = await markRunFailed(threadId, runId, failure, {
+      forceTerminal: true
+    })
+    if (status !== "error") {
+      throw new Error(`[Agent] Core completion failure for run "${runId}" was not terminal.`)
+    }
+    throw new RunCompletionCoreValidationError({
+      cause: error,
+      durableFailure: { failure, status },
+      runId
+    })
+  }
+
   await commitRunLifecycleTerminal({
     operation: "complete",
     runId,
@@ -505,21 +548,17 @@ export async function syncRunFromLatestCheckpointFacts(
   })
 
   try {
-    return await projectRunCompletionCheckpointFacts(threadId, runId, options)
+    await projectRunCompletionTitle(threadId, synced.facts.title)
   } catch (error) {
     console.error(
-      `[Agent] Run "${runId}" reached durable terminal state but checkpoint projection failed:`,
+      `[Agent] Run "${runId}" reached durable terminal state but title projection failed:`,
       error
     )
-    return {
-      facts: extractThreadFactsFromCheckpoint(threadId, undefined, { runId }),
-      hasCheckpoint: false,
-      status: options?.interrupted ? "interrupted" : "success"
-    }
   }
+  return synced
 }
 
-export async function projectRunCompletionCheckpointFacts(
+async function readRunCompletionCheckpointFacts(
   threadId: string,
   runId: string,
   options?: {
@@ -534,7 +573,7 @@ export async function projectRunCompletionCheckpointFacts(
       threadId
     })
   )
-  if (!latest && !options?.interrupted) {
+  if (!latest) {
     throw new Error(`[Agent] Missing checkpoint for run "${runId}" in thread "${threadId}".`)
   }
   if (options?.expectedMessageId) {
@@ -550,20 +589,38 @@ export async function projectRunCompletionCheckpointFacts(
   }
 
   const facts = extractThreadFactsFromCheckpoint(threadId, latest, { runId })
-  if (facts.title !== null) {
-    const thread = await getThread(threadId)
-    const shouldSyncTitle = shouldAutoGenerateThreadTitle({
-      metadata: thread?.metadata ? JSON.parse(thread.metadata) : undefined,
-      title: thread?.title ?? undefined
-    })
-    if (shouldSyncTitle) {
-      await updateThread(threadId, { title: facts.title })
-    }
-  }
   return {
     facts,
-    hasCheckpoint: latest !== undefined,
+    hasCheckpoint: true,
     status: options?.interrupted ? "interrupted" : "success"
+  }
+}
+
+export async function projectRunCompletionCheckpointFacts(
+  threadId: string,
+  runId: string,
+  options?: {
+    expectedMessageId?: string
+    interrupted?: boolean
+  }
+): Promise<SyncedRunCheckpointFacts> {
+  const synced = await readRunCompletionCheckpointFacts(threadId, runId, options)
+  await projectRunCompletionTitle(threadId, synced.facts.title)
+  return synced
+}
+
+async function projectRunCompletionTitle(
+  threadId: string,
+  generatedTitle: string | null
+): Promise<void> {
+  if (generatedTitle === null) return
+  const thread = await getThread(threadId)
+  const shouldSyncTitle = shouldAutoGenerateThreadTitle({
+    metadata: thread?.metadata ? JSON.parse(thread.metadata) : undefined,
+    title: thread?.title ?? undefined
+  })
+  if (shouldSyncTitle) {
+    await updateThread(threadId, { title: generatedTitle })
   }
 }
 
@@ -600,7 +657,10 @@ export async function finalizeRunWithoutCheckpoint(
 export async function markRunFailed(
   threadId: string,
   runId: string,
-  failure: AgentRunFailure
+  failure: AgentRunFailure,
+  options?: {
+    forceTerminal?: boolean
+  }
 ): Promise<"error" | "interrupted"> {
   const terminal = await withRunMetadataLock(runId, async () => {
     const prisma = getPrismaClient()
@@ -640,7 +700,20 @@ export async function markRunFailed(
         })
       }
 
-      const status: "error" | "interrupted" = pendingHitlCount > 0 ? "interrupted" : "error"
+      const status: "error" | "interrupted" =
+        options?.forceTerminal === true || pendingHitlCount === 0 ? "error" : "interrupted"
+      if (options?.forceTerminal === true) {
+        const now = BigInt(Date.now())
+        await transaction.hitlRequest.updateMany({
+          data: {
+            decision: serializeJsonValue({ type: "run_terminal" }),
+            resolvedAt: now,
+            status: "cancelled",
+            updatedAt: now
+          },
+          where: { runId, status: "pending", threadId }
+        })
+      }
       const event = await commitRunFailureTerminalInTransaction(transaction, {
         expectedRunStatus: existing.status!,
         failure,
@@ -659,7 +732,14 @@ export async function markRunFailed(
       return { event, status }
     })
   })
-  commitAgentEventProjectionState([terminal.event])
+  try {
+    commitAgentEventProjectionState([terminal.event])
+  } catch (error) {
+    console.error(
+      `[Agent] Run "${runId}" reached durable ${terminal.status} state but trace projection scheduling failed:`,
+      error
+    )
+  }
   return terminal.status
 }
 

@@ -330,6 +330,13 @@ async function persistRuntimeThreadTerminal<TContextInclusion>(
     })
     return { completion, status: "completed" }
   } catch (completionError) {
+    if (isRuntimeThreadDurableFailureError(completionError)) {
+      return {
+        durableFailure: completionError.durableFailure,
+        error: completionError.cause ?? completionError,
+        status: "failed"
+      }
+    }
     try {
       const durableFailure = await lifecycle.failRun({ error: completionError, runId: start.runId })
       return { durableFailure, error: completionError, status: "failed" }

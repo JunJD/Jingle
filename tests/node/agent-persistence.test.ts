@@ -6237,9 +6237,10 @@ test("syncRunFromLatestCheckpoint accepts submitted canonical message without it
   assert.equal((await getRun(runId))?.status, "success")
 })
 
-test("checkpoint projection validation cannot roll back durable completion", async () => {
+test("missing canonical submitted message commits durable failure instead of success", async () => {
   const { createRun, createThread, getPrismaClient, getRun, getThread } = await loadDbModules()
-  const { syncRunFromLatestCheckpoint } = await import("../../src/main/agent/persistence")
+  const { markRunAborted, RunCompletionCoreValidationError, syncRunFromLatestCheckpoint } =
+    await import("../../src/main/agent/persistence")
   const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
 
   const threadId = "thread-missing-submitted-message"
@@ -6272,26 +6273,124 @@ test("checkpoint projection validation cannot roll back durable completion", asy
     }
   )
 
-  const projectionErrors: unknown[][] = []
-  const consoleError = mock.method(console, "error", (...args: unknown[]) => {
-    projectionErrors.push(args)
-  })
-  await assert.doesNotReject(
-    syncRunFromLatestCheckpoint(threadId, runId, {
-      expectedMessageId: "message-new"
-    })
+  await assert.rejects(
+    syncRunFromLatestCheckpoint(threadId, runId, { expectedMessageId: "message-new" }),
+    (error) => {
+      assert.ok(error instanceof RunCompletionCoreValidationError)
+      assert.equal(error.durableFailure.status, "error")
+      return true
+    }
   )
-  consoleError.mock.restore()
 
-  assert.equal((await getRun(runId))?.status, "success")
-  assert.equal((await getThread(threadId))?.status, "idle")
+  assert.equal((await getRun(runId))?.status, "error")
+  assert.equal((await getThread(threadId))?.status, "error")
   assert.equal(
     await getPrismaClient().agentEvent.count({ where: { runId, type: "run.finished" } }),
     1
   )
+  const finished = await getPrismaClient().agentEvent.findFirstOrThrow({
+    where: { runId, type: "run.finished" }
+  })
+  assert.equal((JSON.parse(finished.payload) as { status: string }).status, "error")
+  await assert.rejects(markRunAborted(threadId, runId), /Cannot abort terminal run/)
+})
+
+test("missing checkpoint commits durable failure and one terminal winner", async () => {
+  const {
+    createRun,
+    createThread,
+    getHitlRequest,
+    getPrismaClient,
+    getRun,
+    getThread,
+    upsertHitlRequest
+  } = await loadDbModules()
+  const { markRunCancelled, RunCompletionCoreValidationError, syncRunFromLatestCheckpoint } =
+    await import("../../src/main/agent/persistence")
+  const threadId = "thread-missing-core-checkpoint"
+  const runId = "run-missing-core-checkpoint"
+  const prisma = getPrismaClient()
+  await createThread(threadId)
+  await prisma.thread.update({ data: { status: "busy" }, where: { threadId } })
+  await createRun(runId, threadId, { status: "running" })
+  await upsertHitlRequest({
+    allowed_decisions: ["approve"],
+    request_id: "request-missing-core-checkpoint",
+    run_id: runId,
+    thread_id: threadId,
+    tool_args: {},
+    tool_call_id: "tool-missing-core-checkpoint",
+    tool_name: "write_file"
+  })
+
+  await assert.rejects(syncRunFromLatestCheckpoint(threadId, runId), (error) => {
+    assert.ok(error instanceof RunCompletionCoreValidationError)
+    assert.equal(error.durableFailure.status, "error")
+    return true
+  })
+
+  assert.equal((await getRun(runId))?.status, "error")
+  assert.equal((await getThread(threadId))?.status, "error")
+  assert.equal((await getHitlRequest("request-missing-core-checkpoint"))?.status, "cancelled")
+  assert.equal(await prisma.agentEvent.count({ where: { runId, type: "run.finished" } }), 1)
   assert.equal(
-    projectionErrors.some((args) => String(args[0]).includes("checkpoint projection failed")),
-    true
+    (
+      JSON.parse(
+        (await prisma.agentEvent.findFirstOrThrow({ where: { runId, type: "run.finished" } }))
+          .payload
+      ) as { status: string }
+    ).status,
+    "error"
+  )
+  await assert.rejects(markRunCancelled(threadId, runId), /Cannot cancel terminal run/)
+  assert.equal(await prisma.agentEvent.count({ where: { runId, type: "run.finished" } }), 1)
+})
+
+test("damaged checkpoint core facts commit durable failure", async () => {
+  const { createRun, createThread, getPrismaClient, getRun } = await loadDbModules()
+  const { RunCompletionCoreValidationError, syncRunFromLatestCheckpoint } =
+    await import("../../src/main/agent/persistence")
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+  const threadId = "thread-damaged-core-checkpoint"
+  const runId = "run-damaged-core-checkpoint"
+  const prisma = getPrismaClient()
+  await createThread(threadId)
+  await prisma.thread.update({ data: { status: "busy" }, where: { threadId } })
+  await createRun(runId, threadId, { status: "running" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-damaged-core-facts"
+  checkpoint.channel_values = {
+    contextInclusions: [{ id: "context-core-fact", kind: "memory" }]
+  }
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: { thread_id: threadId },
+      metadata: { run_id: runId }
+    },
+    checkpoint,
+    { parents: {}, source: "update", step: 0 }
+  )
+  await prisma.checkpointBlob.deleteMany({
+    where: { channel: "contextInclusions", threadId }
+  })
+
+  await assert.rejects(syncRunFromLatestCheckpoint(threadId, runId), (error) => {
+    assert.ok(error instanceof RunCompletionCoreValidationError)
+    assert.equal(error.durableFailure.status, "error")
+    return true
+  })
+  assert.equal((await getRun(runId))?.status, "error")
+  assert.equal(await prisma.agentEvent.count({ where: { runId, type: "run.finished" } }), 1)
+  assert.equal(
+    (
+      JSON.parse(
+        (await prisma.agentEvent.findFirstOrThrow({ where: { runId, type: "run.finished" } }))
+          .payload
+      ) as { status: string }
+    ).status,
+    "error"
   )
 })
 
