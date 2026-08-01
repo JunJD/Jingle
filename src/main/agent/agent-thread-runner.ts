@@ -1613,6 +1613,7 @@ export class AgentThreadRunner {
       entry.hydrated = true
     } catch (error) {
       console.error("[AgentThreadRunner] Failed to hydrate thread data:", { error, threadId })
+      throw error
     } finally {
       entry.hydratePromise = null
     }
