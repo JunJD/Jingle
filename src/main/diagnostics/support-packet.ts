@@ -16,6 +16,7 @@ import {
   type DiagnosticResourceRef,
   type DiagnosticScalar
 } from "./schema"
+import { isElectronChildProcessEventConsistent } from "./electron-child-process-identity"
 
 const JOURNAL_NAME_PATTERN = /^jingle\.log(?:\.(\d+))?$/
 const EVENT_CODE_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)+$/
@@ -490,7 +491,14 @@ function normalizeGraphEvent(value: unknown): DiagnosticGraphEvent | null {
     !stateImpact ||
     !isSafeToken(stateImpact, 96) ||
     !timestamp ||
-    !Number.isFinite(Date.parse(timestamp))
+    !Number.isFinite(Date.parse(timestamp)) ||
+    !isElectronChildProcessEventConsistent({
+      component,
+      dimensions,
+      eventCode,
+      fingerprint,
+      refs
+    })
   ) {
     return null
   }

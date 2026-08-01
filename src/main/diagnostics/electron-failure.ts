@@ -11,6 +11,11 @@ import type {
   DiagnosticResourceRef
 } from "./schema"
 import { normalizeDiagnosticExitSignal } from "./exit-signal"
+import {
+  electronChildProcessFingerprint,
+  electronChildProcessResourceRef,
+  normalizeElectronChildProcessDetails
+} from "./electron-child-process-identity"
 
 const PROCESS_GONE_REASONS = new Set([
   "abnormal-exit",
@@ -29,23 +34,16 @@ const RENDERER_RECOVERY_TERMINAL_REASONS = new Set([
   "recovery-failed"
 ])
 const WINDOW_KINDS = new Set(["ipc-network", "launcher", "main", "settings", "thread-window"])
-const CHILD_PROCESS_TYPES = new Map([
-  ["GPU", "gpu"],
-  ["Pepper Plugin", "pepper-plugin"],
-  ["Pepper Plugin Broker", "pepper-plugin-broker"],
-  ["Sandbox helper", "sandbox-helper"],
-  ["Unknown", "unknown"],
-  ["Utility", "utility"],
-  ["Zygote", "zygote"]
-])
 const NATIVE_HELPER_STDIN_ERROR_CODES = new Set(["ECONNRESET", "EPIPE", "ERR_STREAM_DESTROYED"])
 
 type ElectronFailureInput =
   | {
       kind: "child-process-gone"
       exitCode: unknown
+      name?: unknown
       processType: unknown
       reason: unknown
+      serviceName?: unknown
     }
   | {
       error: unknown
@@ -87,6 +85,23 @@ type FatalDiagnosticRecorder = (
   error: unknown,
   origin: string
 ) => Promise<FatalDiagnosticWriteOutcome>
+
+/** Adapt Electron's main-owned Details shape before applying the typed identity boundary. */
+export function normalizeElectronChildProcessGoneEvent(details: {
+  exitCode: unknown
+  name?: unknown
+  reason: unknown
+  serviceName?: unknown
+  type: unknown
+}) {
+  return normalizeElectronChildProcessDetails({
+    exitCode: details.exitCode,
+    name: details.name,
+    processType: details.type,
+    reason: details.reason,
+    serviceName: details.serviceName
+  })
+}
 
 const FAILED_FATAL_DIAGNOSTIC_WRITE = Object.freeze({ kind: "failed" } as const)
 const PARTIAL_FATAL_DIAGNOSTIC_WRITE = Object.freeze({ kind: "partial" } as const)
@@ -185,10 +200,6 @@ function normalizeRendererFailurePhase(
   value: unknown
 ): RendererWindowLoadFailure["phase"] | "unknown" {
   return value === "load" || value === "preload" || value === "renderer-process" ? value : "unknown"
-}
-
-function normalizeChildProcessType(value: unknown): string {
-  return typeof value === "string" ? (CHILD_PROCESS_TYPES.get(value) ?? "unknown") : "unknown"
 }
 
 function normalizeMainProcessOrigin(value: unknown): string {
@@ -307,24 +318,26 @@ function captureChildProcessFailure(
   sink: DiagnosticGraphSink,
   input: Extract<ElectronFailureInput, { kind: "child-process-gone" }>
 ): DiagnosticEventRef {
-  const processType = normalizeChildProcessType(input.processType)
-  const reason = normalizeProcessGoneReason(input.reason)
+  const details = normalizeElectronChildProcessDetails(input)
+  const dimensionEntries: DiagnosticDimensionInput[] = [
+    { key: "processType", value: details.processType },
+    { key: "reason", value: details.reason }
+  ]
+  if (details.processType === "utility") {
+    dimensionEntries.push({ key: "serviceIdentity", value: details.serviceIdentity })
+    if (details.serviceName)
+      dimensionEntries.push({ key: "serviceName", value: details.serviceName })
+    if (details.name) dimensionEntries.push({ key: "name", value: details.name })
+  }
   return sink.capture({
     component: "electron",
-    dimensionEntries: withOptionalNumber(
-      [
-        { key: "processType", value: processType },
-        { key: "reason", value: reason }
-      ],
-      "exitCode",
-      input.exitCode
-    ),
+    dimensionEntries: withOptionalNumber(dimensionEntries, "exitCode", details.exitCode),
     eventCode: "electron.child_process_gone",
-    fingerprint: `electron.child_process_gone:${processType}:${reason}`,
+    fingerprint: electronChildProcessFingerprint(details),
     level: "error",
     operation: "observe-child-process",
     recoverable: true,
-    refs: [{ id: `child:${processType}`, kind: "process" }],
+    refs: [electronChildProcessResourceRef(details)],
     stateImpact: "child_process_lost",
     summary: "Electron child process exited unexpectedly"
   })

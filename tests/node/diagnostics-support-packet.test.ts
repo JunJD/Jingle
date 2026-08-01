@@ -17,6 +17,7 @@ import type { IpcMain, IpcMainInvokeEvent, WebContents } from "electron"
 import { DiagnosticsGraphRecorder } from "../../src/main/diagnostics/graph"
 import { DiagnosticsLogger } from "../../src/main/diagnostics/logger"
 import { DiagnosticsProcessSession } from "../../src/main/diagnostics/process-session"
+import { captureElectronFailure } from "../../src/main/diagnostics/electron-failure"
 import {
   createDiagnosticSupportPacket,
   DiagnosticSupportPacketError,
@@ -384,6 +385,82 @@ test("support packet rejects graph envelopes that fail the second redaction boun
   } finally {
     rmSync(source.root, { force: true, recursive: true })
     rmSync(destination, { force: true, recursive: true })
+  }
+})
+
+test("support packet re-verifies Electron Utility identity refs and fingerprints", async () => {
+  const source = createSource("utility-identity")
+  const destination = createTempDirectory("utility-identity-output")
+  const forgedDestination = createTempDirectory("utility-identity-forged-output")
+  try {
+    captureElectronFailure(source.graph, {
+      exitCode: 9,
+      kind: "child-process-gone",
+      name: "Network Service",
+      processType: "Utility",
+      reason: "crashed",
+      serviceName: "network.mojom.NetworkService"
+    })
+    await source.graph.flush()
+
+    const valid = await createDiagnosticSupportPacket({
+      destinationDirectory: destination,
+      idFactory: () => "packet-utility-identity",
+      runtimeIdentity: runtimeIdentity(),
+      sourceLogDirectory: source.logDir,
+      sourceRootDirectory: source.root
+    })
+    assert.deepEqual(valid, {
+      coverage: "causal-events-observed",
+      eventCount: 1,
+      evidenceCount: 0,
+      gapCount: 0,
+      kind: "exported",
+      packetId: "packet-utility-identity"
+    })
+    assert.deepEqual(readOnlyPacket(destination).packet.events[0]?.refs, [
+      { id: "child:utility:network-service", kind: "process" }
+    ])
+
+    const journalPath = source.logger.getLogFilePath()
+    const records = readFileSync(journalPath, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+    const graphRecord = records.find((record) => record["recordType"] === "diagnostic.event")
+    assert.ok(graphRecord)
+    graphRecord["dimensions"] = {
+      processType: "HOSTILE_TYPE",
+      reason: "HOSTILE_REASON"
+    }
+    graphRecord["refs"] = [{ id: "child:unknown", kind: "process" }]
+    graphRecord["fingerprint"] = "electron.child_process_gone:unknown:unknown"
+    writeFileSync(journalPath, `${records.map((record) => JSON.stringify(record)).join("\n")}\n`, {
+      mode: 0o600
+    })
+
+    const forged = await createDiagnosticSupportPacket({
+      destinationDirectory: forgedDestination,
+      idFactory: () => "packet-utility-identity-forged",
+      runtimeIdentity: runtimeIdentity(),
+      sourceLogDirectory: source.logDir,
+      sourceRootDirectory: source.root
+    })
+    assert.deepEqual(forged, {
+      coverage: "empty",
+      eventCount: 0,
+      evidenceCount: 0,
+      gapCount: 1,
+      kind: "exported",
+      packetId: "packet-utility-identity-forged"
+    })
+    assert.deepEqual(readOnlyPacket(forgedDestination).packet.manifest.gaps, [
+      { code: "incompatible-graph-record", count: 1 }
+    ])
+  } finally {
+    rmSync(source.root, { force: true, recursive: true })
+    rmSync(destination, { force: true, recursive: true })
+    rmSync(forgedDestination, { force: true, recursive: true })
   }
 })
 

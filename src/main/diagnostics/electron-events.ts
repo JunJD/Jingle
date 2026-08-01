@@ -7,10 +7,12 @@ import {
   captureElectronFailure,
   createFatalDiagnosticSingleFlight,
   exitAfterFatalErrorPresentation,
+  normalizeElectronChildProcessGoneEvent,
   settleFatalDiagnosticWrites,
   waitForFatalDiagnosticWrite,
   type FatalDiagnosticWriteOutcome
 } from "./electron-failure"
+import { electronChildProcessFingerprint } from "./electron-child-process-identity"
 import {
   diagnosticsGraph,
   diagnosticsLogger,
@@ -109,13 +111,24 @@ export function installProcessDiagnostics(options: ProcessDiagnosticsOptions = {
   }
 
   app.on("child-process-gone", (_event, details) => {
+    const normalized = normalizeElectronChildProcessGoneEvent(details)
     captureElectronFailure(diagnosticsGraph, {
-      exitCode: details.exitCode,
+      exitCode: normalized.exitCode,
       kind: "child-process-gone",
+      name: normalized.name,
       processType: details.type,
-      reason: details.reason
+      reason: details.reason,
+      serviceName: normalized.serviceName
     })
-    diagnosticsLogger.error("Electron child process gone", details)
+    diagnosticsLogger.error("Electron child process gone", {
+      ...(normalized.exitCode === undefined ? {} : { exitCode: normalized.exitCode }),
+      eventCode: "electron.child_process_gone",
+      fingerprint: electronChildProcessFingerprint(normalized),
+      name: normalized.name,
+      reason: normalized.reason,
+      serviceName: normalized.serviceName,
+      type: normalized.processType
+    })
   })
 }
 

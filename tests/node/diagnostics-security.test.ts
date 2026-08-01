@@ -21,6 +21,7 @@ import {
   captureElectronRendererRecovery,
   createFatalDiagnosticSingleFlight,
   exitAfterFatalErrorPresentation,
+  normalizeElectronChildProcessGoneEvent,
   settleFatalDiagnosticWrites,
   waitForFatalDiagnosticWrite
 } from "../../src/main/diagnostics/electron-failure"
@@ -451,6 +452,85 @@ test("Electron failure producers only attach evidence for trusted main errors", 
   for (const input of sink.inputs.slice(2)) {
     assertSecretsAbsent(JSON.stringify(input))
     assert.equal(JSON.stringify(input).includes("user-authored renderer content"), false)
+  }
+})
+
+test("Electron Utility failures retain only coherent allowlisted service identity", () => {
+  const sink = new CapturingDiagnosticSink()
+  const hostile = `${SECRET_VALUES.join(" ")} hostile utility label`
+
+  assert.deepEqual(
+    normalizeElectronChildProcessGoneEvent({
+      exitCode: 9,
+      name: "Network Service",
+      reason: "crashed",
+      serviceName: "network.mojom.NetworkService",
+      type: "Utility"
+    }),
+    {
+      exitCode: 9,
+      name: "Network Service",
+      processType: "utility",
+      reason: "crashed",
+      serviceIdentity: "network-service",
+      serviceName: "network.mojom.NetworkService"
+    }
+  )
+
+  captureElectronFailure(sink, {
+    exitCode: 9,
+    kind: "child-process-gone",
+    name: "Network Service",
+    processType: "Utility",
+    reason: "crashed",
+    serviceName: "network.mojom.NetworkService"
+  })
+  captureElectronFailure(sink, {
+    exitCode: 10,
+    kind: "child-process-gone",
+    name: "Audio Service",
+    processType: "Utility",
+    reason: "killed",
+    serviceName: "audio.mojom.AudioService"
+  })
+  captureElectronFailure(sink, {
+    exitCode: 11,
+    kind: "child-process-gone",
+    name: "Network Service",
+    processType: "Utility",
+    reason: "crashed",
+    serviceName: hostile
+  })
+  captureElectronFailure(sink, {
+    exitCode: 12,
+    kind: "child-process-gone",
+    name: "N".repeat(97),
+    processType: "Utility",
+    reason: "crashed",
+    serviceName: "network.mojom.NetworkService"
+  })
+
+  assert.deepEqual(
+    sink.inputs.slice(0, 2).map(({ refs, fingerprint }) => ({ refs, fingerprint })),
+    [
+      {
+        fingerprint: "electron.child_process_gone:utility:crashed:network-service",
+        refs: [{ id: "child:utility:network-service", kind: "process" }]
+      },
+      {
+        fingerprint: "electron.child_process_gone:utility:killed:audio-service",
+        refs: [{ id: "child:utility:audio-service", kind: "process" }]
+      }
+    ]
+  )
+  for (const input of sink.inputs.slice(2)) {
+    assert.deepEqual(input.refs, [{ id: "child:utility", kind: "process" }])
+    assert.equal(input.fingerprint?.includes("network-service") ?? false, false)
+    assert.equal(
+      input.dimensionEntries?.some(({ key }) => ["name", "serviceName"].includes(key)),
+      false
+    )
+    assertSecretsAbsent(JSON.stringify(input))
   }
 })
 
