@@ -1,4 +1,8 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
+import {
+  spawn,
+  type ChildProcessWithoutNullStreams,
+  type SpawnOptionsWithoutStdio
+} from "node:child_process"
 import {
   COMPUTER_USE_PROCESS_SIGNALS,
   type ComputerUseBackendEnvironment,
@@ -159,10 +163,15 @@ function assertRequestEnvironment(
 function spawnComputerUseProcess(
   invocation: ComputerUseNativeInvocation
 ): ChildProcessWithoutNullStreams {
-  return spawn(invocation.command, [...invocation.args], {
+  return spawn(invocation.command, [...invocation.args], createComputerUseNativeSpawnOptions())
+}
+
+export function createComputerUseNativeSpawnOptions(): SpawnOptionsWithoutStdio {
+  return {
     env: process.env,
-    stdio: ["pipe", "pipe", "pipe"]
-  })
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true
+  }
 }
 
 async function invokeComputerUseProcess(input: {

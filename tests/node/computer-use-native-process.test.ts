@@ -10,6 +10,7 @@ import {
   ComputerUseNativeProcessError,
   createComputerUseNativeInvocation,
   createComputerUseNativeProcessBridge,
+  createComputerUseNativeSpawnOptions,
   resolveComputerUseBackendEnvironment
 } from "../../src/main/computer-use/native-process"
 
@@ -390,4 +391,8 @@ test("native platform and invocation selection is explicit", () => {
     args: ["/helper.py"],
     command: "/usr/bin/python3"
   })
+  const spawnOptions = createComputerUseNativeSpawnOptions()
+  assert.equal(spawnOptions.env, process.env)
+  assert.deepEqual(spawnOptions.stdio, ["pipe", "pipe", "pipe"])
+  assert.equal(spawnOptions.windowsHide, true)
 })
