@@ -168,7 +168,12 @@ function spawnComputerUseProcess(
 
 export function createComputerUseNativeSpawnOptions(): SpawnOptionsWithoutStdio {
   return {
-    env: process.env,
+    env: {
+      ...process.env,
+      // This is a process-ownership fact, not caller configuration. Always
+      // overwrite inherited input so a helper cannot bind to another PID.
+      JINGLE_PARENT_PID: String(process.pid)
+    },
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true
   }

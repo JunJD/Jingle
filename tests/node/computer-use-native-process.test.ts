@@ -391,8 +391,16 @@ test("native platform and invocation selection is explicit", () => {
     args: ["/helper.py"],
     command: "/usr/bin/python3"
   })
-  const spawnOptions = createComputerUseNativeSpawnOptions()
-  assert.equal(spawnOptions.env, process.env)
-  assert.deepEqual(spawnOptions.stdio, ["pipe", "pipe", "pipe"])
-  assert.equal(spawnOptions.windowsHide, true)
+  const inheritedParentPid = process.env.JINGLE_PARENT_PID
+  process.env.JINGLE_PARENT_PID = "2"
+  try {
+    const spawnOptions = createComputerUseNativeSpawnOptions()
+    assert.notEqual(spawnOptions.env, process.env)
+    assert.equal(spawnOptions.env?.JINGLE_PARENT_PID, String(process.pid))
+    assert.deepEqual(spawnOptions.stdio, ["pipe", "pipe", "pipe"])
+    assert.equal(spawnOptions.windowsHide, true)
+  } finally {
+    if (inheritedParentPid === undefined) delete process.env.JINGLE_PARENT_PID
+    else process.env.JINGLE_PARENT_PID = inheritedParentPid
+  }
 })

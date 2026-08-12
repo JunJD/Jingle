@@ -447,7 +447,10 @@ private func activateExistingApplication(_ application: NSRunningApplication) ->
     return application.activate(options: legacyIgnoringOtherApps)
 }
 
-private func execute(_ request: OperationRequest) throws -> ExecutionResult {
+private func execute(
+    _ request: OperationRequest,
+    parentLifetime: JingleParentLifetimeGuard
+) throws -> ExecutionResult {
     guard let base = request.base, let baseStateId = base.stateId, let actions = request.actions else {
         throw NativeError(description: "Execute requires base observation, stateId, and actions.")
     }
@@ -507,11 +510,13 @@ private func execute(_ request: OperationRequest) throws -> ExecutionResult {
                 steps.append(failedStep(action, route: route, outcome: "unavailable", noSideEffect: true))
                 return ExecutionResult(baseStateId: baseStateId, outcome: outcome, steps: steps, stoppedAt: index)
             }
+            try parentLifetime.assertAlive()
             let raiseError = AXUIElementPerformAction(window.element, kAXRaiseAction as CFString)
             guard raiseError == .success else {
                 steps.append(failedStep(action, route: route, outcome: "unknown", noSideEffect: false))
                 return ExecutionResult(baseStateId: baseStateId, outcome: "unknown", steps: steps, stoppedAt: index)
             }
+            try parentLifetime.assertAlive()
             guard activateExistingApplication(window.application),
                   isFrontmost(window.application) else {
                 steps.append(failedStep(action, route: route, outcome: "unknown", noSideEffect: false))
@@ -521,6 +526,7 @@ private func execute(_ request: OperationRequest) throws -> ExecutionResult {
             continue
         case "press":
             route = "ax_action"
+            try parentLifetime.assertAlive()
             error = AXUIElementPerformAction(target.0, kAXPressAction as CFString)
         case "set_value", "type_text":
             guard let value = action.value else {
@@ -529,6 +535,7 @@ private func execute(_ request: OperationRequest) throws -> ExecutionResult {
                 return ExecutionResult(baseStateId: baseStateId, outcome: outcome, steps: steps, stoppedAt: index)
             }
             route = "ax_value"
+            try parentLifetime.assertAlive()
             error = AXUIElementSetAttributeValue(target.0, kAXValueAttribute as CFString, value as CFTypeRef)
         default:
             let outcome = aggregateStoppedOutcome("refused", completedSteps: steps, actionCount: actions.count)
@@ -583,13 +590,16 @@ private func writeError(_ error: NativeError) {
 private enum JingleComputerUseMacOS {
     static func main() {
         do {
-            let command = try readRequest()
-            switch command.method {
+            let parentLifetime = try JingleParentLifetimeGuard()
+            try withExtendedLifetime(parentLifetime) {
+                let command = try readRequest()
+                switch command.method {
             case "probe":
                 guard command.environment == jingleComputerUseEnvironment,
                       command.protocolVersion == jingleComputerUseProtocolVersion else {
                     throw NativeError(description: "Probe request belongs to another environment or protocol.")
                 }
+                try parentLifetime.assertAlive()
                 let accessibilityTrusted = probeAccessibility(
                     requestPermission: command.requestPermission == true
                 )
@@ -620,12 +630,16 @@ private enum JingleComputerUseMacOS {
                     throw NativeError(description: "Execute request belongs to another environment or protocol.")
                 }
                 guard let request = command.request else { throw NativeError(description: "Execute request is missing.") }
-                try write(OperationResponse(method: "execute", result: try execute(request)))
+                try write(OperationResponse(
+                    method: "execute",
+                    result: try execute(request, parentLifetime: parentLifetime)
+                ))
             case "dispose_session":
                 guard normalized(command.sessionId) != nil else { throw NativeError(description: "Session id is missing.") }
                 try write(Optional<String>.none)
-            default:
-                throw NativeError(description: "Unsupported Computer Use method: \(command.method)")
+                default:
+                    throw NativeError(description: "Unsupported Computer Use method: \(command.method)")
+                }
             }
         } catch let error as NativeError {
             writeError(error)

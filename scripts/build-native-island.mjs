@@ -27,7 +27,10 @@ const targets = [
     frameworks: ["AppKit", "ApplicationServices"],
     label: "computer-use-macos",
     outputPath: resolve(outputDirectory, "jingle-computer-use-macos"),
-    sourcePath: resolve(computerUseSourceDirectory, "jingle-computer-use-macos.swift")
+    sourcePaths: [
+      resolve(computerUseSourceDirectory, "jingle-computer-use-parent-lifetime.swift"),
+      resolve(computerUseSourceDirectory, "jingle-computer-use-macos.swift")
+    ]
   },
   {
     frameworks: ["AppKit", "ApplicationServices"],
@@ -63,8 +66,11 @@ if (process.platform !== "darwin") {
 }
 
 for (const target of targets) {
-  if (!existsSync(target.sourcePath)) {
-    throw new Error(`Native Swift source not found: ${target.sourcePath}`)
+  const sourcePaths = target.sourcePaths ?? [target.sourcePath]
+  for (const sourcePath of sourcePaths) {
+    if (!existsSync(sourcePath)) {
+      throw new Error(`Native Swift source not found: ${sourcePath}`)
+    }
   }
 
   mkdirSync(dirname(target.outputPath), { recursive: true })
@@ -73,7 +79,7 @@ for (const target of targets) {
     [
       "-parse-as-library",
       "-O",
-      target.sourcePath,
+      ...sourcePaths,
       "-o",
       target.outputPath,
       ...(target.infoPlistPath

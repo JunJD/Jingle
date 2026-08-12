@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
-import { spawnSync } from "node:child_process"
-import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { spawn, spawnSync } from "node:child_process"
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import test from "node:test"
@@ -28,11 +28,18 @@ interface NativeOperationResponse {
 
 const repositoryRoot = process.cwd()
 const nativeSourceDirectory = resolve(repositoryRoot, "packages/computer-use-core/src/native")
+const macParentLifetimeSource = resolve(
+  nativeSourceDirectory,
+  "jingle-computer-use-parent-lifetime.swift"
+)
 
 function runJson(
   executable: string,
   args: readonly string[],
-  environment: NodeJS.ProcessEnv = process.env
+  environment: NodeJS.ProcessEnv = {
+    ...process.env,
+    JINGLE_PARENT_PID: String(process.pid)
+  }
 ): unknown {
   const request = args.at(-1)
   assert.ok(request)
@@ -50,7 +57,10 @@ function runJson(
 function runJsonFailure(
   executable: string,
   args: readonly string[],
-  environment: NodeJS.ProcessEnv = process.env
+  environment: NodeJS.ProcessEnv = {
+    ...process.env,
+    JINGLE_PARENT_PID: String(process.pid)
+  }
 ): string {
   const request = args.at(-1)
   assert.ok(request)
@@ -120,6 +130,7 @@ test("native artifact packaging contains only the Computer Use helpers", () => {
   for (const artifact of artifacts) {
     assert.ok(buildScript.includes(artifact.replace("out/native/", "")))
   }
+  assert.match(buildScript, /jingle-computer-use-parent-lifetime\.swift/)
   assert.equal(buildScript.includes("jingle-desktop-automation"), false)
 })
 
@@ -282,6 +293,7 @@ test(
         [
           "-parse-as-library",
           "-O",
+          macParentLifetimeSource,
           resolve(nativeSourceDirectory, "jingle-computer-use-macos.swift"),
           "-o",
           binaryPath,
@@ -327,6 +339,98 @@ test(
         ]),
         /another environment or protocol/
       )
+    } finally {
+      rmSync(temporaryDirectory, { force: true, recursive: true })
+    }
+  }
+)
+
+test(
+  "macOS helper exits when its direct Electron owner dies",
+  { skip: process.platform !== "darwin" },
+  async () => {
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), "jingle-computer-use-parent-death-"))
+    const harnessPath = resolve(temporaryDirectory, "parent-lifetime-harness")
+    const harnessSource = resolve(temporaryDirectory, "ParentLifetimeHarness.swift")
+    const parentSource = resolve(temporaryDirectory, "parent.mjs")
+    const markerPath = resolve(temporaryDirectory, "side-effect-marker")
+    try {
+      writeFileSync(
+        harnessSource,
+        `
+import Darwin
+import Foundation
+
+@main
+private enum ParentLifetimeHarness {
+    static func main() throws {
+        let guardOwner = try JingleParentLifetimeGuard()
+        try withExtendedLifetime(guardOwner) {
+            print("ready:\\(getpid())")
+            fflush(stdout)
+            // The held operation deliberately never calls assertAlive again;
+            // the independent kqueue monitor must terminate it with the parent.
+            Thread.sleep(forTimeInterval: 2)
+            try Data("unsafe".utf8).write(to: URL(fileURLWithPath: ProcessInfo.processInfo.environment["JINGLE_TEST_MARKER"]!))
+        }
+    }
+}
+`,
+        "utf8"
+      )
+      const compile = spawnSync(
+        "swiftc",
+        ["-parse-as-library", "-O", macParentLifetimeSource, harnessSource, "-o", harnessPath],
+        { encoding: "utf8" }
+      )
+      assert.equal(compile.status, 0, compile.stderr || compile.error?.message)
+      writeFileSync(
+        parentSource,
+        `
+import { spawn } from "node:child_process"
+const helper = spawn(process.env.JINGLE_TEST_HELPER, [], {
+  env: { ...process.env, JINGLE_PARENT_PID: String(process.pid) },
+  stdio: ["ignore", "pipe", "inherit"]
+})
+helper.stdout.once("data", (chunk) => process.stdout.write(chunk))
+setInterval(() => {}, 60_000)
+`,
+        "utf8"
+      )
+
+      const parent = spawn(process.execPath, [parentSource], {
+        env: {
+          ...process.env,
+          JINGLE_PARENT_PID: "2",
+          JINGLE_TEST_HELPER: harnessPath,
+          JINGLE_TEST_MARKER: markerPath
+        },
+        stdio: ["ignore", "pipe", "pipe"]
+      })
+      const helperPid = await new Promise<number>((resolvePid, rejectPid) => {
+        const timeout = setTimeout(() => rejectPid(new Error("helper did not become ready")), 5_000)
+        parent.once("error", rejectPid)
+        parent.stdout.once("data", (chunk) => {
+          clearTimeout(timeout)
+          const match = /^ready:(\d+)/.exec(String(chunk))
+          if (!match) rejectPid(new Error(`unexpected helper readiness: ${String(chunk)}`))
+          else resolvePid(Number(match[1]))
+        })
+      })
+      assert.equal(parent.kill("SIGKILL"), true)
+      await new Promise<void>((resolveClose) => parent.once("close", () => resolveClose()))
+
+      const deadline = Date.now() + 5_000
+      while (Date.now() < deadline) {
+        try {
+          process.kill(helperPid, 0)
+        } catch {
+          break
+        }
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 20))
+      }
+      assert.throws(() => process.kill(helperPid, 0))
+      assert.equal(existsSync(markerPath), false)
     } finally {
       rmSync(temporaryDirectory, { force: true, recursive: true })
     }
