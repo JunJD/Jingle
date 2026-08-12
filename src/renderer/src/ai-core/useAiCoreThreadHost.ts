@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react"
+import { useCallback, useMemo, useRef } from "react"
 import {
   DEFAULT_PERMISSION_MODE,
   THREAD_PERMISSION_MODE_METADATA_KEY
@@ -39,14 +39,19 @@ export function useAiCoreThreadHost(
   const inputNeedsWorkspaceMessage = copy.chat.inputNeedsWorkspace
   const threadContext = useThreadContext()
   const { loadThreadData } = threadContext
+  const activationVersionRef = useRef(0)
   const assertCanCreateThread = useCallback((): void => {
     if (mode !== "launcher" && mode !== "main") throw new Error("Unknown AI thread host mode.")
   }, [mode])
 
   const activateThread = useCallback(
     async (threadId: string): Promise<void> => {
-      setActiveThreadId(threadId)
+      const activationVersion = activationVersionRef.current + 1
+      activationVersionRef.current = activationVersion
       await loadThreadData(threadId)
+      if (activationVersion === activationVersionRef.current) {
+        setActiveThreadId(threadId)
+      }
     },
     [loadThreadData, setActiveThreadId]
   )
