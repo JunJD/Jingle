@@ -1045,9 +1045,8 @@ export class AgentService {
 
     console.log("[Agent] Received invoke request:", {
       channel,
-      threadId,
-      message: messagePreview.substring(0, 50),
-      permissionMode: requestedPermissionMode
+      permissionMode: requestedPermissionMode,
+      threadId
     })
 
     const claim = await this.claimThreadRun(threadId, channel, sink)
@@ -1438,8 +1437,8 @@ export class AgentService {
     const commandOutcome = createAgentCommandOutcomeReporter(options?.onCommandOutcome)
     const cancellationReporter = createAgentCancellationReporter(sink)
     console.log("[Agent] Received resume request:", {
-      threadId,
-      decision
+      decisionType: decision.type,
+      threadId
     })
 
     const claim = await this.claimThreadRun(threadId, "agent:resume", sink)

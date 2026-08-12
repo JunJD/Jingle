@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -86,4 +86,26 @@ test("serializeStreamChunkForIpc keeps projected values interrupt ids aligned wi
     projected.__interrupt__?.[0]?.value?.actionRequests?.[0]?.id,
     "hitl:thread-1:run-1:tool-call-1"
   )
+})
+
+test("agent request logs exclude user message and correction content", async () => {
+  const source = await readFile(join(process.cwd(), "src/main/agent/service.ts"), "utf8")
+  const invokeLog = source.match(
+    /console\.log\("\[Agent\] Received invoke request:", \{([\s\S]*?)\n {4}\}\)/
+  )?.[1]
+  const resumeLog = source.match(
+    /console\.log\("\[Agent\] Received resume request:", \{([\s\S]*?)\n {4}\}\)/
+  )?.[1]
+
+  assert.ok(invokeLog)
+  assert.match(invokeLog, /channel/)
+  assert.match(invokeLog, /permissionMode/)
+  assert.match(invokeLog, /threadId/)
+  assert.doesNotMatch(invokeLog, /message|messagePreview|content/)
+
+  assert.ok(resumeLog)
+  assert.match(resumeLog, /decisionType: decision\.type/)
+  assert.match(resumeLog, /threadId/)
+  assert.doesNotMatch(resumeLog, /\bdecision\b\s*[,}]/)
+  assert.doesNotMatch(resumeLog, /correction/)
 })
