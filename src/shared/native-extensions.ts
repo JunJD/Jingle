@@ -142,7 +142,7 @@ export type NativeExtensionConnectionAuthManifest =
       clientId: string
       redirect: NativeExtensionOAuthRedirectManifest
       scopes: string[]
-      secretNames: string[]
+      secretNames: ["accessToken"]
       tokenUrl: string
       type: "oauth"
     }
