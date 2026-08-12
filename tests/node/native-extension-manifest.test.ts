@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { defineNativeExtensionManifest as definePublicNativeExtensionManifest } from "@jingle/extension-api"
 import { defineNativeExtensionManifest } from "../../src/shared/native-extensions"
 
 function defineManifestWithToolDisplays(
@@ -74,5 +75,54 @@ test("native extension manifest limits OAuth V1 credentials to one access token"
         title: "Example"
       }),
     /OAuth auth\.secretNames must be exactly \["accessToken"\]/
+  )
+
+  assert.throws(
+    () =>
+      definePublicNativeExtensionManifest({
+        capabilities: [],
+        commands: [],
+        connection: {
+          auth: {
+            authorizationUrl: "https://jingle.cool/oauth/example/start",
+            clientId: "jingle-desktop",
+            redirect: {
+              callbackPath: "/oauth/callback",
+              method: "app-scheme",
+              scheme: "jingle"
+            },
+            scopes: [],
+            secretNames: ["accessToken", "refreshToken"] as unknown as ["accessToken"],
+            tokenUrl: "https://jingle.cool/oauth/example/token",
+            type: "oauth"
+          },
+          id: "default",
+          provider: "example",
+          title: "Example"
+        },
+        name: "example",
+        title: "Example"
+      }),
+    /OAuth auth\.secretNames must be exactly \["accessToken"\]/
+  )
+})
+
+test("native extension manifest keeps multi-field API key credentials", () => {
+  assert.doesNotThrow(() =>
+    definePublicNativeExtensionManifest({
+      capabilities: [],
+      commands: [],
+      connection: {
+        auth: {
+          secretNames: ["accountId", "apiKey"],
+          type: "apiKey"
+        },
+        id: "default",
+        provider: "example",
+        title: "Example"
+      },
+      name: "example",
+      title: "Example"
+    })
   )
 })

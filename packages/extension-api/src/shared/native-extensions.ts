@@ -133,7 +133,7 @@ export type NativeExtensionConnectionAuthManifest =
       type: "none"
     }
   | {
-      secretNames: string[]
+      secretNames: ["accessToken"]
       type: "apiKey" | "personalAccessToken"
     }
   | {
@@ -419,6 +419,12 @@ function validateConnectionAuthManifest(
 
   if (auth.type !== "oauth") {
     return new Set(auth.secretNames)
+  }
+
+  if (auth.secretNames.length !== 1 || auth.secretNames[0] !== "accessToken") {
+    throw new Error(
+      `Native extension "${manifestName}" connection "${connection.id}" OAuth auth.secretNames must be exactly ["accessToken"]`
+    )
   }
 
   assertNonEmptyString(
