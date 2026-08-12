@@ -294,6 +294,9 @@ importers:
       '@jingle/extension-api':
         specifier: workspace:*
         version: link:../../packages/extension-api
+      '@jingle/extension-utils':
+        specifier: workspace:*
+        version: link:../../packages/extension-utils
       electron:
         specifier: ^39.2.6
         version: 39.8.3
@@ -312,6 +315,9 @@ importers:
       '@jingle/extension-api':
         specifier: workspace:*
         version: link:../../packages/extension-api
+      electron:
+        specifier: ^39.2.6
+        version: 39.8.3
       react:
         specifier: ^19.2.1
         version: 19.2.4
@@ -339,6 +345,9 @@ importers:
       '@jingle/extension-api':
         specifier: workspace:*
         version: link:../../packages/extension-api
+      '@jingle/extension-utils':
+        specifier: workspace:*
+        version: link:../../packages/extension-utils
       '@octokit/plugin-throttling':
         specifier: ^11.0.3
         version: 11.0.3(@octokit/core@7.0.6)

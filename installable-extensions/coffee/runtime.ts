@@ -13,21 +13,21 @@ export const coffeeRuntime = defineNativeExtensionRuntime({
       mode: "no-view",
       run: CoffeeCaffeinate
     },
-    caffeinateFor: {
+    decaffeinate: {
       mode: "no-view",
-      run: CoffeeCaffeinateFor
+      run: CoffeeDecaffeinate
     },
     caffeinateToggle: {
       mode: "no-view",
       run: CoffeeToggle
     },
+    caffeinateFor: {
+      mode: "no-view",
+      run: CoffeeCaffeinateFor
+    },
     caffeinateUntil: {
       mode: "no-view",
       run: CoffeeCaffeinateUntil
-    },
-    decaffeinate: {
-      mode: "no-view",
-      run: CoffeeDecaffeinate
     },
     index: {
       Component: CoffeeMenuBar,

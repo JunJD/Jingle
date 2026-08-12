@@ -61,6 +61,9 @@ export const coffeeRuntimeMetadata = defineNativeExtensionRuntimeMetadata({
       }
     },
     {
+      name: "index"
+    },
+    {
       name: "status",
       search: {
         aliases: ["coffee status", "caffeinate status", "唤醒状态"],

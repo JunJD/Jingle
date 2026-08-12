@@ -6,21 +6,58 @@ import test from "node:test"
 
 import { validateNativeExtensionPackageBoundaries } from "../../scripts/native-extension-package-boundaries.mjs"
 
+test("native extension package boundary check fails when the installable package root is missing", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "jingle-extension-boundary-missing-root-"))
+
+  try {
+    assert.match(
+      validateNativeExtensionPackageBoundaries({ repoRoot }).errors.join("\n"),
+      /installable extension package root is missing/
+    )
+  } finally {
+    await rm(repoRoot, { force: true, recursive: true })
+  }
+})
+
+test("native extension package boundary check scans installable extension packages", async () => {
+  const repoRoot = await createFixtureRepo({
+    files: {
+      "installable-extensions/fixture/src/view.tsx":
+        'import { privateValue } from "@renderer/private"\nvoid privateValue\n'
+    },
+    packageJson: {
+      dependencies: {
+        "@jingle/extension-api": "workspace:*"
+      }
+    },
+    rootDirectory: "installable-extensions/fixture"
+  })
+
+  try {
+    assert.match(
+      validateNativeExtensionPackageBoundaries({ repoRoot }).errors.join("\n"),
+      /host private aliases/
+    )
+  } finally {
+    await rm(repoRoot, { force: true, recursive: true })
+  }
+})
+
 test("native extension package boundary check accepts declared package-local imports", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/main.ts": [
+      "installable-extensions/fixture/main.ts": [
         'import { defineNativeExtensionMain } from "@jingle/extension-api"',
         'import { helper } from "./domain/helper"',
         "void helper",
         "export const main = defineNativeExtensionMain({})"
       ].join("\n"),
-      "extensions/fixture/domain/helper.ts": [
+      "installable-extensions/fixture/domain/helper.ts": [
         'import { z } from "zod"',
         "void z",
         "export const helper = true"
       ].join("\n"),
-      "extensions/fixture/src/.gitkeep": ""
+      "installable-extensions/fixture/src/.gitkeep": ""
     },
     packageJson: {
       dependencies: {
@@ -40,17 +77,17 @@ test("native extension package boundary check accepts declared package-local imp
 test("native extension package boundary check keeps main out of command source modules", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/main.ts": [
+      "installable-extensions/fixture/main.ts": [
         'import { helper } from "./main/tools"',
         "void helper",
         "export {}"
       ].join("\n"),
-      "extensions/fixture/main/tools.ts": [
+      "installable-extensions/fixture/main/tools.ts": [
         'import { commandHelper } from "../src/helper"',
         "void commandHelper",
         "export const helper = true"
       ].join("\n"),
-      "extensions/fixture/src/helper.ts": "export const commandHelper = true\n"
+      "installable-extensions/fixture/src/helper.ts": "export const commandHelper = true\n"
     },
     packageJson: {
       dependencies: {
@@ -70,7 +107,7 @@ test("native extension package boundary check keeps main out of command source m
 test("native extension package boundary check enforces package entry shape", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/src/helper.ts": "export const helper = true\n"
+      "installable-extensions/fixture/src/helper.ts": "export const helper = true\n"
     },
     packageJson: {
       main: "./dist/main.js",
@@ -101,7 +138,7 @@ test("native extension package boundary check enforces package entry shape", asy
 test("native extension package boundary check enforces package entry identities", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/manifest.ts": [
+      "installable-extensions/fixture/manifest.ts": [
         'import { defineNativeExtensionManifest } from "@jingle/extension-api"',
         'const EXTENSION_ID = "other"',
         "export const manifest = defineNativeExtensionManifest({",
@@ -116,7 +153,7 @@ test("native extension package boundary check enforces package entry identities"
         '  title: "Other"',
         "})"
       ].join("\n"),
-      "extensions/fixture/runtime-metadata.ts": [
+      "installable-extensions/fixture/runtime-metadata.ts": [
         'import { defineNativeExtensionRuntimeMetadata } from "@jingle/extension-api"',
         "const IDENTITY = {",
         '  extensionId: "other"',
@@ -126,7 +163,7 @@ test("native extension package boundary check enforces package entry identities"
         "  extensionName: IDENTITY.extensionId",
         "})"
       ].join("\n"),
-      "extensions/fixture/runtime.ts": [
+      "installable-extensions/fixture/runtime.ts": [
         'import { defineNativeExtensionRuntime } from "@jingle/extension-api"',
         "export const runtime = defineNativeExtensionRuntime({",
         "  commands: {},",
@@ -154,7 +191,7 @@ test("native extension package boundary check enforces package entry identities"
 test("native extension package boundary check resolves local identity constants", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/manifest.ts": [
+      "installable-extensions/fixture/manifest.ts": [
         'import { defineNativeExtensionManifest } from "@jingle/extension-api"',
         'import { EXTENSION_ID } from "./identity"',
         "export const manifest = defineNativeExtensionManifest({",
@@ -169,7 +206,7 @@ test("native extension package boundary check resolves local identity constants"
         '  title: "Fixture"',
         "})"
       ].join("\n"),
-      "extensions/fixture/runtime-metadata.ts": [
+      "installable-extensions/fixture/runtime-metadata.ts": [
         'import { defineNativeExtensionRuntimeMetadata } from "@jingle/extension-api"',
         'import { EXTENSION_IDENTITY } from "./identity"',
         "export const runtimeMetadata = defineNativeExtensionRuntimeMetadata({",
@@ -177,20 +214,20 @@ test("native extension package boundary check resolves local identity constants"
         "  extensionName: EXTENSION_IDENTITY.extensionId",
         "})"
       ].join("\n"),
-      "extensions/fixture/runtime.ts": [
+      "installable-extensions/fixture/runtime.ts": [
         'import { defineNativeExtensionRuntime } from "@jingle/extension-api"',
         "export const runtime = defineNativeExtensionRuntime({",
         "  commands: {},",
         '  extensionName: "fixture"',
         "})"
       ].join("\n"),
-      "extensions/fixture/identity.ts": [
+      "installable-extensions/fixture/identity.ts": [
         "export const EXTENSION_IDENTITY = {",
         '  extensionId: "fixture"',
         "}",
         "export const EXTENSION_ID = EXTENSION_IDENTITY.extensionId"
       ].join("\n"),
-      "extensions/fixture/src/.gitkeep": ""
+      "installable-extensions/fixture/src/.gitkeep": ""
     },
     packageJson: {
       dependencies: {
@@ -209,10 +246,10 @@ test("native extension package boundary check resolves local identity constants"
 test("native extension package boundary check validates manifest asset references", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/assets/command.svg": "<svg />\n",
-      "extensions/fixture/assets/icon.svg": "<svg />\n",
-      "extensions/fixture/src/.gitkeep": "",
-      "extensions/fixture/manifest.ts": [
+      "installable-extensions/fixture/assets/command.svg": "<svg />\n",
+      "installable-extensions/fixture/assets/icon.svg": "<svg />\n",
+      "installable-extensions/fixture/src/.gitkeep": "",
+      "installable-extensions/fixture/manifest.ts": [
         'import { defineNativeExtensionManifest } from "@jingle/extension-api"',
         "export const manifest = defineNativeExtensionManifest({",
         "  capabilities: [],",
@@ -253,7 +290,7 @@ test("native extension package boundary check validates manifest asset reference
 test("native extension package boundary check rejects manifest assets outside the package assets directory", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/manifest.ts": [
+      "installable-extensions/fixture/manifest.ts": [
         'import { defineNativeExtensionManifest } from "@jingle/extension-api"',
         "export const manifest = defineNativeExtensionManifest({",
         "  capabilities: [],",
@@ -276,7 +313,7 @@ test("native extension package boundary check rejects manifest assets outside th
         '  title: "Fixture"',
         "})"
       ].join("\n"),
-      "extensions/fixture/src/.gitkeep": ""
+      "installable-extensions/fixture/src/.gitkeep": ""
     },
     packageJson: {
       dependencies: {
@@ -297,13 +334,13 @@ test("native extension package boundary check rejects manifest assets outside th
 test("native extension package boundary check enforces package entry file and directory kinds", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/assets": "not a directory\n",
-      "extensions/fixture/main/.gitkeep": "",
-      "extensions/fixture/main.ts": "export {}\n",
-      "extensions/fixture/src": "not a directory\n",
-      "extensions/fixture/manifest.ts/nested.ts": "export {}\n",
-      "extensions/fixture/runtime-metadata.ts": "export {}\n",
-      "extensions/fixture/runtime.ts": "export {}\n"
+      "installable-extensions/fixture/assets": "not a directory\n",
+      "installable-extensions/fixture/main/.gitkeep": "",
+      "installable-extensions/fixture/main.ts": "export {}\n",
+      "installable-extensions/fixture/src": "not a directory\n",
+      "installable-extensions/fixture/manifest.ts/nested.ts": "export {}\n",
+      "installable-extensions/fixture/runtime-metadata.ts": "export {}\n",
+      "installable-extensions/fixture/runtime.ts": "export {}\n"
     },
     packageJson: {},
     skipDefaultEntries: true
@@ -322,7 +359,7 @@ test("native extension package boundary check enforces package entry file and di
 test("native extension package boundary check rejects host private imports", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/src/view.tsx": 'import { something } from "@renderer/private"\nvoid something\n'
+      "installable-extensions/fixture/src/view.tsx": 'import { something } from "@renderer/private"\nvoid something\n'
     },
     packageJson: {
       dependencies: {
@@ -344,7 +381,7 @@ test("native extension package boundary check rejects host private imports", asy
 test("native extension package boundary check rejects monorepo shared aliases", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/src/view.tsx": 'import type { SharedThing } from "@shared/private"\nexport type LocalThing = SharedThing\n'
+      "installable-extensions/fixture/src/view.tsx": 'import type { SharedThing } from "@shared/private"\nexport type LocalThing = SharedThing\n'
     },
     packageJson: {
       dependencies: {}
@@ -364,7 +401,7 @@ test("native extension package boundary check rejects monorepo shared aliases", 
 test("native extension package boundary check rejects relative imports escaping the package", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/src/view.tsx": 'import "../../other/secret"\n'
+      "installable-extensions/fixture/src/view.tsx": 'import "../../other/secret"\n'
     },
     packageJson: {
       dependencies: {}
@@ -384,7 +421,7 @@ test("native extension package boundary check rejects relative imports escaping 
 test("native extension package boundary check rejects undeclared dependencies", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/src/view.tsx": 'import { Client } from "@notionhq/client"\nvoid Client\n'
+      "installable-extensions/fixture/src/view.tsx": 'import { Client } from "@notionhq/client"\nvoid Client\n'
     },
     packageJson: {
       dependencies: {}
@@ -404,7 +441,7 @@ test("native extension package boundary check rejects undeclared dependencies", 
 test("native extension package boundary check keeps runtime metadata static", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/runtime-metadata.ts": [
+      "installable-extensions/fixture/runtime-metadata.ts": [
         'import { defineNativeExtensionRuntimeMetadata } from "@jingle/extension-api"',
         'import { createIntent } from "./src/metadata"',
         "void createIntent",
@@ -413,7 +450,7 @@ test("native extension package boundary check keeps runtime metadata static", as
         '  extensionName: "fixture"',
         "})"
       ].join("\n"),
-      "extensions/fixture/src/metadata.ts": [
+      "installable-extensions/fixture/src/metadata.ts": [
         'import { runCommand } from "../runtime"',
         'import View from "./view"',
         "void runCommand",
@@ -422,7 +459,7 @@ test("native extension package boundary check keeps runtime metadata static", as
         "  return []",
         "}"
       ].join("\n"),
-      "extensions/fixture/src/view.tsx": "export default function View() { return null }\n"
+      "installable-extensions/fixture/src/view.tsx": "export default function View() { return null }\n"
     },
     packageJson: {
       dependencies: {
@@ -443,12 +480,12 @@ test("native extension package boundary check keeps runtime metadata static", as
 test("native extension package boundary check keeps main entry out of runtime and UI modules", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/main.ts": [
+      "installable-extensions/fixture/main.ts": [
         'import { createTools } from "./main/tools"',
         "void createTools",
         "export {}"
       ].join("\n"),
-      "extensions/fixture/main/tools.ts": [
+      "installable-extensions/fixture/main/tools.ts": [
         'import { runtime } from "../runtime"',
         'import View from "../ui/view"',
         "void runtime",
@@ -457,8 +494,8 @@ test("native extension package boundary check keeps main entry out of runtime an
         "  return []",
         "}"
       ].join("\n"),
-      "extensions/fixture/src/.gitkeep": "",
-      "extensions/fixture/ui/view.tsx": "export default function View() { return null }\n"
+      "installable-extensions/fixture/src/.gitkeep": "",
+      "installable-extensions/fixture/ui/view.tsx": "export default function View() { return null }\n"
     },
     packageJson: {
       dependencies: {
@@ -479,7 +516,7 @@ test("native extension package boundary check keeps main entry out of runtime an
 test("native extension package boundary check aligns manifest runtime and metadata commands", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/manifest.ts": [
+      "installable-extensions/fixture/manifest.ts": [
         'import { defineNativeExtensionManifest } from "@jingle/extension-api"',
         "export const manifest = defineNativeExtensionManifest({",
         "  capabilities: [],",
@@ -507,7 +544,7 @@ test("native extension package boundary check aligns manifest runtime and metada
         '  title: "Fixture"',
         "})"
       ].join("\n"),
-      "extensions/fixture/runtime.ts": [
+      "installable-extensions/fixture/runtime.ts": [
         'import { defineNativeExtensionRuntime } from "@jingle/extension-api"',
         "export const runtime = defineNativeExtensionRuntime({",
         "  commands: {",
@@ -517,7 +554,7 @@ test("native extension package boundary check aligns manifest runtime and metada
         '  extensionName: "fixture"',
         "})"
       ].join("\n"),
-      "extensions/fixture/runtime-metadata.ts": [
+      "installable-extensions/fixture/runtime-metadata.ts": [
         'import { defineNativeExtensionRuntimeMetadata } from "@jingle/extension-api"',
         "export const runtimeMetadata = defineNativeExtensionRuntimeMetadata({",
         "  commands: [",
@@ -547,14 +584,14 @@ test("native extension package boundary check aligns manifest runtime and metada
 test("native extension package boundary check aligns main entry with manifest capabilities", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/main.ts": [
+      "installable-extensions/fixture/main.ts": [
         'import { defineNativeExtensionMain } from "@jingle/extension-api"',
         "const service = {}",
         "export const main = defineNativeExtensionMain({",
         "  service",
         "})"
       ].join("\n"),
-      "extensions/fixture/manifest.ts": [
+      "installable-extensions/fixture/manifest.ts": [
         'import { defineNativeExtensionManifest } from "@jingle/extension-api"',
         "export const manifest = defineNativeExtensionManifest({",
         "  aiCapability: {",
@@ -602,12 +639,12 @@ test("native extension package boundary check aligns main entry with manifest ca
 test("native extension package boundary check rejects source runtime package imports and declarations", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/main.ts": [
+      "installable-extensions/fixture/main.ts": [
         'import { getPreferenceValues } from "@raycast/api"',
         "void getPreferenceValues",
         "export {}"
       ].join("\n"),
-      "extensions/fixture/src/view.tsx": [
+      "installable-extensions/fixture/src/view.tsx": [
         'import { useCachedPromise } from "@raycast/utils"',
         "void useCachedPromise",
         "export {}"
@@ -637,8 +674,8 @@ test("native extension package boundary check rejects source runtime package imp
 test("native extension package boundary check keeps Node and Electron APIs main-only", async () => {
   const repoRoot = await createFixtureRepo({
     files: {
-      "extensions/fixture/main/service.ts": 'import { execFile } from "node:child_process"\nvoid execFile\n',
-      "extensions/fixture/src/view.tsx": 'import { readFile } from "node:fs"\nvoid readFile\n'
+      "installable-extensions/fixture/main/service.ts": 'import { execFile } from "node:child_process"\nvoid execFile\n',
+      "installable-extensions/fixture/src/view.tsx": 'import { readFile } from "node:fs"\nvoid readFile\n'
     },
     packageJson: {
       peerDependencies: {
@@ -670,8 +707,12 @@ test("native extension package boundary check follows package directory symlinks
   })
 
   try {
-    await mkdir(join(repoRoot, "extensions"), { recursive: true })
-    await symlink(join(repoRoot, "linked-extension"), join(repoRoot, "extensions", "fixture"), "dir")
+    await mkdir(join(repoRoot, "installable-extensions"), { recursive: true })
+    await symlink(
+      join(repoRoot, "linked-extension"),
+      join(repoRoot, "installable-extensions", "fixture"),
+      "dir"
+    )
     assert.match(
       validateNativeExtensionPackageBoundaries({ repoRoot }).errors.join("\n"),
       /host private aliases/
@@ -688,7 +729,7 @@ async function createFixtureRepo(options: {
   skipDefaultEntries?: boolean
 }) {
   const repoRoot = await mkdtemp(join(tmpdir(), "jingle-extension-boundary-"))
-  const extensionRoot = join(repoRoot, options.rootDirectory ?? "extensions/fixture")
+  const extensionRoot = join(repoRoot, options.rootDirectory ?? "installable-extensions/fixture")
   await mkdir(extensionRoot, { recursive: true })
   await writeFile(
     join(extensionRoot, "package.json"),

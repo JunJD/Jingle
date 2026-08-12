@@ -38,11 +38,16 @@ const requiredPackageEntries = [
 
 export function validateNativeExtensionPackageBoundaries(options = {}) {
   const repoRoot = options.repoRoot ? path.resolve(options.repoRoot) : process.cwd()
-  const extensionsRoot = path.join(repoRoot, "extensions")
+  const extensionsRoot = path.join(repoRoot, "installable-extensions")
   const violations = []
 
   if (!fs.existsSync(extensionsRoot)) {
-    return { errors: [], violations: [] }
+    const violation = {
+      file: toRepoPath(repoRoot, extensionsRoot),
+      line: 1,
+      reason: "installable extension package root is missing"
+    }
+    return { errors: [formatViolation(violation)], violations: [violation] }
   }
 
   for (const extensionDirectory of listExtensionPackageDirectories(extensionsRoot)) {
