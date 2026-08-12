@@ -1,6 +1,7 @@
 import { Check, MessageSquareText, Trash2, X } from "lucide-react"
 import { useEffect, useRef } from "react"
 import type { ComposerMessageRef } from "@shared/message-content"
+import { readContentCardIdSource } from "@shared/content-card"
 import {
   createContentAnnotationAgentContext,
   serializeContentAnnotationAgentContext
@@ -16,13 +17,8 @@ import {
 type AssistantSelectionRef = Extract<ComposerMessageRef, { type: "assistant-message-selection" }>
 
 function sourceMessageId(cardId: string): string | null {
-  const segments = cardId.split(":")
-  if (segments[0] !== "message" || !segments[1]) return null
-  try {
-    return decodeURIComponent(segments[1])
-  } catch {
-    return null
-  }
+  const source = readContentCardIdSource(cardId)
+  return source?.sourceType === "message" ? source.sourceId : null
 }
 
 export function ContentAnnotationsSidebar(props: {
