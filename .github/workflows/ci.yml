@@ -70,6 +70,9 @@ jobs:
       - name: Check
         run: make check
 
+      - name: Check Prisma migration upgrade
+        run: pnpm run release:smoke:pending-migrations
+
       - name: Build
         run: make build
 

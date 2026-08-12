@@ -45,6 +45,30 @@ Nightly 版是用于快速反馈的预览构建，可能包含未完成能力、
 - 稳定版版本号单调递增。
 - Nightly 版版本号必须包含构建日期。
 
+## 迁移升级检查
+
+已安装版本升级时，只会应用数据库里尚未记录的迁移，因此 Prisma 迁移回归只会沿这
+条路径影响用户。`pnpm run release:smoke:pending-migrations` 在本地复现这条路径，
+在每次 CI 的构建之前运行，不需要任何打包产物，几秒内结束。
+
+- 它在隔离数据库中物化已审阅 `v0.0.1` 的精确迁移源，写入一条 sentinel thread，再
+  通过 `scripts/run-prisma-jingle-db.mjs` 应用当前 checkout 的完整迁移后缀；同一个
+  PR 新增多条迁移时，不会只演练最后一条。
+- 它断言升级后的 ledger 覆盖当前 checkout 的全部迁移且 checksum 一致，没有未完成
+  或已回滚的记录，并且 sentinel 行逐字段保持不变。
+- 如果 checkout 修改、删除或重排了已经随 `v0.0.1` 基线发布的迁移，它会直接失败：
+  用户机器上的数据库已经记录了原始 checksum，一旦漂移就会拒绝启动。
+
+`tests/node/release-pending-migrations.test.ts` 用同一份已审阅 baseline fixture
+驱动主进程的迁移执行器。改动迁移后先在本地运行这条检查：
+
+```
+pnpm run release:smoke:pending-migrations
+```
+
+这条检查不能替代 `scripts/release-smoke/installed.mjs` 的安装态 smoke：后者仍然
+需要构建产物和已审阅的 `v0.0.1` release 资产，因此只在发布流程里运行。
+
 ## 被阻断的发布写入
 
 当前仓库有意不提供创建 release tag 或公开发布资产的 workflow。新增这条写入路径

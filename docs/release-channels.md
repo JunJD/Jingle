@@ -51,6 +51,36 @@ stable release.
 - Stable versions should move forward monotonically.
 - Nightly versions should include the calendar date of the build.
 
+## Migration Upgrade Check
+
+An existing install upgrades by applying the migrations its database has not
+recorded yet, so a Prisma migration regression only reaches users along that
+path. `pnpm run release:smoke:pending-migrations` rehearses it locally, runs on
+every CI job before the build, needs no packaged asset, and finishes in seconds.
+
+- It materializes the exact reviewed `v0.0.1` migration source into an isolated
+  database, seeds a sentinel thread, then applies the complete current migration
+  suffix through `scripts/run-prisma-jingle-db.mjs`. This covers pull requests
+  that add more than one migration instead of rehearsing only the newest one.
+- It asserts the upgraded ledger holds every migration of this checkout with
+  matching checksums, none incomplete or rolled back, and that the sentinel row
+  survived byte-for-byte.
+- It refuses a checkout that edits, drops, or reorders a migration already
+  shipped in the reviewed `v0.0.1` baseline, because databases in the field
+  recorded the original checksums and refuse to start once they drift.
+
+`tests/node/release-pending-migrations.test.ts` drives the same reviewed baseline
+fixture through the main-process migration runner. Run the check locally before
+pushing a migration change:
+
+```
+pnpm run release:smoke:pending-migrations
+```
+
+This check is not a substitute for the packaged smoke in
+`scripts/release-smoke/installed.mjs`, which still needs built artifacts and the
+reviewed `v0.0.1` release asset and therefore stays release-only.
+
 ## Blocked Release Mutation
 
 This repository intentionally has no workflow that creates release tags or

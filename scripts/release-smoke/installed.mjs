@@ -21,6 +21,7 @@ import { basename, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import { PrismaClient } from "@prisma/client"
 import { _electron as electron } from "playwright"
+import { readMigrationManifest } from "./migration-manifest.mjs"
 import {
   downloadUpgradeAsset,
   prepareUpgradeBaseline,
@@ -35,15 +36,7 @@ const packageSuffixByPlatform = {
   linux: ".AppImage",
   win32: ".exe"
 }
-const requiredMigrations = readdirSync(resolve("prisma/migrations"), { withFileTypes: true })
-  .filter((entry) => entry.isDirectory())
-  .map((entry) => ({
-    checksum: createHash("sha256")
-      .update(readFileSync(resolve("prisma/migrations", entry.name, "migration.sql")))
-      .digest("hex"),
-    name: entry.name
-  }))
-  .sort((left, right) => left.name.localeCompare(right.name))
+const requiredMigrations = readMigrationManifest()
 
 function fail(message) {
   throw new Error(`Installed release smoke: ${message}`)
