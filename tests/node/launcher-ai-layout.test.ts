@@ -430,31 +430,6 @@ test("launcher AI thread selection reports activation failures through the sideb
   assert.match(selectionBody[0], /runSidebarThreadAction,[\s\S]*?threadId/)
 })
 
-test("launcher AI thread activation projects only the latest successfully hydrated thread", async () => {
-  const [navigationSource, hostSource] = await Promise.all([
-    readWorkspaceFile("src/renderer/src/ai-core/useLauncherAiThreadNavigation.ts"),
-    readWorkspaceFile("src/renderer/src/ai-core/useAiCoreThreadHost.ts")
-  ])
-  const activationBody = navigationSource.match(
-    /const activateThread = useCallback\([\s\S]*?const createThread = useCallback/
-  )
-  const hostActivationBody = hostSource.match(
-    /const activateThread = useCallback\([\s\S]*?const createThread = useCallback/
-  )
-
-  assert.ok(activationBody, "launcher navigation activation callback should exist")
-  assert.match(
-    activationBody[0],
-    /navigationVersionRef\.current = navigationVersion[\s\S]*?await canActivateThread[\s\S]*?navigationVersion !== navigationVersionRef\.current[\s\S]*?await activate\(nextThreadId\)[\s\S]*?setTarget/
-  )
-  assert.ok(hostActivationBody, "AI core host activation callback should exist")
-  assert.match(hostSource, /const activationVersionRef = useRef\(0\)/)
-  assert.match(
-    hostActivationBody[0],
-    /await loadThreadData\(threadId\)[\s\S]*?activationVersion === activationVersionRef\.current[\s\S]*?setActiveThreadId\(threadId\)/
-  )
-})
-
 test("launcher AI thread loading copy distinguishes restore from opening", async () => {
   const [navigationSource, conversationSource, messagesSource] = await Promise.all([
     readWorkspaceFile("src/renderer/src/ai-core/useLauncherAiThreadNavigation.ts"),

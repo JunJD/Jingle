@@ -236,28 +236,24 @@ export function useLauncherAiThreadNavigation(
       reason: LauncherAiThreadLoadingReason = "opening",
       expectedNavigationVersion?: number
     ): Promise<void> => {
+      const canActivate = await canActivateThread({
+        nextThreadId,
+        onBeforeActivate
+      })
+      if (canActivate === false) {
+        return
+      }
       if (
         expectedNavigationVersion !== undefined &&
         expectedNavigationVersion !== navigationVersionRef.current
       ) {
         return
       }
+
       const navigationVersion = navigationVersionRef.current + 1
       navigationVersionRef.current = navigationVersion
-      const canActivate = await canActivateThread({
-        nextThreadId,
-        onBeforeActivate
-      })
-      if (canActivate === false || navigationVersion !== navigationVersionRef.current) {
-        return
-      }
-
       const finishHydration = beginThreadHydration(reason)
       try {
-        await activate(nextThreadId)
-        if (navigationVersion !== navigationVersionRef.current) {
-          return
-        }
         setTarget((currentTarget) =>
           currentTarget?.kind === "thread" && currentTarget.threadId === nextThreadId
             ? currentTarget
@@ -266,6 +262,10 @@ export function useLauncherAiThreadNavigation(
                 threadId: nextThreadId
               }
         )
+        await activate(nextThreadId)
+        if (navigationVersion !== navigationVersionRef.current) {
+          return
+        }
         await refreshAdjacentThreadIds(nextThreadId, { freshDraftActive: false })
       } finally {
         finishHydration()
