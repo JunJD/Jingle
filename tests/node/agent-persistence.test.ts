@@ -853,11 +853,12 @@ test("legacy pending HITL survives database restart and resumes after explicit s
   )
 })
 
-test("database startup interrupts agent state left active by a previous process", async () => {
+test("database startup records a durable failure for agent state left active by a previous process", async () => {
   const {
     closeDatabase,
     createRun,
     createThread,
+    getPrismaClient,
     getRun,
     getThread,
     initializeDatabase,
@@ -878,9 +879,98 @@ test("database startup interrupts agent state left active by a previous process"
     const run = await getRun(runId)
     const thread = await getThread(threadId)
 
-    assert.equal(run?.status, "interrupted")
-    assert.equal(thread?.status, "interrupted")
+    assert.equal(run?.status, "error")
+    assert.equal(thread?.status, "error")
+    const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+    assert.deepEqual(metadata[AGENT_RUN_FAILURE_METADATA_KEY], {
+      ipcCode: "UNAVAILABLE",
+      kind: "transport_interrupted",
+      message:
+        "The agent run was interrupted when Jingle stopped. Its previous execution owner no longer exists. Retry the task to start a new run.",
+      schemaVersion: 1,
+      status: 503
+    })
+    const finished = await getPrismaClient().agentEvent.findMany({
+      orderBy: { seq: "asc" },
+      where: { runId, type: "run.finished" }
+    })
+    assert.equal(finished.length, 1)
+    assert.deepEqual(JSON.parse(finished[0]!.payload), {
+      completionReason: null,
+      errorMessage:
+        "The agent run was interrupted when Jingle stopped. Its previous execution owner no longer exists. Retry the task to start a new run.",
+      errorType: "transport_interrupted",
+      status: "error"
+    })
     assert.equal(consoleWarn.mock.callCount(), 1)
+  } finally {
+    consoleWarn.mock.restore()
+  }
+})
+
+test("database startup preserves pending HITL while recording one interrupted failure", async () => {
+  const {
+    closeDatabase,
+    createRun,
+    createThread,
+    getHitlRequest,
+    getPrismaClient,
+    getRun,
+    getThread,
+    initializeDatabase,
+    updateThread,
+    upsertHitlRequest
+  } = await loadDbModules()
+  const consoleWarn = mock.method(console, "warn", () => {})
+  const threadId = "thread-startup-pending-hitl"
+  const runId = "run-startup-pending-hitl"
+  const requestId = "request-startup-pending-hitl"
+
+  try {
+    await createThread(threadId)
+    await createRun(runId, threadId, { status: "running" })
+    await updateThread(threadId, { status: "busy" })
+    await upsertHitlRequest({
+      allowed_decisions: ["approve", "user_declined"],
+      request_id: requestId,
+      run_id: runId,
+      status: "pending",
+      thread_id: threadId,
+      tool_args: {},
+      tool_call_id: "tool-startup-pending-hitl",
+      tool_name: "write_file"
+    })
+
+    await closeDatabase()
+    await initializeDatabase()
+
+    assert.equal((await getRun(runId))?.status, "interrupted")
+    assert.equal((await getThread(threadId))?.status, "interrupted")
+    assert.equal((await getHitlRequest(requestId))?.status, "pending")
+    const metadata = JSON.parse((await getRun(runId))?.metadata ?? "{}") as Record<
+      string,
+      unknown
+    >
+    assert.deepEqual(metadata[AGENT_RUN_FAILURE_METADATA_KEY], {
+      ipcCode: "UNAVAILABLE",
+      kind: "transport_interrupted",
+      message:
+        "The agent run was interrupted when Jingle stopped. Its previous execution owner no longer exists. Retry the task to start a new run.",
+      schemaVersion: 1,
+      status: 503
+    })
+    assert.equal(
+      await getPrismaClient().agentEvent.count({ where: { runId, type: "run.finished" } }),
+      1
+    )
+
+    await closeDatabase()
+    await initializeDatabase()
+
+    assert.equal(
+      await getPrismaClient().agentEvent.count({ where: { runId, type: "run.finished" } }),
+      1
+    )
   } finally {
     consoleWarn.mock.restore()
   }
@@ -1053,8 +1143,8 @@ test("database startup preserves settled Computer Use before interrupting later 
   await closeDatabase()
   await initializeDatabase()
 
-  assert.equal((await getRun(runId))?.status, "interrupted")
-  assert.equal((await getThread(threadId))?.status, "interrupted")
+  assert.equal((await getRun(runId))?.status, "error")
+  assert.equal((await getThread(threadId))?.status, "error")
   const recovered = await createPrismaComputerUseActionLedgerPort().read(attemptId)
   assert.equal(recovered?.phase, "settled")
   assert.equal(recovered?.result?.outcome, "worked")

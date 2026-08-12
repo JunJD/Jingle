@@ -384,6 +384,15 @@ const COMPUTER_USE_RESTART_AFTER_DISPATCH_FAILURE: AgentRunFailure = {
   status: 503
 }
 
+const AGENT_RUN_RESTART_FAILURE: AgentRunFailure = {
+  ipcCode: "UNAVAILABLE",
+  kind: "transport_interrupted",
+  message:
+    "The agent run was interrupted when Jingle stopped. Its previous execution owner no longer exists. Retry the task to start a new run.",
+  schemaVersion: 1,
+  status: 503
+}
+
 async function recoverIncompleteAgentRuns(): Promise<void> {
   const prisma = getPrismaClient()
   const now = BigInt(Date.now())
@@ -475,18 +484,30 @@ async function recoverIncompleteAgentRuns(): Promise<void> {
       failedComputerUseThreadIds.add(run.threadId)
     }
 
-    const runs = await tx.run.updateMany({
-      data: {
-        status: "interrupted",
-        updatedAt: now
-      },
-      where: {
-        status: "running",
-        ...(failedComputerUseRunIds.size > 0
-          ? { runId: { notIn: [...failedComputerUseRunIds] } }
-          : {})
+    let failedAgentRuns = 0
+    for (const run of running) {
+      if (failedComputerUseRunIds.has(run.runId)) continue
+      const pendingHitlCount = await tx.hitlRequest.count({
+        where: { runId: run.runId, status: "pending", threadId: run.threadId }
+      })
+      const event = await commitRunFailureTerminalInTransaction(
+        tx,
+        {
+          expectedRunStatus: "running",
+          failure: AGENT_RUN_RESTART_FAILURE,
+          runId: run.runId,
+          runMetadata: run.metadata,
+          status: pendingHitlCount > 0 ? "interrupted" : "error",
+          threadId: run.threadId
+        },
+        now
+      )
+      if (!event) {
+        throw new Error(`Agent run ${run.runId} changed during startup recovery.`)
       }
-    })
+      terminalEvents.push(event)
+      failedAgentRuns += 1
+    }
     const threads = await tx.thread.updateMany({
       data: {
         status: "interrupted",
@@ -499,14 +520,18 @@ async function recoverIncompleteAgentRuns(): Promise<void> {
           : {})
       }
     })
-    return { failedComputerUseRuns, runs: runs.count, terminalEvents, threads: threads.count }
+    return { failedAgentRuns, failedComputerUseRuns, terminalEvents, threads: threads.count }
   })
 
   commitAgentEventProjectionState(recovery.terminalEvents)
 
-  if (recovery.failedComputerUseRuns > 0 || recovery.runs > 0 || recovery.threads > 0) {
+  if (
+    recovery.failedAgentRuns > 0 ||
+    recovery.failedComputerUseRuns > 0 ||
+    recovery.threads > 0
+  ) {
     console.warn(
-      `[DB] Recovered incomplete agent state: failed ${recovery.failedComputerUseRuns} approved Computer Use run(s); interrupted ${recovery.runs} other run(s), ${recovery.threads} thread(s).`
+      `[DB] Recovered incomplete agent state: failed ${recovery.failedComputerUseRuns} approved Computer Use run(s), ${recovery.failedAgentRuns} other run(s); interrupted ${recovery.threads} orphan thread(s).`
     )
   }
 }
