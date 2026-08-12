@@ -45,3 +45,34 @@ test("native extension manifest rejects undefined tool display entries", () => {
     /aiCapability\.toolDisplays must define "missingDisplay"/
   )
 })
+
+test("native extension manifest limits OAuth V1 credentials to one access token", () => {
+  assert.throws(
+    () =>
+      defineNativeExtensionManifest({
+        capabilities: [],
+        commands: [],
+        connection: {
+          auth: {
+            authorizationUrl: "https://jingle.cool/oauth/example/start",
+            clientId: "jingle-desktop",
+            redirect: {
+              callbackPath: "/oauth/callback",
+              method: "app-scheme",
+              scheme: "jingle"
+            },
+            scopes: [],
+            secretNames: ["accessToken", "refreshToken"],
+            tokenUrl: "https://jingle.cool/oauth/example/token",
+            type: "oauth"
+          },
+          id: "default",
+          provider: "example",
+          title: "Example"
+        },
+        name: "example",
+        title: "Example"
+      }),
+    /OAuth auth\.secretNames must be exactly \["accessToken"\]/
+  )
+})

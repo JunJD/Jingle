@@ -191,6 +191,10 @@ AI capability 是 agent 可加载的能力入口，不是 command 的副本，�
 
 如果未连接，agent 可以知道 extension 存在，也可以解释如何连接，但不能调用工具。
 
+当前 OAuth V1 的 credential contract 只支持 `auth.secretNames: ["accessToken"]`。宿主完成
+PKCE callback 后只提交这个连接级字段；需要 refresh token、撤销信息或多字段凭据的 provider
+必须等待后续显式协议，不能在 manifest 中声明宿主不会生成的字段。
+
 ## 当前聚合点
 
 Built-in extension 当前仍通过 build-time registry 聚合：

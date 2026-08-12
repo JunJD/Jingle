@@ -492,6 +492,12 @@ function validateConnectionAuthManifest(
     return new Set(auth.secretNames)
   }
 
+  if (auth.secretNames.length !== 1 || auth.secretNames[0] !== "accessToken") {
+    throw new Error(
+      `Native extension "${manifestName}" connection "${connection.id}" OAuth auth.secretNames must be exactly ["accessToken"]`
+    )
+  }
+
   assertNonEmptyString(
     auth.authorizationUrl,
     `Native extension "${manifestName}" connection "${connection.id}" auth.authorizationUrl must be non-empty`

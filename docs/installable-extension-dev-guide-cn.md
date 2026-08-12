@@ -196,6 +196,10 @@ make dev
 
 Jingle dev app 在 `ELECTRON_RENDERER_URL` 存在时会扫描 `.jingle-build/installed-extensions`。如果 extension 已经 rebuild，但 launcher、settings 或 runtime 没有变化，重启 Jingle dev app；当前 registry 不做 hot reload。
 
+OAuth 连接当前使用 V1 credential contract：manifest 必须精确声明
+`auth.secretNames: ["accessToken"]`。宿主完成 PKCE callback 后只写入这个连接级字段。
+refresh token、撤销信息和多字段凭据尚未进入公开协议，不要把它们声明为 `secretNames`。
+
 ## 安装到用户目录调试
 
 默认用户目录是 `~/.jingle`，也可以用 `JINGLE_HOME` 指向隔离目录。
