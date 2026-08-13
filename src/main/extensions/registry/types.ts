@@ -7,7 +7,10 @@ import type {
   NativeExtensionRuntimePackage,
   NativeExtensionRuntimePackageMetadata
 } from "@jingle/extension-api"
-import type { InstalledExtensionRuntimeArtifactRevision } from "./descriptor-schema"
+import type {
+  InstalledExtensionMainArtifactRevision,
+  InstalledExtensionRuntimeArtifactRevision
+} from "./descriptor-schema"
 
 export type ExtensionPackageSource = "built-in" | "installed"
 export type ExtensionPackageTrustLevel = "trusted" | "untrusted"
@@ -57,6 +60,8 @@ export interface ExtensionMainPackageRef {
 export interface ExtensionMainModuleRef {
   extensionName: string
   kind: "module"
+  mainArtifactRevision: InstalledExtensionMainArtifactRevision
+  moduleBytesBase64: string
   modulePath: string
   trust: ExtensionPackageTrustLevel
   version: string

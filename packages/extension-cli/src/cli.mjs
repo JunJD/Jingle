@@ -319,6 +319,7 @@ async function buildExtension(input) {
       )
 
       const runtimeModulePath = join(stagingRoot, "dist", "runtime.mjs")
+      const mainModulePath = join(stagingRoot, "dist", "main.mjs")
       await buildModuleFromSource({
         extensionRoot,
         installRuntimeReactShim: true,
@@ -329,8 +330,9 @@ async function buildExtension(input) {
       await buildModuleFromSource({
         extensionRoot,
         external: ["electron"],
-        installCommonJsRequire: true,
-        outfile: join(stagingRoot, "dist", "main.mjs"),
+        format: "esm",
+        installMainModuleUrl: true,
+        outfile: mainModulePath,
         source: `export { ${mainExportName} as default } from "./main"\n`,
         sourcefile: `${id}-main-entry.ts`
       })
@@ -341,11 +343,15 @@ async function buildExtension(input) {
         runtimeModulePath,
         join(stagingRoot, "dist", runtimeArtifactFileName)
       )
+      const mainArtifactRevision = createRuntimeArtifactRevision(mainModulePath)
+      const mainArtifactFileName = `main-${mainArtifactRevision.slice("sha256:".length)}.mjs`
+      await renamePathWithRetry(mainModulePath, join(stagingRoot, "dist", mainArtifactFileName))
 
       writeJson(join(stagingRoot, "jingle.extension.json"), {
         assets: "./assets",
         id,
-        main: "./dist/main.mjs",
+        main: `./dist/${mainArtifactFileName}`,
+        mainArtifactRevision,
         manifest: "./manifest.json",
         runtime: `./dist/${runtimeArtifactFileName}`,
         runtimeArtifactRevision,
@@ -709,10 +715,12 @@ async function buildModuleFromSource(input) {
   if (input.installRuntimeReactShim) {
     plugins.push(jingleRuntimeShimPlugin(), unavailableRuntimeOptionalDependencyPlugin())
   }
-
   const result = await build({
     banner: resolveModuleBanner(input),
     bundle: true,
+    define: input.installMainModuleUrl
+      ? { "import.meta.url": "globalThis.__jingleExtensionMainModuleUrl" }
+      : undefined,
     external: input.external ?? [],
     format: "esm",
     jsx: "automatic",
@@ -737,11 +745,6 @@ async function buildModuleFromSource(input) {
 }
 
 function resolveModuleBanner(input) {
-  if (input.installCommonJsRequire) {
-    return {
-      js: 'import { createRequire as __jingleCreateRequire } from "node:module"; const require = __jingleCreateRequire(import.meta.url);'
-    }
-  }
   if (!input.installRuntimeReactShim) {
     return undefined
   }

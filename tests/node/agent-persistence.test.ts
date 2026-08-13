@@ -170,6 +170,8 @@ function createExtensionMainDefinitionRegistryForAdmission(
       mainRef: {
         extensionName: "apple-reminders",
         kind: "module",
+        mainArtifactRevision: `sha256:${"0".repeat(64)}`,
+        moduleBytesBase64: "",
         modulePath: "/never/apple-reminders-main.mjs",
         trust: "trusted",
         version: "1.0.0"
@@ -193,6 +195,8 @@ function createExtensionMainDefinitionRegistryForAdmission(
       mainRef: {
         extensionName: "unrelated-never",
         kind: "module",
+        mainArtifactRevision: `sha256:${"0".repeat(64)}`,
+        moduleBytesBase64: "",
         modulePath: "/never/unrelated-main.mjs",
         trust: "trusted",
         version: "1.0.0"

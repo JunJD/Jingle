@@ -14,6 +14,7 @@ import {
 import {
   parseInstalledExtensionDescriptorFile,
   type InstalledExtensionDescriptorFile,
+  type InstalledExtensionMainArtifactRevision,
   type InstalledExtensionRuntimeArtifactRevision
 } from "./descriptor-schema"
 import type {
@@ -195,6 +196,11 @@ export class InstalledExtensionProvider {
         message: `Installed extension main module does not exist: ${mainModulePath}`
       })
     }
+    const mainArtifact = verifyMainArtifactRevision({
+      errors,
+      expectedRevision: descriptor.mainArtifactRevision,
+      mainModulePath
+    })
 
     if (manifest) {
       try {
@@ -239,15 +245,18 @@ export class InstalledExtensionProvider {
       enabled: true,
       errors: [],
       id: descriptor.id,
-      main: mainModulePath
-        ? {
-            extensionName: descriptor.id,
-            kind: "module",
-            modulePath: mainModulePath,
-            trust: descriptor.trust,
-            version: descriptor.version
-          }
-        : null,
+      main:
+        mainModulePath && mainArtifact
+          ? {
+              extensionName: descriptor.id,
+              kind: "module",
+              mainArtifactRevision: mainArtifact.revision,
+              moduleBytesBase64: mainArtifact.bytesBase64,
+              modulePath: mainModulePath,
+              trust: descriptor.trust,
+              version: descriptor.version
+            }
+          : null,
       manifest,
       rootDir: packageRoot,
       runtime: runtimeModulePath
@@ -267,6 +276,54 @@ export class InstalledExtensionProvider {
       trust: descriptor.trust,
       version: descriptor.version
     } satisfies LoadedExtensionPackageDescriptor
+  }
+}
+
+function verifyMainArtifactRevision(input: {
+  errors: ExtensionPackageError[]
+  expectedRevision: InstalledExtensionMainArtifactRevision | null
+  mainModulePath: string | null
+}): { bytesBase64: string; revision: InstalledExtensionMainArtifactRevision } | null {
+  if (!input.mainModulePath) {
+    return null
+  }
+  if (!input.expectedRevision) {
+    input.errors.push({
+      code: "main_artifact_revision_invalid",
+      message: "Installed extension privileged main content revision is required"
+    })
+    return null
+  }
+  if (!existsSync(input.mainModulePath)) {
+    return null
+  }
+
+  const digest = input.expectedRevision.slice("sha256:".length)
+  if (basename(input.mainModulePath) !== `main-${digest}.mjs`) {
+    input.errors.push({
+      code: "main_artifact_revision_invalid",
+      message: "Installed extension main path does not match its content revision"
+    })
+    return null
+  }
+
+  try {
+    const bytes = readFileSync(input.mainModulePath)
+    const actualRevision = `sha256:${createHash("sha256").update(bytes).digest("hex")}` as const
+    if (actualRevision !== input.expectedRevision) {
+      input.errors.push({
+        code: "main_artifact_revision_invalid",
+        message: "Installed extension main content does not match its declared revision"
+      })
+      return null
+    }
+    return { bytesBase64: bytes.toString("base64"), revision: actualRevision }
+  } catch {
+    input.errors.push({
+      code: "main_artifact_revision_invalid",
+      message: "Installed extension main content revision could not be verified"
+    })
+    return null
   }
 }
 

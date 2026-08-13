@@ -180,11 +180,13 @@ make extension-dev EXTENSION=/absolute/path/to/my-extension
   manifest.json
   runtime-metadata.json
   dist/runtime-<sha256>.mjs
-  dist/main.mjs
+  dist/main-<sha256>.mjs
   assets/
 ```
 
-CLI 会对最终 runtime bundle 的精确字节计算 `sha256:<64 lowercase hex>`，把 digest 同时写入内容寻址文件名和 `jingle.extension.json.runtimeArtifactRevision`。宿主只有在 descriptor、文件名和实际字节三者一致时才接受该 revision。旧 descriptor 没有这个字段时仍可加载，但 runtime artifact revision 明确不可用，不能从 version、路径或 mtime 推断。
+CLI 会分别对最终 runtime bundle 与 privileged main bundle 的精确字节计算 `sha256:<64 lowercase hex>`，把 digest 同时写入内容寻址文件名和 `jingle.extension.json` 的 `runtimeArtifactRevision` / `mainArtifactRevision`。宿主只有在 descriptor、文件名和实际字节三者一致时才接受对应 revision。旧 descriptor 没有 runtime revision 时 runtime identity 明确不可用；声明 main entry 却没有 main revision 的 package 会被拒绝。两类 identity 都不能从 version、路径或 mtime 推断。
+
+对于 privileged main，宿主执行的是 registry 校验时同次读取并绑定到 revision 的精确 bytes，不会在校验后再按 package path 读取入口。main revision 也是 module cache identity 的一部分；同版本 rebuild 必须产生新的内容地址。
 
 同一 package 目标的发布由跨进程锁和同级临时目录中的事务 journal 串行化。每次 build（包括 dev watch 的每次 rebuild）会先扫描严格符合 `<extension-id>/<version>` 契约的 journal。若 CLI 进程在旧目录移入 backup 后退出，下次发布会先恢复最后一个已发布目录；若新 staging 已经提升到最终目录，则保留新目录并清理旧 backup。扫描后 journal 被合法 publisher 删除时视为事务已经收敛；已成功读取但内容 malformed 的 journal 仍会 fail closed。没有观察到 journal 的 broken link、已消失 foreign entry 和非契约目录不会阻断其他 package 的恢复。journal 会绑定锁解析出的物理目标路径；无法严格解析或目标不一致时发布会停止，不会从路径 fallback，也不会猜测嵌套结构或其他版本的临时目录。
 
@@ -235,7 +237,7 @@ JINGLE_HOME/extensions/<extension-id>/<version>/jingle.extension.json
 
 - 确认 `jingle.extension.json` 存在于 `<installed-root>/<extension-id>/<version>/`。
 - 确认 descriptor id、manifest `name`、runtime metadata `extensionName` 一致。
-- 确认 descriptor 的 `runtimeArtifactRevision` 与内容寻址 runtime 文件匹配；不要手工改写已发布 bundle。
+- 确认 descriptor 的 `runtimeArtifactRevision` / `mainArtifactRevision` 与对应内容寻址文件匹配；不要手工改写已发布 bundle。
 - 确认 `manifest.ts` 的 command `mode` 和 `runtime.ts` 的 command entry mode 一致。
 - 确认 `assets/` 目录存在，manifest icon 使用 package-relative path，例如 `assets/icon.svg`。
 - 确认 `runtime-metadata.ts` 不包含 function、symbol、undefined、BigInt 或非有限 number。

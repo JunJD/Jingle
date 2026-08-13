@@ -123,7 +123,12 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
     const runtimeBundleSource = runtimeBundle.toString("utf8")
     const descriptor = JSON.parse(
       await readFile(join(extensionPackage.rootDir, "jingle.extension.json"), "utf8")
-    ) as { runtime: string; runtimeArtifactRevision: string }
+    ) as {
+      main: string
+      mainArtifactRevision: string
+      runtime: string
+      runtimeArtifactRevision: string
+    }
     const expectedRuntimeArtifactRevision = createRuntimeArtifactRevision(runtimeBundle)
     assert.deepEqual(extensionPackage.runtime.runtimeArtifactRevision, {
       kind: "available",
@@ -136,7 +141,22 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
     )
     assert.doesNotMatch(runtimeBundleSource, /__jingleCreateRequire|node:module/)
     assert.ok(extensionPackage.main)
-    const mainBundle = await readFile(extensionPackage.main.modulePath, "utf8")
+    const installedMainDefinition = await loadExtensionMainDefinition(extensionPackage.main)
+    assert.ok(installedMainDefinition.service)
+    assert.ok(installedMainDefinition.tools?.length)
+    const mainBundleBytes = await readFile(extensionPackage.main.modulePath)
+    const mainBundle = mainBundleBytes.toString("utf8")
+    const expectedMainArtifactRevision = createRuntimeArtifactRevision(mainBundleBytes)
+    assert.equal(extensionPackage.main.mainArtifactRevision, expectedMainArtifactRevision)
+    assert.equal(descriptor.mainArtifactRevision, expectedMainArtifactRevision)
+    assert.equal(
+      descriptor.main,
+      `./dist/main-${descriptor.mainArtifactRevision.slice("sha256:".length)}.mjs`
+    )
+    assert.equal(
+      Buffer.from(extensionPackage.main.moduleBytesBase64, "base64").toString("utf8"),
+      mainBundle
+    )
     assert.doesNotMatch(mainBundle, /__dirname/)
     assert.doesNotMatch(mainBundle, /Jingle extension runtime React bridge is not installed/)
     assert.doesNotMatch(mainBundle, /jingle-runtime-shim:react/)
@@ -803,6 +823,52 @@ test("installed extension provider rejects runtime content that changed after pu
   }
 })
 
+test("installed extension provider rejects privileged main content that changed after publication", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "jingle-installed-extension-"))
+  try {
+    const packageRoot = join(rootDir, "sample", "1.0.0")
+    await writeInstalledExtensionFixture(packageRoot, {
+      descriptorOverrides: { trust: "trusted" }
+    })
+    const descriptor = JSON.parse(
+      await readFile(join(packageRoot, "jingle.extension.json"), "utf8")
+    ) as { main: string }
+    await writeFile(join(packageRoot, descriptor.main), "export default { changed: true }")
+
+    const registry = await createExtensionRegistryService([new InstalledExtensionProvider(rootDir)])
+    const extensionPackage = registry.getPackage("sample")
+
+    assert.equal(extensionPackage?.status, "error")
+    assert.deepEqual(
+      extensionPackage?.errors.map((error) => error.code),
+      ["main_artifact_revision_invalid"]
+    )
+  } finally {
+    await rm(rootDir, { force: true, recursive: true })
+  }
+})
+
+test("installed extension provider rejects privileged main without a content revision", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "jingle-installed-extension-"))
+  try {
+    const packageRoot = join(rootDir, "sample", "1.0.0")
+    await writeInstalledExtensionFixture(packageRoot, {
+      descriptorOverrides: { mainArtifactRevision: null, trust: "trusted" }
+    })
+
+    const registry = await createExtensionRegistryService([new InstalledExtensionProvider(rootDir)])
+    const extensionPackage = registry.getPackage("sample")
+
+    assert.equal(extensionPackage?.status, "error")
+    assert.deepEqual(
+      extensionPackage?.errors.map((error) => error.code),
+      ["main_artifact_revision_invalid"]
+    )
+  } finally {
+    await rm(rootDir, { force: true, recursive: true })
+  }
+})
+
 test("installed main modules require trusted descriptors", async () => {
   const rootDir = await mkdtemp(join(tmpdir(), "jingle-installed-extension-"))
   try {
@@ -861,7 +927,10 @@ async function writeInstalledExtensionFixture(
   await mkdir(join(packageRoot, "dist"), { recursive: true })
   await writeFile(join(packageRoot, "assets", "icon.svg"), "<svg />")
   await writeFile(runtimeModulePath, runtimeSource)
-  await writeFile(join(packageRoot, "dist", "main.mjs"), "export default {}")
+  const mainSource = "export default {}"
+  const mainArtifactRevision = createRuntimeArtifactRevision(mainSource)
+  const mainFileName = `main-${mainArtifactRevision.slice("sha256:".length)}.mjs`
+  await writeFile(join(packageRoot, "dist", mainFileName), mainSource)
   await writeFile(
     join(packageRoot, "manifest.json"),
     JSON.stringify({
@@ -892,7 +961,8 @@ async function writeInstalledExtensionFixture(
     JSON.stringify({
       assets: "./assets",
       id: "sample",
-      main: "./dist/main.mjs",
+      main: `./dist/${mainFileName}`,
+      mainArtifactRevision,
       manifest: "./manifest.json",
       runtime: `./dist/${runtimeFileName}`,
       ...(!options.legacyRuntimeAddress && { runtimeArtifactRevision }),

@@ -11,11 +11,14 @@ import type { ExtensionMainRef } from "../../src/main/extensions/registry/types"
 
 function createTrustedModuleRef(
   extensionName: string,
-  modulePath = `/trusted/${extensionName}/main.mjs`
+  modulePath = `/trusted/${extensionName}/main.mjs`,
+  moduleSource = "export default { tools: [] }\n"
 ): ExtensionMainRef {
   return {
     extensionName,
     kind: "module",
+    mainArtifactRevision: `sha256:${"0".repeat(64)}`,
+    moduleBytesBase64: Buffer.from(moduleSource).toString("base64"),
     modulePath,
     trust: "trusted",
     version: "1.0.0"
@@ -53,12 +56,18 @@ test("trusted extension main registry isolates a never-resolving module from oth
       extensionName,
       mainRef: createTrustedModuleRef(
         extensionName,
-        modulePaths[extensionName as keyof typeof modulePaths]
+        modulePaths[extensionName as keyof typeof modulePaths],
+        extensionName === "broken"
+          ? 'throw new Error("broken module")\n'
+          : "export default { tools: [] }\n"
       )
     })),
     loadDefinition: async (mainRef) => {
       loadCalls.push(mainRef.extensionName)
       try {
+        if (mainRef.extensionName === "never") {
+          return await new Promise<NativeExtensionMainDefinition>(() => {})
+        }
         const definition = await loadExtensionMainDefinition(mainRef)
         if (mainRef.extensionName === "ready") {
           reportReadySettled()
@@ -113,6 +122,42 @@ test("trusted extension main registry isolates a never-resolving module from oth
     await registry.dispose()
     await rm(fixtureRoot, { force: true, recursive: true })
   }
+})
+
+test("trusted extension main loader evaluates the verified bytes carried by the registry ref", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "jingle-extension-main-loader-"))
+  try {
+    const modulePath = join(fixtureRoot, "main.mjs")
+    const verifiedSource =
+      'import { shell } from "electron"; await Promise.resolve(); export default { marker: new URL(globalThis.__jingleExtensionMainModuleUrl).protocol, shellType: typeof shell }\n'
+    await writeFile(modulePath, verifiedSource, "utf8")
+    const mainRef = createTrustedModuleRef("verified", modulePath, verifiedSource)
+    await writeFile(modulePath, "export default { marker: 'changed' }\n", "utf8")
+
+    const definition = (await loadExtensionMainDefinition(
+      mainRef
+    )) as NativeExtensionMainDefinition & {
+      marker: string
+      shellType: string
+    }
+    assert.equal(definition.marker, "file:")
+    assert.equal(definition.shellType, "undefined")
+  } finally {
+    await rm(fixtureRoot, { force: true, recursive: true })
+  }
+})
+
+test("trusted extension main loader keeps file identity local across overlapping top-level await", async () => {
+  const source =
+    "await new Promise((resolve) => setTimeout(resolve, 10)); export default { marker: globalThis.__jingleExtensionMainModuleUrl }\n"
+  const first = createTrustedModuleRef("first", "/tmp/first/main.mjs", source)
+  const second = createTrustedModuleRef("second", "/tmp/second/main.mjs", source)
+  const [firstDefinition, secondDefinition] = await Promise.all([
+    loadExtensionMainDefinition(first),
+    loadExtensionMainDefinition(second)
+  ])
+  assert.equal((firstDefinition as { marker: string }).marker, "file:///tmp/first/main.mjs")
+  assert.equal((secondDefinition as { marker: string }).marker, "file:///tmp/second/main.mjs")
 })
 
 test("trusted extension main registry owns loaded and late definition disposal", async () => {

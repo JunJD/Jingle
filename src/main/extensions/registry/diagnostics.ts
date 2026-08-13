@@ -11,6 +11,8 @@ const diagnosticMessages = {
   descriptor_invalid: "The jingle.extension.json descriptor is invalid.",
   descriptor_missing: "The jingle.extension.json descriptor is missing.",
   main_invalid: "The privileged main entry is invalid or outside the package.",
+  main_artifact_revision_invalid:
+    "The privileged main artifact does not match its content-addressed revision.",
   main_missing: "The privileged main entry declared by the package is missing.",
   manifest_invalid: "The extension manifest is invalid or does not match the descriptor.",
   manifest_missing: "The extension manifest declared by the package is missing.",

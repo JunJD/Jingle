@@ -327,6 +327,7 @@ export type NativeExtensionInstallDiagnosticCode =
   | "descriptor_invalid"
   | "descriptor_missing"
   | "main_invalid"
+  | "main_artifact_revision_invalid"
   | "main_missing"
   | "manifest_invalid"
   | "manifest_missing"

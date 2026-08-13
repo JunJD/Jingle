@@ -206,7 +206,9 @@ Built-in extension 当前仍通过 build-time registry 聚合：
 
 这些 registry 是 built-in 装配细节，不是 extension package 应该依赖的 API。Installable extension 由 `jingle.extension.json` 进入 installed provider，再经 registry service 投影给 main/preload/renderer。每个 package 暴露的 manifest、runtime entry、main entry 和 JSON-safe runtime metadata contract 应保持一致。
 
-CLI 发布的 runtime bundle 使用内容寻址文件名 `dist/runtime-<sha256>.mjs`。`jingle.extension.json.runtimeArtifactRevision` 必须是该文件精确字节的 `sha256:<64 lowercase hex>`；installed provider 会同时校验 descriptor 格式、文件名和实际内容。缺少 revision 的旧 descriptor 只能投影为显式 unavailable，宿主不能用 package version、路径或 mtime 猜测。这个 revision 证明内容 identity 与完整性，不证明发布者身份，也不替代包签名或 trust policy。
+CLI 发布的 runtime bundle 和 privileged main bundle 分别使用内容寻址文件名 `dist/runtime-<sha256>.mjs` 与 `dist/main-<sha256>.mjs`。`jingle.extension.json.runtimeArtifactRevision` / `mainArtifactRevision` 必须是对应文件精确字节的 `sha256:<64 lowercase hex>`；installed provider 会同时校验 descriptor 格式、文件名和实际内容。缺少 runtime revision 的旧 descriptor 只能投影为显式 unavailable；声明 main entry 却缺少 main revision 的 package 必须 fail closed。宿主不能用 package version、路径或 mtime 猜测任何 artifact identity。
+
+Privileged main 的 verified revision 必须绑定实际被求值的 bytes：registry 在一次读取中计算 digest 并携带该 bytes，main loader 从这份 immutable input 执行，不在验证后重新按文件路径 import。main loader 的 module cache identity 使用 verified revision。该 revision 证明内容 identity 与完整性，不证明发布者身份，也不替代包签名或 trust policy。
 
 ## 验证门槛
 

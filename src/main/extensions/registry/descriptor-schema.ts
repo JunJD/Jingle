@@ -5,6 +5,7 @@ import {
 
 export type InstalledExtensionTrustLevel = "trusted" | "untrusted"
 export type InstalledExtensionRuntimeArtifactRevision = `sha256:${string}`
+export type InstalledExtensionMainArtifactRevision = `sha256:${string}`
 
 const RUNTIME_ARTIFACT_REVISION_PATTERN = /^sha256:[a-f0-9]{64}$/
 
@@ -12,6 +13,7 @@ export interface InstalledExtensionDescriptorFile {
   assets: string
   id: string
   main?: string | null
+  mainArtifactRevision: InstalledExtensionMainArtifactRevision | null
   manifest: string
   runtime?: string | null
   runtimeArtifactRevision: InstalledExtensionRuntimeArtifactRevision | null
@@ -39,11 +41,17 @@ export function parseInstalledExtensionDescriptorFile(
       "Installed extension descriptor runtimeArtifactRevision requires a runtime module"
     )
   }
+  const main = readOptionalString(value, "main")
+  const mainArtifactRevision = readOptionalArtifactRevision(value, "mainArtifactRevision")
+  if (!main && mainArtifactRevision) {
+    throw new Error("Installed extension descriptor mainArtifactRevision requires a main module")
+  }
 
   return {
     assets: readRequiredString(value, "assets"),
     id: parseInstalledExtensionId(readRequiredString(value, "id")),
-    main: readOptionalString(value, "main"),
+    main,
+    mainArtifactRevision,
     manifest: readRequiredString(value, "manifest"),
     runtime,
     runtimeArtifactRevision,
@@ -67,6 +75,20 @@ function readOptionalRuntimeArtifactRevision(
     )
   }
   return value as InstalledExtensionRuntimeArtifactRevision
+}
+
+function readOptionalArtifactRevision(
+  record: Record<string, unknown>,
+  key: string
+): InstalledExtensionMainArtifactRevision | null {
+  const value = record[key]
+  if (value === null || value === undefined) {
+    return null
+  }
+  if (typeof value !== "string" || !RUNTIME_ARTIFACT_REVISION_PATTERN.test(value)) {
+    throw new Error(`Installed extension descriptor ${key} must be a sha256 content revision`)
+  }
+  return value as InstalledExtensionMainArtifactRevision
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
