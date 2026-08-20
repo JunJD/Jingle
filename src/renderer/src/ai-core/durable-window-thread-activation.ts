@@ -140,7 +140,7 @@ export function createDurableWindowThreadActivationCoordinator(input: {
   return {
     acceptBinding: (snapshot) => activateBinding(snapshot, false),
     clearError: () => {
-      if (state.phase !== "failed") return
+      if (state.phase !== "failed" || state.bindingRevision === null) return
       publish({
         bindingRevision: state.bindingRevision,
         error: null,
