@@ -1244,6 +1244,180 @@ test("get_trace_evidence tool does not link an explicit artifact from another so
   )
 })
 
+test("get_trace_evidence fails closed before linked artifact lookup on selector mismatch", async () => {
+  const { appendAgentEvent, createRun, createThread, flushAgentTraceProjection } =
+    await loadDbModules()
+  const { presentArtifacts } = await import("../../src/main/artifacts/service")
+  const sourceThreadId = "trace-evidence-selector-mismatch-thread"
+  const sourceRunId = "trace-evidence-selector-mismatch-run"
+  const foreignThreadId = "trace-evidence-selector-mismatch-foreign-thread"
+  const foreignRunId = "trace-evidence-selector-mismatch-foreign-run"
+
+  await createThread(sourceThreadId)
+  await createRun(sourceRunId, sourceThreadId)
+  await appendAgentEvent({
+    payload: {
+      model: "gpt-test",
+      permissionMode: "default",
+      source: "invoke",
+      userMessageId: "user-message-selector-mismatch"
+    },
+    runId: sourceRunId,
+    threadId: sourceThreadId,
+    type: "run.started"
+  })
+  await appendAgentEvent({
+    payload: {
+      args: { cmd: "pwd" },
+      messageId: "assistant-selector-mismatch",
+      toolCallId: "tool-call-selector-mismatch-source",
+      toolName: "execute"
+    },
+    runId: sourceRunId,
+    threadId: sourceThreadId,
+    type: "tool.call.started"
+  })
+
+  await createThread(foreignThreadId)
+  await createRun(foreignRunId, foreignThreadId)
+  const foreignArtifactResult = await presentArtifacts({
+    artifacts: [
+      {
+        artifactKey: "selector-mismatch-foreign:0",
+        format: "plain",
+        kind: "summary",
+        text: "Foreign artifact must not be exposed on selector mismatch.",
+        title: "Foreign selector-mismatch artifact"
+      }
+    ],
+    idempotencyKey: "selector-mismatch-foreign",
+    runId: foreignRunId,
+    threadId: foreignThreadId,
+    toolCallId: "tool-call-selector-mismatch-foreign"
+  })
+  assert.equal(foreignArtifactResult.type, "stored")
+  await flushAgentTraceProjection()
+
+  const middleware = createContextRetrievalToolsMiddlewareForTest({
+    runId: "current-run-selector-mismatch",
+    threadId: "current-thread"
+  })
+  const traceEvidenceTool = middleware.tools?.find((tool) => tool.name === "get_trace_evidence")
+  assert.ok(traceEvidenceTool)
+  const output = await (
+    traceEvidenceTool.invoke as (input: unknown, config: unknown) => Promise<unknown>
+  ).call(
+    traceEvidenceTool,
+    {
+      toolCallId: "tool-call-selector-mismatch-foreign",
+      traceStepId: `${sourceRunId}:0`
+    },
+    {
+      toolCall: {
+        args: {},
+        id: "tool-call-get-selector-mismatch",
+        name: "get_trace_evidence",
+        type: "tool_call"
+      },
+      toolCallId: "tool-call-get-selector-mismatch",
+      state: { contextInclusions: [] }
+    }
+  )
+
+  assert.ok(!(output instanceof Command))
+  const serialized = String((output as { content?: unknown }).content ?? "")
+  const result = parseContextRetrievalToolResult(serialized)
+  assert.equal(result?.kind, "trace_evidence")
+  assert.equal(result?.status, "unavailable")
+  assert.equal(result?.artifacts.length, 0)
+  assert.doesNotMatch(serialized, /Foreign artifact must not be exposed/)
+
+  const runScopedOutput = await (
+    traceEvidenceTool.invoke as (input: unknown, config: unknown) => Promise<unknown>
+  ).call(
+    traceEvidenceTool,
+    {
+      runId: foreignRunId,
+      toolCallId: "tool-call-selector-mismatch-foreign"
+    },
+    {
+      toolCall: {
+        args: {},
+        id: "tool-call-get-selector-mismatch-run",
+        name: "get_trace_evidence",
+        type: "tool_call"
+      },
+      toolCallId: "tool-call-get-selector-mismatch-run",
+      state: { contextInclusions: [] }
+    }
+  )
+  assert.ok(!(runScopedOutput instanceof Command))
+  const runScopedSerialized = String((runScopedOutput as { content?: unknown }).content ?? "")
+  const runScopedResult = parseContextRetrievalToolResult(runScopedSerialized)
+  assert.equal(runScopedResult?.kind, "trace_evidence")
+  assert.equal(runScopedResult?.status, "unavailable")
+  assert.equal(runScopedResult.artifacts.length, 0)
+  assert.doesNotMatch(runScopedSerialized, /Foreign artifact must not be exposed/)
+})
+
+test("get_trace_evidence rejects runId plus toolCallId when no trace step exists", async () => {
+  const { createRun, createThread } = await loadDbModules()
+  const { presentArtifacts } = await import("../../src/main/artifacts/service")
+  const threadId = "trace-evidence-run-selector-mismatch-thread"
+  const runId = "trace-evidence-run-selector-mismatch-run"
+  const toolCallId = "tool-call-run-selector-mismatch"
+
+  await createThread(threadId)
+  await createRun(runId, threadId)
+  const artifactResult = await presentArtifacts({
+    artifacts: [
+      {
+        artifactKey: `${toolCallId}:0`,
+        format: "plain",
+        kind: "summary",
+        text: "Run selector mismatch artifact must not be exposed.",
+        title: "Run selector-mismatch artifact"
+      }
+    ],
+    idempotencyKey: toolCallId,
+    runId,
+    threadId,
+    toolCallId
+  })
+  assert.equal(artifactResult.type, "stored")
+
+  const middleware = createContextRetrievalToolsMiddlewareForTest({
+    runId: "current-run-run-selector-mismatch",
+    threadId: "current-thread"
+  })
+  const traceEvidenceTool = middleware.tools?.find((tool) => tool.name === "get_trace_evidence")
+  assert.ok(traceEvidenceTool)
+  const output = await (
+    traceEvidenceTool.invoke as (input: unknown, config: unknown) => Promise<unknown>
+  ).call(
+    traceEvidenceTool,
+    { runId, toolCallId },
+    {
+      toolCall: {
+        args: {},
+        id: "tool-call-get-run-selector-mismatch",
+        name: "get_trace_evidence",
+        type: "tool_call"
+      },
+      toolCallId: "tool-call-get-run-selector-mismatch",
+      state: { contextInclusions: [] }
+    }
+  )
+
+  assert.ok(!(output instanceof Command))
+  const serialized = String((output as { content?: unknown }).content ?? "")
+  const result = parseContextRetrievalToolResult(serialized)
+  assert.equal(result?.kind, "trace_evidence")
+  assert.equal(result?.status, "unavailable")
+  assert.equal(result.artifacts.length, 0)
+  assert.doesNotMatch(serialized, /Run selector mismatch artifact must not be exposed/)
+})
+
 test("get_trace_evidence tool returns no inclusion when trace output blob is missing", async () => {
   const {
     appendAgentEvent,
