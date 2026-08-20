@@ -8,17 +8,19 @@ import {
 import type { AppThemeSettings } from "@shared/app-theme"
 import type { LauncherSettings } from "@shared/launcher-settings"
 import {
+  createSettingsWindowNavigationAcknowledgement,
   SETTINGS_NAVIGATION_CHANGED_CHANNEL,
-  settingsWindowNavigationPayloadSchema,
+  settingsWindowNavigationDeliverySchema,
+  type SettingsWindowNavigationDelivery,
   type SettingsWindowNavigationPayload
 } from "@shared/settings-window"
 import { invokeIpc } from "../ipc"
 
-let pendingNavigationClaim: Promise<SettingsWindowNavigationPayload | null> | null = null
+let pendingNavigationClaim: Promise<SettingsWindowNavigationDelivery | null> | null = null
 let pendingNavigationClaimSettled = false
 let navigationDeliveryGeneration = 0
 
-function claimPendingNavigation(): Promise<SettingsWindowNavigationPayload | null> {
+function claimPendingNavigation(): Promise<SettingsWindowNavigationDelivery | null> {
   if (pendingNavigationClaimSettled) {
     return Promise.resolve(null)
   }
@@ -27,18 +29,18 @@ function claimPendingNavigation(): Promise<SettingsWindowNavigationPayload | nul
     const claimGeneration = navigationDeliveryGeneration
     pendingNavigationClaim = invokeIpc<unknown>("settings:getPendingNavigation")
       .then((payload) => {
-        const parsedPayload =
-          payload === null ? null : settingsWindowNavigationPayloadSchema.parse(payload)
+        const parsedDelivery =
+          payload === null ? null : settingsWindowNavigationDeliverySchema.parse(payload)
         pendingNavigationClaimSettled = true
         if (navigationDeliveryGeneration !== claimGeneration) {
           return null
         }
 
-        return parsedPayload
+        return parsedDelivery
       })
       .catch((error: unknown) => {
-        // Retrying can recover a pre-consume transport failure. A claim already
-        // consumed by main resolves to null on retry, so navigation is never replayed.
+        // Main retains an unacknowledged delivery, so retrying cannot lose a
+        // navigation even if the first response was interrupted by a reload.
         pendingNavigationClaim = null
         pendingNavigationClaimSettled = false
         throw error
@@ -103,15 +105,21 @@ export const settingsApi = {
   openTab: (payload: SettingsWindowNavigationPayload): Promise<void> => {
     return invokeIpc("settings:openTab", payload)
   },
-  getPendingNavigation: (): Promise<SettingsWindowNavigationPayload | null> => {
+  getPendingNavigation: (): Promise<SettingsWindowNavigationDelivery | null> => {
     return claimPendingNavigation()
   },
+  acknowledgeNavigation: (delivery: SettingsWindowNavigationDelivery): Promise<void> => {
+    return invokeIpc(
+      "settings:acknowledgeNavigation",
+      createSettingsWindowNavigationAcknowledgement(delivery)
+    )
+  },
   onNavigationChanged: (
-    callback: (payload: SettingsWindowNavigationPayload) => void
+    callback: (delivery: SettingsWindowNavigationDelivery) => void
   ): (() => void) => {
-    const handler = (_event: unknown, payload: unknown): void => {
+    const handler = (_event: unknown, delivery: unknown): void => {
       navigationDeliveryGeneration += 1
-      callback(settingsWindowNavigationPayloadSchema.parse(payload))
+      callback(settingsWindowNavigationDeliverySchema.parse(delivery))
     }
 
     ipcRenderer.on(SETTINGS_NAVIGATION_CHANGED_CHANNEL, handler)

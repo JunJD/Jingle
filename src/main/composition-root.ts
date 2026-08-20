@@ -106,11 +106,17 @@ import {
 import { configureQuicklinksLauncherSearchProvider } from "./services/launcher-search/providers/quicklinks"
 import { registerWorkspaceIpcHandlers, registerWorkspaceModule } from "./workspace/module"
 import { nativeExtensionManifests } from "@extensions/index"
-import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
+import type {
+  SettingsWindowNavigationDelivery,
+  SettingsWindowNavigationPayload
+} from "@shared/settings-window"
 import { DurableWindowLifecycleService } from "./durable-window/lifecycle"
 
 export interface MainCompositionContext {
-  consumePendingSettingsNavigation: () => SettingsWindowNavigationPayload | null
+  acknowledgeSettingsNavigation: (
+    delivery: Pick<SettingsWindowNavigationDelivery, "rendererLoadEpoch" | "revision">
+  ) => void
+  claimPendingSettingsNavigation: () => SettingsWindowNavigationDelivery | null
   createMainWindow: PrimaryMainWindowRuntime["createMainWindow"]
   createThreadWindow: ThreadWindowRuntime["createThreadWindow"]
   enableDevtoolsNetwork: boolean
@@ -330,7 +336,8 @@ export function createMainCompositionRoot(
   registerNativeMenuBarModule(childContainer)
   registerSettingsModule(childContainer)
   registerSettingsWindowRoutingModule(childContainer, {
-    consumePendingNavigation: context.consumePendingSettingsNavigation,
+    acknowledgeNavigation: context.acknowledgeSettingsNavigation,
+    claimPendingNavigation: context.claimPendingSettingsNavigation,
     openSettingsWindow: context.openSettingsWindow
   })
   registerExtensionRuntimeModule(childContainer)

@@ -1,5 +1,6 @@
 import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent, type WebContents } from "electron"
 import {
+  settingsWindowAcknowledgeNavigationArgsSchema,
   settingsWindowGetPendingNavigationArgsSchema,
   settingsWindowOpenArgsSchema,
   settingsWindowOpenTabArgsSchema
@@ -50,6 +51,16 @@ export class SettingsWindowRoutingController {
       (event) => {
         this.assertSettingsSender(event)
         return this.settingsWindowRoutingService.getPendingNavigation()
+      }
+    )
+
+    registerValidatedIpcHandle(
+      ipcMain,
+      "settings:acknowledgeNavigation",
+      settingsWindowAcknowledgeNavigationArgsSchema,
+      (event, delivery) => {
+        this.assertSettingsSender(event)
+        this.settingsWindowRoutingService.acknowledgeNavigation(delivery)
       }
     )
   }

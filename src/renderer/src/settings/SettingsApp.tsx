@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { CircleAlert, Settings2 } from "lucide-react"
 import {
   createSettingsWindowNavigationPayload,
+  type SettingsWindowNavigationDelivery,
   type SettingsWindowNavigationPayload,
   type SettingsWindowTab
 } from "@shared/settings-window"
@@ -31,6 +32,9 @@ export default function SettingsApp(): React.JSX.Element {
   const [navigation, setNavigation] = useState<SettingsWindowNavigationPayload>(() =>
     createSettingsWindowNavigationPayload("general")
   )
+  const [appliedDelivery, setAppliedDelivery] = useState<SettingsWindowNavigationDelivery | null>(
+    null
+  )
   const [navigationDeliveryFailed, setNavigationDeliveryFailed] = useState(false)
 
   const navigateToTab = useCallback((tab: SettingsWindowTab) => {
@@ -52,26 +56,28 @@ export default function SettingsApp(): React.JSX.Element {
 
     let disposed = false
     let receivedLiveNavigation = false
-    const unsubscribe = window.api.settings.onNavigationChanged((payload) => {
+    const unsubscribe = window.api.settings.onNavigationChanged((delivery) => {
       if (disposed) {
         return
       }
 
       receivedLiveNavigation = true
       setNavigationDeliveryFailed(false)
-      setNavigation(payload)
+      setNavigation(delivery.payload)
+      setAppliedDelivery(delivery)
     })
 
     void window.api.settings
       .getPendingNavigation()
-      .then((payload) => {
+      .then((delivery) => {
         if (disposed || receivedLiveNavigation) {
           return
         }
 
         setNavigationDeliveryFailed(false)
-        if (payload) {
-          setNavigation(payload)
+        if (delivery) {
+          setNavigation(delivery.payload)
+          setAppliedDelivery(delivery)
         }
       })
       .catch((error: unknown) => {
@@ -90,6 +96,16 @@ export default function SettingsApp(): React.JSX.Element {
       unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    if (!appliedDelivery) {
+      return
+    }
+
+    void window.api.settings.acknowledgeNavigation(appliedDelivery).catch((error: unknown) => {
+      console.error("[Settings] Failed to acknowledge applied navigation.", error)
+    })
+  }, [appliedDelivery])
 
   const activePage = SETTINGS_PAGE_REGISTRY[navigation.tab]
   const pageContent = activePage.render({

@@ -40,6 +40,25 @@ export const settingsWindowNavigationPayloadSchema = z.discriminatedUnion(
 
 export type SettingsWindowNavigationPayload = z.infer<typeof settingsWindowNavigationPayloadSchema>
 export type SettingsWindowTab = SettingsWindowNavigationPayload["tab"]
+
+export const settingsWindowNavigationDeliverySchema = z
+  .object({
+    revision: z.number().int().positive(),
+    rendererLoadEpoch: z.number().int().nonnegative(),
+    payload: settingsWindowNavigationPayloadSchema
+  })
+  .strict()
+
+export type SettingsWindowNavigationDelivery = z.infer<
+  typeof settingsWindowNavigationDeliverySchema
+>
+
+export const settingsWindowNavigationAcknowledgementSchema =
+  settingsWindowNavigationDeliverySchema.pick({ rendererLoadEpoch: true, revision: true })
+
+export type SettingsWindowNavigationAcknowledgement = z.infer<
+  typeof settingsWindowNavigationAcknowledgementSchema
+>
 export type ProviderSettingsWindowTarget = NonNullable<
   Extract<SettingsWindowNavigationPayload, { tab: "provider" }>["target"]
 >
@@ -58,6 +77,19 @@ export const settingsWindowOpenArgsSchema = z.union([
 export const settingsWindowOpenTabArgsSchema = z.tuple([settingsWindowNavigationPayloadSchema])
 
 export const settingsWindowGetPendingNavigationArgsSchema = z.tuple([])
+
+export const settingsWindowAcknowledgeNavigationArgsSchema = z.tuple([
+  settingsWindowNavigationAcknowledgementSchema
+])
+
+export function createSettingsWindowNavigationAcknowledgement(
+  delivery: SettingsWindowNavigationDelivery
+): SettingsWindowNavigationAcknowledgement {
+  return settingsWindowNavigationAcknowledgementSchema.parse({
+    rendererLoadEpoch: delivery.rendererLoadEpoch,
+    revision: delivery.revision
+  })
+}
 
 export function createSettingsWindowNavigationPayload(
   tab: SettingsWindowTab,

@@ -6,7 +6,7 @@ import { lockFixedWindowZoom } from "./window-zoom"
 import { attachWindowDiagnostics } from "../diagnostics/electron-events"
 import {
   SETTINGS_NAVIGATION_CHANGED_CHANNEL,
-  type SettingsWindowNavigationPayload
+  type SettingsWindowNavigationDelivery
 } from "@shared/settings-window"
 import { getAppThemeSettings } from "../preferences"
 import { createThemeTitleBarOverlay } from "./title-bar-overlay"
@@ -56,10 +56,10 @@ export function createSettingsWindow(): BrowserWindow {
 
 export function showSettingsWindow(
   settingsWindow: BrowserWindow,
-  payload?: SettingsWindowNavigationPayload
+  delivery?: SettingsWindowNavigationDelivery
 ): void {
-  if (payload) {
-    settingsWindow.webContents.send(SETTINGS_NAVIGATION_CHANGED_CHANNEL, payload)
+  if (delivery) {
+    settingsWindow.webContents.send(SETTINGS_NAVIGATION_CHANGED_CHANNEL, delivery)
   }
 
   requestWindowPresentation(settingsWindow)

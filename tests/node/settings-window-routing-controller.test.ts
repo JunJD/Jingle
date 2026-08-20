@@ -2,9 +2,14 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent, WebContents } from "electron"
 import { SettingsWindowRoutingController } from "../../src/main/settings-window-routing/controller"
+import { SettingsWindowNavigationDeliveryOwner } from "../../src/main/settings-window-routing/navigation-delivery"
 import { SettingsWindowRoutingService } from "../../src/main/settings-window-routing/service"
 import { registerWindowIdentity, type WindowIdentity } from "../../src/main/windows/window-identity"
-import type { SettingsWindowNavigationPayload } from "../../src/shared/settings-window"
+import {
+  createSettingsWindowNavigationAcknowledgement,
+  type SettingsWindowNavigationDelivery,
+  type SettingsWindowNavigationPayload
+} from "../../src/shared/settings-window"
 
 class FakeIpcMain {
   readonly handlers = new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>()
@@ -58,10 +63,14 @@ function registerIdentity(sender: FakeWebContents, identity: WindowIdentity): vo
   registerWindowIdentity(sender as unknown as WebContents, identity)
 }
 
-function createHarness(pendingNavigation: SettingsWindowNavigationPayload | null = null) {
+function createHarness(pendingNavigation: SettingsWindowNavigationDelivery | null = null) {
   const opened: Array<SettingsWindowNavigationPayload | undefined> = []
+  const acknowledged: Array<
+    Pick<SettingsWindowNavigationDelivery, "rendererLoadEpoch" | "revision">
+  > = []
   const service = new SettingsWindowRoutingService({
-    consumePendingNavigation: () => pendingNavigation,
+    acknowledgeNavigation: (revision) => acknowledged.push(revision),
+    claimPendingNavigation: () => pendingNavigation,
     openSettingsWindow: (payload) => opened.push(payload)
   })
   const controller = new SettingsWindowRoutingController(service, (sender) => {
@@ -69,7 +78,7 @@ function createHarness(pendingNavigation: SettingsWindowNavigationPayload | null
   })
   const ipcMain = new FakeIpcMain()
   controller.register(ipcMain as unknown as IpcMain)
-  return { ipcMain, opened }
+  return { acknowledged, ipcMain, opened }
 }
 
 test("settings routing admits a registered Launcher main frame without reading its URL", async () => {
@@ -138,8 +147,12 @@ test("settings routing rejects unowned identities and subframes before side effe
 })
 
 test("pending settings navigation is claimable only by a registered Settings main frame", async () => {
-  const pendingNavigation = { tab: "shortcuts" } as const
-  const { ipcMain } = createHarness(pendingNavigation)
+  const pendingNavigation = {
+    revision: 3,
+    rendererLoadEpoch: 5,
+    payload: { tab: "shortcuts" }
+  } as const
+  const { acknowledged, ipcMain } = createHarness(pendingNavigation)
   const settingsSender = new FakeWebContents()
   registerIdentity(settingsSender, { kind: "settings" })
   assert.deepEqual(
@@ -157,4 +170,108 @@ test("pending settings navigation is claimable only by a registered Settings mai
     ipcMain.invokeFromFrame("settings:getPendingNavigation", settingsSender, {}),
     /Pending settings navigation can only be claimed by the Settings window/
   )
+
+  await ipcMain.invoke("settings:acknowledgeNavigation", settingsSender, {
+    revision: 3,
+    rendererLoadEpoch: 5
+  })
+  assert.deepEqual(acknowledged, [{ revision: 3, rendererLoadEpoch: 5 }])
+  await assert.rejects(
+    ipcMain.invoke("settings:acknowledgeNavigation", launcherSender, {
+      revision: 3,
+      rendererLoadEpoch: 5
+    }),
+    /Pending settings navigation can only be claimed by the Settings window/
+  )
+})
+
+test("navigation remains claimable across a renderer reload until the applied revision is acknowledged", () => {
+  const owner = new SettingsWindowNavigationDeliveryOwner()
+
+  owner.beginRendererLoad()
+  assert.equal(owner.claimPending(), null)
+  const directDelivery = owner.publish({ tab: "appearance" })
+  assert.deepEqual(directDelivery, {
+    revision: 1,
+    rendererLoadEpoch: 1,
+    payload: { tab: "appearance" }
+  })
+
+  // reload() can begin before Electron emits did-start-loading. The direct IPC
+  // may therefore target the renderer being replaced, but the durable owner
+  // must retain the same delivery for the successor renderer to claim.
+  owner.beginRendererLoad()
+  const successorDelivery = owner.claimPending()
+  assert.deepEqual(successorDelivery, {
+    ...directDelivery,
+    rendererLoadEpoch: 2
+  })
+
+  owner.acknowledge(directDelivery)
+  assert.deepEqual(owner.claimPending(), successorDelivery)
+
+  assert.ok(successorDelivery)
+  owner.acknowledge(successorDelivery)
+  owner.beginRendererLoad()
+  assert.equal(owner.claimPending(), null)
+})
+
+test("a stale renderer acknowledgement cannot clear a newer settings navigation", () => {
+  const owner = new SettingsWindowNavigationDeliveryOwner()
+  owner.beginRendererLoad()
+  owner.claimPending()
+
+  const first = owner.publish({ tab: "appearance" })
+  const second = owner.publish({ tab: "shortcuts" })
+  assert.ok(first)
+  assert.ok(second)
+
+  owner.acknowledge(first)
+  owner.beginRendererLoad()
+  assert.deepEqual(owner.claimPending(), {
+    ...second,
+    rendererLoadEpoch: 2
+  })
+})
+
+test("a full renderer delivery is reduced to the strict acknowledgement protocol", () => {
+  assert.deepEqual(
+    createSettingsWindowNavigationAcknowledgement({
+      revision: 9,
+      rendererLoadEpoch: 4,
+      payload: { tab: "appearance" }
+    }),
+    {
+      revision: 9,
+      rendererLoadEpoch: 4
+    }
+  )
+})
+
+test("the Settings main-frame acknowledgement clears the exact pending delivery", async () => {
+  const owner = new SettingsWindowNavigationDeliveryOwner()
+  owner.beginRendererLoad()
+  owner.claimPending()
+  const delivery = owner.publish({ tab: "appearance" })
+  assert.ok(delivery)
+
+  const service = new SettingsWindowRoutingService({
+    acknowledgeNavigation: (acknowledgement) => owner.acknowledge(acknowledgement),
+    claimPendingNavigation: () => owner.claimPending(),
+    openSettingsWindow: () => undefined
+  })
+  const controller = new SettingsWindowRoutingController(service)
+  const ipcMain = new FakeIpcMain()
+  controller.register(ipcMain as unknown as IpcMain)
+  const settingsSender = new FakeWebContents()
+  registerIdentity(settingsSender, { kind: "settings" })
+
+  await ipcMain.invoke(
+    "settings:acknowledgeNavigation",
+    settingsSender,
+    createSettingsWindowNavigationAcknowledgement(delivery)
+  )
+
+  owner.beginRendererLoad()
+  assert.equal(owner.claimPending(), null)
 })

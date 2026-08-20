@@ -42,6 +42,7 @@ import {
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 import { createIpcNetworkWindow, showIpcNetworkWindow } from "./windows/ipc-network-window"
 import { beginRendererWindowShutdown } from "./windows/load-renderer-window"
+import { SettingsWindowNavigationDeliveryOwner } from "./settings-window-routing/navigation-delivery"
 
 const APP_DISPLAY_NAME = "Jingle"
 const APP_USER_MODEL_ID = "com.jingle.desktop"
@@ -88,8 +89,7 @@ function showMain(): void {
   }
   mainCompositionRoot.showMainWindow()
 }
-let pendingSettingsNavigation: SettingsWindowNavigationPayload | null = null
-let settingsRendererReady = false
+const settingsNavigationDelivery = new SettingsWindowNavigationDeliveryOwner()
 let pendingOAuthCallbackUrl: string | null = null
 type OpenUrlHandling = { kind: "handled"; owner: "oauth" } | { kind: "unhandled" }
 let shutdownComplete = false
@@ -157,7 +157,7 @@ function getOrCreateLauncherWindow(): BrowserWindow {
 
 function getOrCreateSettingsWindow(): BrowserWindow {
   if (!settingsWindow || settingsWindow.isDestroyed()) {
-    settingsRendererReady = false
+    settingsNavigationDelivery.beginRendererLoad()
     settingsWindow = createSettingsWindow()
     const createdWindow = settingsWindow
     mainCompositionRoot?.supportingWindowOpened(createdWindow)
@@ -169,15 +169,14 @@ function getOrCreateSettingsWindow(): BrowserWindow {
     })
     createdWindow.webContents.on("did-start-loading", () => {
       if (settingsWindow === createdWindow) {
-        settingsRendererReady = false
+        settingsNavigationDelivery.beginRendererLoad()
       }
     })
     settingsWindow.on("closed", () => {
       mainCompositionRoot?.supportingWindowClosed(createdWindow)
       if (settingsWindow === createdWindow) {
         settingsWindow = null
-        pendingSettingsNavigation = null
-        settingsRendererReady = false
+        settingsNavigationDelivery.closeWindow()
       }
     })
   }
@@ -216,12 +215,8 @@ function toggleLauncher(): void {
 
 function openSettingsWindow(payload?: SettingsWindowNavigationPayload): void {
   const settingsWindow = getOrCreateSettingsWindow()
-
-  if (payload) {
-    pendingSettingsNavigation = settingsRendererReady ? null : payload
-  }
-
-  showSettingsWindow(settingsWindow, settingsRendererReady ? payload : undefined)
+  const delivery = payload ? settingsNavigationDelivery.publish(payload) : undefined
+  showSettingsWindow(settingsWindow, delivery)
 }
 
 function openIpcNetworkWindow(): void {
@@ -401,12 +396,8 @@ if (hasSingleInstanceLock) {
 
     // Register IPC handlers
     mainCompositionRoot = createMainCompositionRoot({
-      consumePendingSettingsNavigation: () => {
-        const pending = pendingSettingsNavigation
-        pendingSettingsNavigation = null
-        settingsRendererReady = true
-        return pending
-      },
+      acknowledgeSettingsNavigation: (delivery) => settingsNavigationDelivery.acknowledge(delivery),
+      claimPendingSettingsNavigation: () => settingsNavigationDelivery.claimPending(),
       createMainWindow,
       createThreadWindow,
       getLauncherWindow,

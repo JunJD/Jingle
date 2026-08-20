@@ -1,7 +1,13 @@
-import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
+import type {
+  SettingsWindowNavigationDelivery,
+  SettingsWindowNavigationPayload
+} from "@shared/settings-window"
 
 export interface SettingsWindowRoutingRuntime {
-  consumePendingNavigation: () => SettingsWindowNavigationPayload | null
+  acknowledgeNavigation: (
+    delivery: Pick<SettingsWindowNavigationDelivery, "rendererLoadEpoch" | "revision">
+  ) => void
+  claimPendingNavigation: () => SettingsWindowNavigationDelivery | null
   openSettingsWindow: (payload?: SettingsWindowNavigationPayload) => void
 }
 
@@ -12,7 +18,13 @@ export class SettingsWindowRoutingService {
     this.runtime.openSettingsWindow(payload)
   }
 
-  getPendingNavigation(): SettingsWindowNavigationPayload | null {
-    return this.runtime.consumePendingNavigation()
+  acknowledgeNavigation(
+    delivery: Pick<SettingsWindowNavigationDelivery, "rendererLoadEpoch" | "revision">
+  ): void {
+    this.runtime.acknowledgeNavigation(delivery)
+  }
+
+  getPendingNavigation(): SettingsWindowNavigationDelivery | null {
+    return this.runtime.claimPendingNavigation()
   }
 }
