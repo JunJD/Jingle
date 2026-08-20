@@ -7,14 +7,17 @@ import {
 } from "../../src/renderer/src/ai-core/durable-window-thread-binding"
 
 function deferred<T>(): {
+  reject: (error: unknown) => void
   promise: Promise<T>
   resolve: (value: T) => void
 } {
   let resolve: (value: T) => void = () => undefined
-  const promise = new Promise<T>((next) => {
+  let reject: (error: unknown) => void = () => undefined
+  const promise = new Promise<T>((next, fail) => {
     resolve = next
+    reject = fail
   })
-  return { promise, resolve }
+  return { promise, reject, resolve }
 }
 
 function startProjection(input: {
@@ -73,6 +76,26 @@ describe("Durable window thread binding projection", () => {
 
     assert.deepEqual(projected, [["thread-b", 2]])
     assert.deepEqual(projection.getCurrent(), { revision: 2, threadId: "thread-b" })
+  })
+
+  it("keeps an authoritative live event when the initial read rejects", async () => {
+    const errors: unknown[] = []
+    const read = deferred<{ revision: number; threadId: string | null }>()
+    const { emit, projection } = startProjection({
+      onError: (error) => errors.push(error),
+      onSnapshot: () => {},
+      read
+    })
+
+    emit({ revision: 4, threadId: "thread-authoritative" })
+    read.reject(new Error("stale read failed"))
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    assert.deepEqual(errors, [])
+    assert.deepEqual(projection.getCurrent(), {
+      revision: 4,
+      threadId: "thread-authoritative"
+    })
   })
 
   it("lets a local acknowledgement fence delayed older events without re-projecting", () => {

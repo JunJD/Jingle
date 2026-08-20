@@ -39,7 +39,10 @@ export function startDurableWindowThreadBindingProjection(input: {
       accept(snapshot, true)
     },
     (error: unknown) => {
-      if (active) input.onError(error)
+      // A live event is authoritative even if the initial snapshot read
+      // rejects afterward. Do not erase a valid binding with a stale read
+      // failure; only fail initialization when no snapshot was observed.
+      if (active && current === null) input.onError(error)
     }
   )
 
