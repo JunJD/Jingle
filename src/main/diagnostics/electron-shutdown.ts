@@ -3,8 +3,8 @@ import type { NormalizedElectronChildProcessDetails } from "./electron-child-pro
 /**
  * A child-process-gone event is expected only after main-owned shutdown has
  * started and only for Electron's utility/GPU children. Keep the reason gate
- * narrow; crash or abnormal-exit records remain errors unless the existing
- * exit-15 shutdown evidence is present.
+ * narrow; crash and abnormal-exit records remain errors even when an exit
+ * code happens to match a normal shutdown signal.
  */
 export function isExpectedElectronShutdown(
   shutdownStarted: boolean,
@@ -13,6 +13,6 @@ export function isExpectedElectronShutdown(
   return (
     shutdownStarted &&
     (details.processType === "utility" || details.processType === "gpu") &&
-    (details.reason === "clean-exit" || details.reason === "killed" || details.exitCode === 15)
+    (details.reason === "clean-exit" || details.reason === "killed")
   )
 }
