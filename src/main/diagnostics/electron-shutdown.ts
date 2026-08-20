@@ -14,8 +14,8 @@ export function isExpectedElectronShutdown(
   return (
     shutdownStarted &&
     (details.processType === "utility" || details.processType === "gpu") &&
-    details.reason === "clean-exit" ||
-    details.reason === "killed" ||
-    (details.reason === "abnormal-exit" && details.exitCode === 15)
+    (details.reason === "clean-exit" ||
+      details.reason === "killed" ||
+      (details.reason === "abnormal-exit" && details.exitCode === 15))
   )
 }
