@@ -1,4 +1,4 @@
-import type { HitlRequest } from "@prisma/client"
+import type { HitlRequest, Prisma } from "@prisma/client"
 import { isHitlDecisionType, type HITLDecisionType } from "@shared/hitl"
 import { getPrismaClient } from "./client"
 import { serializeJsonValue, toNumber } from "./utils"
@@ -37,6 +37,11 @@ export interface UpsertHitlRequestInput {
   status?: "pending"
   created_at?: number
   updated_at?: number
+}
+
+export interface UpsertHitlRequestTransactionResult {
+  row: HitlRequestRow
+  staleReplay: boolean
 }
 
 function mapHitlRequestRow(row: HitlRequest): HitlRequestRow {
@@ -80,6 +85,26 @@ export function parsePersistedHitlAllowedDecisions(
 
 export async function upsertHitlRequest(input: UpsertHitlRequestInput): Promise<HitlRequestRow> {
   const prisma = getPrismaClient()
+  const result = await prisma.$transaction((transaction) =>
+    upsertHitlRequestInTransaction(transaction, input)
+  )
+
+  if (result.staleReplay) {
+    console.warn("[HITL] Ignored stale pending request replay.", {
+      requestId: input.request_id,
+      runId: input.run_id ?? null,
+      status: result.row.status,
+      threadId: input.thread_id
+    })
+  }
+
+  return result.row
+}
+
+export async function upsertHitlRequestInTransaction(
+  transaction: Prisma.TransactionClient,
+  input: UpsertHitlRequestInput
+): Promise<UpsertHitlRequestTransactionResult> {
   const now = BigInt(input.updated_at ?? input.created_at ?? Date.now())
   const createdAt = BigInt(input.created_at ?? Number(now))
   const toolArgs =
@@ -89,96 +114,86 @@ export async function upsertHitlRequest(input: UpsertHitlRequestInput): Promise<
       ? input.allowed_decisions
       : JSON.stringify(input.allowed_decisions)
 
-  const { row, staleReplay } = await prisma.$transaction(async (tx) => {
-    const current = await tx.hitlRequest.upsert({
-      where: {
-        requestId: input.request_id
-      },
-      create: {
-        requestId: input.request_id,
-        threadId: input.thread_id,
-        runId: input.run_id ?? null,
-        toolCallId: input.tool_call_id,
-        toolName: input.tool_name,
-        toolArgs,
-        reviewKind: input.review_kind ?? null,
-        reviewPayload: serializeJsonValue(input.review_payload) ?? null,
-        allowedDecisions,
-        status: "pending",
-        decision: null,
-        createdAt,
-        updatedAt: now,
-        resolvedAt: null
-      },
-      update: {}
-    })
-
-    if (current.status !== "pending") {
-      return { row: current, staleReplay: true }
-    }
-
-    await tx.hitlRequest.updateMany({
-      where: {
-        requestId: input.request_id,
-        status: "pending"
-      },
-      data: {
-        runId: input.run_id ?? undefined,
-        toolCallId: input.tool_call_id,
-        toolName: input.tool_name,
-        toolArgs,
-        reviewKind: input.review_kind === undefined ? undefined : input.review_kind,
-        reviewPayload:
-          input.review_payload === undefined
-            ? undefined
-            : (serializeJsonValue(input.review_payload) ?? null),
-        allowedDecisions,
-        decision: null,
-        updatedAt: now,
-        resolvedAt: null
-      }
-    })
-
-    const refreshed = await tx.hitlRequest.findUniqueOrThrow({
-      where: {
-        requestId: input.request_id
-      }
-    })
-    if (refreshed.runId !== null) {
-      const [run, finishedEvents] = await Promise.all([
-        tx.run.findUnique({
-          select: { status: true },
-          where: { runId: refreshed.runId }
-        }),
-        tx.agentEvent.findMany({
-          select: { payload: true },
-          where: { runId: refreshed.runId, type: "run.finished" }
-        })
-      ])
-      if (
-        run?.status === "cancelled" ||
-        run?.status === "error" ||
-        run?.status === "success" ||
-        finishedEvents.some((event) => isDurableTerminalRunFinishedPayload(event.payload))
-      ) {
-        throw new Error(
-          `[HITL] Cannot persist pending request "${input.request_id}" for terminal run "${refreshed.runId}".`
-        )
-      }
-    }
-    return { row: refreshed, staleReplay: refreshed.status !== "pending" }
+  const current = await transaction.hitlRequest.upsert({
+    where: {
+      requestId: input.request_id
+    },
+    create: {
+      requestId: input.request_id,
+      threadId: input.thread_id,
+      runId: input.run_id ?? null,
+      toolCallId: input.tool_call_id,
+      toolName: input.tool_name,
+      toolArgs,
+      reviewKind: input.review_kind ?? null,
+      reviewPayload: serializeJsonValue(input.review_payload) ?? null,
+      allowedDecisions,
+      status: "pending",
+      decision: null,
+      createdAt,
+      updatedAt: now,
+      resolvedAt: null
+    },
+    update: {}
   })
 
-  if (staleReplay) {
-    console.warn("[HITL] Ignored stale pending request replay.", {
-      requestId: input.request_id,
-      runId: input.run_id ?? null,
-      status: row.status,
-      threadId: input.thread_id
-    })
+  if (current.status !== "pending") {
+    return { row: mapHitlRequestRow(current), staleReplay: true }
   }
 
-  return mapHitlRequestRow(row)
+  await transaction.hitlRequest.updateMany({
+    where: {
+      requestId: input.request_id,
+      status: "pending"
+    },
+    data: {
+      runId: input.run_id ?? undefined,
+      toolCallId: input.tool_call_id,
+      toolName: input.tool_name,
+      toolArgs,
+      reviewKind: input.review_kind === undefined ? undefined : input.review_kind,
+      reviewPayload:
+        input.review_payload === undefined
+          ? undefined
+          : (serializeJsonValue(input.review_payload) ?? null),
+      allowedDecisions,
+      decision: null,
+      updatedAt: now,
+      resolvedAt: null
+    }
+  })
+
+  const refreshed = await transaction.hitlRequest.findUniqueOrThrow({
+    where: {
+      requestId: input.request_id
+    }
+  })
+  if (refreshed.runId !== null) {
+    const [run, finishedEvents] = await Promise.all([
+      transaction.run.findUnique({
+        select: { status: true },
+        where: { runId: refreshed.runId }
+      }),
+      transaction.agentEvent.findMany({
+        select: { payload: true },
+        where: { runId: refreshed.runId, type: "run.finished" }
+      })
+    ])
+    if (
+      run?.status === "cancelled" ||
+      run?.status === "error" ||
+      run?.status === "success" ||
+      finishedEvents.some((event) => isDurableTerminalRunFinishedPayload(event.payload))
+    ) {
+      throw new Error(
+        `[HITL] Cannot persist pending request "${input.request_id}" for terminal run "${refreshed.runId}".`
+      )
+    }
+  }
+  return {
+    row: mapHitlRequestRow(refreshed),
+    staleReplay: refreshed.status !== "pending"
+  }
 }
 
 export async function getLatestHitlRequest(threadId: string): Promise<HitlRequestRow | null> {

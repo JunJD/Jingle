@@ -18,30 +18,11 @@ export type JingleHitlDecisionType = "approve" | "user_declined" | "corrected"
 export type JingleHitlToolCall = JingleApprovalRequest["tool_call"]
 export type JingleHitlRequest<TReview = unknown> = JingleApprovalRequest<TReview>
 
-export interface JinglePendingHitlRequestContext {
-  runId: string | null
-  threadId: string
-}
-
-export type JinglePendingHitlRequestUpserter<TReview = unknown> = (
-  request: JingleHitlRequest<TReview>,
-  context: JinglePendingHitlRequestContext
-) => Promise<void> | void
-
 export type JingleLangGraphInterrupt = JingleApprovalInterrupt
 
 export type JingleHitlReviewParser<TReview = unknown> = JingleApprovalReviewParser<TReview>
 
 export type JingleCheckpointRunStatus = "interrupted" | "success"
-
-export interface PersistJingleValuesHitlRequestInput<TReview = unknown> {
-  data: unknown
-  mode: string
-  parseReview: JingleHitlReviewParser<TReview>
-  runId: string
-  threadId: string
-  upsertPendingHitlRequest: JinglePendingHitlRequestUpserter<TReview>
-}
 
 type CheckpointInterruptValue = JingleApprovalInterruptValue
 
@@ -142,27 +123,6 @@ export function extractJingleHitlRequestFromValuesState<TReview>(
     runId,
     threadId
   })
-}
-
-export async function persistJingleValuesHitlRequest<TReview>(
-  input: PersistJingleValuesHitlRequestInput<TReview>
-): Promise<boolean> {
-  if (input.mode !== "values") {
-    return false
-  }
-
-  const request = extractJingleHitlRequestFromValuesState(input.threadId, input.runId, input.data, {
-    parseReview: input.parseReview
-  })
-  if (!request) {
-    return false
-  }
-
-  await input.upsertPendingHitlRequest(request, {
-    runId: input.runId,
-    threadId: input.threadId
-  })
-  return true
 }
 
 export function projectJingleValuesInterruptWithRequestIds(

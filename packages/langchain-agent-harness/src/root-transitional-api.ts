@@ -104,8 +104,8 @@ export {
 } from "./approval-lifecycle"
 export type { JingleHitlRequest } from "./langgraph-hitl-reader"
 export {
+  extractJingleHitlRequestFromCheckpoint,
   extractJingleHitlRequestFromValuesState,
-  persistJingleValuesHitlRequest,
   projectJinglePendingApprovalFromHitlRequest,
   projectJingleValuesInterruptWithRequestIds,
   resolveJingleCheckpointRunStatus

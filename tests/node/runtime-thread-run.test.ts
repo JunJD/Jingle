@@ -376,19 +376,11 @@ test("RuntimeThreadRun returns true only to the abort call that wins terminal ow
   assert.equal(settleCount, 1)
 })
 
-test("RuntimeThread stream does not call the host after cancellation during pending HITL persistence", async () => {
-  const persistenceStarted = createDeferred<void>()
-  const releasePersistence = createDeferred<void>()
+test("RuntimeThread stream detects pending HITL without persisting a second durable owner", async () => {
   const controller = new AbortController()
   let hostChunkCount = 0
   const stream = createRuntimeThreadStreamDrainControlFromController({
-    pauseController: {
-      parseReview: () => null,
-      upsertPendingHitlRequest: async () => {
-        persistenceStarted.resolve()
-        await releasePersistence.promise
-      }
-    },
+    pauseController: { parseReview: () => null },
     thread: { threadId: "thread-cancelled-hitl", workspacePath: "/workspace" }
   })
   const drain = stream.drainRunStream({
@@ -422,12 +414,8 @@ test("RuntimeThread stream does not call the host after cancellation during pend
     }
   })
 
-  await persistenceStarted.promise
-  controller.abort()
-  releasePersistence.resolve()
-
-  await assert.rejects(drain, { name: "AbortError" })
-  assert.equal(hostChunkCount, 0)
+  assert.deepEqual(await drain, { interrupted: true })
+  assert.equal(hostChunkCount, 1)
 })
 
 test("RuntimeThreadRun keeps completion when completion claims the terminal state first", async () => {
@@ -787,8 +775,7 @@ test("RuntimeThreadRun observes a committed resume decision before cancellation 
       operations: createOperationControl({ stream: createChunkStream() }),
       stream: createRuntimeThreadStreamDrainControlFromController({
         pauseController: {
-          parseReview: () => null,
-          upsertPendingHitlRequest: async () => undefined
+          parseReview: () => null
         },
         thread: { threadId: "thread-resume-observation", workspacePath: "/workspace" }
       })
@@ -829,8 +816,7 @@ test("RuntimeThread compact rejects while a run owns the thread", async () => {
       }
     },
     pauseController: {
-      parseReview: () => null,
-      upsertPendingHitlRequest: async () => undefined
+      parseReview: () => null
     },
     runLifecycleController: {
       beginInvokeRun: async () => ({
@@ -923,8 +909,7 @@ test("RuntimeThread compact owns run admission until the compact operation settl
       }
     },
     pauseController: {
-      parseReview: () => null,
-      upsertPendingHitlRequest: async () => undefined
+      parseReview: () => null
     },
     runLifecycleController: createLifecycleController()
   }).thread({ threadId: "thread-compact-admission", workspacePath: "/workspace" })
@@ -1001,8 +986,7 @@ test("RuntimeThreadRun registers its settle barrier before a factory can re-ente
       }
     },
     pauseController: {
-      parseReview: () => null,
-      upsertPendingHitlRequest: async () => undefined
+      parseReview: () => null
     },
     runLifecycleController: createLifecycleController({ events }),
     thread: { threadId: "thread-reentrant-abort", workspacePath: "/workspace" }
@@ -1032,8 +1016,7 @@ test("RuntimeThreadRun abort waits for its signal-aware execution factory", asyn
       })
     },
     pauseController: {
-      parseReview: () => null,
-      upsertPendingHitlRequest: async () => undefined
+      parseReview: () => null
     },
     runLifecycleController: createLifecycleController({ events }),
     thread: { threadId: "thread-pending-resolution", workspacePath: "/workspace" }
@@ -1064,8 +1047,7 @@ test("RuntimeThreadRun fail waits for its signal-aware execution factory", async
       })
     },
     pauseController: {
-      parseReview: () => null,
-      upsertPendingHitlRequest: async () => undefined
+      parseReview: () => null
     },
     runLifecycleController: createLifecycleController({
       failureFact: durableFailure,
@@ -1229,8 +1211,7 @@ test("RuntimeThread lifecycle compensates durable starts when execution binding 
       }
     },
     pauseController: {
-      parseReview: () => null,
-      upsertPendingHitlRequest: async () => undefined
+      parseReview: () => null
     },
     runLifecycleController: lifecycle
   })
@@ -1283,8 +1264,7 @@ test("RuntimeThread admission exposes recovery only when failure compensation ca
       }
     },
     pauseController: {
-      parseReview: () => null,
-      upsertPendingHitlRequest: async () => undefined
+      parseReview: () => null
     },
     runLifecycleController: lifecycle
   })
@@ -1341,8 +1321,7 @@ test("Runtime thread facades share one active-state referee and release it after
       }
     },
     pauseController: {
-      parseReview: () => null,
-      upsertPendingHitlRequest: async () => undefined
+      parseReview: () => null
     },
     runLifecycleController: createLifecycleController()
   })
@@ -1540,8 +1519,7 @@ test("createRuntime makes the manager-owned checkpoint wait abortable", async ()
     },
     control: {
       pauseController: {
-        parseReview: () => null,
-        upsertPendingHitlRequest: async () => undefined
+        parseReview: () => null
       },
       runLifecycleController: createLifecycleController({ events: lifecycleEvents })
     }
@@ -1582,8 +1560,7 @@ test("createRuntime gives every synchronous capability the active run signal", a
     },
     control: {
       pauseController: {
-        parseReview: () => null,
-        upsertPendingHitlRequest: async () => undefined
+        parseReview: () => null
       },
       runLifecycleController: createLifecycleController({
         failureFact: durableFailure,

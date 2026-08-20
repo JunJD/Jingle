@@ -9,10 +9,7 @@ import type { GuardrailProvider } from "./guardrail-middleware"
 import type { JingleRunCompletionFacts, JingleRunCompletionStatus } from "./run-completion"
 import type { RuntimeRecordingRef } from "./runtime-state"
 import type { JingleUserMessageAdmissionIdentity } from "./message-metadata"
-import type {
-  JingleHitlReviewParser,
-  JinglePendingHitlRequestUpserter
-} from "./langgraph-hitl-reader"
+import type { JingleHitlReviewParser } from "./langgraph-hitl-reader"
 import type { JingleComputerUseToolHandlers } from "./computer-use-tools"
 import type { JingleWebToolHandlers } from "./web-tools"
 import type { JingleFilesystemMiddlewareOptions } from "./harness-runtime/filesystem"
@@ -92,7 +89,6 @@ export interface RuntimeApprovalControllerContract {
 
 export interface RuntimePauseControllerContract<TReview = unknown> {
   parseReview: JingleHitlReviewParser<TReview>
-  upsertPendingHitlRequest: JinglePendingHitlRequestUpserter<TReview>
 }
 
 export interface RuntimeRunLifecycleSubmittedFacts<TContextInclusion = unknown> {

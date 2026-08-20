@@ -33,6 +33,7 @@ import {
 } from "../../src/shared/model-runtime-selection"
 import { buildJingleSubmittedMessages } from "../../packages/langchain-agent-harness/src/submitted-messages"
 import type { ModelRuntimeSelection } from "../../src/shared/app-types"
+import type { PrismaCheckpointPutTransactionInput } from "../../src/main/checkpointer/prisma-saver"
 
 const repoRoot = process.cwd()
 const originalJingleHome = process.env.JINGLE_HOME
@@ -6546,6 +6547,93 @@ test("runtime checkpointer syncs derived thread state after checkpoint writes", 
     assert.equal(messageRows.length, 1)
     assert.equal(searchRows.length, 1)
     assert.match(searchRows[0]!.search_text, /needs approval/)
+  } finally {
+    await saver.close()
+  }
+})
+
+test("runtime checkpoint saver rolls back pending HITL and core facts together", async () => {
+  const { createRun, createThread, getPrismaClient } = await loadDbModules()
+  const { RuntimeCheckpointSaver } =
+    await import("../../src/main/checkpointer/runtime-checkpointer")
+  const { createRuntimeThreadStreamDrainControlFromController } =
+    await import("../../packages/langchain-agent-harness/src/runtime-thread-stream")
+  const threadId = "thread-checkpoint-transaction-fact-rollback"
+  const runId = "run-checkpoint-transaction-fact-rollback"
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-transaction-fact-rollback"
+  checkpoint.channel_values = {
+    __interrupt__: [
+      {
+        value: {
+          actionRequests: [
+            {
+              args: { path: `${repoRoot}/must-roll-back.txt` },
+              name: "write_file",
+              toolCallId: "tool-call-transaction-fact-rollback"
+            }
+          ]
+        }
+      }
+    ],
+    messages: [
+      {
+        kwargs: { content: "must roll back", id: "message-transaction-fact-rollback" },
+        type: "human"
+      }
+    ]
+  }
+  checkpoint.channel_versions = { messages: "messages-transaction-fact-rollback" }
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
+
+  let streamedChunkCount = 0
+  const stream = createRuntimeThreadStreamDrainControlFromController({
+    pauseController: { parseReview: () => null },
+    thread: { threadId, workspacePath: repoRoot }
+  })
+  const streamed = await stream.drainRunStream({
+    onChunk: () => {
+      streamedChunkCount += 1
+    },
+    runId,
+    signal: new AbortController().signal,
+    stream: {
+      async *[Symbol.asyncIterator]() {
+        yield ["values", checkpoint.channel_values] as [string, unknown]
+      }
+    }
+  })
+  const prisma = getPrismaClient()
+  assert.deepEqual(streamed, { interrupted: true })
+  assert.equal(streamedChunkCount, 1)
+  assert.equal(await prisma.hitlRequest.count({ where: { runId } }), 0)
+
+  class FailingRuntimeCheckpointSaver extends RuntimeCheckpointSaver {
+    protected override async persistCheckpointTransactionFacts(
+      input: PrismaCheckpointPutTransactionInput
+    ): Promise<void> {
+      await super.persistCheckpointTransactionFacts(input)
+      throw new Error("injected checkpoint transaction fact failure")
+    }
+  }
+  const saver = new FailingRuntimeCheckpointSaver()
+  try {
+    await assert.rejects(
+      saver.put(
+        { configurable: { thread_id: threadId }, metadata: { run_id: runId } },
+        checkpoint,
+        { parents: {}, source: "update", step: 0 }
+      ),
+      /injected checkpoint transaction fact failure/
+    )
+
+    assert.equal(await prisma.checkpoint.count({ where: { threadId } }), 0)
+    assert.equal(await prisma.checkpointBlob.count({ where: { threadId } }), 0)
+    assert.equal(await prisma.hitlRequest.count({ where: { runId } }), 0)
+    assert.equal(await prisma.messageStateVersion.count({ where: { threadId } }), 0)
+    assert.equal(await prisma.messageEvent.count({ where: { threadId } }), 0)
+    assert.equal(await prisma.message.count({ where: { threadId } }), 0)
   } finally {
     await saver.close()
   }

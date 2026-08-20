@@ -1,15 +1,17 @@
 import type {
   Checkpoint,
   CheckpointMetadata,
+  CheckpointTuple,
   SerializerProtocol
 } from "@langchain/langgraph-checkpoint"
 import {
+  extractJingleHitlRequestFromCheckpoint,
   handleJingleCheckpointAfterCommit,
   type JingleCheckpointCommittedEvent,
   type JingleHitlRequest
 } from "@jingle/langchain-agent-harness/transitional"
 import { appendAgentEventSafely } from "../db/agent-events"
-import { upsertHitlRequest } from "../db/hitl"
+import { upsertHitlRequestInTransaction, type UpsertHitlRequestInput } from "../db/hitl"
 import {
   findMessageSearchProjectionDriftThreadIds,
   rebuildMessageSearchIndexFromMessages,
@@ -18,7 +20,7 @@ import {
 import type { MessageSearchProjectionDelta } from "../db/message-state"
 import { createProjectionQueue } from "../projection/projection-queue"
 import { parseToolApprovalItem } from "@shared/tool-approval"
-import { PrismaCheckpointSaver } from "./prisma-saver"
+import { PrismaCheckpointSaver, type PrismaCheckpointPutTransactionInput } from "./prisma-saver"
 
 const MESSAGE_SEARCH_FULL_REBUILD_THRESHOLD = 128
 type PendingMessageSearchProjection =
@@ -144,11 +146,11 @@ async function recordCheckpointCommitted(event: JingleCheckpointCommittedEvent):
   })
 }
 
-async function upsertPendingHitlRequest(
+function toPendingHitlRequestInput(
   request: JingleHitlRequest<ReturnType<typeof parseToolApprovalItem>>,
   context: { runId: string | null; threadId: string }
-): Promise<void> {
-  await upsertHitlRequest({
+): UpsertHitlRequestInput {
+  return {
     request_id: request.id,
     thread_id: context.threadId,
     run_id: context.runId,
@@ -159,7 +161,7 @@ async function upsertPendingHitlRequest(
     review_payload: request.review,
     allowed_decisions: request.allowed_decisions,
     status: "pending"
-  })
+  }
 }
 
 export class RuntimeCheckpointSaver extends PrismaCheckpointSaver {
@@ -187,11 +189,34 @@ export class RuntimeCheckpointSaver extends PrismaCheckpointSaver {
       checkpoint: input.checkpoint,
       checkpointNs: input.checkpointNs,
       metadata: input.metadata,
-      parseReview: parseToolApprovalItem,
       recordCheckpointCommitted,
       runId: input.runId,
-      threadId: input.threadId,
-      upsertPendingHitlRequest
+      threadId: input.threadId
     })
+  }
+
+  protected override async persistCheckpointTransactionFacts(
+    input: PrismaCheckpointPutTransactionInput
+  ): Promise<void> {
+    const request = extractJingleHitlRequestFromCheckpoint(
+      input.threadId,
+      {
+        checkpoint: input.checkpoint,
+        metadata: input.metadata
+      } as CheckpointTuple,
+      {
+        parseReview: parseToolApprovalItem,
+        runId: input.runId
+      }
+    )
+    if (!request) return
+
+    await upsertHitlRequestInTransaction(
+      input.transaction,
+      toPendingHitlRequestInput(request, {
+        runId: input.runId,
+        threadId: input.threadId
+      })
+    )
   }
 }

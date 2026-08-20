@@ -98,6 +98,15 @@ export interface PrismaCheckpointCompactionInput {
   threadId: string
 }
 
+export interface PrismaCheckpointPutTransactionInput {
+  checkpoint: Checkpoint
+  checkpointNs: string
+  metadata: CheckpointMetadata
+  runId: string | null
+  threadId: string
+  transaction: Prisma.TransactionClient
+}
+
 export type PrismaCheckpointCompactionResult =
   | { actualCheckpointId: string | null; status: "conflict" }
   | {
@@ -567,6 +576,15 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
             metadata: storedMetadata
           }
         })
+
+        await this.persistCheckpointTransactionFacts({
+          checkpoint: preparedCheckpoint,
+          checkpointNs,
+          metadata,
+          runId,
+          threadId,
+          transaction: tx
+        })
       })
       await this.afterPut({
         checkpoint: preparedCheckpoint,
@@ -906,6 +924,12 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
     threadId: string
   }): Promise<void> {
     void input
+    return
+  }
+
+  protected async persistCheckpointTransactionFacts(
+    _input: PrismaCheckpointPutTransactionInput
+  ): Promise<void> {
     return
   }
 
