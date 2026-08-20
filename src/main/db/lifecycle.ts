@@ -17,6 +17,7 @@ import {
   settleInterruptedComputerUseAttemptInTransaction
 } from "./computer-use-action-ledger"
 import { commitRunFailureTerminalInTransaction } from "./run-failure-terminal"
+import { reconcileRunScopedPendingHitlRequestInTransaction } from "../checkpointer/runtime-checkpointer"
 
 const REQUIRED_TABLES = [
   "_prisma_migrations",
@@ -416,6 +417,12 @@ async function recoverIncompleteAgentRuns(): Promise<void> {
     const failedComputerUseRunIds = new Set<string>()
     const failedComputerUseThreadIds = new Set<string>()
     const terminalEvents: AppendAgentEventInput[] = []
+    for (const run of running) {
+      await reconcileRunScopedPendingHitlRequestInTransaction(tx, {
+        runId: run.runId,
+        threadId: run.threadId
+      })
+    }
     for (const run of running) {
       const attempts = run.computerUseAttempts.map((row) => ({
         attempt: decodeComputerUseAttempt(row),

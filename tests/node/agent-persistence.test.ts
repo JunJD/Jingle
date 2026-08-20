@@ -758,28 +758,45 @@ test("legacy pending HITL survives database restart and resumes after explicit s
     getHitlRequest,
     getRun,
     initializeDatabase,
-    upsertHitlRequest
+    updateThread
   } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
   const threadId = "thread-restart-legacy-hitl-recovery"
   const runId = "run-restart-legacy-hitl-recovery"
-  const requestId = "request-restart-legacy-hitl-recovery"
   const toolCallId = "tool-restart-legacy-hitl-recovery"
+  const requestId = `hitl:${threadId}:${runId}:${toolCallId}`
   await createThread(threadId)
   await bindThreadWorkspace(threadId, repoRoot)
   await createRun(runId, threadId, {
     metadata: { modelId: "deepseek:deepseek-v4-pro", preservedAcrossRestart: true },
-    status: "interrupted"
+    status: "running"
   })
-  await upsertHitlRequest({
-    allowed_decisions: ["approve", "user_declined", "corrected"],
-    request_id: requestId,
-    run_id: runId,
-    status: "pending",
-    thread_id: threadId,
-    tool_args: {},
-    tool_call_id: toolCallId,
-    tool_name: "write_file"
-  })
+  await updateThread(threadId, { status: "busy" })
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-restart-legacy-hitl-recovery"
+  checkpoint.channel_values = {
+    __interrupt__: [
+      {
+        value: {
+          actionRequests: [{ args: {}, name: "write_file", toolCallId }],
+          reviewConfigs: [
+            {
+              actionName: "write_file",
+              allowedDecisions: ["approve", "user_declined", "corrected"]
+            }
+          ]
+        }
+      }
+    ]
+  }
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    { configurable: { thread_id: threadId }, metadata: { run_id: runId } },
+    checkpoint,
+    { parents: {}, source: "update", step: 0 }
+  )
+  await saver.close()
+  assert.equal(await getHitlRequest(requestId), null)
 
   await closeDatabase()
   await initializeDatabase()
@@ -852,6 +869,145 @@ test("legacy pending HITL survives database restart and resumes after explicit s
     events.map((event) => event.type),
     ["run_started", "error"]
   )
+})
+
+test("database startup does not resurrect pending HITL for a terminal run checkpoint", async () => {
+  const { closeDatabase, createRun, createThread, getHitlRequest, getRun, initializeDatabase } =
+    await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+  const threadId = "thread-terminal-checkpoint-hitl"
+  const runId = "run-terminal-checkpoint-hitl"
+  const toolCallId = "tool-terminal-checkpoint-hitl"
+  const requestId = `hitl:${threadId}:${runId}:${toolCallId}`
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "success" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-terminal-hitl"
+  checkpoint.channel_values = {
+    __interrupt__: [
+      {
+        value: {
+          actionRequests: [{ args: {}, name: "write_file", toolCallId }]
+        }
+      }
+    ]
+  }
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    { configurable: { thread_id: threadId }, metadata: { run_id: runId } },
+    checkpoint,
+    { parents: {}, source: "update", step: 0 }
+  )
+  await saver.close()
+
+  await closeDatabase()
+  await initializeDatabase()
+
+  assert.equal((await getRun(runId))?.status, "success")
+  assert.equal(await getHitlRequest(requestId), null)
+})
+
+test("database startup never reconciles a checkpoint owned by another run", async () => {
+  const {
+    closeDatabase,
+    createRun,
+    createThread,
+    getHitlRequest,
+    getRun,
+    initializeDatabase,
+    updateThread
+  } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+  const threadId = "thread-cross-run-checkpoint-hitl"
+  const runningRunId = "run-cross-run-recovery-target"
+  const checkpointRunId = "run-cross-run-checkpoint-owner"
+  const toolCallId = "tool-cross-run-checkpoint-hitl"
+  const requestId = `hitl:${threadId}:${checkpointRunId}:${toolCallId}`
+  await createThread(threadId)
+  await createRun(runningRunId, threadId, { status: "running" })
+  await createRun(checkpointRunId, threadId, { status: "success" })
+  await updateThread(threadId, { status: "busy" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-cross-run-hitl"
+  checkpoint.channel_values = {
+    __interrupt__: [
+      {
+        value: {
+          actionRequests: [{ args: {}, name: "write_file", toolCallId }]
+        }
+      }
+    ]
+  }
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    { configurable: { thread_id: threadId }, metadata: { run_id: checkpointRunId } },
+    checkpoint,
+    { parents: {}, source: "update", step: 0 }
+  )
+  await saver.close()
+
+  await closeDatabase()
+  await initializeDatabase()
+
+  assert.equal((await getRun(runningRunId))?.status, "error")
+  assert.equal((await getRun(checkpointRunId))?.status, "success")
+  assert.equal(await getHitlRequest(requestId), null)
+})
+
+test("database startup fails closed on malformed run-scoped checkpoint facts", async () => {
+  const {
+    closeDatabase,
+    createRun,
+    createThread,
+    getHitlRequest,
+    getPrismaClient,
+    getRun,
+    initializeDatabase,
+    updateThread
+  } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+  const threadId = "thread-malformed-run-checkpoint-hitl"
+  const runId = "run-malformed-run-checkpoint-hitl"
+  const toolCallId = "tool-malformed-run-checkpoint-hitl"
+  const requestId = `hitl:${threadId}:${runId}:${toolCallId}`
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
+  await updateThread(threadId, { status: "busy" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-malformed-run-hitl"
+  checkpoint.channel_values = {
+    __interrupt__: [
+      {
+        value: {
+          actionRequests: [{ args: {}, name: "write_file", toolCallId }]
+        }
+      }
+    ],
+    contextInclusions: [{ id: "context-malformed-run-hitl", kind: "memory" }]
+  }
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    { configurable: { thread_id: threadId }, metadata: { run_id: runId } },
+    checkpoint,
+    { parents: {}, source: "update", step: 0 }
+  )
+  await saver.close()
+  const prisma = getPrismaClient()
+  await prisma.checkpointBlob.deleteMany({
+    where: { channel: "contextInclusions", threadId }
+  })
+
+  await closeDatabase()
+  await assert.rejects(initializeDatabase(), /Missing checkpoint blob/)
+  assert.equal((await getRun(runId))?.status, "running")
+  assert.equal(await getHitlRequest(requestId), null)
+
+  await prisma.thread.delete({ where: { threadId } })
+  await closeDatabase()
+  await initializeDatabase()
 })
 
 test("database startup records a durable failure for agent state left active by a previous process", async () => {
@@ -948,10 +1104,7 @@ test("database startup preserves pending HITL while recording one interrupted fa
     assert.equal((await getRun(runId))?.status, "interrupted")
     assert.equal((await getThread(threadId))?.status, "interrupted")
     assert.equal((await getHitlRequest(requestId))?.status, "pending")
-    const metadata = JSON.parse((await getRun(runId))?.metadata ?? "{}") as Record<
-      string,
-      unknown
-    >
+    const metadata = JSON.parse((await getRun(runId))?.metadata ?? "{}") as Record<string, unknown>
     assert.deepEqual(metadata[AGENT_RUN_FAILURE_METADATA_KEY], {
       ipcCode: "UNAVAILABLE",
       kind: "transport_interrupted",

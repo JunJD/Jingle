@@ -4,6 +4,7 @@ import type {
   CheckpointTuple,
   SerializerProtocol
 } from "@langchain/langgraph-checkpoint"
+import type { Prisma } from "@prisma/client"
 import {
   extractJingleHitlRequestFromCheckpoint,
   handleJingleCheckpointAfterCommit,
@@ -162,6 +163,24 @@ function toPendingHitlRequestInput(
     allowed_decisions: request.allowed_decisions,
     status: "pending"
   }
+}
+
+export async function reconcileRunScopedPendingHitlRequestInTransaction(
+  transaction: Prisma.TransactionClient,
+  input: { runId: string; threadId: string }
+): Promise<boolean> {
+  const tuple = await new PrismaCheckpointSaver().getLatestRunScopedTupleInTransaction(
+    transaction,
+    input
+  )
+  const request = extractJingleHitlRequestFromCheckpoint(input.threadId, tuple, {
+    parseReview: parseToolApprovalItem,
+    runId: input.runId
+  })
+  if (!request) return false
+
+  await upsertHitlRequestInTransaction(transaction, toPendingHitlRequestInput(request, input))
+  return true
 }
 
 export class RuntimeCheckpointSaver extends PrismaCheckpointSaver {

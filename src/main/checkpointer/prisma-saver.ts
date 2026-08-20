@@ -107,6 +107,12 @@ export interface PrismaCheckpointPutTransactionInput {
   transaction: Prisma.TransactionClient
 }
 
+export interface PrismaRunScopedCheckpointRecoveryInput {
+  checkpointNs?: string
+  runId: string
+  threadId: string
+}
+
 export type PrismaCheckpointCompactionResult =
   | { actualCheckpointId: string | null; status: "conflict" }
   | {
@@ -353,6 +359,59 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
           }
         : undefined,
       pendingWrites
+    }
+  }
+
+  async getLatestRunScopedTupleInTransaction(
+    transaction: Prisma.TransactionClient,
+    input: PrismaRunScopedCheckpointRecoveryInput
+  ): Promise<CheckpointTuple | undefined> {
+    const checkpointNs = input.checkpointNs ?? ""
+    const row = await transaction.checkpoint.findFirst({
+      where: {
+        checkpointNs,
+        runId: input.runId,
+        threadId: input.threadId
+      },
+      orderBy: { checkpointId: "desc" }
+    })
+    if (!row) return undefined
+    if (!row.checkpoint || !row.metadata) {
+      throw new Error(
+        `[PrismaCheckpointSaver] Run-scoped checkpoint "${row.checkpointId}" for run "${input.runId}" is incomplete.`
+      )
+    }
+
+    const metadataPayload = decodeSerializedPayload(row.type, row.metadata)
+    return {
+      checkpoint: await this.loadCheckpoint(row, transaction),
+      config: {
+        configurable: {
+          checkpoint_id: row.checkpointId,
+          checkpoint_ns: row.checkpointNs,
+          run_id: input.runId,
+          thread_id: input.threadId
+        }
+      },
+      metadata: (await this.serde.loadsTyped(
+        metadataPayload.type,
+        metadataPayload.value
+      )) as CheckpointMetadata,
+      parentConfig: row.parentCheckpointId
+        ? {
+            configurable: {
+              checkpoint_id: row.parentCheckpointId,
+              checkpoint_ns: row.checkpointNs,
+              thread_id: row.threadId
+            }
+          }
+        : undefined,
+      pendingWrites: await this.loadPendingWrites(
+        row.threadId,
+        row.checkpointNs,
+        row.checkpointId,
+        transaction
+      )
     }
   }
 
@@ -1082,7 +1141,10 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
     return blobs.filter(isPresent)
   }
 
-  private async loadCheckpoint(row: CheckpointRow): Promise<Checkpoint> {
+  private async loadCheckpoint(
+    row: CheckpointRow,
+    transaction: Prisma.TransactionClient = getPrismaClient()
+  ): Promise<Checkpoint> {
     const checkpointPayload = decodeSerializedPayload(row.type, row.checkpoint)
     const checkpoint = (await this.serde.loadsTyped(
       checkpointPayload.type,
@@ -1101,7 +1163,8 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
       channel_values: await this.loadChannelValues(
         row.threadId,
         row.checkpointNs,
-        checkpoint.channel_versions
+        checkpoint.channel_versions,
+        transaction
       )
     }
   }
@@ -1109,19 +1172,19 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
   private async loadChannelValues(
     threadId: string,
     checkpointNs: string,
-    channelVersions: Record<string, string>
+    channelVersions: Record<string, string>,
+    transaction: Prisma.TransactionClient = getPrismaClient()
   ): Promise<Record<string, unknown>> {
     const entries = Object.entries(channelVersions)
     if (entries.length === 0) {
       return {}
     }
 
-    const prisma = getPrismaClient()
     const blobEntries = entries.filter(([channel]) => channel !== MESSAGES_CHANNEL)
     const rows =
       blobEntries.length === 0
         ? []
-        : await prisma.checkpointBlob.findMany({
+        : await transaction.checkpointBlob.findMany({
             where: {
               OR: blobEntries.map(([channel, version]) => ({
                 channel,
@@ -1135,12 +1198,15 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
     const loadedValues = await Promise.all(
       entries.map(async ([channel, version]) => {
         if (channel === MESSAGES_CHANNEL) {
-          const value = await loadMessagesForStateVersion({
-            checkpointNs,
-            serde: this.serde,
-            threadId,
-            version
-          })
+          const value = await loadMessagesForStateVersion(
+            {
+              checkpointNs,
+              serde: this.serde,
+              threadId,
+              version
+            },
+            transaction
+          )
           return [channel, value] as const
         }
 
@@ -1174,10 +1240,10 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
   private async loadPendingWrites(
     threadId: string,
     checkpointNs: string,
-    checkpointId: string
+    checkpointId: string,
+    transaction: Prisma.TransactionClient = getPrismaClient()
   ): Promise<[string, string, unknown][]> {
-    const prisma = getPrismaClient()
-    const rows = await prisma.checkpointWrite.findMany({
+    const rows = await transaction.checkpointWrite.findMany({
       where: {
         threadId,
         checkpointNs,
@@ -1199,7 +1265,8 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
                   threadId,
                   checkpointNs,
                   "messages",
-                  checkpointId
+                  checkpointId,
+                  transaction
                 ))
               )
             : rawValue
@@ -1212,9 +1279,10 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
     threadId: string,
     checkpointNs: string,
     channel: string,
-    checkpointId: string
+    checkpointId: string,
+    transaction: Prisma.TransactionClient = getPrismaClient()
   ): Promise<unknown> {
-    const checkpointRow = await getPrismaClient().checkpoint.findUnique({
+    const checkpointRow = await transaction.checkpoint.findUnique({
       where: {
         threadId_checkpointNs_checkpointId: {
           checkpointId,
@@ -1240,9 +1308,12 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
       )
     }
 
-    const values = await this.loadChannelValues(threadId, checkpointNs, {
-      [channel]: version
-    })
+    const values = await this.loadChannelValues(
+      threadId,
+      checkpointNs,
+      { [channel]: version },
+      transaction
+    )
     if (!Object.prototype.hasOwnProperty.call(values, channel)) {
       throw new Error(
         `[PrismaCheckpointSaver] Missing channel value for "${channel}" on checkpoint "${checkpointId}".`
