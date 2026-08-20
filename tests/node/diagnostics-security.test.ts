@@ -25,6 +25,7 @@ import {
   settleFatalDiagnosticWrites,
   waitForFatalDiagnosticWrite
 } from "../../src/main/diagnostics/electron-failure"
+import { isExpectedElectronShutdown } from "../../src/main/diagnostics/electron-shutdown"
 import { APPEND_DIAGNOSTIC_GRAPH_EVENT, DiagnosticsLogger } from "../../src/main/diagnostics/logger"
 import { DiagnosticsProcessSession } from "../../src/main/diagnostics/process-session"
 import type {
@@ -583,6 +584,21 @@ test("Electron child-process shutdown projections are info-only without changing
   )
   assert.equal(sink.inputs[1]?.level, "error")
   assert.equal(sink.inputs[1]?.stateImpact, "child_process_lost")
+})
+
+test("Electron shutdown noise requires the main-owned lifecycle and a normal child exit", () => {
+  const details = (processType: string, reason: string, exitCode?: number) => ({
+    ...(exitCode === undefined ? {} : { exitCode }),
+    processType,
+    reason
+  })
+
+  assert.equal(isExpectedElectronShutdown(true, details("utility", "clean-exit", 0)), true)
+  assert.equal(isExpectedElectronShutdown(true, details("gpu", "killed", 137)), true)
+  assert.equal(isExpectedElectronShutdown(true, details("utility", "abnormal-exit", 15)), true)
+  assert.equal(isExpectedElectronShutdown(false, details("utility", "clean-exit", 0)), false)
+  assert.equal(isExpectedElectronShutdown(true, details("pepper-plugin", "clean-exit", 0)), false)
+  assert.equal(isExpectedElectronShutdown(true, details("utility", "crashed", 9)), false)
 })
 
 test("native helper exits retain only typed process status", () => {

@@ -24,6 +24,7 @@ import {
   formatFatalMainProcessError,
   serializeProcessError
 } from "./process-errors"
+import { isExpectedElectronShutdown } from "./electron-shutdown"
 import { attachWindowDiagnosticsWithLogger } from "./window-events"
 
 interface ProcessDiagnosticsOptions {
@@ -41,16 +42,6 @@ let electronShutdownStarted = false
 
 export function markElectronShutdownStarted(): void {
   electronShutdownStarted = true
-}
-
-function isExpectedElectronShutdown(
-  details: ReturnType<typeof normalizeElectronChildProcessGoneEvent>
-): boolean {
-  return (
-    electronShutdownStarted &&
-    (details.processType === "utility" || details.processType === "gpu") &&
-    (details.reason === "killed" || details.exitCode === 15)
-  )
 }
 
 function recordFatalMainProcessError(
@@ -131,7 +122,7 @@ export function installProcessDiagnostics(options: ProcessDiagnosticsOptions = {
 
   app.on("child-process-gone", (_event, details) => {
     const normalized = normalizeElectronChildProcessGoneEvent(details)
-    const expectedShutdown = isExpectedElectronShutdown(normalized)
+    const expectedShutdown = isExpectedElectronShutdown(electronShutdownStarted, normalized)
     captureElectronFailure(diagnosticsGraph, {
       exitCode: normalized.exitCode,
       expectedShutdown,
