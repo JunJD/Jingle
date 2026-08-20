@@ -16,6 +16,7 @@ import { startNativeMinimalIsland, stopNativeMinimalIsland } from "./services/na
 import { stopNativeSelectionCapture } from "./services/native-selection-capture"
 import {
   installProcessDiagnostics,
+  markElectronShutdownStarted,
   recordMainProcessShutdownFailure
 } from "./diagnostics/electron-events"
 import {
@@ -453,6 +454,7 @@ if (hasSingleInstanceLock) {
 }
 
 app.on("before-quit", (event) => {
+  markElectronShutdownStarted()
   beginRendererWindowShutdown()
   diagnosticsLogger.info("Application before quit")
 

@@ -551,6 +551,40 @@ test("Electron Utility failures retain only coherent allowlisted service identit
   }
 })
 
+test("Electron child-process shutdown projections are info-only without changing identity", () => {
+  const sink = new CapturingDiagnosticSink()
+  captureElectronFailure(sink, {
+    exitCode: 15,
+    expectedShutdown: true,
+    kind: "child-process-gone",
+    name: "Audio Service",
+    processType: "Utility",
+    reason: "killed",
+    serviceName: "audio.mojom.AudioService"
+  })
+  captureElectronFailure(sink, {
+    exitCode: 137,
+    kind: "child-process-gone",
+    processType: "GPU",
+    reason: "oom"
+  })
+
+  assert.equal(sink.inputs[0]?.level, "info")
+  assert.equal(sink.inputs[0]?.stateImpact, "expected_shutdown")
+  assert.equal(
+    sink.inputs[0]?.dimensionEntries?.some(
+      ({ key, value }) => key === "expected" && value === true
+    ),
+    true
+  )
+  assert.equal(
+    sink.inputs[0]?.fingerprint,
+    "electron.child_process_gone:utility:killed:audio-service"
+  )
+  assert.equal(sink.inputs[1]?.level, "error")
+  assert.equal(sink.inputs[1]?.stateImpact, "child_process_lost")
+})
+
 test("native helper exits retain only typed process status", () => {
   const sink = new CapturingDiagnosticSink()
   const hostile = `${SECRET_VALUES.join(" ")} invented signal`

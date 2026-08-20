@@ -40,6 +40,7 @@ type ElectronFailureInput =
   | {
       kind: "child-process-gone"
       exitCode: unknown
+      expectedShutdown?: boolean
       name?: unknown
       processType: unknown
       reason: unknown
@@ -323,6 +324,9 @@ function captureChildProcessFailure(
     { key: "processType", value: details.processType },
     { key: "reason", value: details.reason }
   ]
+  if (input.expectedShutdown === true) {
+    dimensionEntries.push({ key: "expected", value: true })
+  }
   if (details.processType === "utility") {
     dimensionEntries.push({ key: "serviceIdentity", value: details.serviceIdentity })
     if (details.serviceName)
@@ -334,12 +338,15 @@ function captureChildProcessFailure(
     dimensionEntries: withOptionalNumber(dimensionEntries, "exitCode", details.exitCode),
     eventCode: "electron.child_process_gone",
     fingerprint: electronChildProcessFingerprint(details),
-    level: "error",
+    level: input.expectedShutdown === true ? "info" : "error",
     operation: "observe-child-process",
     recoverable: true,
     refs: [electronChildProcessResourceRef(details)],
-    stateImpact: "child_process_lost",
-    summary: "Electron child process exited unexpectedly"
+    stateImpact: input.expectedShutdown === true ? "expected_shutdown" : "child_process_lost",
+    summary:
+      input.expectedShutdown === true
+        ? "Electron child process exited during expected application shutdown"
+        : "Electron child process exited unexpectedly"
   })
 }
 

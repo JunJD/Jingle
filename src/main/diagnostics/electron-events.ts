@@ -34,6 +34,25 @@ export type NativeHelperDiagnosticIdentity = "minimal-island" | "selection-captu
 
 const FATAL_DIAGNOSTICS_TIMEOUT_MS = 1_500
 
+// The main process owns this fact at the `before-quit` boundary. Electron may
+// report utility/GPU children as killed while that graceful shutdown is in
+// progress; no string-based inference belongs in the diagnostics layer.
+let electronShutdownStarted = false
+
+export function markElectronShutdownStarted(): void {
+  electronShutdownStarted = true
+}
+
+function isExpectedElectronShutdown(
+  details: ReturnType<typeof normalizeElectronChildProcessGoneEvent>
+): boolean {
+  return (
+    electronShutdownStarted &&
+    (details.processType === "utility" || details.processType === "gpu") &&
+    (details.reason === "killed" || details.exitCode === 15)
+  )
+}
+
 function recordFatalMainProcessError(
   message: string,
   error: unknown,
@@ -112,23 +131,34 @@ export function installProcessDiagnostics(options: ProcessDiagnosticsOptions = {
 
   app.on("child-process-gone", (_event, details) => {
     const normalized = normalizeElectronChildProcessGoneEvent(details)
+    const expectedShutdown = isExpectedElectronShutdown(normalized)
     captureElectronFailure(diagnosticsGraph, {
       exitCode: normalized.exitCode,
+      expectedShutdown,
       kind: "child-process-gone",
       name: normalized.name,
       processType: details.type,
       reason: details.reason,
       serviceName: normalized.serviceName
     })
-    diagnosticsLogger.error("Electron child process gone", {
-      ...(normalized.exitCode === undefined ? {} : { exitCode: normalized.exitCode }),
-      eventCode: "electron.child_process_gone",
-      fingerprint: electronChildProcessFingerprint(normalized),
-      name: normalized.name,
-      reason: normalized.reason,
-      serviceName: normalized.serviceName,
-      type: normalized.processType
-    })
+    const log = expectedShutdown
+      ? diagnosticsLogger.info.bind(diagnosticsLogger)
+      : diagnosticsLogger.error.bind(diagnosticsLogger)
+    log(
+      expectedShutdown
+        ? "Electron child process exited during application shutdown"
+        : "Electron child process gone",
+      {
+        ...(normalized.exitCode === undefined ? {} : { exitCode: normalized.exitCode }),
+        eventCode: "electron.child_process_gone",
+        ...(expectedShutdown ? { expected: true, stateImpact: "expected_shutdown" } : {}),
+        fingerprint: electronChildProcessFingerprint(normalized),
+        name: normalized.name,
+        reason: normalized.reason,
+        serviceName: normalized.serviceName,
+        type: normalized.processType
+      }
+    )
   })
 }
 
