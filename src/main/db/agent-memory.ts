@@ -29,6 +29,12 @@ type CreateAgentMemorySuggestionInput = CreateJingleMemorySuggestionInput & Work
 type AcceptAgentMemorySuggestionInput = AcceptJingleMemorySuggestionInput & WorkspaceScopedInput
 type UpdateAgentMemoryInput = UpdateJingleMemoryInput & WorkspaceScopedInput
 
+type MutateAgentMemoryStatusInput = {
+  expectedWorkspaceKey: string | null
+  memoryId: string
+  status: JingleMemoryRecord["status"]
+}
+
 function normalizeScopeWorkspace(input: {
   scope: JingleMemoryRecord["scope"]
   workspaceKey?: string | null
@@ -389,30 +395,70 @@ export async function updateAgentMemory(
   return mapMemory(row)
 }
 
-export async function archiveAgentMemory(memoryId: string): Promise<JingleMemoryRecord> {
+function buildMutableMemoryOwnerWhere(input: {
+  expectedWorkspaceKey: string | null
+  memoryId: string
+}): Prisma.AgentMemoryWhereInput {
+  return {
+    memoryId: input.memoryId,
+    OR: [
+      { scope: "global", workspaceKey: null },
+      ...(input.expectedWorkspaceKey
+        ? [{ scope: "workspace", workspaceKey: input.expectedWorkspaceKey }]
+        : [])
+    ]
+  }
+}
+
+async function mutateAgentMemoryStatus(
+  input: MutateAgentMemoryStatusInput
+): Promise<JingleMemoryRecord> {
   const prisma = getPrismaClient()
-  const row = await prisma.agentMemory.update({
-    where: { memoryId },
-    data: {
-      status: "archived",
-      updatedAt: BigInt(Date.now())
+  const ownerWhere = buildMutableMemoryOwnerWhere(input)
+  const row = await prisma.$transaction(async (tx) => {
+    const result = await tx.agentMemory.updateMany({
+      where: ownerWhere,
+      data: {
+        status: input.status,
+        updatedAt: BigInt(Date.now())
+      }
+    })
+
+    if (result.count !== 1) {
+      throw new Error(`Unknown or inaccessible memory "${input.memoryId}"`)
     }
+
+    const updated = await tx.agentMemory.findFirst({ where: ownerWhere })
+    if (!updated) {
+      throw new Error(`Memory "${input.memoryId}" owner changed during mutation.`)
+    }
+
+    return updated
   })
 
   return mapMemory(row)
 }
 
-export async function restoreAgentMemory(memoryId: string): Promise<JingleMemoryRecord> {
-  const prisma = getPrismaClient()
-  const row = await prisma.agentMemory.update({
-    where: { memoryId },
-    data: {
-      status: "active",
-      updatedAt: BigInt(Date.now())
-    }
+export async function archiveAgentMemory(
+  memoryId: string,
+  expectedWorkspaceKey: string | null
+): Promise<JingleMemoryRecord> {
+  return mutateAgentMemoryStatus({
+    expectedWorkspaceKey,
+    memoryId,
+    status: "archived"
   })
+}
 
-  return mapMemory(row)
+export async function restoreAgentMemory(
+  memoryId: string,
+  expectedWorkspaceKey: string | null
+): Promise<JingleMemoryRecord> {
+  return mutateAgentMemoryStatus({
+    expectedWorkspaceKey,
+    memoryId,
+    status: "active"
+  })
 }
 
 export async function recordAgentMemoryInclusions(input: {

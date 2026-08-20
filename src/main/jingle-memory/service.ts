@@ -283,13 +283,13 @@ export class JingleMemoryService {
   }
 
   async archiveMemory(memoryId: string): Promise<JingleMemoryRecord> {
-    await this.assertMemoryMutableFromCurrentWorkspace(memoryId)
-    return archiveAgentMemory(memoryId)
+    const workspaceIdentity = await this.getCurrentWorkspaceIdentity()
+    return archiveAgentMemory(memoryId, workspaceIdentity?.workspaceKey ?? null)
   }
 
   async restoreMemory(memoryId: string): Promise<JingleMemoryRecord> {
-    await this.assertMemoryMutableFromCurrentWorkspace(memoryId)
-    return restoreAgentMemory(memoryId)
+    const workspaceIdentity = await this.getCurrentWorkspaceIdentity()
+    return restoreAgentMemory(memoryId, workspaceIdentity?.workspaceKey ?? null)
   }
 
   hasPendingWorkspaceSuggestions(threadId: string): Promise<boolean> {
