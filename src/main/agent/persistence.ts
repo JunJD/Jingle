@@ -27,7 +27,7 @@ import { getCheckpointer } from "../checkpointer/runtime-checkpointer-manager"
 import { JingleIpcError } from "../ipc/error"
 import { commitRunFailureTerminalInTransaction } from "../db/run-failure-terminal"
 import { extractThreadFactsFromCheckpoint } from "./runtime-state"
-import { listCanonicalMainThreadMessages } from "../db/message-state"
+import { getCanonicalMainThreadMessage } from "../db/message-state"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
 import type { PermissionModeName } from "@shared/permission-mode"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
@@ -577,13 +577,18 @@ async function readRunCompletionCheckpointFacts(
     throw new Error(`[Agent] Missing checkpoint for run "${runId}" in thread "${threadId}".`)
   }
   if (options?.expectedMessageId) {
-    const canonicalMessages = await listCanonicalMainThreadMessages(threadId)
-    const includesMessage = canonicalMessages.some(
-      (message) => message.message_id === options.expectedMessageId
-    )
-    if (!includesMessage) {
+    const canonicalMessage = await getCanonicalMainThreadMessage({
+      messageId: options.expectedMessageId,
+      threadId
+    })
+    if (!canonicalMessage) {
       throw new Error(
         `[Agent] Canonical message state for run "${runId}" does not include submitted message "${options.expectedMessageId}".`
+      )
+    }
+    if (canonicalMessage.run_id !== runId || canonicalMessage.role !== "user") {
+      throw new Error(
+        `[Agent] Canonical submitted message "${options.expectedMessageId}" does not belong to run "${runId}".`
       )
     }
   }

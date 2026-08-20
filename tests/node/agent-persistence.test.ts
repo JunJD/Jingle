@@ -6481,6 +6481,53 @@ test("syncRunFromLatestCheckpoint accepts submitted canonical message without it
   assert.equal((await getRun(runId))?.status, "success")
 })
 
+test("syncRunFromLatestCheckpoint rejects a same-thread message owned by another run", async () => {
+  const { createRun, createThread, getRun } = await loadDbModules()
+  const { RunCompletionCoreValidationError, syncRunFromLatestCheckpoint } = await import(
+    "../../src/main/agent/persistence"
+  )
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-cross-run-submitted-message"
+  const runA = "run-cross-run-a"
+  const runB = "run-cross-run-b"
+  const messageId = "message-cross-run"
+
+  await createThread(threadId)
+  await createRun(runA, threadId, { status: "running" })
+  await createRun(runB, threadId, { status: "running" })
+
+  const saver = new PrismaCheckpointSaver()
+  const checkpointA = emptyCheckpoint()
+  checkpointA.id = "checkpoint-cross-run-a"
+  checkpointA.channel_values = {
+    messages: [{ content: "run A", id: messageId, type: "human" }]
+  }
+  await saver.put(
+    { configurable: { thread_id: threadId }, metadata: { run_id: runA } },
+    checkpointA,
+    { parents: {}, source: "input", step: 0 }
+  )
+
+  const checkpointB = emptyCheckpoint()
+  checkpointB.id = "checkpoint-cross-run-b"
+  checkpointB.channel_values = {
+    messages: [{ content: "run B", id: messageId, type: "human" }]
+  }
+  await saver.put(
+    { configurable: { thread_id: threadId }, metadata: { run_id: runB } },
+    checkpointB,
+    { parents: {}, source: "input", step: 0 }
+  )
+
+  await assert.rejects(
+    syncRunFromLatestCheckpoint(threadId, runA, { expectedMessageId: messageId }),
+    (error) => error instanceof RunCompletionCoreValidationError
+  )
+  assert.equal((await getRun(runA))?.status, "error")
+  assert.equal((await getRun(runB))?.status, "running")
+})
+
 test("missing canonical submitted message commits durable failure instead of success", async () => {
   const { createRun, createThread, getPrismaClient, getRun, getThread } = await loadDbModules()
   const { markRunAborted, RunCompletionCoreValidationError, syncRunFromLatestCheckpoint } =
