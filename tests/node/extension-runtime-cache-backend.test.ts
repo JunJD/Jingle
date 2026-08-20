@@ -22,16 +22,19 @@ import test from "node:test"
 import { promisify } from "node:util"
 import {
   activateExtensionRuntimeCacheWriterLease,
-  createFileExtensionRuntimeCacheBackend,
+  createFileExtensionRuntimeCacheBackend as createOwnedFileExtensionRuntimeCacheBackend,
   EXTENSION_RUNTIME_CACHE_MAX_ACTIVE_FILE_BYTES,
   EXTENSION_RUNTIME_CACHE_MAX_CORRUPT_FILE_BYTES,
   EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_BYTES,
   EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES,
   EXTENSION_RUNTIME_CACHE_MAX_FILE_SET_BYTES,
   EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE,
+  ExtensionRuntimeCacheWriterPrincipalError,
   releaseExtensionRuntimeCacheRetention,
+  resolveExtensionRuntimeCacheWriterEnvironment,
   revokeExtensionRuntimeCacheWrites,
   type RuntimeCacheDirectoryWatch,
+  type RuntimeCacheFileBackendOptions,
   writeRuntimeCacheBufferFully,
   writeRuntimeCacheBufferFullySync
 } from "../../src/extension-runtime/cache-backend"
@@ -39,8 +42,10 @@ import { createExtensionRuntimeCacheLifecycle } from "../../src/extension-runtim
 import {
   encodeRuntimeCacheBackendScopeKey,
   type RuntimeCacheBackend,
+  type RuntimeCacheBackendScope,
   type RuntimeCacheEntry
 } from "@jingle/extension-api/host-runtime"
+import type { ExtensionRuntimeCacheWriterLease } from "../../src/shared/extension-runtime-protocol"
 
 const cacheIdentity = {
   commandConfigGeneration: 1,
@@ -49,7 +54,7 @@ const cacheIdentity = {
   credentialGeneration: 3,
   extensionConfigGeneration: 4,
   kind: "available" as const,
-  runtimeArtifactRevision: "sha256:artifact",
+  runtimeArtifactRevision: `sha256:${"a".repeat(64)}`,
   runtimePackageRevision: "1.2.3"
 }
 
@@ -61,6 +66,97 @@ const cacheCorruptionRecoveryDiagnostic =
 const CACHE_RETENTION_TEMP_PATTERN =
   /^retention-lease-[a-f0-9]{64}\.json\.[0-9]+\.[0-9a-f-]{36}\.tmp$/
 const CACHE_WRITER_TEMP_PATTERN = /^writer-lease-[a-f0-9]{64}\.json\.[0-9]+\.[0-9a-f-]{36}\.tmp$/
+let testWriterLeaseIndex = 0
+
+type TestRuntimeCacheFileBackendOptions = Omit<RuntimeCacheFileBackendOptions, "writerLease"> & {
+  writerLease?: ExtensionRuntimeCacheWriterLease
+}
+
+function createFileExtensionRuntimeCacheBackend(
+  cacheDir: string,
+  options: TestRuntimeCacheFileBackendOptions = {}
+): RuntimeCacheBackend {
+  if (options.writerLease) {
+    return createOwnedFileExtensionRuntimeCacheBackend(cacheDir, {
+      ...options,
+      writerLease: options.writerLease
+    })
+  }
+
+  const backends = new Map<string, RuntimeCacheBackend>()
+  const failureListeners = new Map<
+    Parameters<RuntimeCacheBackend["onFailure"]>[0],
+    Map<RuntimeCacheBackend, () => void>
+  >()
+  const backendFor = (scope: RuntimeCacheBackendScope): RuntimeCacheBackend => {
+    const principalKey = JSON.stringify([scope.extensionName, scope.commandName, scope.identity])
+    const existing = backends.get(principalKey)
+    if (existing) {
+      return existing
+    }
+    const writerLease = createWriterLease(
+      scope,
+      `backend-test-${testWriterLeaseIndex}`,
+      (++testWriterLeaseIndex).toString(16).padStart(64, "0")
+    )
+    try {
+      mkdirSync(cacheDir, { recursive: true })
+      const digest = createHash("sha256").update(writerLease.sessionId).digest("hex")
+      writeFileSync(
+        join(cacheDir, `writer-lease-${digest}.json`),
+        `${JSON.stringify({ ...writerLease, version: 2 })}\n`,
+        { mode: 0o600 }
+      )
+    } catch {
+      // Preserve the backend's own bounded persistence failure for invalid test directories.
+    }
+    const backend = createOwnedFileExtensionRuntimeCacheBackend(cacheDir, {
+      ...options,
+      writerLease
+    })
+    backends.set(principalKey, backend)
+    for (const [listener, disposers] of failureListeners) {
+      disposers.set(backend, backend.onFailure(listener))
+    }
+    return backend
+  }
+
+  return {
+    async close() {
+      await Promise.all(Array.from(backends.values(), (backend) => backend.close()))
+    },
+    async flush() {
+      let flushedBackendCount: number
+      do {
+        const currentBackends = Array.from(backends.values())
+        flushedBackendCount = currentBackends.length
+        await Promise.all(currentBackends.map((backend) => backend.flush()))
+      } while (backends.size !== flushedBackendCount)
+    },
+    loadStore(scope) {
+      return backendFor(scope).loadStore(scope)
+    },
+    mutateStore(scope, mutation) {
+      backendFor(scope).mutateStore(scope, mutation)
+    },
+    onFailure(listener) {
+      const disposers = new Map<RuntimeCacheBackend, () => void>()
+      failureListeners.set(listener, disposers)
+      for (const backend of backends.values()) {
+        disposers.set(backend, backend.onFailure(listener))
+      }
+      return () => {
+        failureListeners.delete(listener)
+        for (const dispose of disposers.values()) {
+          dispose()
+        }
+      }
+    },
+    subscribeStore(scope, listener) {
+      return backendFor(scope).subscribeStore(scope, listener)
+    }
+  }
+}
 
 test("cache evidence write helpers drain short writes and reject no progress", async () => {
   const input = Buffer.from("bounded-evidence")
@@ -147,19 +243,33 @@ test("file runtime cache backend serializes competing writers without losing sco
 test("file runtime cache backend merges independent utility mutations in one exact scope", async () => {
   await withCacheDirectory(async (cacheDir) => {
     const workerSource = `
-      const { createFileExtensionRuntimeCacheBackend } = require(${JSON.stringify(
-        resolve("src/extension-runtime/cache-backend.ts")
-      )});
+      const {
+        activateExtensionRuntimeCacheWriterLease,
+        createFileExtensionRuntimeCacheBackend
+      } = require(${JSON.stringify(resolve("src/extension-runtime/cache-backend.ts"))});
       const identity = ${JSON.stringify(cacheIdentity)};
       void (async () => {
-        const backend = createFileExtensionRuntimeCacheBackend(process.env.CACHE_DIR);
+        const scope = {
+          commandName: "search-page",
+          extensionName: "notion",
+          identity,
+          namespace: "shared-process-cache"
+        };
+        const lease = {
+          principal: {
+            commandName: scope.commandName,
+            extensionName: scope.extensionName,
+            identity: scope.identity
+          },
+          sessionId: "worker-" + process.pid,
+          token: (process.env.WORKER === "first" ? "1" : "2").repeat(64)
+        };
+        await activateExtensionRuntimeCacheWriterLease(process.env.CACHE_DIR, lease);
+        const backend = createFileExtensionRuntimeCacheBackend(process.env.CACHE_DIR, {
+          writerLease: lease
+        });
         for (let index = 0; index < 12; index++) {
-          backend.mutateStore({
-            commandName: "search-page",
-            extensionName: "notion",
-            identity,
-            namespace: "shared-process-cache"
-          }, {
+          backend.mutateStore(scope, {
             kind: "update",
             removeKeys: [],
             upsertEntries: [[process.env.WORKER + "-" + index, process.env.WORKER.repeat(16_384)]]
@@ -218,12 +328,31 @@ test("file runtime cache backend merges independent utility mutations in one exa
 test("file runtime cache backend keeps directory and file lock order across processes", async () => {
   await withCacheDirectory(async (cacheDir) => {
     const workerSource = `
-      const { createFileExtensionRuntimeCacheBackend } = require(${JSON.stringify(
-        resolve("src/extension-runtime/cache-backend.ts")
-      )});
+      const {
+        activateExtensionRuntimeCacheWriterLease,
+        createFileExtensionRuntimeCacheBackend
+      } = require(${JSON.stringify(resolve("src/extension-runtime/cache-backend.ts"))});
       const identity = ${JSON.stringify(cacheIdentity)};
       void (async () => {
-        const backend = createFileExtensionRuntimeCacheBackend(process.env.CACHE_DIR);
+        const scope = {
+          commandName: "search-page",
+          extensionName: "notion",
+          identity,
+          namespace: process.env.WORKER + "-namespace-0"
+        };
+        const lease = {
+          principal: {
+            commandName: scope.commandName,
+            extensionName: scope.extensionName,
+            identity: scope.identity
+          },
+          sessionId: "worker-" + process.pid,
+          token: (process.env.WORKER === "first" ? "3" : "4").repeat(64)
+        };
+        await activateExtensionRuntimeCacheWriterLease(process.env.CACHE_DIR, lease);
+        const backend = createFileExtensionRuntimeCacheBackend(process.env.CACHE_DIR, {
+          writerLease: lease
+        });
         for (let index = 0; index < 20; index++) {
           backend.mutateStore({
             commandName: "search-page",
@@ -513,8 +642,8 @@ test("file runtime cache backend bounds generation warm-up by mutation order", a
     )
     for (const [index, scope] of scopes.entries()) {
       writeEntries(backend, scope, [["generation", String(index)]])
+      await backend.flush()
     }
-    await backend.flush()
 
     const cacheFilePath = getCacheFilePath(cacheDir)
     const envelope = readCacheEnvelope(cacheFilePath)
@@ -546,8 +675,8 @@ test("file runtime cache backend lets an old process recreate only its exact gen
     )
     for (const [index, scope] of scopes.entries()) {
       writeEntries(currentBackend, scope, [["generation", `current-${index}`]])
+      await currentBackend.flush()
     }
-    await currentBackend.flush()
     assert.deepEqual(currentBackend.loadStore(rollbackScope), [])
 
     writeEntries(oldProcessBackend, rollbackScope, [["generation", "rollback-0"]])
@@ -1015,7 +1144,7 @@ test("file runtime cache backend recovers an orphan lock and drains writes queue
     const initialBackend = createFileExtensionRuntimeCacheBackend(cacheDir)
     writeEntries(initialBackend, notionScope, [["page", "page-1"]])
     await initialBackend.flush()
-    const cacheFile = readdirSync(cacheDir).find((name) => name.endsWith(".json"))
+    const cacheFile = readdirSync(cacheDir).find((name) => /^store-[a-f0-9]{64}\.json$/.test(name))
     assert.ok(cacheFile)
     mkdirSync(join(cacheDir, `${cacheFile}.lock`))
 
@@ -1121,10 +1250,7 @@ test("live cache subscriptions reread exact durable snapshots across backend ins
 
 test("cache subscription admission performs no synchronous watcher or retention write", async () => {
   await withCacheDirectory(async (cacheDir) => {
-    const lease = {
-      sessionId: "async-subscription",
-      token: "1".repeat(64)
-    }
+    const lease = createWriterLease(notionScope, "async-subscription", "1".repeat(64))
     await activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
     const watchHub = new FakeRuntimeCacheWatchHub()
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir, {
@@ -1160,9 +1286,98 @@ test("cache subscription admission performs no synchronous watcher or retention 
   })
 })
 
+test("writer principal rejects foreign cache scopes before backend address derivation", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const lease = createWriterLease(notionScope, "principal-owner", "c".repeat(64))
+    await activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: lease })
+    const unreadableNamespace = (): never => {
+      throw new Error("backend address derivation must not run")
+    }
+    const createForeignScope = (
+      overrides: Partial<RuntimeCacheBackendScope>
+    ): RuntimeCacheBackendScope =>
+      Object.defineProperty(
+        {
+          ...notionScope,
+          ...overrides
+        },
+        "namespace",
+        { enumerable: true, get: unreadableNamespace }
+      )
+
+    assert.throws(
+      () => backend.loadStore(createForeignScope({ extensionName: "github" })),
+      assertWriterPrincipalMismatch
+    )
+    assert.throws(
+      () =>
+        backend.mutateStore(createForeignScope({ commandName: "notifications" }), {
+          kind: "clear"
+        }),
+      assertWriterPrincipalMismatch
+    )
+    assert.throws(
+      () =>
+        backend.subscribeStore(
+          createForeignScope({
+            identity: { ...notionScope.identity, credentialGeneration: 99 }
+          }),
+          () => undefined
+        ),
+      assertWriterPrincipalMismatch
+    )
+    assert.equal(
+      readdirSync(cacheDir).some((name) => /^store-[a-f0-9]{64}\.json$/.test(name)),
+      false
+    )
+    assert.deepEqual(listRetentionRecords(cacheDir), [])
+    await backend.close()
+  })
+})
+
+test("runtime cache writer environment rejects every absent or invalid lease configuration", () => {
+  const lease = createWriterLease(notionScope, "environment-owner", "d".repeat(64))
+  for (const [cacheDir, rawLease] of [
+    [undefined, undefined],
+    ["/cache", undefined],
+    [undefined, JSON.stringify(lease)],
+    ["/cache", "not-json"]
+  ] as const) {
+    assert.throws(
+      () => resolveExtensionRuntimeCacheWriterEnvironment(cacheDir, rawLease),
+      /Extension runtime cache writer configuration is (?:incomplete|invalid)\./
+    )
+  }
+  assert.deepEqual(resolveExtensionRuntimeCacheWriterEnvironment("/cache", JSON.stringify(lease)), {
+    cacheDir: "/cache",
+    writerLease: lease
+  })
+})
+
+test("unavailable execution principal cannot claim an available cache scope", async () => {
+  await withCacheDirectory(async (cacheDir) => {
+    const lease: ExtensionRuntimeCacheWriterLease = {
+      principal: {
+        commandName: notionScope.commandName,
+        extensionName: notionScope.extensionName,
+        identity: { kind: "unavailable" }
+      },
+      sessionId: "principal-unavailable",
+      token: "d".repeat(64)
+    }
+    await activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
+    const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: lease })
+
+    assert.throws(() => backend.loadStore(notionScope), assertWriterPrincipalMismatch)
+    assert.deepEqual(listRetentionRecords(cacheDir), [])
+    await backend.close()
+  })
+})
+
 test("cache quota rejects a retention record stored at a forged address", async () => {
   await withCacheDirectory(async (cacheDir) => {
-    const lease = { sessionId: "retention-address", token: "4".repeat(64) }
+    const lease = createWriterLease(notionScope, "retention-address", "4".repeat(64))
     await activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: lease })
     const subscription = backend.subscribeStore(notionScope, () => undefined)
@@ -1233,17 +1448,15 @@ test("cache control records permit one atomic temp at the full physical budget",
   await withCacheDirectory(async (cacheDir) => {
     const leases = Array.from(
       { length: EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES * 2 },
-      (_, index) => ({
-        sessionId: `full-budget-${index}`,
-        token: index.toString(16).padStart(64, "0")
-      })
+      (_, index) =>
+        createWriterLease(notionScope, `full-budget-${index}`, index.toString(16).padStart(64, "0"))
     )
     for (const [index, lease] of leases.entries()) {
       const namespaceDigest = createHash("sha256").update(`retained-${index}`).digest("hex")
       const storeKeyDigest = createHash("sha256").update(`store-${index}`).digest("hex")
       writeFileSync(
         getRetentionRecordPath(cacheDir, lease),
-        `${JSON.stringify({ addresses: [{ namespaceDigest, storeKeyDigest }], ...lease, version: 2 })}\n`
+        `${JSON.stringify({ addresses: [{ namespaceDigest, storeKeyDigest }], ...lease, version: 3 })}\n`
       )
       await activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
     }
@@ -1277,20 +1490,22 @@ test("cache control budget rejects an extra writer without leaving a temp", asyn
   await withCacheDirectory(async (cacheDir) => {
     const leases = Array.from(
       { length: EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES * 2 },
-      (_, index) => ({
-        sessionId: `writer-budget-${index}`,
-        token: index.toString(16).padStart(64, "0")
-      })
+      (_, index) =>
+        createWriterLease(
+          notionScope,
+          `writer-budget-${index}`,
+          index.toString(16).padStart(64, "0")
+        )
     )
     for (const lease of leases) {
       await activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
     }
 
     await assert.rejects(
-      activateExtensionRuntimeCacheWriterLease(cacheDir, {
-        sessionId: "writer-budget-overflow",
-        token: "f".repeat(64)
-      }),
+      activateExtensionRuntimeCacheWriterLease(
+        cacheDir,
+        createWriterLease(notionScope, "writer-budget-overflow", "f".repeat(64))
+      ),
       /control records exceeded their budget/
     )
     assert.equal(listWriterLeases(cacheDir).length, leases.length)
@@ -1322,7 +1537,7 @@ test("exact namespace retention survives unsubscribe and write revocation until 
       writeFileSync(getCacheFilePathForScope(cacheDir, scope), emptyEnvelope)
     }
 
-    const readerLease = { sessionId: "retained-reader", token: "2".repeat(64) }
+    const readerLease = createWriterLease(pinnedScope, "retained-reader", "2".repeat(64))
     await activateExtensionRuntimeCacheWriterLease(cacheDir, readerLease)
     const reader = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: readerLease })
     const subscription = reader.subscribeStore(pinnedScope, () => undefined)
@@ -1330,7 +1545,7 @@ test("exact namespace retention survives unsubscribe and write revocation until 
     subscription.unsubscribe()
     await revokeExtensionRuntimeCacheWrites(cacheDir, readerLease)
 
-    const writerLease = { sessionId: "current-writer", token: "3".repeat(64) }
+    const writerLease = createWriterLease(scopes.at(-2)!, "current-writer", "3".repeat(64))
     await activateExtensionRuntimeCacheWriterLease(cacheDir, writerLease)
     const writer = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease })
     writeEntries(writer, scopes.at(-2)!, [["page", "while-pinned"]])
@@ -1338,19 +1553,30 @@ test("exact namespace retention survives unsubscribe and write revocation until 
     assert.equal(existsSync(pinnedPath), true)
 
     await releaseExtensionRuntimeCacheRetention(cacheDir, readerLease)
-    writeEntries(writer, scopes.at(-1)!, [["page", "after-exit"]])
-    await writer.flush()
+    const afterExitScope = scopes.at(-1)!
+    const afterExitLease = createWriterLease(
+      afterExitScope,
+      "current-writer-after-exit",
+      "7".repeat(64)
+    )
+    await activateExtensionRuntimeCacheWriterLease(cacheDir, afterExitLease)
+    const afterExitWriter = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      writerLease: afterExitLease
+    })
+    writeEntries(afterExitWriter, afterExitScope, [["page", "after-exit"]])
+    await afterExitWriter.flush()
     assert.equal(existsSync(pinnedPath), false)
 
     await reader.close()
     await writer.close()
+    await afterExitWriter.close()
   })
 })
 
 test("exact generation retention survives concurrent store GC until process exit", async () => {
   await withCacheDirectory(async (cacheDir) => {
     const pinnedScope = createGenerationScope(1)
-    const readerLease = { sessionId: "generation-reader", token: "4".repeat(64) }
+    const readerLease = createWriterLease(pinnedScope, "generation-reader", "4".repeat(64))
     await activateExtensionRuntimeCacheWriterLease(cacheDir, readerLease)
     const reader = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: readerLease })
     writeEntries(reader, pinnedScope, [["page", "pinned-generation"]])
@@ -1359,44 +1585,60 @@ test("exact generation retention survives concurrent store GC until process exit
     assert.equal((await subscription.admission).kind, "admitted")
     await revokeExtensionRuntimeCacheWrites(cacheDir, readerLease)
 
-    const firstWriterLease = { sessionId: "generation-writer-a", token: "5".repeat(64) }
-    const secondWriterLease = { sessionId: "generation-writer-b", token: "6".repeat(64) }
-    await activateExtensionRuntimeCacheWriterLease(cacheDir, firstWriterLease)
-    await activateExtensionRuntimeCacheWriterLease(cacheDir, secondWriterLease)
-    const firstWriter = createFileExtensionRuntimeCacheBackend(cacheDir, {
-      writerLease: firstWriterLease
-    })
-    const secondWriter = createFileExtensionRuntimeCacheBackend(cacheDir, {
-      writerLease: secondWriterLease
-    })
-
+    const writers: RuntimeCacheBackend[] = []
     for (
       let generation = 2;
       generation <= EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE + 2;
       generation++
     ) {
-      writeEntries(
-        generation % 2 === 0 ? firstWriter : secondWriter,
-        createGenerationScope(generation),
-        [["page", `generation-${generation}`]]
+      const generationScope = createGenerationScope(generation)
+      const writerLease = createWriterLease(
+        generationScope,
+        `generation-writer-${generation}`,
+        generation.toString(16).padStart(64, "0")
       )
+      await activateExtensionRuntimeCacheWriterLease(cacheDir, writerLease)
+      const writer = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease })
+      writeEntries(writer, generationScope, [["page", `generation-${generation}`]])
+      writers.push(writer)
     }
-    await Promise.all([firstWriter.flush(), secondWriter.flush()])
+    await Promise.all(writers.map((writer) => writer.flush()))
     assert.deepEqual(reader.loadStore(pinnedScope), [["page", "pinned-generation"]])
 
     subscription.unsubscribe()
-    writeEntries(firstWriter, createGenerationScope(20), [["page", "after-unsubscribe"]])
-    await firstWriter.flush()
+    const afterUnsubscribeScope = createGenerationScope(20)
+    const afterUnsubscribeLease = createWriterLease(
+      afterUnsubscribeScope,
+      "generation-after-unsubscribe",
+      "a".repeat(64)
+    )
+    await activateExtensionRuntimeCacheWriterLease(cacheDir, afterUnsubscribeLease)
+    const afterUnsubscribeWriter = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      writerLease: afterUnsubscribeLease
+    })
+    writeEntries(afterUnsubscribeWriter, afterUnsubscribeScope, [["page", "after-unsubscribe"]])
+    await afterUnsubscribeWriter.flush()
     assert.deepEqual(reader.loadStore(pinnedScope), [["page", "pinned-generation"]])
 
     await releaseExtensionRuntimeCacheRetention(cacheDir, readerLease)
-    writeEntries(secondWriter, createGenerationScope(21), [["page", "after-process-exit"]])
-    await secondWriter.flush()
+    const afterExitScope = createGenerationScope(21)
+    const afterExitLease = createWriterLease(
+      afterExitScope,
+      "generation-after-exit",
+      "b".repeat(64)
+    )
+    await activateExtensionRuntimeCacheWriterLease(cacheDir, afterExitLease)
+    const afterExitWriter = createFileExtensionRuntimeCacheBackend(cacheDir, {
+      writerLease: afterExitLease
+    })
+    writeEntries(afterExitWriter, afterExitScope, [["page", "after-process-exit"]])
+    await afterExitWriter.flush()
     assert.deepEqual(reader.loadStore(pinnedScope), [])
 
     await reader.close()
-    await firstWriter.close()
-    await secondWriter.close()
+    await Promise.all(writers.map((writer) => writer.close()))
+    await afterUnsubscribeWriter.close()
+    await afterExitWriter.close()
   })
 })
 
@@ -1404,7 +1646,7 @@ test("sync corruption recovery applies exact generation pins before store GC", a
   await withCacheDirectory(async (cacheDir) => {
     const pinnedScope = createGenerationScope(1)
     const pinnedStoreKey = encodeRuntimeCacheBackendScopeKey(pinnedScope)
-    const lease = { sessionId: "generation-recovery", token: "8".repeat(64) }
+    const lease = createWriterLease(pinnedScope, "generation-recovery", "8".repeat(64))
     await activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
     const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease: lease })
     writeEntries(backend, pinnedScope, [["page", "pinned-before-recovery"]])
@@ -1464,36 +1706,34 @@ test("exact generation retention admission fails closed at the per-file store bu
       generation <= EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE;
       generation++
     ) {
-      const lease = {
-        sessionId: `generation-budget-${generation}`,
-        token: generation.toString(16).padStart(64, "0")
-      }
+      const generationScope = createGenerationScope(generation)
+      const lease = createWriterLease(
+        generationScope,
+        `generation-budget-${generation}`,
+        generation.toString(16).padStart(64, "0")
+      )
       await activateExtensionRuntimeCacheWriterLease(cacheDir, lease)
       const backend = createFileExtensionRuntimeCacheBackend(cacheDir, {
         watchDirectory: () => ({ close: () => undefined }),
         writerLease: lease
       })
-      const subscription = backend.subscribeStore(
-        createGenerationScope(generation),
-        () => undefined
-      )
+      const subscription = backend.subscribeStore(generationScope, () => undefined)
       assert.equal((await subscription.admission).kind, "admitted")
       admitted.push({ backend, subscription })
     }
 
-    const overflowLease = {
-      sessionId: "generation-budget-overflow",
-      token: "f".repeat(64)
-    }
+    const overflowScope = createGenerationScope(EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE + 1)
+    const overflowLease = createWriterLease(
+      overflowScope,
+      "generation-budget-overflow",
+      "f".repeat(64)
+    )
     await activateExtensionRuntimeCacheWriterLease(cacheDir, overflowLease)
     const overflowBackend = createFileExtensionRuntimeCacheBackend(cacheDir, {
       watchDirectory: () => ({ close: () => undefined }),
       writerLease: overflowLease
     })
-    const overflow = overflowBackend.subscribeStore(
-      createGenerationScope(EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE + 1),
-      () => undefined
-    )
+    const overflow = overflowBackend.subscribeStore(overflowScope, () => undefined)
     await assert.rejects(overflow.admission, /Extension runtime cache persistence failed/)
     assert.equal(listRetentionRecords(cacheDir).length, EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE)
 
@@ -1829,6 +2069,32 @@ function createGenerationScope(
       credentialGeneration
     }
   }
+}
+
+function createWriterLease(
+  scope: RuntimeCacheBackendScope,
+  sessionId: string,
+  token: string
+): ExtensionRuntimeCacheWriterLease {
+  return {
+    principal: {
+      commandName: scope.commandName,
+      extensionName: scope.extensionName,
+      identity: scope.identity
+    },
+    sessionId,
+    token
+  }
+}
+
+function assertWriterPrincipalMismatch(error: unknown): boolean {
+  assert.ok(error instanceof ExtensionRuntimeCacheWriterPrincipalError)
+  assert.equal(error.code, "runtime_cache_writer_principal_mismatch")
+  assert.equal(
+    error.message,
+    "Extension runtime cache scope is not owned by this writer principal."
+  )
+  return true
 }
 
 async function withCacheDirectory(callback: (cacheDir: string) => Promise<void>): Promise<void> {

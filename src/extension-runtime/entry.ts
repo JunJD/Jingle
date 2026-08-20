@@ -12,7 +12,7 @@ import type {
   ExtensionRuntimeUtilityExecutionLease,
   ExtensionRuntimeToHostMessage
 } from "@shared/extension-runtime-protocol"
-import { normalizeExtensionRuntimeCacheWriterLease } from "@shared/extension-runtime-protocol"
+import { assertExtensionRuntimeCacheWriterLeaseOwnsExecution } from "@shared/extension-runtime-protocol"
 import {
   ExtensionRuntimeArtifactLoadError,
   loadNativeExtensionRuntimeCommand
@@ -20,7 +20,8 @@ import {
 import {
   createFileExtensionRuntimeCacheBackend,
   EXTENSION_RUNTIME_CACHE_DIR_ENV,
-  EXTENSION_RUNTIME_CACHE_WRITER_LEASE_ENV
+  EXTENSION_RUNTIME_CACHE_WRITER_LEASE_ENV,
+  resolveExtensionRuntimeCacheWriterEnvironment
 } from "./cache-backend"
 import { createExtensionRuntimeCacheLifecycle } from "./cache-lifecycle"
 import { createExtensionRuntimeRenderer, type ExtensionRuntimeRenderer } from "./reconciler/render"
@@ -120,8 +121,9 @@ async function startRuntime(
   receivedLease: ExtensionRuntimeUtilityExecutionLease
 ): Promise<void> {
   try {
-    runtimeCacheLifecycle.bindSession(sessionId)
     const lease = deepFreeze(structuredClone(receivedLease))
+    assertExtensionRuntimeCacheWriterLeaseOwnsExecution(runtimeCacheInstallation.writerLease, lease)
+    runtimeCacheLifecycle.bindSession(sessionId)
     const { context, runtime: runtimeRef } = lease
     const command = await loadNativeExtensionRuntimeCommand(runtimeRef, context)
 
@@ -299,27 +301,18 @@ function getParentPort(): NonNullable<typeof process.parentPort> {
   return port
 }
 
-function installRuntimeCacheBackend():
-  | { backend: null; writerSessionId: null }
-  | { backend: RuntimeCacheBackend; writerSessionId: string } {
-  const cacheDir = process.env[EXTENSION_RUNTIME_CACHE_DIR_ENV]
-  const rawWriterLease = process.env[EXTENSION_RUNTIME_CACHE_WRITER_LEASE_ENV]
-  if (!cacheDir && !rawWriterLease) {
-    return { backend: null, writerSessionId: null }
-  }
-  if (!cacheDir || !rawWriterLease) {
-    throw new Error("Extension runtime cache writer configuration is incomplete.")
-  }
-
-  let writerLease: ExtensionRuntimeCacheWriterLease
-  try {
-    writerLease = normalizeExtensionRuntimeCacheWriterLease(JSON.parse(rawWriterLease))
-  } catch {
-    throw new Error("Extension runtime cache writer configuration is invalid.")
-  }
+function installRuntimeCacheBackend(): {
+  backend: RuntimeCacheBackend
+  writerLease: ExtensionRuntimeCacheWriterLease
+  writerSessionId: string
+} {
+  const { cacheDir, writerLease } = resolveExtensionRuntimeCacheWriterEnvironment(
+    process.env[EXTENSION_RUNTIME_CACHE_DIR_ENV],
+    process.env[EXTENSION_RUNTIME_CACHE_WRITER_LEASE_ENV]
+  )
   const backend = createFileExtensionRuntimeCacheBackend(cacheDir, { writerLease })
   installExtensionRuntimeCacheBackend(backend)
-  return { backend, writerSessionId: writerLease.sessionId }
+  return { backend, writerLease, writerSessionId: writerLease.sessionId }
 }
 
 function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {

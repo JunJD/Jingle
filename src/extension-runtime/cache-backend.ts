@@ -57,7 +57,7 @@ export interface RuntimeCacheFileBackendOptions {
     updateMs: number
   }
   watchDirectory?: RuntimeCacheDirectoryWatch
-  writerLease?: ExtensionRuntimeCacheWriterLease
+  writerLease: ExtensionRuntimeCacheWriterLease
 }
 
 export interface RuntimeCacheDirectoryWatcher {
@@ -102,6 +102,7 @@ interface RuntimeCacheRetentionAddress {
 
 interface RuntimeCacheRetentionRecord {
   addresses: RuntimeCacheRetentionAddress[]
+  principal: ExtensionRuntimeCacheWriterLease["principal"]
   sessionId: string
   token: string
   version: typeof CACHE_RETENTION_RECORD_VERSION
@@ -110,6 +111,23 @@ interface RuntimeCacheRetentionRecord {
 export const EXTENSION_RUNTIME_CACHE_DIR_ENV = "JINGLE_EXTENSION_RUNTIME_CACHE_DIR"
 export const EXTENSION_RUNTIME_CACHE_WRITER_LEASE_ENV =
   "JINGLE_EXTENSION_RUNTIME_CACHE_WRITER_LEASE"
+
+export function resolveExtensionRuntimeCacheWriterEnvironment(
+  cacheDir: string | undefined,
+  rawWriterLease: string | undefined
+): { cacheDir: string; writerLease: ExtensionRuntimeCacheWriterLease } {
+  if (!cacheDir || !rawWriterLease) {
+    throw new Error("Extension runtime cache writer configuration is incomplete.")
+  }
+  try {
+    return {
+      cacheDir,
+      writerLease: normalizeExtensionRuntimeCacheWriterLease(JSON.parse(rawWriterLease))
+    }
+  } catch {
+    throw new Error("Extension runtime cache writer configuration is invalid.")
+  }
+}
 
 const CACHE_LOCK_STALE_MS = 30_000
 const RUNTIME_CACHE_FILE_VERSION = 1
@@ -141,9 +159,9 @@ const CACHE_FILE_LOCK_PATTERN = /^store-[a-f0-9]{64}\.json\.lock$/
 const CACHE_WRITER_LEASE_FILE_PATTERN = /^writer-lease-[a-f0-9]{64}\.json$/
 const CACHE_WRITER_LEASE_TEMPORARY_FILE_PATTERN =
   /^writer-lease-[a-f0-9]{64}\.json\.[0-9]+\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/
-const CACHE_WRITER_LEASE_FILE_VERSION = 1
-const CACHE_WRITER_LEASE_MAX_FILE_BYTES = 512
-const CACHE_RETENTION_RECORD_VERSION = 2
+const CACHE_WRITER_LEASE_FILE_VERSION = 2
+const CACHE_WRITER_LEASE_MAX_FILE_BYTES = 2 * 1024
+const CACHE_RETENTION_RECORD_VERSION = 3
 const CACHE_RETENTION_RECORD_MAX_ADDRESSES =
   EXTENSION_RUNTIME_CACHE_MAX_DIRECTORY_FILES * EXTENSION_RUNTIME_CACHE_MAX_STORES_PER_FILE
 const CACHE_RETENTION_RECORD_MAX_FILE_BYTES = 64 * 1024
@@ -283,7 +301,7 @@ export async function releaseExtensionRuntimeCacheRetention(
     }
     const retentionPath = getCacheRetentionRecordPath(cacheDir, lease)
     const retention = await readCacheRetentionRecordAsync(retentionPath)
-    if (retention && retention.sessionId === lease.sessionId && retention.token === lease.token) {
+    if (retention && isSameExtensionRuntimeCacheWriterLease(retention, lease)) {
       await unlink(retentionPath)
       changed = true
     }
@@ -298,8 +316,9 @@ export async function releaseExtensionRuntimeCacheRetention(
 
 export function createFileExtensionRuntimeCacheBackend(
   cacheDir: string,
-  options: RuntimeCacheFileBackendOptions = {}
+  options: RuntimeCacheFileBackendOptions
 ): RuntimeCacheBackend {
+  const writerLease = normalizeExtensionRuntimeCacheWriterLease(options.writerLease)
   const failureListeners = new Set<RuntimeCacheBackendFailureListener>()
   let closeViolation: Error | null = null
   let failure: Error | null = null
@@ -380,7 +399,7 @@ export function createFileExtensionRuntimeCacheBackend(
       cacheFilePath,
       fileState.namespaceDigest,
       options.lock ?? DEFAULT_LOCK_OPTIONS,
-      options.writerLease
+      writerLease
     )
     if (result.corruption) {
       reportCacheCorruptionRecovery()
@@ -470,19 +489,20 @@ export function createFileExtensionRuntimeCacheBackend(
     },
     flush: drainWrites,
     loadStore(scope) {
-      const cacheFilePath = getStoreFilePath(cacheDir, scope)
+      const ownedScope = snapshotOwnedRuntimeCacheBackendScope(scope, writerLease)
+      const cacheFilePath = getStoreFilePath(cacheDir, ownedScope)
       try {
         const result = readCacheFileWithRecoverySync(
           cacheDir,
           cacheFilePath,
-          getCacheNamespaceDigest(scope),
+          getCacheNamespaceDigest(ownedScope),
           options.lock ?? DEFAULT_LOCK_OPTIONS,
-          options.writerLease
+          writerLease
         )
         if (result.corruption) {
           reportCacheCorruptionRecovery()
         }
-        return result.cacheFile.stores[encodeRuntimeCacheBackendScopeKey(scope)]?.entries ?? []
+        return result.cacheFile.stores[encodeRuntimeCacheBackendScopeKey(ownedScope)]?.entries ?? []
       } catch (error) {
         throw toCachePersistenceError(error)
       }
@@ -495,8 +515,9 @@ export function createFileExtensionRuntimeCacheBackend(
         throw failure
       }
 
-      const cacheFilePath = getStoreFilePath(cacheDir, scope)
-      const storeKey = encodeRuntimeCacheBackendScopeKey(scope)
+      const ownedScope = snapshotOwnedRuntimeCacheBackendScope(scope, writerLease)
+      const cacheFilePath = getStoreFilePath(cacheDir, ownedScope)
+      const storeKey = encodeRuntimeCacheBackendScopeKey(ownedScope)
       const mutationSnapshot = cloneMutation(mutation)
       writeQueue = writeQueue
         .then(async () => {
@@ -506,11 +527,11 @@ export function createFileExtensionRuntimeCacheBackend(
           await updateCacheFile(
             cacheDir,
             cacheFilePath,
-            getCacheNamespaceDigest(scope),
+            getCacheNamespaceDigest(ownedScope),
             storeKey,
             mutationSnapshot,
             options.lock ?? DEFAULT_LOCK_OPTIONS,
-            options.writerLease,
+            writerLease,
             reportCacheCorruptionRecovery
           )
         })
@@ -537,8 +558,9 @@ export function createFileExtensionRuntimeCacheBackend(
         throw failure
       }
 
-      const cacheFilePath = getStoreFilePath(cacheDir, scope)
-      const storeKey = encodeRuntimeCacheBackendScopeKey(scope)
+      const ownedScope = snapshotOwnedRuntimeCacheBackendScope(scope, writerLease)
+      const cacheFilePath = getStoreFilePath(cacheDir, ownedScope)
+      const storeKey = encodeRuntimeCacheBackendScopeKey(ownedScope)
       let fileState = subscribedFiles.get(cacheFilePath)
       if (!fileState) {
         if (subscribedFiles.size >= CACHE_CHANGE_FEED_MAX_FILES) {
@@ -584,9 +606,9 @@ export function createFileExtensionRuntimeCacheBackend(
           }
           await admitCacheRetention(
             cacheDir,
-            scope,
+            ownedScope,
             options.lock ?? DEFAULT_LOCK_OPTIONS,
-            options.writerLease
+            writerLease
           )
           if (!registration.active || !acceptingWrites || failure) {
             return { kind: "cancelled" }
@@ -718,12 +740,9 @@ async function updateCacheFile(
   storeKey: string,
   mutation: RuntimeCacheBackendMutation,
   lockOptions: NonNullable<RuntimeCacheFileBackendOptions["lock"]>,
-  writerLease: ExtensionRuntimeCacheWriterLease | undefined,
+  writerLease: ExtensionRuntimeCacheWriterLease,
   reportRecovery: () => void
 ): Promise<void> {
-  if (!writerLease) {
-    await mkdir(cacheDir, { recursive: true })
-  }
   let directoryCompromisedError: Error | null = null
   let compromisedError: Error | null = null
   let recoveredCorruption: ExtensionRuntimeCacheCorruptionError | null = null
@@ -838,11 +857,8 @@ async function admitCacheRetention(
   cacheDir: string,
   scope: RuntimeCacheBackendScope,
   lockOptions: NonNullable<RuntimeCacheFileBackendOptions["lock"]>,
-  writerLease: ExtensionRuntimeCacheWriterLease | undefined
+  writerLease: ExtensionRuntimeCacheWriterLease
 ): Promise<void> {
-  if (!writerLease) {
-    return
-  }
   await mkdir(cacheDir, { recursive: true })
   let directoryCompromisedError: Error | null = null
   const releaseDirectory = await acquireCacheLock(cacheDir, lockOptions, (error) => {
@@ -850,14 +866,12 @@ async function admitCacheRetention(
   })
   try {
     assertLockIsOwned(directoryCompromisedError)
+    assertRuntimeCacheScopeOwnedByWriterLease(scope, writerLease)
     assertActiveCacheWriterLease(cacheDir, writerLease)
     await removeOrphanCacheControlTemporaryFiles(cacheDir)
     const retentionPath = getCacheRetentionRecordPath(cacheDir, writerLease)
     const current = await readCacheRetentionRecordAsync(retentionPath)
-    if (
-      current &&
-      (current.sessionId !== writerLease.sessionId || current.token !== writerLease.token)
-    ) {
+    if (current && !isSameExtensionRuntimeCacheWriterLease(current, writerLease)) {
       throw new ExtensionRuntimeCacheWriterLeaseError()
     }
     const address = getCacheRetentionAddress(scope)
@@ -892,6 +906,7 @@ async function admitCacheRetention(
     assertLockIsOwned(directoryCompromisedError)
     const next: RuntimeCacheRetentionRecord = {
       addresses,
+      principal: writerLease.principal,
       sessionId: writerLease.sessionId,
       token: writerLease.token,
       version: CACHE_RETENTION_RECORD_VERSION
@@ -918,7 +933,7 @@ async function readCacheFileWithRecovery(
   cacheFilePath: string,
   namespaceDigest: string,
   lockOptions: NonNullable<RuntimeCacheFileBackendOptions["lock"]>,
-  writerLease: ExtensionRuntimeCacheWriterLease | undefined
+  writerLease: ExtensionRuntimeCacheWriterLease
 ): Promise<{
   cacheFile: RuntimeCacheFileShape
   corruption: ExtensionRuntimeCacheCorruptionError | null
@@ -1062,7 +1077,7 @@ function readCacheFileWithRecoverySync(
   cacheFilePath: string,
   namespaceDigest: string,
   lockOptions: NonNullable<RuntimeCacheFileBackendOptions["lock"]>,
-  writerLease: ExtensionRuntimeCacheWriterLease | undefined
+  writerLease: ExtensionRuntimeCacheWriterLease
 ): {
   cacheFile: RuntimeCacheFileShape
   corruption: ExtensionRuntimeCacheCorruptionError | null
@@ -1075,9 +1090,6 @@ function readCacheFileWithRecoverySync(
     }
   }
 
-  if (!writerLease) {
-    mkdirSync(cacheDir, { recursive: true })
-  }
   let directoryCompromisedError: Error | null = null
   let compromisedError: Error | null = null
   const releaseDirectory = acquireCacheLockSync(cacheDir, lockOptions, (error) => {
@@ -1180,14 +1192,59 @@ function withCacheDirectoryLockSync(cacheDir: string, operation: () => void): vo
 
 function assertActiveCacheWriterLease(
   cacheDir: string,
-  lease: ExtensionRuntimeCacheWriterLease | undefined
+  lease: ExtensionRuntimeCacheWriterLease
 ): void {
-  if (!lease) {
-    return
-  }
   if (!isActiveCacheWriterLease(getCacheWriterLeasePath(cacheDir, lease), lease)) {
     throw new ExtensionRuntimeCacheWriterLeaseError()
   }
+}
+
+function snapshotOwnedRuntimeCacheBackendScope(
+  scope: RuntimeCacheBackendScope,
+  writerLease: ExtensionRuntimeCacheWriterLease
+): RuntimeCacheBackendScope {
+  assertRuntimeCacheScopeOwnedByWriterLease(scope, writerLease)
+  return Object.freeze({
+    commandName: scope.commandName,
+    extensionName: scope.extensionName,
+    identity: Object.freeze({ ...scope.identity }),
+    namespace: scope.namespace
+  })
+}
+
+function assertRuntimeCacheScopeOwnedByWriterLease(
+  scope: RuntimeCacheBackendScope,
+  writerLease: ExtensionRuntimeCacheWriterLease
+): void {
+  const principal = writerLease.principal
+  const expected = principal.identity
+  const actual = scope.identity
+  if (
+    principal.commandName !== scope.commandName ||
+    principal.extensionName !== scope.extensionName ||
+    expected.kind !== "available" ||
+    actual.kind !== "available" ||
+    expected.commandConfigGeneration !== actual.commandConfigGeneration ||
+    expected.connectionConfigGeneration !== actual.connectionConfigGeneration ||
+    expected.connectionId !== actual.connectionId ||
+    expected.credentialGeneration !== actual.credentialGeneration ||
+    expected.extensionConfigGeneration !== actual.extensionConfigGeneration ||
+    expected.runtimeArtifactRevision !== actual.runtimeArtifactRevision ||
+    expected.runtimePackageRevision !== actual.runtimePackageRevision
+  ) {
+    throw new ExtensionRuntimeCacheWriterPrincipalError()
+  }
+}
+
+function isSameExtensionRuntimeCacheWriterLease(
+  left: ExtensionRuntimeCacheWriterLease,
+  right: ExtensionRuntimeCacheWriterLease
+): boolean {
+  return (
+    left.sessionId === right.sessionId &&
+    left.token === right.token &&
+    JSON.stringify(left.principal) === JSON.stringify(right.principal)
+  )
 }
 
 function isActiveCacheWriterLease(
@@ -1202,16 +1259,17 @@ function isActiveCacheWriterLease(
     const parsed = JSON.parse(readFileSync(leasePath, "utf8")) as unknown
     if (
       !isRecord(parsed) ||
-      Object.keys(parsed).length !== 3 ||
+      Object.keys(parsed).length !== 4 ||
       parsed.version !== CACHE_WRITER_LEASE_FILE_VERSION
     ) {
       return false
     }
     const lease = normalizeExtensionRuntimeCacheWriterLease({
+      principal: parsed.principal,
       sessionId: parsed.sessionId,
       token: parsed.token
     })
-    return lease.sessionId === expectedLease.sessionId && lease.token === expectedLease.token
+    return isSameExtensionRuntimeCacheWriterLease(lease, expectedLease)
   } catch {
     return false
   }
@@ -1229,16 +1287,17 @@ async function isActiveCacheWriterLeaseAsync(
     const parsed = JSON.parse(await readFile(leasePath, "utf8")) as unknown
     if (
       !isRecord(parsed) ||
-      Object.keys(parsed).length !== 3 ||
+      Object.keys(parsed).length !== 4 ||
       parsed.version !== CACHE_WRITER_LEASE_FILE_VERSION
     ) {
       return false
     }
     const lease = normalizeExtensionRuntimeCacheWriterLease({
+      principal: parsed.principal,
       sessionId: parsed.sessionId,
       token: parsed.token
     })
-    return lease.sessionId === expectedLease.sessionId && lease.token === expectedLease.token
+    return isSameExtensionRuntimeCacheWriterLease(lease, expectedLease)
   } catch {
     return false
   }
@@ -1297,7 +1356,7 @@ function parseCacheRetentionRecord(raw: string): RuntimeCacheRetentionRecord {
   const parsed = JSON.parse(raw) as unknown
   if (
     !isRecord(parsed) ||
-    Object.keys(parsed).length !== 4 ||
+    Object.keys(parsed).length !== 5 ||
     parsed.version !== CACHE_RETENTION_RECORD_VERSION ||
     !Array.isArray(parsed.addresses) ||
     parsed.addresses.length > CACHE_RETENTION_RECORD_MAX_ADDRESSES ||
@@ -1314,6 +1373,7 @@ function parseCacheRetentionRecord(raw: string): RuntimeCacheRetentionRecord {
     throw new TypeError("Extension runtime cache retention record is invalid.")
   }
   const lease = normalizeExtensionRuntimeCacheWriterLease({
+    principal: parsed.principal,
     sessionId: parsed.sessionId,
     token: parsed.token
   })
@@ -1329,6 +1389,7 @@ function parseCacheRetentionRecord(raw: string): RuntimeCacheRetentionRecord {
   }
   return {
     addresses,
+    principal: lease.principal,
     sessionId: lease.sessionId,
     token: lease.token,
     version: CACHE_RETENTION_RECORD_VERSION
@@ -1634,6 +1695,7 @@ function compareCacheRetentionAddresses(
 
 function serializeCacheWriterLease(lease: ExtensionRuntimeCacheWriterLease): string {
   const serialized = `${JSON.stringify({
+    principal: lease.principal,
     sessionId: lease.sessionId,
     token: lease.token,
     version: CACHE_WRITER_LEASE_FILE_VERSION
@@ -2345,6 +2407,15 @@ export class ExtensionRuntimeCacheWriterLeaseError extends Error {
   constructor() {
     super("Extension runtime cache writer lease is inactive.")
     this.name = "ExtensionRuntimeCacheWriterLeaseError"
+  }
+}
+
+export class ExtensionRuntimeCacheWriterPrincipalError extends Error {
+  readonly code = "runtime_cache_writer_principal_mismatch"
+
+  constructor() {
+    super("Extension runtime cache scope is not owned by this writer principal.")
+    this.name = "ExtensionRuntimeCacheWriterPrincipalError"
   }
 }
 

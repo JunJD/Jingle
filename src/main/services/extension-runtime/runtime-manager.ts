@@ -28,6 +28,7 @@ import type {
   ExtensionToastPayload
 } from "@shared/extension-runtime-protocol"
 import {
+  createExtensionRuntimeCacheExecutionPrincipal,
   normalizeExtensionAiHostRequest,
   normalizeExtensionRuntimeErrorDetails,
   normalizeExtensionRuntimeNavigationHostRequest
@@ -1072,7 +1073,10 @@ export class ExtensionRuntimeManager {
       throw initialAdmissionError
     }
 
-    const cacheWriterLease = await this.options.cacheLeaseCoordinator.activate(sessionId)
+    const cacheWriterLease = await this.options.cacheLeaseCoordinator.activate(
+      sessionId,
+      createExtensionRuntimeCacheExecutionPrincipal(lease.utility.context)
+    )
     const activatedAdmissionError = this.getSessionStartAdmissionError(sessionId, lease)
     if (activatedAdmissionError) {
       await this.cleanupUnadoptedCacheWriterLease(cacheWriterLease, activatedAdmissionError)

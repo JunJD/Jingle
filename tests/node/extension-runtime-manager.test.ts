@@ -40,6 +40,7 @@ import {
 import type {
   ExtensionHostRequest,
   ExtensionHostToRuntimeMessage,
+  ExtensionRuntimeCacheExecutionPrincipal,
   ExtensionRuntimeCacheWriterLease,
   ExtensionRuntimeHostCapability,
   ExtensionRuntimeLaunchIntent,
@@ -54,7 +55,10 @@ import type {
 
 type ExtensionRuntimeSessionIssue = ExtensionRuntimeSessionIssueSnapshot
 import {
+  assertExtensionRuntimeCacheWriterLeaseOwnsExecution,
+  createExtensionRuntimeCacheExecutionPrincipal,
   normalizeExtensionRuntimeJsonFact,
+  normalizeExtensionRuntimeCacheWriterLease,
   normalizeExtensionRuntimeLaunchIntent,
   normalizeExtensionRuntimeLaunchProps,
   normalizeExtensionRuntimeNavigationHostRequest,
@@ -163,8 +167,12 @@ class FakeCacheLeaseCoordinator implements ExtensionRuntimeCacheLeaseCoordinator
   private readonly retentionTokens = new Set<string>()
   private tokenIndex = 0
 
-  async activate(sessionId: string): Promise<ExtensionRuntimeCacheWriterLease> {
+  async activate(
+    sessionId: string,
+    principal: ExtensionRuntimeCacheExecutionPrincipal
+  ): Promise<ExtensionRuntimeCacheWriterLease> {
     const lease = {
+      principal,
       sessionId,
       token: (++this.tokenIndex).toString(16).padStart(64, "0")
     }
@@ -919,6 +927,40 @@ test("utility execution lease only exposes preferences to entitled runtimes", ()
     expectedRuntimeArtifactRevision
   )
 
+  const cachePrincipal = createExtensionRuntimeCacheExecutionPrincipal(installedUtility.context)
+  const cacheWriterLease = normalizeExtensionRuntimeCacheWriterLease({
+    principal: cachePrincipal,
+    sessionId: "installed-session",
+    token: "a".repeat(64)
+  })
+  assert.deepEqual(cacheWriterLease.principal, {
+    commandName: intent.commandName,
+    extensionName: intent.extensionName,
+    identity: {
+      commandConfigGeneration: 5,
+      connectionConfigGeneration: 4,
+      connectionId: "default",
+      credentialGeneration: 3,
+      extensionConfigGeneration: 2,
+      kind: "available",
+      runtimeArtifactRevision: expectedRuntimeArtifactRevision,
+      runtimePackageRevision: "1.2.3"
+    }
+  })
+  assert.equal(Object.isFrozen(cacheWriterLease.principal), true)
+  assert.equal(Object.isFrozen(cacheWriterLease.principal.identity), true)
+  assert.doesNotThrow(() =>
+    assertExtensionRuntimeCacheWriterLeaseOwnsExecution(cacheWriterLease, installedUtility)
+  )
+  assert.throws(
+    () =>
+      assertExtensionRuntimeCacheWriterLeaseOwnsExecution(cacheWriterLease, {
+        ...installedUtility,
+        context: { ...installedUtility.context, commandName: "notifications" }
+      }),
+    /does not own this execution/
+  )
+
   assert.throws(
     () =>
       createExtensionRuntimeUtilityExecutionLease({
@@ -1358,6 +1400,9 @@ test("runtime manager starts and stops a foreground utility session", async () =
   })
   assert.deepEqual(cacheLeaseCoordinator.activateCalls, [
     {
+      principal: createExtensionRuntimeCacheExecutionPrincipal(
+        createTestLease(createLaunchIntent(), "foreground").utility.context
+      ),
       sessionId: "session-1",
       token: "1".padStart(64, "0")
     }
@@ -1382,6 +1427,54 @@ test("runtime manager starts and stops a foreground utility session", async () =
     cacheLeaseCoordinator.releaseRetentionCalls[0],
     cacheLeaseCoordinator.activateCalls[0]
   )
+})
+
+test("runtime manager binds an installed execution identity into the cache writer principal", async () => {
+  const intent = createLaunchIntent()
+  const baseLease = createTestLease(intent, "foreground")
+  const installedUtility = createExtensionRuntimeUtilityExecutionLease({
+    intent,
+    invokeContext: baseLease.invokeContext,
+    locale: "zh-CN",
+    mode: "view",
+    runtime: {
+      expectedRuntimeArtifactRevision: `sha256:${"b".repeat(64)}`,
+      extensionName: intent.extensionName,
+      kind: "module",
+      modulePath: "/immutable/github/runtime.mjs",
+      version: "2.0.0"
+    },
+    runtimeCapabilities: baseLease.runtimeCapabilities
+  })
+  const executionLease: ExtensionRuntimeExecutionLease = {
+    ...baseLease,
+    utility: installedUtility
+  }
+  const { cacheLeaseCoordinator, launcher, manager } = createManager({
+    executionLeaseOwner: {
+      isCurrent: () => true,
+      resolve: () => executionLease
+    }
+  })
+
+  await manager.startForeground(intent)
+
+  assert.deepEqual(
+    cacheLeaseCoordinator.activateCalls[0]?.principal,
+    createExtensionRuntimeCacheExecutionPrincipal(installedUtility.context)
+  )
+  assert.doesNotThrow(() =>
+    assertExtensionRuntimeCacheWriterLeaseOwnsExecution(
+      cacheLeaseCoordinator.activateCalls[0]!,
+      launcher.processes[0]!.messages[0]!.type === "start"
+        ? launcher.processes[0]!.messages[0]!.lease
+        : installedUtility
+    )
+  )
+
+  assert.equal(manager.stopForeground("session-1"), true)
+  launcher.processes[0]?.emitExit(0)
+  await flushPromises()
 })
 
 test("runtime manager retains a stopping session until the utility confirms its cache flush", async () => {

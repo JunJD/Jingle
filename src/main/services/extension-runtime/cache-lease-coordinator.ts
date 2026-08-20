@@ -1,5 +1,8 @@
 import { randomBytes } from "node:crypto"
-import type { ExtensionRuntimeCacheWriterLease } from "@shared/extension-runtime-protocol"
+import type {
+  ExtensionRuntimeCacheExecutionPrincipal,
+  ExtensionRuntimeCacheWriterLease
+} from "@shared/extension-runtime-protocol"
 import { normalizeExtensionRuntimeCacheWriterLease } from "@shared/extension-runtime-protocol"
 import {
   activateExtensionRuntimeCacheWriterLease,
@@ -10,7 +13,10 @@ import {
 } from "../../../extension-runtime/cache-backend"
 
 export interface ExtensionRuntimeCacheLeaseCoordinator {
-  activate: (sessionId: string) => Promise<ExtensionRuntimeCacheWriterLease>
+  activate: (
+    sessionId: string,
+    principal: ExtensionRuntimeCacheExecutionPrincipal
+  ) => Promise<ExtensionRuntimeCacheWriterLease>
   dispose: () => Promise<void>
   releaseRetention: (lease: ExtensionRuntimeCacheWriterLease) => Promise<void>
   revokeWrites: (lease: ExtensionRuntimeCacheWriterLease) => Promise<void>
@@ -37,7 +43,10 @@ export class FileExtensionRuntimeCacheLeaseCoordinator implements ExtensionRunti
     }
   }
 
-  activate(sessionId: string): Promise<ExtensionRuntimeCacheWriterLease> {
+  activate(
+    sessionId: string,
+    principal: ExtensionRuntimeCacheExecutionPrincipal
+  ): Promise<ExtensionRuntimeCacheWriterLease> {
     return this.enqueue(async () => {
       if (this.disposed) {
         throw new ExtensionRuntimeCacheLeaseCoordinatorError(
@@ -46,6 +55,7 @@ export class FileExtensionRuntimeCacheLeaseCoordinator implements ExtensionRunti
       }
       try {
         const lease = normalizeExtensionRuntimeCacheWriterLease({
+          principal,
           sessionId,
           token: randomBytes(32).toString("hex")
         })

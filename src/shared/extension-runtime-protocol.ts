@@ -177,13 +177,70 @@ export interface ExtensionRuntimeUtilityExecutionLease {
   runtime: ExtensionRuntimeLaunchPackageRef
 }
 
+export type ExtensionRuntimeCacheExecutionIdentity =
+  | (ExtensionRuntimeAvailableCacheIdentity & ExtensionRuntimeLocalStorageIdentity)
+  | { kind: "unavailable" }
+
+export interface ExtensionRuntimeCacheExecutionPrincipal {
+  commandName: string
+  extensionName: string
+  identity: ExtensionRuntimeCacheExecutionIdentity
+}
+
 export interface ExtensionRuntimeCacheWriterLease {
+  principal: ExtensionRuntimeCacheExecutionPrincipal
   sessionId: string
   token: string
 }
 
 const EXTENSION_RUNTIME_CACHE_WRITER_SESSION_ID_MAX_LENGTH = 128
+const EXTENSION_RUNTIME_CACHE_PRINCIPAL_STRING_MAX_LENGTH = 256
 const EXTENSION_RUNTIME_CACHE_WRITER_TOKEN_PATTERN = /^[a-f0-9]{64}$/
+const EXTENSION_RUNTIME_CACHE_ARTIFACT_REVISION_PATTERN = /^sha256:[a-f0-9]{64}$/
+
+export function createExtensionRuntimeCacheExecutionPrincipal(
+  context: ExtensionRuntimeLaunchContext
+): ExtensionRuntimeCacheExecutionPrincipal {
+  const identity = context.dataIdentity
+  return normalizeExtensionRuntimeCacheExecutionPrincipal({
+    commandName: context.commandName,
+    extensionName: context.extensionName,
+    identity:
+      identity.kind === "available" && identity.cache.kind === "available"
+        ? {
+            ...identity.localStorage,
+            ...identity.cache
+          }
+        : { kind: "unavailable" }
+  })
+}
+
+export function normalizeExtensionRuntimeCacheExecutionPrincipal(
+  value: unknown
+): ExtensionRuntimeCacheExecutionPrincipal {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Extension runtime cache execution principal is invalid.")
+  }
+  const principal = value as Record<string, unknown>
+  if (Object.keys(principal).length !== 3) {
+    throw new Error("Extension runtime cache execution principal is invalid.")
+  }
+  const commandName = normalizeExtensionRuntimeCachePrincipalString(principal.commandName)
+  const extensionName = normalizeExtensionRuntimeCachePrincipalString(principal.extensionName)
+  const identity = normalizeExtensionRuntimeCacheExecutionIdentity(principal.identity)
+  return Object.freeze({ commandName, extensionName, identity })
+}
+
+export function assertExtensionRuntimeCacheWriterLeaseOwnsExecution(
+  lease: ExtensionRuntimeCacheWriterLease,
+  execution: ExtensionRuntimeUtilityExecutionLease
+): void {
+  const normalizedLease = normalizeExtensionRuntimeCacheWriterLease(lease)
+  const expected = createExtensionRuntimeCacheExecutionPrincipal(execution.context)
+  if (JSON.stringify(normalizedLease.principal) !== JSON.stringify(expected)) {
+    throw new Error("Extension runtime cache writer principal does not own this execution.")
+  }
+}
 
 export function normalizeExtensionRuntimeCacheWriterLease(
   value: unknown
@@ -193,7 +250,7 @@ export function normalizeExtensionRuntimeCacheWriterLease(
   }
   const lease = value as Record<string, unknown>
   if (
-    Object.keys(lease).length !== 2 ||
+    Object.keys(lease).length !== 3 ||
     typeof lease.sessionId !== "string" ||
     lease.sessionId.length === 0 ||
     lease.sessionId.length > EXTENSION_RUNTIME_CACHE_WRITER_SESSION_ID_MAX_LENGTH ||
@@ -203,9 +260,66 @@ export function normalizeExtensionRuntimeCacheWriterLease(
     throw new Error("Extension runtime cache writer lease is invalid.")
   }
   return Object.freeze({
+    principal: normalizeExtensionRuntimeCacheExecutionPrincipal(lease.principal),
     sessionId: lease.sessionId,
     token: lease.token
   })
+}
+
+function normalizeExtensionRuntimeCacheExecutionIdentity(
+  value: unknown
+): ExtensionRuntimeCacheExecutionIdentity {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Extension runtime cache execution principal is invalid.")
+  }
+  const identity = value as Record<string, unknown>
+  if (identity.kind === "unavailable") {
+    if (Object.keys(identity).length !== 1) {
+      throw new Error("Extension runtime cache execution principal is invalid.")
+    }
+    return Object.freeze({ kind: "unavailable" })
+  }
+  if (
+    identity.kind !== "available" ||
+    Object.keys(identity).length !== 8 ||
+    !isExtensionRuntimeCacheGeneration(identity.commandConfigGeneration) ||
+    !isExtensionRuntimeCacheGeneration(identity.connectionConfigGeneration) ||
+    !isExtensionRuntimeCacheGeneration(identity.credentialGeneration) ||
+    !isExtensionRuntimeCacheGeneration(identity.extensionConfigGeneration) ||
+    typeof identity.runtimeArtifactRevision !== "string" ||
+    !EXTENSION_RUNTIME_CACHE_ARTIFACT_REVISION_PATTERN.test(identity.runtimeArtifactRevision)
+  ) {
+    throw new Error("Extension runtime cache execution principal is invalid.")
+  }
+  const connectionId = normalizeExtensionRuntimeCachePrincipalString(identity.connectionId)
+  const runtimePackageRevision = normalizeExtensionRuntimeCachePrincipalString(
+    identity.runtimePackageRevision
+  )
+  return Object.freeze({
+    commandConfigGeneration: identity.commandConfigGeneration,
+    connectionConfigGeneration: identity.connectionConfigGeneration,
+    connectionId,
+    credentialGeneration: identity.credentialGeneration,
+    extensionConfigGeneration: identity.extensionConfigGeneration,
+    kind: "available",
+    runtimeArtifactRevision: identity.runtimeArtifactRevision,
+    runtimePackageRevision
+  })
+}
+
+function normalizeExtensionRuntimeCachePrincipalString(value: unknown): string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > EXTENSION_RUNTIME_CACHE_PRINCIPAL_STRING_MAX_LENGTH
+  ) {
+    throw new Error("Extension runtime cache execution principal is invalid.")
+  }
+  return value
+}
+
+function isExtensionRuntimeCacheGeneration(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0
 }
 
 export type ExtensionHostToRuntimeMessage =
