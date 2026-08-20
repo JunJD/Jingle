@@ -74,6 +74,12 @@ export function DurableWindowApp(): React.JSX.Element {
     const projection = startDurableWindowThreadBindingProjection({
       onError: (error) => {
         console.error("[DurableWindow] Failed to read the durable thread binding.", error)
+        setActivation({
+          bindingRevision: null,
+          error: error instanceof Error ? error.message : String(error),
+          phase: "failed",
+          threadId: null
+        })
       },
       onSnapshot: projectBinding,
       read: window.api.durableWindow.getThreadBinding,
@@ -151,7 +157,7 @@ export function DurableWindowApp(): React.JSX.Element {
                 return snapshot?.threadId === threadId
               },
               onClearActivationError: () => {
-                if (activation.phase !== "failed") return
+                if (activation.phase !== "failed" || activation.threadId === null) return
                 void activationCoordinatorRef.current
                   ?.requestActivation(activation.threadId)
                   .catch((error: unknown) => {

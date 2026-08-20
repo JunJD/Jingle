@@ -152,7 +152,7 @@ describe("ThreadWindowService", () => {
   })
 
   it("publishes the authoritative revision when persistence rejects a rebind", () => {
-    const { service, setPersistenceError, windows } = createService()
+    const { restore, service, setPersistenceError, windows } = createService()
     assert.equal(service.openNew({ threadId: "thread-a" }).ok, true)
     setPersistenceError(new Error("storage unavailable"))
 
@@ -165,6 +165,21 @@ describe("ThreadWindowService", () => {
       threadId: "thread-b"
     })
     assert.deepEqual(windows[0]!.sent, [{ revision: 2, threadId: "thread-b" }])
+
+    setPersistenceError(null)
+    assert.deepEqual(service.bindSenderThread(windows[0]!.webContents as never, "thread-b"), {
+      revision: 2,
+      threadId: "thread-b"
+    })
+    assert.deepEqual(service.getSenderThreadBinding(windows[0]!.webContents as never), {
+      revision: 2,
+      threadId: "thread-b"
+    })
+    assert.deepEqual(windows[0]!.sent, [
+      { revision: 2, threadId: "thread-b" },
+      { revision: 2, threadId: "thread-b" }
+    ])
+    assert.equal(restore().windows[0]?.threadId, "thread-b")
   })
 
   it("reports a resource refusal instead of enforcing a product window count", () => {

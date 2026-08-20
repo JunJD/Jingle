@@ -423,6 +423,10 @@ export function useLauncherAiThreadNavigation(
   }, [goToAdjacentThread])
 
   useEffect(() => {
+    if (durableActivationOwned) {
+      return
+    }
+
     if (initialThreadId) {
       if (initialHydrationPendingRef.current) {
         initialHydrationPendingRef.current = false
@@ -490,7 +494,8 @@ export function useLauncherAiThreadNavigation(
     refreshAdjacentThreadIds,
     resolveActiveThreadId,
     target,
-    shouldStartFreshThread
+    shouldStartFreshThread,
+    durableActivationOwned
   ])
 
   return {

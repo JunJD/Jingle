@@ -452,6 +452,7 @@ test("launcher AI thread loading copy distinguishes restore from opening", async
     /if \(!restoredThreadId\) \{[\s\S]*?setTarget\(\{[\s\S]*?kind: "draft"/
   )
   assert.match(navigationSource, /const navigationVersionRef = useRef\(0\)/)
+  assert.match(navigationSource, /if \(durableActivationOwned\) \{\s*return\s*\}/)
   assert.match(
     navigationSource,
     /expectedNavigationVersion !== undefined[\s\S]*?expectedNavigationVersion !== navigationVersionRef\.current[\s\S]*?return/

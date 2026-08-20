@@ -14,10 +14,10 @@ export type DurableWindowThreadActivationProjection =
       threadId: string | null
     }
   | {
-      bindingRevision: number
+      bindingRevision: number | null
       error: string
       phase: "failed"
-      threadId: string
+      threadId: string | null
     }
 
 export interface DurableWindowThreadActivationCoordinator {

@@ -50,6 +50,7 @@ export function resolveThreadWindowResourceLimit(memoryBytes = totalmem()): numb
 export class ThreadWindowService {
   private readonly deferredRestoreEntries = new Map<string, ThreadWindowRestoreEntry>()
   private readonly persistedEntries = new Map<string, ThreadWindowRestoreEntry>()
+  private readonly persistedBindingRevisions = new Map<string, number>()
   private readonly bindingRevisions = new Map<string, number>()
   private readonly threadIds = new Map<string, string | null>()
   private readonly windows = new Map<string, BrowserWindow>()
@@ -232,7 +233,8 @@ export class ThreadWindowService {
     this.windows.set(entry.windowId, window)
     this.threadIds.set(entry.windowId, entry.threadId)
     this.bindingRevisions.set(entry.windowId, 1)
-    if (!restoring) this.persistAll()
+    const persisted = restoring || this.persistAll()
+    if (persisted) this.persistedBindingRevisions.set(entry.windowId, 1)
     const persist = (): void => this.schedulePersist()
     window.on("move", persist)
     window.on("resize", persist)
@@ -249,6 +251,7 @@ export class ThreadWindowService {
       this.windows.delete(entry.windowId)
       this.threadIds.delete(entry.windowId)
       this.bindingRevisions.delete(entry.windowId)
+      this.persistedBindingRevisions.delete(entry.windowId)
       if (!restoreConfirmed || rendererFailed) {
         this.deferredRestoreEntries.set(entry.windowId, persistedEntry)
       }
@@ -263,7 +266,18 @@ export class ThreadWindowService {
     threadId: string
   ): DurableWindowThreadBindingSnapshot {
     const currentThreadId = this.threadIds.get(windowId) ?? null
-    if (currentThreadId === threadId) return this.getBindingSnapshot(windowId)
+    if (currentThreadId === threadId) {
+      const snapshot = this.getBindingSnapshot(windowId)
+      if (this.persistedBindingRevisions.get(windowId) === snapshot.revision) return snapshot
+      if (!this.persistAll()) {
+        throw new Error("Thread window binding committed but could not be persisted.")
+      }
+      this.persistedBindingRevisions.set(windowId, snapshot.revision)
+      if (!window.webContents.isDestroyed()) {
+        window.webContents.send(DURABLE_WINDOW_THREAD_BINDING_CHANGED_CHANNEL, snapshot)
+      }
+      return snapshot
+    }
     const nextBindingRevision = this.getNextBindingRevision(windowId)
     let bindingError: unknown = null
     try {
@@ -292,6 +306,7 @@ export class ThreadWindowService {
     this.threadIds.set(windowId, authoritativeThreadId)
     this.bindingRevisions.set(windowId, nextBindingRevision)
     const persisted = this.persistAll()
+    if (persisted) this.persistedBindingRevisions.set(windowId, nextBindingRevision)
     const snapshot = this.getBindingSnapshot(windowId)
     if (!window.webContents.isDestroyed()) {
       window.webContents.send(DURABLE_WINDOW_THREAD_BINDING_CHANGED_CHANNEL, snapshot)
