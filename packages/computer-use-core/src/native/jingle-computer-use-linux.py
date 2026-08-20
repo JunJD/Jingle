@@ -11,11 +11,53 @@ implementation exposes a stable native window handle.
 from __future__ import annotations
 
 import ctypes
+import os
+import signal
+import sys
+
+
+PR_SET_PDEATHSIG = 1
+PARENT_LIFETIME_EXIT_CODE = 125
+
+
+def _fail_parent_lifetime() -> None:
+    os.write(
+        2,
+        b'{"code":"unavailable","details":{},"message":"Computer Use parent process is unavailable."}\n',
+    )
+    os._exit(PARENT_LIFETIME_EXIT_CODE)
+
+
+def _install_parent_death_guard() -> None:
+    if not sys.platform.startswith("linux"):
+        return
+    raw_parent_pid = os.environ.get("JINGLE_PARENT_PID", "")
+    try:
+        expected_parent_pid = int(raw_parent_pid)
+    except ValueError:
+        _fail_parent_lifetime()
+    if expected_parent_pid <= 1 or os.getppid() != expected_parent_pid:
+        _fail_parent_lifetime()
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    prctl = libc.prctl
+    prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
+    prctl.restype = ctypes.c_int
+    if prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0) != 0:
+        _fail_parent_lifetime()
+
+    # The parent can exit immediately before prctl registration. Re-checking
+    # the direct parent after registration closes that race without allowing
+    # request parsing, accessibility discovery, or any later side effect.
+    if os.getppid() != expected_parent_pid:
+        _fail_parent_lifetime()
+
+
+_install_parent_death_guard()
+
 import ctypes.util
 import hashlib
 import json
-import os
-import sys
 import time
 from dataclasses import dataclass
 from typing import Any, Iterable

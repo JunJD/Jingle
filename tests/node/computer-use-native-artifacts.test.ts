@@ -36,17 +36,14 @@ const macParentLifetimeSource = resolve(
 function runJson(
   executable: string,
   args: readonly string[],
-  environment: NodeJS.ProcessEnv = {
-    ...process.env,
-    JINGLE_PARENT_PID: String(process.pid)
-  }
+  environment: NodeJS.ProcessEnv = process.env
 ): unknown {
   const request = args.at(-1)
   assert.ok(request)
   JSON.parse(request)
   const result = spawnSync(executable, args.slice(0, -1), {
     encoding: "utf8",
-    env: environment,
+    env: { ...environment, JINGLE_PARENT_PID: String(process.pid) },
     input: request
   })
   assert.equal(result.status, 0, result.stderr || result.error?.message)
@@ -57,17 +54,14 @@ function runJson(
 function runJsonFailure(
   executable: string,
   args: readonly string[],
-  environment: NodeJS.ProcessEnv = {
-    ...process.env,
-    JINGLE_PARENT_PID: String(process.pid)
-  }
+  environment: NodeJS.ProcessEnv = process.env
 ): string {
   const request = args.at(-1)
   assert.ok(request)
   JSON.parse(request)
   const result = spawnSync(executable, args.slice(0, -1), {
     encoding: "utf8",
-    env: environment,
+    env: { ...environment, JINGLE_PARENT_PID: String(process.pid) },
     input: request
   })
   assert.notEqual(result.status, 0)
@@ -139,12 +133,142 @@ test("native helpers reject request payloads passed through argv", () => {
   const linux = spawnSync(
     process.env.PYTHON ?? "python3",
     [resolve(nativeSourceDirectory, "jingle-computer-use-linux.py"), request],
-    { encoding: "utf8" }
+    {
+      encoding: "utf8",
+      env: { ...process.env, JINGLE_PARENT_PID: String(process.pid) }
+    }
   )
   assert.notEqual(linux.status, 0)
   assert.equal(linux.stdout, "")
   assert.match(linux.stderr, /stdin/i)
 })
+
+test("Linux helper installs its kernel parent-death guard before backend imports", () => {
+  const source = readFileSync(
+    resolve(nativeSourceDirectory, "jingle-computer-use-linux.py"),
+    "utf8"
+  )
+  assert.match(source, /PR_SET_PDEATHSIG = 1/)
+  assert.match(source, /prctl\(PR_SET_PDEATHSIG, signal\.SIGKILL, 0, 0, 0\)/)
+  assert.match(source, /os\.getppid\(\) != expected_parent_pid/)
+  const guardCall = source.indexOf("\n_install_parent_death_guard()\n")
+  assert.notEqual(guardCall, -1)
+  assert.ok(guardCall < source.indexOf("import ctypes.util"))
+  assert.ok(guardCall < source.indexOf("import hashlib"))
+  assert.ok(guardCall < source.indexOf("import json"))
+})
+
+test(
+  "Linux helper rejects an unowned process before reading a request",
+  { skip: process.platform !== "linux" },
+  () => {
+    const sourcePath = resolve(nativeSourceDirectory, "jingle-computer-use-linux.py")
+    for (const parentPid of [undefined, "1", "2"]) {
+      const environment = { ...process.env }
+      if (parentPid === undefined) delete environment.JINGLE_PARENT_PID
+      else environment.JINGLE_PARENT_PID = parentPid
+      const result = spawnSync(process.env.PYTHON ?? "python3", [sourcePath], {
+        encoding: "utf8",
+        env: environment,
+        input: JSON.stringify({ environment: "linux-x11", method: "probe" })
+      })
+      assert.notEqual(result.status, 0)
+      assert.equal(result.stdout, "")
+      assert.match(result.stderr, /parent process is unavailable/)
+    }
+  }
+)
+
+test(
+  "Linux helper cannot perform a later side effect after its direct owner dies",
+  { skip: process.platform !== "linux" },
+  async () => {
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), "jingle-computer-use-linux-parent-"))
+    const harnessPath = resolve(temporaryDirectory, "helper-harness.py")
+    const parentPath = resolve(temporaryDirectory, "parent.mjs")
+    const markerPath = resolve(temporaryDirectory, "side-effect-marker")
+    try {
+      writeFileSync(
+        harnessPath,
+        `
+import importlib.util
+import os
+import sys
+import time
+
+spec = importlib.util.spec_from_file_location("jingle_computer_use_linux", os.environ["JINGLE_TEST_HELPER"])
+helper = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = helper
+spec.loader.exec_module(helper)
+print(f"ready:{os.getpid()}", flush=True)
+time.sleep(2)
+with open(os.environ["JINGLE_TEST_MARKER"], "w", encoding="utf-8") as marker:
+    marker.write("unsafe")
+`,
+        "utf8"
+      )
+      writeFileSync(
+        parentPath,
+        `
+import { spawn } from "node:child_process"
+const helper = spawn(process.env.PYTHON ?? "python3", [process.env.JINGLE_TEST_HARNESS], {
+  env: { ...process.env, JINGLE_PARENT_PID: String(process.pid) },
+  stdio: ["ignore", "pipe", "inherit"]
+})
+helper.stdout.once("data", (chunk) => process.stdout.write(chunk))
+setInterval(() => {}, 60_000)
+`,
+        "utf8"
+      )
+
+      const parent = spawn(process.execPath, [parentPath], {
+        env: {
+          ...process.env,
+          JINGLE_TEST_HARNESS: harnessPath,
+          JINGLE_TEST_HELPER: resolve(nativeSourceDirectory, "jingle-computer-use-linux.py"),
+          JINGLE_TEST_MARKER: markerPath
+        },
+        stdio: ["ignore", "pipe", "pipe"]
+      })
+      const helperPid = await new Promise<number>((resolveReady, rejectReady) => {
+        const timeout = setTimeout(
+          () => rejectReady(new Error("helper did not become ready")),
+          5_000
+        )
+        parent.once("error", rejectReady)
+        parent.stdout.once("data", (chunk) => {
+          clearTimeout(timeout)
+          const match = /^ready:(\d+)/.exec(String(chunk))
+          if (!match) rejectReady(new Error(`unexpected helper readiness: ${String(chunk)}`))
+          else resolveReady(Number(match[1]))
+        })
+      })
+      assert.equal(parent.kill("SIGKILL"), true)
+      await new Promise<void>((resolveClose) => parent.once("close", () => resolveClose()))
+      const deadline = Date.now() + 5_000
+      let helperStopped = false
+      while (Date.now() < deadline) {
+        try {
+          const stat = readFileSync(`/proc/${helperPid}/stat`, "utf8")
+          const state = stat.slice(stat.lastIndexOf(")") + 1).trim()[0]
+          if (state === "Z") {
+            helperStopped = true
+            break
+          }
+        } catch {
+          helperStopped = true
+          break
+        }
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 20))
+      }
+      assert.equal(helperStopped, true)
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 2_500))
+      assert.equal(existsSync(markerPath), false)
+    } finally {
+      rmSync(temporaryDirectory, { force: true, recursive: true })
+    }
+  }
+)
 
 test("Linux probes are raw, environment-bound, and fail closed", () => {
   const sourcePath = resolve(nativeSourceDirectory, "jingle-computer-use-linux.py")
