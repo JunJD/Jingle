@@ -595,11 +595,12 @@ test("Electron shutdown noise requires the main-owned lifecycle and a normal chi
 
   assert.equal(isExpectedElectronShutdown(true, details("utility", "clean-exit", 0)), true)
   assert.equal(isExpectedElectronShutdown(true, details("gpu", "killed", 137)), true)
-  assert.equal(isExpectedElectronShutdown(true, details("utility", "abnormal-exit", 15)), false)
+  assert.equal(isExpectedElectronShutdown(true, details("utility", "abnormal-exit", 15)), true)
   assert.equal(isExpectedElectronShutdown(false, details("utility", "clean-exit", 0)), false)
   assert.equal(isExpectedElectronShutdown(true, details("pepper-plugin", "clean-exit", 0)), false)
   assert.equal(isExpectedElectronShutdown(true, details("utility", "crashed", 9)), false)
   assert.equal(isExpectedElectronShutdown(true, details("gpu", "crashed", 15)), false)
+  assert.equal(isExpectedElectronShutdown(true, details("gpu", "oom", 15)), false)
 })
 
 test("native helper exits retain only typed process status", () => {
