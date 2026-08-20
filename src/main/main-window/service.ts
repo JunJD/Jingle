@@ -1,7 +1,7 @@
 import type { BrowserWindow, WebContents } from "electron"
 import {
-  MAIN_WINDOW_THREAD_BINDING_CHANGED_CHANNEL,
-  type MainWindowThreadBindingSnapshot,
+  DURABLE_WINDOW_THREAD_BINDING_CHANGED_CHANNEL,
+  type DurableWindowThreadBindingSnapshot,
   type OpenPrimaryMainWindowParams
 } from "@shared/durable-window"
 import type { MainWindowSessionRepairResult, MainWindowSessionState } from "../preferences"
@@ -95,7 +95,7 @@ export class PrimaryMainWindowService {
     this.runtime.requestWindowPresentation(this.window)
   }
 
-  bindSenderThread(sender: WebContents, threadId: string): MainWindowThreadBindingSnapshot {
+  bindSenderThread(sender: WebContents, threadId: string): DurableWindowThreadBindingSnapshot {
     if (this.restoreGate.isApplicationQuitting()) {
       throw new Error("Cannot update Main window thread binding after application quit begins.")
     }
@@ -105,7 +105,7 @@ export class PrimaryMainWindowService {
     return this.bindThread(this.window, threadId, false)
   }
 
-  getSenderThreadBinding(sender: WebContents): MainWindowThreadBindingSnapshot {
+  getSenderThreadBinding(sender: WebContents): DurableWindowThreadBindingSnapshot {
     if (!this.window || this.window.isDestroyed() || this.window.webContents !== sender) {
       throw new Error("Main window thread binding requires the registered Main window.")
     }
@@ -152,7 +152,7 @@ export class PrimaryMainWindowService {
     window: BrowserWindow,
     threadId: string,
     notify = true
-  ): MainWindowThreadBindingSnapshot {
+  ): DurableWindowThreadBindingSnapshot {
     if (this.currentThreadId === threadId) {
       if (this.runtime.getSessionState().lastActiveThreadId !== threadId) {
         this.runtime.setSessionState({ version: 1, lastActiveThreadId: threadId })
@@ -208,12 +208,12 @@ export class PrimaryMainWindowService {
     threadId: string | null,
     revision: number,
     notify: boolean
-  ): MainWindowThreadBindingSnapshot {
+  ): DurableWindowThreadBindingSnapshot {
     this.currentThreadId = threadId
     this.bindingRevision = revision
     const snapshot = this.getBindingSnapshot()
     if (notify && !window.webContents.isDestroyed()) {
-      window.webContents.send(MAIN_WINDOW_THREAD_BINDING_CHANGED_CHANNEL, snapshot)
+      window.webContents.send(DURABLE_WINDOW_THREAD_BINDING_CHANGED_CHANNEL, snapshot)
     }
     return snapshot
   }
@@ -226,7 +226,7 @@ export class PrimaryMainWindowService {
     return nextBindingRevision
   }
 
-  private getBindingSnapshot(): MainWindowThreadBindingSnapshot {
+  private getBindingSnapshot(): DurableWindowThreadBindingSnapshot {
     if (this.bindingRevision < 1) {
       throw new Error("Main window thread binding is unavailable.")
     }

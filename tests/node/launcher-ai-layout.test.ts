@@ -441,7 +441,10 @@ test("launcher AI thread loading copy distinguishes restore from opening", async
     navigationSource,
     /export type LauncherAiThreadLoadingReason = "opening" \| "restoring"/
   )
-  assert.match(navigationSource, /reason: shouldStartFreshThread \? null : "restoring"/)
+  assert.match(
+    navigationSource,
+    /reason: shouldStartFreshThread \|\| durableActivationOwned \? null : "restoring"/
+  )
   assert.match(navigationSource, /reason: LauncherAiThreadLoadingReason = "opening"/)
   assert.match(navigationSource, /await activateThread\(restoredThreadId, "restoring"\)/)
   assert.match(

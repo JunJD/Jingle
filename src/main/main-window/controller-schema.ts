@@ -12,7 +12,7 @@ const requiredThreadParamsSchema = z
   })
   .strict()
 
-export const getMainWindowThreadBindingArgsSchema = z.tuple([])
+export const getDurableWindowThreadBindingArgsSchema = z.tuple([])
 export const openPrimaryMainWindowArgsSchema = z.union([
   z.tuple([]),
   z.tuple([z.undefined()]),

@@ -53,6 +53,7 @@ function createService(
   const activations: boolean[] = []
   const rendererFailureCallbacks: Array<() => void> = []
   const windowBindings = new WeakMap<FakeWindow, { threadId: string | null; windowId: string }>()
+  let persistenceError: Error | null = null
   let restoreState = {
     version: 1 as const,
     windows: [] as Array<{
@@ -85,6 +86,7 @@ function createService(
       recordRestoreRepair: (details) => restoreRepairs.push(details),
       setRestoreState: (state) => {
         events.push(`persist:${state.windows.map(({ windowId }) => windowId).join(",")}`)
+        if (persistenceError) throw persistenceError
         return (restoreState = state)
       },
       setWindowThread: (window, threadId) => {
@@ -107,6 +109,9 @@ function createService(
     restoreFailures,
     restoreRepairs,
     service,
+    setPersistenceError: (error: Error | null) => {
+      persistenceError = error
+    },
     setRestore: (state: typeof restoreState) => {
       restoreState = state
     },
@@ -125,6 +130,41 @@ describe("ThreadWindowService", () => {
       restore().windows.map((entry) => entry.threadId),
       ["thread-a", "thread-a"]
     )
+  })
+
+  it("serves the latest revisioned binding after a renderer reload", () => {
+    const { service, windows } = createService()
+    assert.equal(service.openNew({ threadId: "thread-a" }).ok, true)
+    const sender = windows[0]!.webContents as never
+
+    assert.deepEqual(service.getSenderThreadBinding(sender), {
+      revision: 1,
+      threadId: "thread-a"
+    })
+    assert.deepEqual(service.bindSenderThread(sender, "thread-b"), {
+      revision: 2,
+      threadId: "thread-b"
+    })
+    assert.deepEqual(service.getSenderThreadBinding(sender), {
+      revision: 2,
+      threadId: "thread-b"
+    })
+  })
+
+  it("publishes the authoritative revision when persistence rejects a rebind", () => {
+    const { service, setPersistenceError, windows } = createService()
+    assert.equal(service.openNew({ threadId: "thread-a" }).ok, true)
+    setPersistenceError(new Error("storage unavailable"))
+
+    assert.throws(
+      () => service.bindSenderThread(windows[0]!.webContents as never, "thread-b"),
+      /committed but could not be persisted/
+    )
+    assert.deepEqual(service.getSenderThreadBinding(windows[0]!.webContents as never), {
+      revision: 2,
+      threadId: "thread-b"
+    })
+    assert.deepEqual(windows[0]!.sent, [{ revision: 2, threadId: "thread-b" }])
   })
 
   it("reports a resource refusal instead of enforcing a product window count", () => {
@@ -372,7 +412,7 @@ describe("ThreadWindowService", () => {
       /changed during revocation/
     )
     assert.equal(restoreState.windows[0]?.threadId, "thread-c")
-    assert.deepEqual(window.sent, [{ threadId: "thread-c" }])
+    assert.deepEqual(window.sent, [{ revision: 2, threadId: "thread-c" }])
     assert.equal(getDurableWindowCallerLease(webContents as never)?.threadId, "thread-c")
   })
 

@@ -3,8 +3,8 @@ import { EventEmitter } from "node:events"
 import { describe, it } from "node:test"
 import type { IpcMain, IpcMainInvokeEvent, WebContents } from "electron"
 import {
-  MAIN_WINDOW_THREAD_BINDING_CHANGED_CHANNEL,
-  MAIN_WINDOW_THREAD_BINDING_GET_CHANNEL
+  DURABLE_WINDOW_THREAD_BINDING_CHANGED_CHANNEL,
+  DURABLE_WINDOW_THREAD_BINDING_GET_CHANNEL
 } from "../../src/shared/durable-window"
 import { DurableWindowController } from "../../src/main/main-window/controller"
 import { PrimaryMainWindowService } from "../../src/main/main-window/service"
@@ -165,7 +165,7 @@ describe("PrimaryMainWindowService", () => {
     assert.equal(state.lastActiveThreadId, "thread-b")
     assert.deepEqual(windows[0]?.sent, [
       {
-        channel: MAIN_WINDOW_THREAD_BINDING_CHANGED_CHANNEL,
+        channel: DURABLE_WINDOW_THREAD_BINDING_CHANGED_CHANNEL,
         value: { revision: 2, threadId: "thread-b" }
       }
     ])
@@ -299,7 +299,7 @@ describe("PrimaryMainWindowService", () => {
     assert.deepEqual(bindings, ["thread-b"])
     assert.deepEqual(window.sent, [
       {
-        channel: MAIN_WINDOW_THREAD_BINDING_CHANGED_CHANNEL,
+        channel: DURABLE_WINDOW_THREAD_BINDING_CHANGED_CHANNEL,
         value: { revision: 2, threadId: "thread-b" }
       }
     ])
@@ -418,7 +418,7 @@ describe("PrimaryMainWindowService", () => {
     assert.equal(getDurableWindowCallerLease(webContents as never)?.threadId, "thread-c")
     assert.deepEqual(window.sent, [
       {
-        channel: MAIN_WINDOW_THREAD_BINDING_CHANGED_CHANNEL,
+        channel: DURABLE_WINDOW_THREAD_BINDING_CHANGED_CHANNEL,
         value: { revision: 2, threadId: "thread-c" }
       }
     ])
@@ -805,7 +805,7 @@ it("durable-window IPC validates canonical action tuples before service admissio
   const ipcMain = new FakeIpcMain()
   controller.register(ipcMain as unknown as IpcMain)
   const event = { sender: mainSender, senderFrame: mainFrame } as IpcMainInvokeEvent
-  const getBinding = ipcMain.handlers.get(MAIN_WINDOW_THREAD_BINDING_GET_CHANNEL)
+  const getBinding = ipcMain.handlers.get(DURABLE_WINDOW_THREAD_BINDING_GET_CHANNEL)
   const openPrimary = ipcMain.handlers.get("durable-window:openPrimary")
   const pinNew = ipcMain.handlers.get("durable-window:pinNew")
   const setThread = ipcMain.handlers.get("durable-window:setThread")
@@ -846,7 +846,7 @@ it("durable-window IPC validates canonical action tuples before service admissio
   assert.deepEqual(mainBindings, ["thread-next"])
 })
 
-it("durable-window binding snapshot belongs only to the registered Main main frame", async () => {
+it("durable-window binding snapshots belong to each registered durable main frame", async () => {
   const mainFrame = {}
   const mainSender = { isDestroyed: () => false, mainFrame } as unknown as WebContents
   const otherMainFrame = {}
@@ -875,6 +875,7 @@ it("durable-window binding snapshot belongs only to the registered Main main fra
     windowId: "thread-window-a"
   })
   const snapshot = { revision: 4, threadId: "thread-a" } as const
+  const threadSnapshot = { revision: 7, threadId: "thread-a" } as const
   const controller = new DurableWindowController(
     {
       bindSenderThread: () => snapshot,
@@ -883,14 +884,15 @@ it("durable-window binding snapshot belongs only to the registered Main main fra
       open: () => {}
     } as never,
     {
-      bindSenderThread: () => {},
+      bindSenderThread: () => threadSnapshot,
+      getSenderThreadBinding: () => threadSnapshot,
       isSender: (sender: WebContents) => sender === threadSender,
       openNew: () => ({ ok: true, windowId: "thread-window-a" })
     } as never
   )
   const ipcMain = new FakeIpcMain()
   controller.register(ipcMain as unknown as IpcMain)
-  const getBinding = ipcMain.handlers.get(MAIN_WINDOW_THREAD_BINDING_GET_CHANNEL)
+  const getBinding = ipcMain.handlers.get(DURABLE_WINDOW_THREAD_BINDING_GET_CHANNEL)
   const setThread = ipcMain.handlers.get("durable-window:setThread")
   assert.ok(getBinding)
   assert.ok(setThread)
@@ -905,26 +907,24 @@ it("durable-window binding snapshot belongs only to the registered Main main fra
     }),
     snapshot
   )
-  assert.equal(
+  assert.deepEqual(
     await setThread({ sender: threadSender, senderFrame: threadFrame } as IpcMainInvokeEvent, {
       threadId: "thread-a"
     }),
-    null
+    threadSnapshot
   )
   await assert.rejects(
     Promise.resolve(
       getBinding({ sender: otherMainSender, senderFrame: otherMainFrame } as IpcMainInvokeEvent)
     ),
-    /registered Main window/
+    /registered durable window/
   )
-  await assert.rejects(
-    Promise.resolve(
-      getBinding({ sender: threadSender, senderFrame: threadFrame } as IpcMainInvokeEvent)
-    ),
-    /registered Main window/
+  assert.deepEqual(
+    await getBinding({ sender: threadSender, senderFrame: threadFrame } as IpcMainInvokeEvent),
+    threadSnapshot
   )
   await assert.rejects(
     Promise.resolve(getBinding({ sender: mainSender, senderFrame: {} } as IpcMainInvokeEvent)),
-    /registered Main window/
+    /sender main frame/
   )
 })

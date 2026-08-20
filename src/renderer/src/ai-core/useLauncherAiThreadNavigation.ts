@@ -37,10 +37,12 @@ interface LauncherAiThreadHydration {
 }
 
 export interface LauncherAiThreadNavigation {
+  activationError: string | null
   branchThread: (threadId: string) => Promise<AiCoreThreadHandle>
   branchThreadUntilMessage: (threadId: string, messageId: string) => Promise<AiCoreThreadHandle>
   canGoToNextThread: boolean
   canGoToPreviousThread: boolean
+  clearActivationError: () => void
   createThread: (input: AiCoreThreadCreateInput) => Promise<AiCoreThreadHandle>
   defaultDraftPermissionMode: PermissionModeName
   openThread: (threadId: string) => Promise<void>
@@ -114,13 +116,15 @@ export function useLauncherAiThreadNavigation(
   const threadHost = useAiCoreThreads()
   const {
     activate,
+    activation,
     clone,
     cloneUntilMessage,
     create,
     getActiveThreadId,
     list,
     mode,
-    onBeforeActivate
+    onBeforeActivate,
+    onClearActivationError
   } = threadHost
   const initialThreadId = mode === "main" ? getActiveThreadId() : null
   const shouldStartFreshThread =
@@ -145,16 +149,34 @@ export function useLauncherAiThreadNavigation(
     next: null,
     previous: null
   })
+  const durableActivationOwned = mode === "main" && activation !== undefined
   const [threadHydration, setThreadHydration] = useState<LauncherAiThreadHydration>(() => ({
-    count: shouldStartFreshThread ? 0 : 1,
-    reason: shouldStartFreshThread ? null : "restoring"
+    count: shouldStartFreshThread || durableActivationOwned ? 0 : 1,
+    reason: shouldStartFreshThread || durableActivationOwned ? null : "restoring"
   }))
   const isMountedRef = useRef(true)
-  const initialHydrationPendingRef = useRef(!shouldStartFreshThread)
+  const initialHydrationPendingRef = useRef(!shouldStartFreshThread && !durableActivationOwned)
   const navigationVersionRef = useRef(0)
-  const threadId = target?.kind === "thread" ? target.threadId : null
-  const isFreshDraftActive = target?.kind === "draft"
-  const isHydratingThread = threadHydration.count > 0
+  const [draftBindingRevision, setDraftBindingRevision] = useState<number | null>(null)
+  const preserveFreshDraft =
+    durableActivationOwned &&
+    activation.phase === "ready" &&
+    target?.kind === "draft" &&
+    draftBindingRevision === activation.bindingRevision
+  const effectiveTarget =
+    durableActivationOwned && !preserveFreshDraft
+      ? activation.threadId === null
+        ? null
+        : ({ kind: "thread", threadId: activation.threadId } as const)
+      : target
+  const threadId = effectiveTarget?.kind === "thread" ? effectiveTarget.threadId : null
+  const isFreshDraftActive = effectiveTarget?.kind === "draft"
+  const isHydratingThread =
+    threadHydration.count > 0 ||
+    (durableActivationOwned &&
+      (activation.phase === "initializing" || activation.phase === "pending"))
+  const activationError =
+    durableActivationOwned && activation.phase === "failed" ? activation.error : null
 
   useEffect(() => {
     const isMounted = isMountedRef
@@ -212,7 +234,7 @@ export function useLauncherAiThreadNavigation(
       return null
     }
 
-    return getActiveThreadId() ?? threadId
+    return threadId ?? getActiveThreadId()
   }, [getActiveThreadId, isFreshDraftActive, shouldStartFreshThread, threadId])
   const refreshAdjacentThreadIds = useCallback(
     async (
@@ -262,7 +284,7 @@ export function useLauncherAiThreadNavigation(
                 threadId: nextThreadId
               }
         )
-        await activate(nextThreadId)
+        await activate(nextThreadId, { hydrate: onBeforeActivate === undefined })
         if (navigationVersion !== navigationVersionRef.current) {
           return
         }
@@ -320,6 +342,11 @@ export function useLauncherAiThreadNavigation(
         workspaceKind: input.workspaceKind ?? "projectless",
         workspacePath: input.workspacePath ?? null
       })
+      setDraftBindingRevision(
+        durableActivationOwned && activation.bindingRevision !== null
+          ? activation.bindingRevision
+          : null
+      )
       setAdjacentThreadIds({
         next: null,
         previous: activeThreadId
@@ -336,7 +363,7 @@ export function useLauncherAiThreadNavigation(
           console.warn("[LauncherAi] Failed to refresh adjacent threads for fresh draft:", error)
         })
     },
-    [listAiThreads, resolveActiveThreadId]
+    [activation, durableActivationOwned, listAiThreads, resolveActiveThreadId]
   )
   const updateFreshDraft = useCallback(
     (
@@ -467,17 +494,19 @@ export function useLauncherAiThreadNavigation(
   ])
 
   return {
+    activationError,
     branchThread,
     branchThreadUntilMessage,
     canGoToNextThread: Boolean(adjacentThreadIds.next),
     canGoToPreviousThread: Boolean(adjacentThreadIds.previous),
+    clearActivationError: () => onClearActivationError?.(),
     createThread,
     defaultDraftPermissionMode: DEFAULT_PERMISSION_MODE,
     openThread: activateThread,
     isHydratingThread,
     threadLoadingReason: threadHydration.reason,
     startFreshDraft,
-    target,
+    target: effectiveTarget,
     updateFreshDraft,
     goToNextThread,
     goToPreviousThread,

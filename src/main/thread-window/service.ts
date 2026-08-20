@@ -1,7 +1,12 @@
 import type { BrowserWindow, WebContents } from "electron"
 import { randomUUID } from "node:crypto"
 import { totalmem } from "node:os"
-import type { PinThreadWindowParams, PinThreadWindowResult } from "@shared/durable-window"
+import {
+  DURABLE_WINDOW_THREAD_BINDING_CHANGED_CHANNEL,
+  type DurableWindowThreadBindingSnapshot,
+  type PinThreadWindowParams,
+  type PinThreadWindowResult
+} from "@shared/durable-window"
 import type { ThreadWindowRestoreEntry, ThreadWindowRestoreState } from "../preferences"
 import {
   DurableWindowRestoreGate,
@@ -45,6 +50,7 @@ export function resolveThreadWindowResourceLimit(memoryBytes = totalmem()): numb
 export class ThreadWindowService {
   private readonly deferredRestoreEntries = new Map<string, ThreadWindowRestoreEntry>()
   private readonly persistedEntries = new Map<string, ThreadWindowRestoreEntry>()
+  private readonly bindingRevisions = new Map<string, number>()
   private readonly threadIds = new Map<string, string | null>()
   private readonly windows = new Map<string, BrowserWindow>()
   private persistTimer: NodeJS.Timeout | null = null
@@ -71,13 +77,19 @@ export class ThreadWindowService {
     return { ok: true, windowId }
   }
 
-  bindSenderThread(sender: WebContents, threadId: string): void {
+  bindSenderThread(sender: WebContents, threadId: string): DurableWindowThreadBindingSnapshot {
     if (this.restoreGate.isApplicationQuitting()) {
       throw new Error("Cannot update Thread window binding after application quit begins.")
     }
     const entry = [...this.windows.entries()].find(([, window]) => window.webContents === sender)
     if (!entry) throw new Error("Thread window binding requires a registered window sender.")
-    this.bindThread(entry[0], entry[1], threadId)
+    return this.bindThread(entry[0], entry[1], threadId)
+  }
+
+  getSenderThreadBinding(sender: WebContents): DurableWindowThreadBindingSnapshot {
+    const entry = [...this.windows.entries()].find(([, window]) => window.webContents === sender)
+    if (!entry) throw new Error("Thread window binding requires a registered window sender.")
+    return this.getBindingSnapshot(entry[0])
   }
 
   isSender(sender: WebContents): boolean {
@@ -219,6 +231,7 @@ export class ThreadWindowService {
     this.runtime.onWindowOpened()
     this.windows.set(entry.windowId, window)
     this.threadIds.set(entry.windowId, entry.threadId)
+    this.bindingRevisions.set(entry.windowId, 1)
     if (!restoring) this.persistAll()
     const persist = (): void => this.schedulePersist()
     window.on("move", persist)
@@ -235,6 +248,7 @@ export class ThreadWindowService {
       const persistedEntry = this.persistedEntries.get(entry.windowId) ?? entry
       this.windows.delete(entry.windowId)
       this.threadIds.delete(entry.windowId)
+      this.bindingRevisions.delete(entry.windowId)
       if (!restoreConfirmed || rendererFailed) {
         this.deferredRestoreEntries.set(entry.windowId, persistedEntry)
       }
@@ -243,9 +257,14 @@ export class ThreadWindowService {
     })
   }
 
-  private bindThread(windowId: string, window: BrowserWindow, threadId: string): void {
+  private bindThread(
+    windowId: string,
+    window: BrowserWindow,
+    threadId: string
+  ): DurableWindowThreadBindingSnapshot {
     const currentThreadId = this.threadIds.get(windowId) ?? null
-    if (currentThreadId === threadId) return
+    if (currentThreadId === threadId) return this.getBindingSnapshot(windowId)
+    const nextBindingRevision = this.getNextBindingRevision(windowId)
     let bindingError: unknown = null
     try {
       this.runtime.setWindowThread(window, threadId)
@@ -271,11 +290,34 @@ export class ThreadWindowService {
     }
 
     this.threadIds.set(windowId, authoritativeThreadId)
-    this.persistAll()
+    this.bindingRevisions.set(windowId, nextBindingRevision)
+    const persisted = this.persistAll()
+    const snapshot = this.getBindingSnapshot(windowId)
     if (!window.webContents.isDestroyed()) {
-      window.webContents.send("durable-window:threadChanged", { threadId: authoritativeThreadId })
+      window.webContents.send(DURABLE_WINDOW_THREAD_BINDING_CHANGED_CHANNEL, snapshot)
     }
     if (bindingError !== null) throw bindingError
+    if (!persisted) {
+      throw new Error("Thread window binding committed but could not be persisted.")
+    }
+    return snapshot
+  }
+
+  private getNextBindingRevision(windowId: string): number {
+    const nextBindingRevision = (this.bindingRevisions.get(windowId) ?? 0) + 1
+    if (!Number.isSafeInteger(nextBindingRevision)) {
+      throw new Error("Thread window binding revision space is exhausted.")
+    }
+    return nextBindingRevision
+  }
+
+  private getBindingSnapshot(windowId: string): DurableWindowThreadBindingSnapshot {
+    const revision = this.bindingRevisions.get(windowId)
+    if (!revision) throw new Error("Thread window binding is unavailable.")
+    return Object.freeze({
+      revision,
+      threadId: this.threadIds.get(windowId) ?? null
+    })
   }
 
   private persistAll(): boolean {

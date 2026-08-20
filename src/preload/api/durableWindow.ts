@@ -1,6 +1,5 @@
 import type {
-  DurableWindowThreadChangedEvent,
-  MainWindowThreadBindingSnapshot,
+  DurableWindowThreadBindingSnapshot,
   OpenPrimaryMainWindowParams,
   PinThreadWindowParams,
   PinThreadWindowResult,
@@ -8,14 +7,16 @@ import type {
   SetDurableWindowThreadResult
 } from "@shared/durable-window"
 import {
-  MAIN_WINDOW_THREAD_BINDING_CHANGED_CHANNEL,
-  MAIN_WINDOW_THREAD_BINDING_GET_CHANNEL,
-  mainWindowThreadBindingSnapshotSchema
+  DURABLE_WINDOW_THREAD_BINDING_CHANGED_CHANNEL,
+  DURABLE_WINDOW_THREAD_BINDING_GET_CHANNEL,
+  durableWindowThreadBindingSnapshotSchema
 } from "@shared/durable-window"
 import { ipcRenderer, invokeIpc } from "../ipc"
 
-function parseMainWindowThreadBindingSnapshot(value: unknown): MainWindowThreadBindingSnapshot {
-  return mainWindowThreadBindingSnapshotSchema.parse(value)
+function parseDurableWindowThreadBindingSnapshot(
+  value: unknown
+): DurableWindowThreadBindingSnapshot {
+  return durableWindowThreadBindingSnapshotSchema.parse(value)
 }
 
 export const durableWindowApi = {
@@ -27,30 +28,24 @@ export const durableWindowApi = {
     params: SetDurableWindowThreadParams
   ): Promise<SetDurableWindowThreadResult> => {
     const result = await invokeIpc<unknown>("durable-window:setThread", params)
-    return result === null ? null : parseMainWindowThreadBindingSnapshot(result)
+    return parseDurableWindowThreadBindingSnapshot(result)
   },
-  getMainThreadBinding: async (): Promise<MainWindowThreadBindingSnapshot> =>
-    parseMainWindowThreadBindingSnapshot(
-      await invokeIpc<unknown>(MAIN_WINDOW_THREAD_BINDING_GET_CHANNEL)
+  getThreadBinding: async (): Promise<DurableWindowThreadBindingSnapshot> =>
+    parseDurableWindowThreadBindingSnapshot(
+      await invokeIpc<unknown>(DURABLE_WINDOW_THREAD_BINDING_GET_CHANNEL)
     ),
-  onMainThreadBindingChanged: (
-    listener: (snapshot: MainWindowThreadBindingSnapshot) => void
+  onThreadBindingChanged: (
+    listener: (snapshot: DurableWindowThreadBindingSnapshot) => void
   ): (() => void) => {
     const handler = (_event: unknown, value: unknown): void => {
-      const parsed = mainWindowThreadBindingSnapshotSchema.safeParse(value)
+      const parsed = durableWindowThreadBindingSnapshotSchema.safeParse(value)
       if (!parsed.success) {
-        console.error("[DurableWindow] Ignored an invalid Main thread binding event.")
+        console.error("[DurableWindow] Ignored an invalid thread binding event.")
         return
       }
       listener(parsed.data)
     }
-    ipcRenderer.on(MAIN_WINDOW_THREAD_BINDING_CHANGED_CHANNEL, handler)
-    return () => ipcRenderer.removeListener(MAIN_WINDOW_THREAD_BINDING_CHANGED_CHANNEL, handler)
-  },
-  onThreadChanged: (listener: (event: DurableWindowThreadChangedEvent) => void): (() => void) => {
-    const handler = (_event: unknown, value: DurableWindowThreadChangedEvent): void =>
-      listener(value)
-    ipcRenderer.on("durable-window:threadChanged", handler)
-    return () => ipcRenderer.removeListener("durable-window:threadChanged", handler)
+    ipcRenderer.on(DURABLE_WINDOW_THREAD_BINDING_CHANGED_CHANNEL, handler)
+    return () => ipcRenderer.removeListener(DURABLE_WINDOW_THREAD_BINDING_CHANGED_CHANNEL, handler)
   }
 }

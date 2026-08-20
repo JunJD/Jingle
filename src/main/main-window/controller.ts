@@ -1,11 +1,11 @@
 import { BrowserWindow, type IpcMain } from "electron"
-import { MAIN_WINDOW_THREAD_BINDING_GET_CHANNEL } from "@shared/durable-window"
+import { DURABLE_WINDOW_THREAD_BINDING_GET_CHANNEL } from "@shared/durable-window"
 import { registerValidatedIpcHandle } from "../ipc/handle"
 import { PrimaryMainWindowService } from "./service"
 import { ThreadWindowService } from "../thread-window/service"
 import { getWindowIdentity, isDurableWindowIdentity } from "../windows/window-identity"
 import {
-  getMainWindowThreadBindingArgsSchema,
+  getDurableWindowThreadBindingArgsSchema,
   openPrimaryMainWindowArgsSchema,
   pinThreadWindowArgsSchema,
   setDurableWindowThreadArgsSchema
@@ -19,18 +19,20 @@ export class DurableWindowController {
   register(ipcMain: IpcMain): void {
     registerValidatedIpcHandle(
       ipcMain,
-      MAIN_WINDOW_THREAD_BINDING_GET_CHANNEL,
-      getMainWindowThreadBindingArgsSchema,
+      DURABLE_WINDOW_THREAD_BINDING_GET_CHANNEL,
+      getDurableWindowThreadBindingArgsSchema,
       (event) => {
         const identity = getWindowIdentity(event.sender)
-        if (
-          event.senderFrame !== event.sender.mainFrame ||
-          identity?.kind !== "main" ||
-          !this.primaryMain.isSender(event.sender)
-        ) {
-          throw new Error("Only the registered Main window can read its thread binding.")
+        if (event.senderFrame !== event.sender.mainFrame) {
+          throw new Error("Durable window binding requires the sender main frame.")
         }
-        return this.primaryMain.getSenderThreadBinding(event.sender)
+        if (identity?.kind === "main" && this.primaryMain.isSender(event.sender)) {
+          return this.primaryMain.getSenderThreadBinding(event.sender)
+        }
+        if (identity?.kind === "thread-window" && this.threadWindows.isSender(event.sender)) {
+          return this.threadWindows.getSenderThreadBinding(event.sender)
+        }
+        throw new Error("Only a registered durable window can read its thread binding.")
       }
     )
     registerValidatedIpcHandle(
@@ -82,8 +84,7 @@ export class DurableWindowController {
           return this.primaryMain.bindSenderThread(event.sender, params.threadId)
         }
         if (identity?.kind === "thread-window" && this.threadWindows.isSender(event.sender)) {
-          this.threadWindows.bindSenderThread(event.sender, params.threadId)
-          return null
+          return this.threadWindows.bindSenderThread(event.sender, params.threadId)
         }
         throw new Error("Only a registered durable window can update its thread binding.")
       }

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import { mainWindowThreadBindingSnapshotSchema } from "../../src/shared/durable-window"
+import { durableWindowThreadBindingSnapshotSchema } from "../../src/shared/durable-window"
 import {
-  startMainWindowThreadBindingProjection,
-  type MainWindowThreadBindingProjection
-} from "../../src/renderer/src/ai-core/main-window-thread-binding"
+  startDurableWindowThreadBindingProjection,
+  type DurableWindowThreadBindingProjection
+} from "../../src/renderer/src/ai-core/durable-window-thread-binding"
 
 function deferred<T>(): {
   promise: Promise<T>
@@ -19,19 +19,22 @@ function deferred<T>(): {
 
 function startProjection(input: {
   calls?: string[]
+  onError?: (error: unknown) => void
   onSnapshot: (threadId: string | null, revision: number) => void
   read: ReturnType<typeof deferred<{ revision: number; threadId: string | null }>>
 }): {
   emit: (snapshot: { revision: number; threadId: string | null }) => void
-  projection: MainWindowThreadBindingProjection
+  projection: DurableWindowThreadBindingProjection
   unsubscribed: () => boolean
 } {
   let listener: (snapshot: { revision: number; threadId: string | null }) => void = () => undefined
   let didUnsubscribe = false
-  const projection = startMainWindowThreadBindingProjection({
-    onError: (error) => {
-      throw error
-    },
+  const projection = startDurableWindowThreadBindingProjection({
+    onError:
+      input.onError ??
+      ((error) => {
+        throw error
+      }),
     onSnapshot: (snapshot) => input.onSnapshot(snapshot.threadId, snapshot.revision),
     read: () => {
       input.calls?.push("read")
@@ -52,7 +55,7 @@ function startProjection(input: {
   }
 }
 
-describe("Main window thread binding projection", () => {
+describe("Durable window thread binding projection", () => {
   it("subscribes before reading and rejects an older snapshot after a live event", async () => {
     const calls: string[] = []
     const projected: Array<[string | null, number]> = []
@@ -91,6 +94,23 @@ describe("Main window thread binding projection", () => {
     assert.deepEqual(projection.getCurrent(), { revision: 3, threadId: "thread-c" })
   })
 
+  it("reports one revision resolving to conflicting thread identities", () => {
+    const errors: unknown[] = []
+    const read = deferred<{ revision: number; threadId: string | null }>()
+    const { emit, projection } = startProjection({
+      onError: (error) => errors.push(error),
+      onSnapshot: () => {},
+      read
+    })
+
+    emit({ revision: 2, threadId: "thread-a" })
+    emit({ revision: 2, threadId: "thread-b" })
+
+    assert.equal(errors.length, 1)
+    assert.match(String(errors[0]), /conflicting thread identities/)
+    assert.deepEqual(projection.getCurrent(), { revision: 2, threadId: "thread-a" })
+  })
+
   it("isolates revisions across windows or renderer restarts and ignores disposed reads", async () => {
     const firstProjected: number[] = []
     const secondProjected: number[] = []
@@ -120,16 +140,16 @@ describe("Main window thread binding projection", () => {
 
   it("rejects malformed revisions and noncanonical thread ids", () => {
     assert.equal(
-      mainWindowThreadBindingSnapshotSchema.safeParse({ revision: 1, threadId: null }).success,
+      durableWindowThreadBindingSnapshotSchema.safeParse({ revision: 1, threadId: null }).success,
       true
     )
     assert.equal(
-      mainWindowThreadBindingSnapshotSchema.safeParse({ revision: 0, threadId: "thread-a" })
+      durableWindowThreadBindingSnapshotSchema.safeParse({ revision: 0, threadId: "thread-a" })
         .success,
       false
     )
     assert.equal(
-      mainWindowThreadBindingSnapshotSchema.safeParse({
+      durableWindowThreadBindingSnapshotSchema.safeParse({
         revision: 1,
         threadId: " thread-a "
       }).success,

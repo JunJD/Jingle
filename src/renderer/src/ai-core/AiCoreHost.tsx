@@ -18,6 +18,7 @@ import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 import type { LauncherInputElement } from "@launcher-shell/input-element"
 import type { ComposerAreaHandle } from "@/composer-area"
 import type { Thread } from "@/types"
+import type { DurableWindowThreadActivationProjection } from "./durable-window-thread-activation"
 import type {
   LauncherCommandInitialAction,
   LauncherCommandName,
@@ -80,7 +81,8 @@ export interface AiCoreHostValue {
   selection?: AiCoreSelection
   surface: AiCoreSurface
   threads: {
-    activate: (threadId: string) => Promise<void>
+    activate: (threadId: string, options?: { hydrate?: boolean }) => Promise<void>
+    activation?: DurableWindowThreadActivationProjection
     clone: (threadId: string) => Promise<AiCoreThreadHandle>
     cloneUntilMessage: (threadId: string, messageId: string) => Promise<AiCoreThreadHandle>
     create: (input: AiCoreThreadCreateInput) => Promise<AiCoreThreadHandle>
@@ -88,6 +90,7 @@ export interface AiCoreHostValue {
     list: () => Promise<Thread[]>
     mode: "launcher" | "main"
     onBeforeActivate?: (threadId: string) => Promise<boolean>
+    onClearActivationError?: () => void
     submit: (input: AiCoreThreadSubmitInput) => Promise<void>
   }
 }

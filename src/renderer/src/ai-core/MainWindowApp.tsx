@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useEffectEvent, useRef, useState } from "react"
-import type { MainWindowThreadBindingSnapshot } from "@shared/durable-window"
+import type { DurableWindowThreadBindingSnapshot } from "@shared/durable-window"
 import type { ClipboardContext } from "@shared/clipboard"
 import { AI_CHAT_COMMAND_NAME, AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
 import { FALLBACK_SHELL_CONFIG } from "@shared/launcher"
@@ -13,30 +13,36 @@ import { getAiShellConfig } from "./ai-config"
 import { LazyLauncherAiPage } from "./LazyLauncherAiPage"
 import { useAiCoreThreadHost } from "./useAiCoreThreadHost"
 import {
-  startMainWindowThreadBindingProjection,
-  type MainWindowThreadBindingProjection
-} from "./main-window-thread-binding"
+  createDurableWindowThreadActivationCoordinator,
+  type DurableWindowThreadActivationCoordinator,
+  type DurableWindowThreadActivationProjection
+} from "./durable-window-thread-activation"
+import {
+  startDurableWindowThreadBindingProjection,
+  type DurableWindowThreadBindingProjection
+} from "./durable-window-thread-binding"
 
 const EMPTY_CLIPBOARD_CONTEXT: ClipboardContext = { kind: "none" }
 
-function readInitialThreadId(): string | null {
-  const value = new URLSearchParams(window.location.search).get("threadId")?.trim()
-  return value || null
-}
-
-function isPrimaryMainWindow(): boolean {
-  return new URLSearchParams(window.location.search).get("window") === "main"
-}
-
 export function DurableWindowApp(): React.JSX.Element {
   const inputRef = useRef<LauncherInputElement | ComposerAreaHandle | null>(null)
-  const mainBindingProjectionRef = useRef<MainWindowThreadBindingProjection | null>(null)
+  const activationCoordinatorRef = useRef<DurableWindowThreadActivationCoordinator | null>(null)
+  const bindingProjectionRef = useRef<DurableWindowThreadBindingProjection | null>(null)
   const previousActiveThreadIdRef = useRef<string | null>(null)
-  const [activeThreadId, setActiveThreadId] = useState(readInitialThreadId)
+  const [activation, setActivation] = useState<DurableWindowThreadActivationProjection>({
+    bindingRevision: null,
+    error: null,
+    phase: "initializing",
+    threadId: null
+  })
   const [inputStatus, setInputStatus] = useState<LauncherInputStatus>("idle")
   const threadContext = useThreadContext()
-  const threads = useAiCoreThreadHost({ activeThreadId, mode: "main", setActiveThreadId })
-  const primaryMainWindow = isPrimaryMainWindow()
+  const threads = useAiCoreThreadHost({
+    activeThreadId: activation.threadId,
+    hydrateCreatedThread: false,
+    mode: "main",
+    setActiveThreadId: () => {}
+  })
 
   const refreshSidebar = useEffectEvent(() => {
     void historyShellStore
@@ -47,49 +53,44 @@ export function DurableWindowApp(): React.JSX.Element {
       })
   })
 
-  const projectMainBinding = useEffectEvent((snapshot: MainWindowThreadBindingSnapshot) => {
-    if (snapshot.threadId === threads.getActiveThreadId()) return
-    if (snapshot.threadId === null) {
-      setActiveThreadId(null)
-      refreshSidebar()
-      return
-    }
-    void threads.activate(snapshot.threadId).catch((error: unknown) => {
-      console.error("[DurableWindow] Failed to activate the main thread.", error)
+  const projectBinding = useEffectEvent((snapshot: DurableWindowThreadBindingSnapshot) => {
+    void activationCoordinatorRef.current?.acceptBinding(snapshot).catch((error: unknown) => {
+      console.error("[DurableWindow] Failed to activate the bound thread.", error)
     })
-    refreshSidebar()
-  })
-
-  const projectThreadWindowBinding = useEffectEvent((threadId: string) => {
-    void threads.activate(threadId).catch((error: unknown) => {
-      console.error("[DurableWindow] Failed to activate the main thread.", error)
-    })
-    refreshSidebar()
   })
 
   useEffect(() => {
-    if (!primaryMainWindow) {
-      return window.api.durableWindow.onThreadChanged(({ threadId }) => {
-        projectThreadWindowBinding(threadId)
-      })
-    }
-
-    const projection = startMainWindowThreadBindingProjection({
-      onError: (error) => {
-        console.error("[DurableWindow] Failed to read the Main thread binding.", error)
+    const coordinator = createDurableWindowThreadActivationCoordinator({
+      bind: (threadId) => window.api.durableWindow.setThread({ threadId }),
+      cleanup: threadContext.cleanupThread,
+      hydrate: threadContext.loadThreadData,
+      onBinding: (snapshot) => {
+        bindingProjectionRef.current?.acknowledge(snapshot)
       },
-      onSnapshot: projectMainBinding,
-      read: window.api.durableWindow.getMainThreadBinding,
-      subscribe: window.api.durableWindow.onMainThreadBindingChanged
+      onState: setActivation
     })
-    mainBindingProjectionRef.current = projection
+    activationCoordinatorRef.current = coordinator
+
+    const projection = startDurableWindowThreadBindingProjection({
+      onError: (error) => {
+        console.error("[DurableWindow] Failed to read the durable thread binding.", error)
+      },
+      onSnapshot: projectBinding,
+      read: window.api.durableWindow.getThreadBinding,
+      subscribe: window.api.durableWindow.onThreadBindingChanged
+    })
+    bindingProjectionRef.current = projection
     return () => {
-      if (mainBindingProjectionRef.current === projection) {
-        mainBindingProjectionRef.current = null
-      }
+      if (bindingProjectionRef.current === projection) bindingProjectionRef.current = null
+      if (activationCoordinatorRef.current === coordinator) activationCoordinatorRef.current = null
       projection.dispose()
+      coordinator.dispose()
     }
-  }, [primaryMainWindow])
+  }, [threadContext])
+
+  useEffect(() => {
+    if (activation.bindingRevision !== null) refreshSidebar()
+  }, [activation.bindingRevision])
 
   useEffect(
     () =>
@@ -106,10 +107,10 @@ export function DurableWindowApp(): React.JSX.Element {
 
   useEffect(() => {
     const previousThreadId = previousActiveThreadIdRef.current
-    previousActiveThreadIdRef.current = activeThreadId
-    if (previousThreadId && previousThreadId !== activeThreadId)
+    previousActiveThreadIdRef.current = activation.threadId
+    if (previousThreadId && previousThreadId !== activation.threadId)
       threadContext.cleanupThread(previousThreadId)
-  }, [activeThreadId, threadContext])
+  }, [activation.threadId, threadContext])
 
   return (
     <div className="launcher-window-frame">
@@ -144,20 +145,24 @@ export function DurableWindowApp(): React.JSX.Element {
             },
             threads: {
               ...threads,
+              activation,
               onBeforeActivate: async (threadId) => {
-                const snapshot = await window.api.durableWindow.setThread({ threadId })
-                if (!primaryMainWindow) return snapshot === null
-                if (!snapshot) {
-                  throw new Error("Main thread binding update did not return a snapshot.")
-                }
-                const current = mainBindingProjectionRef.current?.acknowledge(snapshot) ?? snapshot
-                return current.revision === snapshot.revision && current.threadId === threadId
+                const snapshot = await activationCoordinatorRef.current?.requestActivation(threadId)
+                return snapshot?.threadId === threadId
+              },
+              onClearActivationError: () => {
+                if (activation.phase !== "failed") return
+                void activationCoordinatorRef.current
+                  ?.requestActivation(activation.threadId)
+                  .catch((error: unknown) => {
+                    console.error("[DurableWindow] Failed to retry thread activation.", error)
+                  })
               }
             }
           }}
         >
           <Suspense fallback={<div aria-busy="true" className="h-full w-full" />}>
-            <LazyLauncherAiPage key={activeThreadId ?? "empty"} />
+            <LazyLauncherAiPage />
           </Suspense>
         </AiCoreHostProvider>
       </div>

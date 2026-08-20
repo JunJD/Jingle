@@ -2,8 +2,8 @@ import { z } from "zod/v4"
 
 export const PRIMARY_MAIN_WINDOW_KIND = "main"
 export const THREAD_WINDOW_KIND = "thread-window"
-export const MAIN_WINDOW_THREAD_BINDING_CHANGED_CHANNEL = "durable-window:mainThreadBindingChanged"
-export const MAIN_WINDOW_THREAD_BINDING_GET_CHANNEL = "durable-window:getMainThreadBinding"
+export const DURABLE_WINDOW_THREAD_BINDING_CHANGED_CHANNEL = "durable-window:threadBindingChanged"
+export const DURABLE_WINDOW_THREAD_BINDING_GET_CHANNEL = "durable-window:getThreadBinding"
 
 export type DurableWindowKind = typeof PRIMARY_MAIN_WINDOW_KIND | typeof THREAD_WINDOW_KIND
 
@@ -23,7 +23,7 @@ export interface SetDurableWindowThreadParams {
   threadId: string
 }
 
-export const mainWindowThreadBindingSnapshotSchema = z
+export const durableWindowThreadBindingSnapshotSchema = z
   .object({
     revision: z.number().int().safe().positive(),
     threadId: z
@@ -34,10 +34,8 @@ export const mainWindowThreadBindingSnapshotSchema = z
   })
   .strict()
 
-export type MainWindowThreadBindingSnapshot = z.infer<typeof mainWindowThreadBindingSnapshotSchema>
+export type DurableWindowThreadBindingSnapshot = z.infer<
+  typeof durableWindowThreadBindingSnapshotSchema
+>
 
-export type SetDurableWindowThreadResult = MainWindowThreadBindingSnapshot | null
-
-export interface DurableWindowThreadChangedEvent {
-  threadId: string
-}
+export type SetDurableWindowThreadResult = DurableWindowThreadBindingSnapshot

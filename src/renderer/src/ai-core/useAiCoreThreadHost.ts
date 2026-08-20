@@ -13,6 +13,7 @@ import type { AiCoreHostValue, AiCoreThreadCreateInput, AiCoreThreadHandle } fro
 
 interface UseAiCoreThreadHostOptions {
   activeThreadId: string | null
+  hydrateCreatedThread?: boolean
   mode?: AiCoreHostValue["threads"]["mode"]
   setActiveThreadId: (threadId: string) => void
 }
@@ -44,9 +45,9 @@ export function useAiCoreThreadHost(
   }, [mode])
 
   const activateThread = useCallback(
-    async (threadId: string): Promise<void> => {
+    async (threadId: string, activationOptions?: { hydrate?: boolean }): Promise<void> => {
       setActiveThreadId(threadId)
-      await loadThreadData(threadId)
+      if (activationOptions?.hydrate !== false) await loadThreadData(threadId)
     },
     [loadThreadData, setActiveThreadId]
   )
@@ -72,7 +73,7 @@ export function useAiCoreThreadHost(
       if (!workspacePathResult) {
         throw new Error(inputNeedsWorkspaceMessage)
       }
-      await loadThreadData(thread.thread_id)
+      if (options.hydrateCreatedThread !== false) await loadThreadData(thread.thread_id)
 
       return {
         modelId: resolvedModelId,
@@ -80,7 +81,13 @@ export function useAiCoreThreadHost(
         workspacePath: workspacePathResult
       }
     },
-    [assertCanCreateThread, copy.chat, inputNeedsWorkspaceMessage, loadThreadData]
+    [
+      assertCanCreateThread,
+      copy.chat,
+      inputNeedsWorkspaceMessage,
+      loadThreadData,
+      options.hydrateCreatedThread
+    ]
   )
 
   const resolveClonedThreadHandle = useCallback(

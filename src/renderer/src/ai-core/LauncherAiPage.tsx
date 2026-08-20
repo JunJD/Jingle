@@ -320,10 +320,12 @@ export function LauncherAiPage(): React.JSX.Element {
   const threadContext = useThreadContext()
   const threadControl = useThreadControl(threadId)
   const {
+    activationError,
     branchThread: createBranchThread,
     branchThreadUntilMessage,
     canGoToNextThread,
     canGoToPreviousThread,
+    clearActivationError,
     createThread,
     goToNextThread,
     goToPreviousThread,
@@ -673,7 +675,7 @@ export function LauncherAiPage(): React.JSX.Element {
     ]
   )
   const hasPendingApproval = Boolean(pendingApproval)
-  const threadError = agentError ?? navigationError
+  const threadError = agentError ?? activationError ?? navigationError
   const composerSubmissionUnavailableReason =
     composerSubmissionAvailability.type === "unavailable"
       ? composerSubmissionAvailability.reason === "provider_file_id_unsupported"
@@ -820,12 +822,17 @@ export function LauncherAiPage(): React.JSX.Element {
     startFreshDraft
   } = controller
   const clearThreadError = useCallback((): void => {
+    if (activationError) {
+      clearVisibleError()
+      clearActivationError()
+      return
+    }
     if (agentError) {
       clearVisibleError()
       return
     }
     clearVisibleError()
-  }, [agentError, clearVisibleError])
+  }, [activationError, agentError, clearActivationError, clearVisibleError])
   const handleComposerValueChange = useCallback(
     (value: string): void => {
       setComposerHistoryCursor(createComposerHistoryCursor(composerHistoryScope))
