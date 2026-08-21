@@ -58,9 +58,13 @@ export function showSettingsWindow(
   settingsWindow: BrowserWindow,
   delivery?: SettingsWindowNavigationDelivery
 ): void {
-  if (delivery) {
-    settingsWindow.webContents.send(SETTINGS_NAVIGATION_CHANGED_CHANNEL, delivery)
-  }
-
   requestWindowPresentation(settingsWindow)
+
+  if (delivery) {
+    try {
+      settingsWindow.webContents.send(SETTINGS_NAVIGATION_CHANGED_CHANNEL, delivery)
+    } catch (error) {
+      console.warn("[settings] Failed to deliver navigation to the renderer.", error)
+    }
+  }
 }
