@@ -59,6 +59,21 @@ export const settingsWindowNavigationAcknowledgementSchema =
 export type SettingsWindowNavigationAcknowledgement = z.infer<
   typeof settingsWindowNavigationAcknowledgementSchema
 >
+
+export function isSettingsWindowNavigationDeliveryNewer(
+  candidate: SettingsWindowNavigationDelivery,
+  current: SettingsWindowNavigationDelivery | null
+): boolean {
+  if (!current) {
+    return true
+  }
+
+  return (
+    candidate.rendererLoadEpoch > current.rendererLoadEpoch ||
+    (candidate.rendererLoadEpoch === current.rendererLoadEpoch &&
+      candidate.revision > current.revision)
+  )
+}
 export type ProviderSettingsWindowTarget = NonNullable<
   Extract<SettingsWindowNavigationPayload, { tab: "provider" }>["target"]
 >

@@ -7,9 +7,32 @@ import { SettingsWindowRoutingService } from "../../src/main/settings-window-rou
 import { registerWindowIdentity, type WindowIdentity } from "../../src/main/windows/window-identity"
 import {
   createSettingsWindowNavigationAcknowledgement,
+  isSettingsWindowNavigationDeliveryNewer,
   type SettingsWindowNavigationDelivery,
   type SettingsWindowNavigationPayload
 } from "../../src/shared/settings-window"
+
+test("a successor renderer delivery wins over a stale live delivery", () => {
+  const staleLiveDelivery: SettingsWindowNavigationDelivery = {
+    revision: 9,
+    rendererLoadEpoch: 1,
+    payload: { tab: "appearance" }
+  }
+  const successorPendingDelivery: SettingsWindowNavigationDelivery = {
+    revision: 2,
+    rendererLoadEpoch: 2,
+    payload: { tab: "extensions" }
+  }
+
+  assert.equal(
+    isSettingsWindowNavigationDeliveryNewer(successorPendingDelivery, staleLiveDelivery),
+    true
+  )
+  assert.equal(
+    isSettingsWindowNavigationDeliveryNewer(staleLiveDelivery, successorPendingDelivery),
+    false
+  )
+})
 
 class FakeIpcMain {
   readonly handlers = new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>()

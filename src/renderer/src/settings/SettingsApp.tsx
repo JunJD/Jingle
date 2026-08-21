@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { CircleAlert, Settings2 } from "lucide-react"
 import {
   createSettingsWindowNavigationPayload,
+  isSettingsWindowNavigationDeliveryNewer,
   type SettingsWindowNavigationDelivery,
   type SettingsWindowNavigationPayload,
   type SettingsWindowTab
@@ -36,6 +37,7 @@ export default function SettingsApp(): React.JSX.Element {
     null
   )
   const [navigationDeliveryFailed, setNavigationDeliveryFailed] = useState(false)
+  const latestDeliveryRef = useRef<SettingsWindowNavigationDelivery | null>(null)
 
   const navigateToTab = useCallback((tab: SettingsWindowTab) => {
     setNavigation(createSettingsWindowNavigationPayload(tab))
@@ -55,30 +57,37 @@ export default function SettingsApp(): React.JSX.Element {
     preloadModelSetupSnapshot()
 
     let disposed = false
-    let receivedLiveNavigation = false
+    const acceptDelivery = (delivery: SettingsWindowNavigationDelivery | null): boolean => {
+      if (
+        !delivery ||
+        !isSettingsWindowNavigationDeliveryNewer(delivery, latestDeliveryRef.current)
+      ) {
+        return false
+      }
+
+      latestDeliveryRef.current = delivery
+      setNavigationDeliveryFailed(false)
+      setNavigation(delivery.payload)
+      setAppliedDelivery(delivery)
+      return true
+    }
+
     const unsubscribe = window.api.settings.onNavigationChanged((delivery) => {
       if (disposed) {
         return
       }
 
-      receivedLiveNavigation = true
-      setNavigationDeliveryFailed(false)
-      setNavigation(delivery.payload)
-      setAppliedDelivery(delivery)
+      acceptDelivery(delivery)
     })
 
     void window.api.settings
       .getPendingNavigation()
       .then((delivery) => {
-        if (disposed || receivedLiveNavigation) {
+        if (disposed) {
           return
         }
 
-        setNavigationDeliveryFailed(false)
-        if (delivery) {
-          setNavigation(delivery.payload)
-          setAppliedDelivery(delivery)
-        }
+        acceptDelivery(delivery)
       })
       .catch((error: unknown) => {
         if (disposed) {
@@ -86,7 +95,7 @@ export default function SettingsApp(): React.JSX.Element {
         }
 
         console.error("[Settings] Failed to claim pending navigation.", error)
-        if (!receivedLiveNavigation) {
+        if (!latestDeliveryRef.current) {
           setNavigationDeliveryFailed(true)
         }
       })
