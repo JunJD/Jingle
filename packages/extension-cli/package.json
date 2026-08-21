@@ -13,6 +13,10 @@
   },
   "exports": {
     ".": "./src/cli.mjs",
+    "./identity": {
+      "types": "./src/extension-identity.d.mts",
+      "default": "./src/extension-identity.mjs"
+    },
     "./installed-package-path": {
       "types": "./src/installed-package-path.d.mts",
       "default": "./src/installed-package-path.mjs"

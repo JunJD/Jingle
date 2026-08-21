@@ -1,15 +1,24 @@
 import { realpath } from "node:fs/promises"
 import { basename, dirname, join, relative, resolve, sep } from "node:path"
 import semver from "semver"
+import { MAX_NATIVE_EXTENSION_IDENTIFIER_LENGTH } from "./extension-identity.mjs"
 
 const installedExtensionIdPattern = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 
 export function isInstalledExtensionId(value) {
-  return typeof value === "string" && installedExtensionIdPattern.test(value)
+  return (
+    typeof value === "string" &&
+    value.length <= MAX_NATIVE_EXTENSION_IDENTIFIER_LENGTH &&
+    installedExtensionIdPattern.test(value)
+  )
 }
 
 export function isInstalledExtensionVersion(value) {
-  if (typeof value !== "string" || value !== value.toLowerCase()) {
+  if (
+    typeof value !== "string" ||
+    value.length > MAX_NATIVE_EXTENSION_IDENTIFIER_LENGTH ||
+    value !== value.toLowerCase()
+  ) {
     return false
   }
   const parsed = semver.parse(value, { loose: false })

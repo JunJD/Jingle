@@ -5,6 +5,10 @@ export {
   defineNativeExtensionMain,
   defineNativeExtensionManifest
 } from "./shared/native-extensions"
+export {
+  assertNativeExtensionIdentifier,
+  MAX_NATIVE_EXTENSION_IDENTIFIER_LENGTH
+} from "@jingle/extension-cli/identity"
 export type {
   InstalledNativeExtensionSettingsSchema,
   NativeExtensionAiCapability,

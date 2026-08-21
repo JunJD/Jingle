@@ -1,6 +1,10 @@
 import type { ComponentType } from "react"
 import type { ExtensionRuntimeLaunchContext } from "../shared/extension-runtime-protocol"
 import type { ExtensionRuntimeNavigation } from "../extension-runtime/sdk"
+import {
+  assertNativeExtensionIdentifier,
+  MAX_NATIVE_EXTENSION_IDENTIFIER_LENGTH
+} from "@jingle/extension-cli/identity"
 
 export interface NativeExtensionRuntimeNoViewRunContext extends ExtensionRuntimeLaunchContext {
   navigation: ExtensionRuntimeNavigation
@@ -54,5 +58,15 @@ export type NativeExtensionRuntimeCommandDefinition =
 export function defineNativeExtensionRuntime(
   runtimePackage: NativeExtensionRuntimePackage
 ): NativeExtensionRuntimePackage {
+  assertNativeExtensionIdentifier(
+    runtimePackage.extensionName,
+    `Native extension runtime extensionName must be a non-empty string of at most ${MAX_NATIVE_EXTENSION_IDENTIFIER_LENGTH} characters`
+  )
+  for (const commandName of Object.keys(runtimePackage.commands)) {
+    assertNativeExtensionIdentifier(
+      commandName,
+      `Native extension runtime command name must be a non-empty string of at most ${MAX_NATIVE_EXTENSION_IDENTIFIER_LENGTH} characters`
+    )
+  }
   return runtimePackage
 }

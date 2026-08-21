@@ -15,6 +15,10 @@ import { validateLauncherCommandOwnerManifest } from "./launcher-command-owner"
 import type { ExtensionToolDefinition } from "./extension-sources"
 import type { IpcErrorPayload } from "./ipc-error"
 import type { PermissionModeName } from "./permission-mode"
+import {
+  assertNativeExtensionIdentifier,
+  MAX_NATIVE_EXTENSION_IDENTIFIER_LENGTH
+} from "@jingle/extension-cli/identity"
 
 export type NativeExtensionCommandMode = "background" | "menu-bar" | "no-view" | "view"
 export type NativeExtensionIcon = string
@@ -620,9 +624,10 @@ export function validateNativeExtensionMainDefinition(
 export function validateNativeExtensionPackageManifest(
   manifest: NativeExtensionPackageManifest
 ): void {
-  if (!manifest.name.trim()) {
-    throw new Error("Native extension manifest must declare a non-empty name")
-  }
+  assertNativeExtensionIdentifier(
+    manifest.name,
+    `Native extension manifest name must be a non-empty string of at most ${MAX_NATIVE_EXTENSION_IDENTIFIER_LENGTH} characters`
+  )
 
   assertNonEmptyLocalizedText(
     manifest.title,
@@ -751,6 +756,10 @@ export function validateNativeExtensionPackageManifest(
 
   const commandNames = new Set<string>()
   for (const command of manifest.commands) {
+    assertNativeExtensionIdentifier(
+      command.name,
+      `Native extension "${manifest.name}" command name must be a non-empty string of at most ${MAX_NATIVE_EXTENSION_IDENTIFIER_LENGTH} characters`
+    )
     if (commandNames.has(command.name)) {
       throw new Error(
         `Native extension "${manifest.name}" declares duplicate command "${command.name}"`

@@ -10,6 +10,7 @@
     "./host-runtime": "./src/host-runtime.ts"
   },
   "dependencies": {
+    "@jingle/extension-cli": "workspace:*",
     "lucide-react": "^0.469.0"
   },
   "peerDependencies": {

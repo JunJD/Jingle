@@ -419,6 +419,9 @@ importers:
 
   packages/extension-api:
     dependencies:
+      '@jingle/extension-cli':
+        specifier: workspace:*
+        version: link:../extension-cli
       lucide-react:
         specifier: ^0.469.0
         version: 0.469.0(react@19.2.4)

@@ -32,6 +32,15 @@ import {
   releasePublishLock
 } from "../../packages/extension-cli/src/publish-lock.mjs"
 
+test("installed extension identifiers and versions reject 257-character values", () => {
+  const longIdentifier = `a${"a".repeat(256)}`
+  assert.throws(() => parseInstalledExtensionId(longIdentifier), hasPackagePathFailureCode)
+  assert.throws(
+    () => parseInstalledExtensionVersion(`1.0.0+${"a".repeat(251)}`),
+    hasPackagePathFailureCode
+  )
+})
+
 test("publish journal restores the previous package after the final path becomes empty", async () => {
   const root = await mkdtemp(join(tmpdir(), "jingle-extension-publish-journal-"))
   const packageRoot = join(root, "sample", "1.0.0")
