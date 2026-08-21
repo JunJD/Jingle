@@ -43,9 +43,10 @@ class FakeWindow extends EventEmitter {
   minimized = false
   visible = true
   destroyed = false
+  webContentsDestroyed = false
   sent: unknown[] = []
   webContents = {
-    isDestroyed: () => false,
+    isDestroyed: () => this.destroyed || this.webContentsDestroyed,
     send: (channel: string, value: unknown) => this.sent.push({ channel, value })
   }
   focus(): void {
@@ -88,6 +89,40 @@ class DeferredCloseWindow extends FakeWindow {
 }
 
 describe("PrimaryMainWindowService", () => {
+  it("rejects a sender whose WebContents was destroyed before its window close event", () => {
+    const window = new FakeWindow()
+    let state = { version: 1 as const, lastActiveThreadId: null as string | null }
+    const service = new PrimaryMainWindowService(
+      {
+        createMainWindow: () => window as never,
+        getSessionState: () => state,
+        getWindowBinding: () => ({ kind: "main", threadId: state.lastActiveThreadId }),
+        onWindowClosed: () => {},
+        onWindowOpened: () => {},
+        requestWindowPresentation: () => {},
+        recordRestoreFailure: () => {},
+        recordRestoreRepair: () => {},
+        repairSessionThreadBinding: () => ({ repaired: false, state }),
+        setSessionState: (next) => (state = next),
+        setWindowThread: () => {}
+      },
+      new DurableWindowRestorePolicy({ getThread: async () => ({ archivedAt: null }) }),
+      new DurableWindowRestoreGate()
+    )
+    service.open({ threadId: "thread-a" })
+    window.webContentsDestroyed = true
+
+    assert.throws(
+      () => service.getSenderThreadBinding(window.webContents as never),
+      /registered Main window/
+    )
+    assert.throws(
+      () => service.bindSenderThread(window.webContents as never, "thread-b"),
+      /registered Main window/
+    )
+    assert.equal(service.isSender(window.webContents as never), false)
+  })
+
   it("queues a repeated cold-start presentation through the window owner", () => {
     const window = new FakeWindow()
     window.visible = false

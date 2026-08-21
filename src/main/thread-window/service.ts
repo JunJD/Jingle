@@ -82,19 +82,28 @@ export class ThreadWindowService {
     if (this.restoreGate.isApplicationQuitting()) {
       throw new Error("Cannot update Thread window binding after application quit begins.")
     }
-    const entry = [...this.windows.entries()].find(([, window]) => window.webContents === sender)
+    const entry = [...this.windows.entries()].find(
+      ([, window]) =>
+        !window.isDestroyed() && !window.webContents.isDestroyed() && window.webContents === sender
+    )
     if (!entry) throw new Error("Thread window binding requires a registered window sender.")
     return this.bindThread(entry[0], entry[1], threadId)
   }
 
   getSenderThreadBinding(sender: WebContents): DurableWindowThreadBindingSnapshot {
-    const entry = [...this.windows.entries()].find(([, window]) => window.webContents === sender)
+    const entry = [...this.windows.entries()].find(
+      ([, window]) =>
+        !window.isDestroyed() && !window.webContents.isDestroyed() && window.webContents === sender
+    )
     if (!entry) throw new Error("Thread window binding requires a registered window sender.")
     return this.getBindingSnapshot(entry[0])
   }
 
   isSender(sender: WebContents): boolean {
-    return [...this.windows.values()].some((window) => window.webContents === sender)
+    return [...this.windows.values()].some(
+      (window) =>
+        !window.isDestroyed() && !window.webContents.isDestroyed() && window.webContents === sender
+    )
   }
 
   markApplicationQuitting(): void {

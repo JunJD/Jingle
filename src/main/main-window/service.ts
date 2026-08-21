@@ -99,21 +99,36 @@ export class PrimaryMainWindowService {
     if (this.restoreGate.isApplicationQuitting()) {
       throw new Error("Cannot update Main window thread binding after application quit begins.")
     }
-    if (!this.window || this.window.webContents !== sender) {
+    if (
+      !this.window ||
+      this.window.isDestroyed() ||
+      this.window.webContents.isDestroyed() ||
+      this.window.webContents !== sender
+    ) {
       throw new Error("Main window thread binding requires the registered Main window.")
     }
     return this.bindThread(this.window, threadId, false)
   }
 
   getSenderThreadBinding(sender: WebContents): DurableWindowThreadBindingSnapshot {
-    if (!this.window || this.window.isDestroyed() || this.window.webContents !== sender) {
+    if (
+      !this.window ||
+      this.window.isDestroyed() ||
+      this.window.webContents.isDestroyed() ||
+      this.window.webContents !== sender
+    ) {
       throw new Error("Main window thread binding requires the registered Main window.")
     }
     return this.getBindingSnapshot()
   }
 
   isSender(sender: WebContents): boolean {
-    return Boolean(this.window && !this.window.isDestroyed() && this.window.webContents === sender)
+    return Boolean(
+      this.window &&
+      !this.window.isDestroyed() &&
+      !this.window.webContents.isDestroyed() &&
+      this.window.webContents === sender
+    )
   }
 
   private async restorePersistedBinding(restore: object, threadId: string): Promise<void> {

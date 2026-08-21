@@ -16,9 +16,10 @@ import {
 
 class FakeWindow extends EventEmitter {
   destroyed = false
+  webContentsDestroyed = false
   sent: unknown[] = []
   webContents = {
-    isDestroyed: () => this.destroyed,
+    isDestroyed: () => this.destroyed || this.webContentsDestroyed,
     send: (_channel: string, value: unknown) => this.sent.push(value)
   }
   destroy(): void {
@@ -120,6 +121,23 @@ function createService(
 }
 
 describe("ThreadWindowService", () => {
+  it("rejects a sender whose WebContents was destroyed before its window close event", () => {
+    const { service, windows } = createService()
+    assert.equal(service.openNew({ threadId: "thread-a" }).ok, true)
+    const window = windows[0]!
+    window.webContentsDestroyed = true
+
+    assert.throws(
+      () => service.getSenderThreadBinding(window.webContents as never),
+      /registered window sender/
+    )
+    assert.throws(
+      () => service.bindSenderThread(window.webContents as never, "thread-b"),
+      /registered window sender/
+    )
+    assert.equal(service.isSender(window.webContents as never), false)
+  })
+
   it("allows duplicate windows for one thread and persists each identity", () => {
     const { activations, restore, service, windows } = createService()
     assert.equal(service.openNew({ threadId: "thread-a" }).ok, true)
