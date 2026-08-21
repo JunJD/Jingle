@@ -1173,7 +1173,10 @@ test("get_trace_evidence tool retrieves a trace step by toolCallId and links art
     (runScopedArtifactOutput.update as { messages?: Array<{ content: unknown }> }).messages?.[0]
       ?.content
   )
-  assert.equal(runScopedArtifactResult?.artifacts[0]?.artifactId, artifactResult.artifacts[0]?.id)
+  if (runScopedArtifactResult?.kind !== "trace_evidence") {
+    throw new Error("Expected run-scoped trace evidence result.")
+  }
+  assert.equal(runScopedArtifactResult.artifacts[0]?.artifactId, artifactResult.artifacts[0]?.id)
 
   const traceScopedArtifactOutput = await invokeTraceEvidenceTool.bind(traceEvidenceTool)(
     { artifactId: artifactResult.artifacts[0]?.id, traceId: trace.trace_id },
@@ -1193,7 +1196,10 @@ test("get_trace_evidence tool retrieves a trace step by toolCallId and links art
     (traceScopedArtifactOutput.update as { messages?: Array<{ content: unknown }> }).messages?.[0]
       ?.content
   )
-  assert.equal(traceScopedArtifactResult?.artifacts[0]?.artifactId, artifactResult.artifacts[0]?.id)
+  if (traceScopedArtifactResult?.kind !== "trace_evidence") {
+    throw new Error("Expected trace-scoped trace evidence result.")
+  }
+  assert.equal(traceScopedArtifactResult.artifacts[0]?.artifactId, artifactResult.artifacts[0]?.id)
 })
 
 test("get_trace_evidence tool does not link an explicit artifact from another source run", async () => {
