@@ -1017,8 +1017,13 @@ test("get_trace_evidence tool retrieves a trace step by traceStepId", async () =
 })
 
 test("get_trace_evidence tool retrieves a trace step by toolCallId and links artifacts", async () => {
-  const { appendAgentEvent, createRun, createThread, flushAgentTraceProjection } =
-    await loadDbModules()
+  const {
+    appendAgentEvent,
+    createRun,
+    createThread,
+    flushAgentTraceProjection,
+    getAgentTraceByRunId
+  } = await loadDbModules()
   const { presentArtifacts } = await import("../../src/main/artifacts/service")
   const threadId = "trace-evidence-tool-thread"
   const runId = "trace-evidence-tool-run"
@@ -1127,6 +1132,68 @@ test("get_trace_evidence tool retrieves a trace step by toolCallId and links art
   assert.equal(result.artifacts[0]?.artifactId, artifactResult.artifacts[0]?.id)
   assert.match(String(update.messages?.[0]?.content ?? ""), /Trace linked summary/)
   assert.match(String(update.messages?.[0]?.content ?? ""), /Artifact body should remain owned/)
+
+  const unscopedOutput = await invokeTraceEvidenceTool.bind(traceEvidenceTool)(
+    { toolCallId: "tool-call-artifact" },
+    {
+      toolCall: {
+        args: {},
+        id: "tool-call-get-trace-tool-unscoped",
+        name: "get_trace_evidence",
+        type: "tool_call"
+      },
+      toolCallId: "tool-call-get-trace-tool-unscoped",
+      state: { contextInclusions: [] }
+    }
+  )
+  assert.ok(unscopedOutput instanceof Command)
+  const unscopedResult = parseContextRetrievalToolResult(
+    (unscopedOutput.update as { messages?: Array<{ content: unknown }> }).messages?.[0]?.content
+  )
+  assert.equal(unscopedResult?.kind, "trace_evidence")
+  assert.equal(unscopedResult?.artifacts.length, 0)
+
+  const trace = await getAgentTraceByRunId(runId)
+  assert.ok(trace)
+  const runScopedArtifactOutput = await invokeTraceEvidenceTool.bind(traceEvidenceTool)(
+    { artifactId: artifactResult.artifacts[0]?.id, runId },
+    {
+      toolCall: {
+        args: {},
+        id: "tool-call-get-trace-artifact-by-run",
+        name: "get_trace_evidence",
+        type: "tool_call"
+      },
+      toolCallId: "tool-call-get-trace-artifact-by-run",
+      state: { contextInclusions: [] }
+    }
+  )
+  assert.ok(runScopedArtifactOutput instanceof Command)
+  const runScopedArtifactResult = parseContextRetrievalToolResult(
+    (runScopedArtifactOutput.update as { messages?: Array<{ content: unknown }> }).messages?.[0]
+      ?.content
+  )
+  assert.equal(runScopedArtifactResult?.artifacts[0]?.artifactId, artifactResult.artifacts[0]?.id)
+
+  const traceScopedArtifactOutput = await invokeTraceEvidenceTool.bind(traceEvidenceTool)(
+    { artifactId: artifactResult.artifacts[0]?.id, traceId: trace.trace_id },
+    {
+      toolCall: {
+        args: {},
+        id: "tool-call-get-trace-artifact-by-trace",
+        name: "get_trace_evidence",
+        type: "tool_call"
+      },
+      toolCallId: "tool-call-get-trace-artifact-by-trace",
+      state: { contextInclusions: [] }
+    }
+  )
+  assert.ok(traceScopedArtifactOutput instanceof Command)
+  const traceScopedArtifactResult = parseContextRetrievalToolResult(
+    (traceScopedArtifactOutput.update as { messages?: Array<{ content: unknown }> }).messages?.[0]
+      ?.content
+  )
+  assert.equal(traceScopedArtifactResult?.artifacts[0]?.artifactId, artifactResult.artifacts[0]?.id)
 })
 
 test("get_trace_evidence tool does not link an explicit artifact from another source run", async () => {
@@ -1192,6 +1259,22 @@ test("get_trace_evidence tool does not link an explicit artifact from another so
     toolCallId: "tool-call-cross-artifact"
   })
   assert.equal(otherArtifactResult.type, "stored")
+  const sameRunWrongToolResult = await presentArtifacts({
+    artifacts: [
+      {
+        artifactKey: "cross-artifact-wrong-tool:0",
+        format: "plain",
+        kind: "summary",
+        text: "This artifact belongs to another tool call in the same run.",
+        title: "Wrong tool artifact"
+      }
+    ],
+    idempotencyKey: "cross-artifact-wrong-tool",
+    runId,
+    threadId,
+    toolCallId: "another-tool-call-in-same-run"
+  })
+  assert.equal(sameRunWrongToolResult.type, "stored")
   await flushAgentTraceProjection()
 
   const middleware = createContextRetrievalToolsMiddlewareForTest({
@@ -1242,9 +1325,37 @@ test("get_trace_evidence tool does not link an explicit artifact from another so
     String(update.messages?.[0]?.content ?? ""),
     /another run and must not be linked/
   )
+
+  const wrongToolOutput = await invokeTraceEvidenceTool.bind(traceEvidenceTool)(
+    {
+      artifactId: sameRunWrongToolResult.artifacts[0]?.id,
+      runId,
+      toolCallId: "tool-call-cross-artifact"
+    },
+    {
+      toolCall: {
+        args: {},
+        id: "tool-call-get-wrong-tool-artifact",
+        name: "get_trace_evidence",
+        type: "tool_call"
+      },
+      toolCallId: "tool-call-get-wrong-tool-artifact",
+      state: { contextInclusions: [] }
+    }
+  )
+  assert.ok(wrongToolOutput instanceof Command)
+  const wrongToolUpdate = wrongToolOutput.update as {
+    contextInclusions?: Array<{ sourceType: string }>
+    messages?: Array<{ content: unknown }>
+  }
+  assert.deepEqual(
+    wrongToolUpdate.contextInclusions?.map((item) => item.sourceType),
+    ["trace_step"]
+  )
+  assert.doesNotMatch(String(wrongToolUpdate.messages?.[0]?.content ?? ""), /Wrong tool artifact/)
 })
 
-test("get_trace_evidence fails closed before linked artifact lookup on selector mismatch", async () => {
+test("get_trace_evidence separates selector conflict from run-scoped artifact lookup", async () => {
   const { appendAgentEvent, createRun, createThread, flushAgentTraceProjection } =
     await loadDbModules()
   const { presentArtifacts } = await import("../../src/main/artifacts/service")
@@ -1356,11 +1467,11 @@ test("get_trace_evidence fails closed before linked artifact lookup on selector 
   const runScopedResult = parseContextRetrievalToolResult(runScopedSerialized)
   assert.equal(runScopedResult?.kind, "trace_evidence")
   assert.equal(runScopedResult?.status, "unavailable")
-  assert.equal(runScopedResult.artifacts.length, 0)
-  assert.doesNotMatch(runScopedSerialized, /Foreign artifact must not be exposed/)
+  assert.equal(runScopedResult.artifacts.length, 1)
+  assert.match(runScopedSerialized, /Foreign artifact must not be exposed/)
 })
 
-test("get_trace_evidence rejects runId plus toolCallId when no trace step exists", async () => {
+test("get_trace_evidence keeps run-scoped artifacts when trace projection is missing", async () => {
   const { createRun, createThread } = await loadDbModules()
   const { presentArtifacts } = await import("../../src/main/artifacts/service")
   const threadId = "trace-evidence-run-selector-mismatch-thread"
@@ -1414,8 +1525,8 @@ test("get_trace_evidence rejects runId plus toolCallId when no trace step exists
   const result = parseContextRetrievalToolResult(serialized)
   assert.equal(result?.kind, "trace_evidence")
   assert.equal(result?.status, "unavailable")
-  assert.equal(result.artifacts.length, 0)
-  assert.doesNotMatch(serialized, /Run selector mismatch artifact must not be exposed/)
+  assert.equal(result.artifacts.length, 1)
+  assert.match(serialized, /Run selector mismatch artifact must not be exposed/)
 })
 
 test("get_trace_evidence tool returns no inclusion when trace output blob is missing", async () => {

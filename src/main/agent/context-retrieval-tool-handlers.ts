@@ -442,6 +442,8 @@ function artifactMatchesTraceSource(
   return artifact.runId === trace.run_id && artifact.threadId === trace.thread_id
 }
 
+type TraceEvidenceArtifactScope = "none" | "run-tool-call" | "trace-tool-call"
+
 async function searchHistoryMessages(input: {
   limit: number
   query: string
@@ -530,18 +532,26 @@ async function resolveTraceEvidenceSelection(input: {
       selectorMismatch: false
       trace: null
       step: null
+      artifactScope: "none"
     }
   | {
       artifactOnly: false
       selectorMismatch: boolean
       trace: AgentTraceSummaryRow | null
       step: AgentTraceStepRow | null
+      artifactScope: TraceEvidenceArtifactScope
     }
 > {
   if (input.traceStepId) {
     const parsed = parseAgentTraceStepId(input.traceStepId)
     if (!parsed) {
-      return { artifactOnly: false, selectorMismatch: true, step: null, trace: null }
+      return {
+        artifactOnly: false,
+        artifactScope: "none",
+        selectorMismatch: true,
+        step: null,
+        trace: null
+      }
     }
 
     const step = await getAgentTraceStep(parsed.traceId, parsed.stepIndex)
@@ -553,9 +563,21 @@ async function resolveTraceEvidenceSelection(input: {
       (input.runId !== undefined && input.runId !== trace.run_id) ||
       (input.toolCallId !== undefined && input.toolCallId !== step.tool_call_id)
     ) {
-      return { artifactOnly: false, selectorMismatch: true, step: null, trace: null }
+      return {
+        artifactOnly: false,
+        artifactScope: "none",
+        selectorMismatch: true,
+        step: null,
+        trace: null
+      }
     }
-    return { artifactOnly: false, selectorMismatch: false, step, trace }
+    return {
+      artifactOnly: false,
+      artifactScope: "trace-tool-call",
+      selectorMismatch: false,
+      step,
+      trace
+    }
   }
 
   if (input.toolCallId) {
@@ -567,8 +589,8 @@ async function resolveTraceEvidenceSelection(input: {
     const trace = step ? await getAgentTrace(step.trace_id) : null
     return {
       artifactOnly: false,
-      selectorMismatch:
-        !step || !trace ? input.runId !== undefined || input.traceId !== undefined : false,
+      artifactScope: input.runId || input.traceId ? "run-tool-call" : "none",
+      selectorMismatch: input.traceId !== undefined && (!step || !trace),
       step,
       trace
     }
@@ -577,30 +599,72 @@ async function resolveTraceEvidenceSelection(input: {
   if (input.traceId) {
     const trace = await getAgentTrace(input.traceId)
     if (!trace) {
-      return { artifactOnly: false, selectorMismatch: true, step: null, trace: null }
+      return {
+        artifactOnly: false,
+        artifactScope: "none",
+        selectorMismatch: true,
+        step: null,
+        trace: null
+      }
     }
     if (input.runId !== undefined && input.runId !== trace.run_id) {
-      return { artifactOnly: false, selectorMismatch: true, step: null, trace: null }
+      return {
+        artifactOnly: false,
+        artifactScope: "none",
+        selectorMismatch: true,
+        step: null,
+        trace: null
+      }
     }
     if (trace.total_steps <= 0) {
-      return { artifactOnly: false, selectorMismatch: false, step: null, trace }
+      return {
+        artifactOnly: false,
+        artifactScope: "none",
+        selectorMismatch: false,
+        step: null,
+        trace
+      }
     }
 
     const step = await getAgentTraceStep(trace.trace_id, 0)
-    return { artifactOnly: false, selectorMismatch: false, step, trace }
+    return {
+      artifactOnly: false,
+      artifactScope: "none",
+      selectorMismatch: false,
+      step,
+      trace
+    }
   }
 
   if (input.runId) {
     const trace = await getAgentTraceByRunId(input.runId)
     if (!trace || trace.total_steps <= 0) {
-      return { artifactOnly: false, selectorMismatch: false, step: null, trace }
+      return {
+        artifactOnly: false,
+        artifactScope: "none",
+        selectorMismatch: false,
+        step: null,
+        trace
+      }
     }
 
     const step = await getAgentTraceStep(trace.trace_id, 0)
-    return { artifactOnly: false, selectorMismatch: false, step, trace }
+    return {
+      artifactOnly: false,
+      artifactScope: "none",
+      selectorMismatch: false,
+      step,
+      trace
+    }
   }
 
-  return { artifactOnly: true, selectorMismatch: false, step: null, trace: null }
+  return {
+    artifactOnly: true,
+    artifactScope: "none",
+    selectorMismatch: false,
+    step: null,
+    trace: null
+  }
 }
 
 export function createAgentContextInclusionToolHandlers(options: {
@@ -740,11 +804,30 @@ export function createAgentContextInclusionToolHandlers(options: {
           })
         }
       }
-      const explicitArtifact = parsed.artifactId ? await getArtifact(parsed.artifactId) : null
+      const shouldReadExplicitArtifact =
+        Boolean(parsed.artifactId) &&
+        (selection.artifactOnly ||
+          selection.artifactScope !== "none" ||
+          Boolean(selection.trace && selection.step?.tool_call_id))
+      const explicitArtifact =
+        shouldReadExplicitArtifact && parsed.artifactId
+          ? await getArtifact(parsed.artifactId)
+          : null
+      const explicitArtifactMatchesSelection =
+        explicitArtifact && !selection.artifactOnly
+          ? selection.step
+            ? selection.step.tool_call_id &&
+              selection.trace &&
+              artifactMatchesTraceSource(explicitArtifact, selection.trace) &&
+              explicitArtifact.toolCallId === selection.step.tool_call_id
+            : parsed.runId !== undefined &&
+              explicitArtifact.runId === parsed.runId &&
+              explicitArtifact.toolCallId === parsed.toolCallId
+          : Boolean(explicitArtifact)
       const scopedExplicitArtifact =
         selection.artifactOnly || !explicitArtifact
           ? explicitArtifact
-          : selection.trace && artifactMatchesTraceSource(explicitArtifact, selection.trace)
+          : explicitArtifactMatchesSelection
             ? explicitArtifact
             : null
       const linkedArtifactRunId =
@@ -755,10 +838,12 @@ export function createAgentContextInclusionToolHandlers(options: {
           ? scopedExplicitArtifact
             ? [scopedExplicitArtifact]
             : []
-          : await listArtifactsByToolCallId({
-              runId: linkedArtifactRunId,
-              toolCallId: parsed.toolCallId
-            })
+          : selection.artifactScope === "none"
+            ? []
+            : await listArtifactsByToolCallId({
+                runId: linkedArtifactRunId,
+                toolCallId: parsed.toolCallId
+              })
       const linkedArtifactEvidence = linkedArtifacts.map((artifact) => ({
         content: readArtifactEvidenceText(artifact),
         record: artifact
