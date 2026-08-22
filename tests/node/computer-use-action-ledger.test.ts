@@ -177,7 +177,7 @@ test.after(async () => {
   await rm(jingleHome, { force: true, recursive: true })
 })
 
-test("migration owns the computer-use ledger schema and a reserved attempt survives restart", async () => {
+test("migration owns the computer-use ledger schema and restart settles a reserved attempt", async () => {
   const { closeDatabase, initializeDatabase } = await import("../../src/main/db")
   const { getPrismaClient } = await import("../../src/main/db/client")
   const prisma = getPrismaClient()
@@ -219,10 +219,22 @@ test("migration owns the computer-use ledger schema and a reserved attempt survi
   await initializeDatabase()
   const restarted = new ComputerUseActionLedger(createPrismaComputerUseActionLedgerPort())
   const hydrated = await restarted.find("restart-reservation")
-  assert.deepEqual(hydrated?.attempt, claim.attempt)
-  assert.equal(hydrated?.source, "durable")
-  assert.equal(Object.isFrozen(hydrated?.attempt), true)
-  assert.equal(Object.isFrozen(hydrated?.attempt.authorization.window), true)
+  assert.ok(hydrated)
+  assert.deepEqual(hydrated.attempt, {
+    ...claim.attempt,
+    phase: "settled",
+    result: {
+      baseStateId: claim.attempt.baseStateId,
+      outcome: "cancelled_before_dispatch",
+      steps: []
+    },
+    revision: 1,
+    settledAt: hydrated.attempt.settledAt
+  })
+  assert.ok((hydrated.attempt.settledAt ?? 0) >= claim.attempt.startedAt)
+  assert.equal(hydrated.source, "durable")
+  assert.equal(Object.isFrozen(hydrated.attempt), true)
+  assert.equal(Object.isFrozen(hydrated.attempt.authorization.window), true)
 })
 
 test("persisted logical corruption and phase-payload disagreement fail closed", async () => {
