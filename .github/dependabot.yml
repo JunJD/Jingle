@@ -22,3 +22,8 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "build(deps)"
+    groups:
+      # CodeQL init and analyze must run the same action revision.
+      codeql:
+        patterns:
+          - "github/codeql-action/*"
