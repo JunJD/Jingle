@@ -5,8 +5,12 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(deps)"
+      prefix-development: "build(deps)"
     groups:
-      npm-minor-and-patch:
+      # Dependabot includes this identifier in grouped commit subjects.
+      npm:
         update-types:
           - "minor"
           - "patch"
@@ -16,3 +20,5 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(deps)"
