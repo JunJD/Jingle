@@ -147,7 +147,6 @@ test("AgentController orders cancellation after an accepted run projection", asy
     controller.register(ipcMain as unknown as IpcMain)
     const invoke = ipcMain.invoke("agent:invoke", {
       message: { content: "hello", id: "message-1" },
-      modelId: "bdd",
       threadId: "thread-1"
     })
     await prepareEntered
@@ -239,7 +238,6 @@ test("AgentController returns run admission rejection without runtime projection
   controller.register(ipcMain as unknown as IpcMain)
   const outcome = await ipcMain.invoke("agent:invoke", {
     message: { content: "must not replace", id: "message-rejected" },
-    modelId: "bdd",
     threadId: "thread-rejected"
   })
 
@@ -341,7 +339,6 @@ test("AgentController returns steer conflicts as a nonterminal command outcome",
     expectedTurnId: "turn-1",
     followUpAction: "steer",
     message: { content: "follow up", id: "message-steer-conflict" },
-    modelId: "bdd",
     threadId: "thread-steer-conflict"
   })
 
@@ -394,7 +391,6 @@ test("AgentController distinguishes accepted steering from stale steering fallba
     expectedTurnId: "turn-1",
     followUpAction: "steer",
     message: { content: "follow up", id: "message-steer" },
-    modelId: "bdd",
     threadId: "thread-steer"
   }
 
