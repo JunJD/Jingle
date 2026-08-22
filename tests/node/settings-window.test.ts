@@ -28,7 +28,9 @@ class FakeSettingsWindow extends EventEmitter {
     this.showCount += 1
   }
 
-  showInactive(): void {}
+  showInactive(): void {
+    throw new Error("settings presentation must activate the window")
+  }
 
   focus(): void {
     this.focusCount += 1
