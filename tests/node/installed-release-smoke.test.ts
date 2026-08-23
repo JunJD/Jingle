@@ -926,6 +926,7 @@ test("release workflow keeps candidates build-only and publishes only verified t
   const smokeSource = readFileSync("scripts/release-smoke/installed.mjs", "utf8")
   const crashBootstrapSource = readFileSync("src/main/bootstrap.ts", "utf8")
   const mainProbeOwnerSource = readFileSync("src/main/release-smoke-probe-owner.ts", "utf8")
+  const mainProbeWindowSource = readFileSync("src/main/release-smoke-main-window.ts", "utf8")
   assert.match(
     crashBootstrapSource,
     /if \(bootstrapPath && expectedJingleHome\) \{[\s\S]*?const crashDumpsPath = join\(expectedJingleHome, "crash-dumps"\)[\s\S]*?mkdirSync\(crashDumpsPath, \{ recursive: true \}\)[\s\S]*?app\.setPath\("crashDumps", crashDumpsPath\)[\s\S]*?crashReporter\.start\(\{[\s\S]*?uploadToServer: false/
@@ -947,10 +948,12 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(crashBootstrapSource, /import\("\.\/release-smoke-probe-owner"\)/)
   assert.match(mainProbeOwnerSource, /MAX_FILE_BYTES = 64 \* 1024/)
   assert.match(mainProbeOwnerSource, /assertExactKeys/)
-  assert.match(mainProbeOwnerSource, /contents\.getType\(\) !== "window"/)
-  assert.match(mainProbeOwnerSource, /app\.getAppPath\(\)/)
-  assert.match(mainProbeOwnerSource, /url\.pathname === expectedUrl\.pathname/)
-  assert.match(mainProbeOwnerSource, /candidates\.length > 1/)
+  assert.match(mainProbeOwnerSource, /selectReleaseSmokeMainWebContents/)
+  assert.match(mainProbeWindowSource, /contents\.getType\(\) !== "window"/)
+  assert.match(mainProbeWindowSource, /identity\.windowId !== PRIMARY_MAIN_WINDOW_ID/)
+  assert.match(mainProbeWindowSource, /url\.protocol === "file:"/)
+  assert.match(mainProbeWindowSource, /mainCandidates\.length > 1/)
+  assert.match(crashBootstrapSource, /getReleaseSmokeWindowIdentity/)
   assert.match(mainProbeOwnerSource, /executeJavaScript\(source, true\)/)
   assert.match(mainProbeOwnerSource, /renderer probe execution timed out/)
   assert.match(mainProbeOwnerSource, /timer\.unref\(\)/)

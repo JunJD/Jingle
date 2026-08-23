@@ -1,4 +1,5 @@
 import "./observability/bootstrap"
+export { getWindowIdentity as getReleaseSmokeWindowIdentity } from "./windows/window-identity"
 import { app, BrowserWindow, ipcMain, nativeImage, protocol } from "electron"
 import { join } from "path"
 import { closeDatabase, initializeDatabase } from "./db/lifecycle"

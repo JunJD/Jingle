@@ -1,5 +1,6 @@
 import { BrowserWindow } from "electron"
 import { join } from "path"
+import { PRIMARY_MAIN_WINDOW_ID } from "@shared/durable-window"
 import { attachWindowDiagnostics } from "../diagnostics/electron-events"
 import { getAppThemeSettings } from "../preferences"
 import { installExternalWindowOpenHandler } from "./external-window-open"
@@ -9,8 +10,6 @@ import { showTerminalRendererWindowFailure } from "./renderer-window-failure-dia
 import { createThemeTitleBarOverlay } from "./title-bar-overlay"
 import { installWindowPresentation, requestWindowPresentation } from "./window-presentation"
 import { getWindowIdentity, registerDurableWindowIdentity } from "./window-identity"
-
-export const PRIMARY_MAIN_WINDOW_ID = "primary-main"
 
 export function createMainWindow(threadId: string | null): BrowserWindow {
   const placement = getMainWindowPlacement()

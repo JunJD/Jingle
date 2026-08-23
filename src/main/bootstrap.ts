@@ -107,13 +107,17 @@ if (bootstrapPath && expectedJingleHome) {
 }
 
 void import("./index")
-  .then(() => {
+  .then(({ getReleaseSmokeWindowIdentity }) => {
     recordReleaseSmokeBootstrapStage("application_imported")
     startReleaseSmokeQuitOwner()
     if (bootstrapPath && expectedJingleHome) {
       void import("./release-smoke-probe-owner")
         .then(({ startReleaseSmokeProbeOwner }) => {
-          startReleaseSmokeProbeOwner(expectedJingleHome, recordReleaseSmokeBootstrapStage)
+          startReleaseSmokeProbeOwner(
+            expectedJingleHome,
+            recordReleaseSmokeBootstrapStage,
+            getReleaseSmokeWindowIdentity
+          )
         })
         .catch((error: unknown) => {
           recordReleaseSmokeBootstrapStage("probe_owner_failed", error)

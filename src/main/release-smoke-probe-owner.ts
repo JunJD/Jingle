@@ -9,8 +9,9 @@ import {
   writeFileSync
 } from "node:fs"
 import { join } from "node:path"
-import { pathToFileURL } from "node:url"
 import { app, webContents, type WebContents } from "electron"
+import { selectReleaseSmokeMainWebContents } from "./release-smoke-main-window"
+import type { WindowIdentity } from "./windows/window-identity"
 
 const MAX_FILE_BYTES = 64 * 1024
 const PROBE_DEADLINE_MS = 90_000
@@ -136,29 +137,6 @@ function writeResult(path: string, result: unknown): void {
   renameSync(temporaryPath, path)
 }
 
-function findMainWebContents(): WebContents | null {
-  const expectedUrl = new URL(
-    pathToFileURL(join(app.getAppPath(), "out", "renderer", "index.html")).href
-  )
-  const candidates = webContents.getAllWebContents().filter((contents) => {
-    if (contents.getType() !== "window" || contents.isDestroyed() || contents.isLoading())
-      return false
-    try {
-      const url = new URL(contents.getURL())
-      return (
-        url.protocol === expectedUrl.protocol &&
-        url.host === expectedUrl.host &&
-        url.pathname === expectedUrl.pathname &&
-        url.searchParams.get("window") === "main"
-      )
-    } catch {
-      return false
-    }
-  })
-  if (candidates.length > 1) throw new Error("release smoke found multiple main renderer windows")
-  return candidates[0] ?? null
-}
-
 async function runRendererProbe(sentinelRequest: SentinelRequest | null): Promise<unknown> {
   const runtime = globalThis as unknown as RendererGlobal
   const [theme, threads] = await Promise.all([
@@ -212,10 +190,16 @@ async function runRendererProbe(sentinelRequest: SentinelRequest | null): Promis
   }
 }
 
-async function executeProbe(request: ProbeRequest): Promise<unknown> {
+async function executeProbe(
+  request: ProbeRequest,
+  getWindowIdentity: (contents: WebContents) => WindowIdentity | null
+): Promise<unknown> {
   const deadline = Date.now() + PROBE_DEADLINE_MS
   while (Date.now() < deadline) {
-    const contents = findMainWebContents()
+    const contents = selectReleaseSmokeMainWebContents(
+      webContents.getAllWebContents(),
+      getWindowIdentity
+    )
     if (contents) {
       const source = `(${runRendererProbe.toString()})(${JSON.stringify(request.sentinelRequest)})`
       const remaining = Math.max(1, Math.min(20_000, deadline - Date.now()))
@@ -242,7 +226,8 @@ async function executeProbe(request: ProbeRequest): Promise<unknown> {
 
 export function startReleaseSmokeProbeOwner(
   jingleHome: string,
-  recordStage: (stage: string, error?: unknown) => void
+  recordStage: (stage: string, error?: unknown) => void,
+  getWindowIdentity: (contents: WebContents) => WindowIdentity | null
 ): void {
   const requestPath = join(jingleHome, REQUEST_FILE_NAME)
   const resultPath = join(jingleHome, RESULT_FILE_NAME)
@@ -256,7 +241,7 @@ export function startReleaseSmokeProbeOwner(
         const request = readRequest(requestPath)
         unlinkSync(requestPath)
         recordStage("probe_requested")
-        const probe = await executeProbe(request)
+        const probe = await executeProbe(request, getWindowIdentity)
         writeResult(resultPath, { ok: true, probe, schemaVersion: 1 })
         recordStage("probe_completed")
       } catch (error) {

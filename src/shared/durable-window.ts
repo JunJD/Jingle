@@ -1,6 +1,7 @@
 import { z } from "zod/v4"
 
 export const PRIMARY_MAIN_WINDOW_KIND = "main"
+export const PRIMARY_MAIN_WINDOW_ID = "primary-main"
 export const THREAD_WINDOW_KIND = "thread-window"
 export const DURABLE_WINDOW_THREAD_BINDING_CHANGED_CHANNEL = "durable-window:threadBindingChanged"
 export const DURABLE_WINDOW_THREAD_BINDING_GET_CHANNEL = "durable-window:getThreadBinding"
