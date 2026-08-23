@@ -520,11 +520,16 @@ async function installMac(invocation, workspace, logPath) {
 
 async function installWindows(invocation, workspace, logPath) {
   mkdirSync(invocation.installRoot, { recursive: true })
-  await runProcess(invocation.command, invocation.args, {
-    cwd: workspace,
-    logPath,
-    windowsVerbatimArguments: invocation.windowsVerbatimArguments
-  })
+  try {
+    await runProcess(invocation.command, invocation.args, {
+      cwd: workspace,
+      logPath,
+      windowsVerbatimArguments: invocation.windowsVerbatimArguments
+    })
+  } catch (error) {
+    collectWindowsExecutableFailureDiagnostics(invocation.command, logPath, "nsis-installer")
+    throw error
+  }
   const executablePath = findSingle(
     invocation.installRoot,
     (path) => basename(path).toLowerCase() === "jingle.exe",
@@ -827,6 +832,59 @@ export function observeChildProcessLaunchError(child) {
     launchError = error
   })
   return () => launchError
+}
+
+function collectWindowsExecutableFailureDiagnostics(executablePath, logPath, owner) {
+  if (process.platform !== "win32") return
+  try {
+    const script = [
+      "$ErrorActionPreference = 'Continue'",
+      "Start-Sleep -Milliseconds 1000",
+      "$target = [IO.Path]::GetFullPath($env:JINGLE_FAILED_EXECUTABLE)",
+      "$name = [IO.Path]::GetFileName($target)",
+      "$events = @(Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=(Get-Date).AddMinutes(-10)} -ErrorAction SilentlyContinue | Where-Object { ($_.ProviderName -eq 'Application Error' -or $_.ProviderName -eq 'Windows Error Reporting') -and $_.Message -match [Regex]::Escape($name) } | Select-Object -First 12 TimeCreated, ProviderName, Id, LevelDisplayName, @{Name='Message'; Expression={ if ($_.Message.Length -gt 4096) { $_.Message.Substring(0, 4096) + '...[truncated]' } else { $_.Message } }})",
+      "$defender = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | ForEach-Object {",
+      "  $detection = $_",
+      "  $matched = $false",
+      "  foreach ($resource in @($detection.Resources)) {",
+      "    $candidate = [string]$resource",
+      "    if ($candidate -match '^(?i:file|containerfile):_') { $candidate = $candidate -replace '^(?i:file|containerfile):_', '' }",
+      "    try { if ([IO.Path]::GetFullPath($candidate) -ieq $target) { $matched = $true; break } } catch { }",
+      "  }",
+      "  if ($matched) {",
+      "    [pscustomobject]@{ ThreatID = $detection.ThreatID; DetectionID = $detection.DetectionID; CleaningActionID = $detection.CleaningActionID; CurrentThreatExecutionStatusID = $detection.CurrentThreatExecutionStatusID; ThreatStatusID = $detection.ThreatStatusID; ActionSuccess = $detection.ActionSuccess; MatchedResource = $target }",
+      "  }",
+      "} | Select-Object -First 12)",
+      "[ordered]@{ events = $events; defender = $defender } | ConvertTo-Json -Compress -Depth 5"
+    ].join("\n")
+    const result = spawnSync(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", script],
+      {
+        encoding: "utf8",
+        env: { ...process.env, JINGLE_FAILED_EXECUTABLE: executablePath },
+        timeout: 15_000,
+        windowsHide: true
+      }
+    )
+    appendLaunchDiagnostic(logPath, "windows executable failure diagnostics", {
+      executablePath,
+      owner,
+      powershellError: result.error?.message ?? null,
+      powershellExitCode: result.status,
+      snapshot: boundLaunchDiagnosticText(result.stdout?.trim()) || null,
+      stderr: boundLaunchDiagnosticText(result.stderr?.trim()) || null
+    })
+  } catch (error) {
+    try {
+      appendLaunchDiagnostic(logPath, "windows executable failure diagnostics", {
+        diagnosticsCollectionError: error instanceof Error ? error.message : String(error),
+        owner
+      })
+    } catch {
+      // Failure diagnostics must never replace the executable failure.
+    }
+  }
 }
 
 function collectWindowsLaunchFailureDiagnostics(child, port, jingleHome, logPath) {
