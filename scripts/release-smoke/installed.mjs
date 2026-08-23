@@ -717,7 +717,12 @@ function createLaunchEnvironment(jingleHome, overrides = {}) {
   return env
 }
 
-export function createRemoteDebuggingLaunchArgs(port, userDataPath, applicationArgs = []) {
+export function createRemoteDebuggingLaunchArgs(
+  port,
+  userDataPath,
+  jingleHome,
+  applicationArgs = []
+) {
   if (!Number.isSafeInteger(port) || port <= 0 || port > 65_535) {
     fail(`invalid remote debugging port: ${String(port)}`)
   }
@@ -725,6 +730,7 @@ export function createRemoteDebuggingLaunchArgs(port, userDataPath, applicationA
     ...applicationArgs,
     `--remote-debugging-port=${port}`,
     "--remote-debugging-address=127.0.0.1",
+    `--jingle-release-smoke-bootstrap=${join(jingleHome, "release-smoke-bootstrap.jsonl")}`,
     `--user-data-dir=${userDataPath}`
   ]
 }
@@ -778,6 +784,14 @@ export function boundLaunchDiagnosticText(value, maximumCharacters = 65_536) {
   if (typeof value !== "string") return null
   if (value.length <= maximumCharacters) return value
   return `${value.slice(0, maximumCharacters)}...[truncated]`
+}
+
+export function observeChildProcessLaunchError(child) {
+  let launchError = null
+  child.once("error", (error) => {
+    launchError = error
+  })
+  return () => launchError
 }
 
 function collectWindowsLaunchFailureDiagnostics(child, port, jingleHome, logPath) {
@@ -840,13 +854,92 @@ function collectWindowsLaunchFailureDiagnostics(child, port, jingleHome, logPath
   }
 }
 
-async function waitForDevToolsPort(port, child, getLaunchError, jingleHome, logPath) {
+async function collectWindowsBootstrapDifferential(input) {
+  if (process.platform !== "win32") return
+  const differentialHome = `${input.jingleHome}-no-debug-differential`
+  const userDataPath = join(differentialHome, "electron-user-data")
+  const bootstrapPath = join(differentialHome, "release-smoke-bootstrap.jsonl")
+  mkdirSync(userDataPath, { recursive: true })
+  const args = [
+    ...(input.applicationArgs ?? []),
+    `--jingle-release-smoke-bootstrap=${bootstrapPath}`,
+    `--user-data-dir=${userDataPath}`
+  ]
+  let child = null
+  let getLaunchError = () => null
+  try {
+    child = spawn(input.executablePath, args, {
+      env: createLaunchEnvironment(differentialHome),
+      shell: false,
+      stdio: "ignore",
+      windowsHide: true
+    })
+    getLaunchError = observeChildProcessLaunchError(child)
+    const deadline = Date.now() + 15_000
+    while (
+      Date.now() < deadline &&
+      !existsSync(bootstrapPath) &&
+      child.exitCode === null &&
+      child.signalCode === null &&
+      getLaunchError() === null
+    ) {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 100))
+    }
+    appendLaunchDiagnostic(input.logPath, "windows bootstrap differential", {
+      args,
+      bootstrap: existsSync(bootstrapPath)
+        ? boundLaunchDiagnosticText(readFileSync(bootstrapPath, "utf8"))
+        : null,
+      exitCode: child.exitCode,
+      launchError: boundLaunchDiagnosticText(getLaunchError()?.message) ?? null,
+      pid: child.pid ?? null,
+      signalCode: child.signalCode
+    })
+  } catch (error) {
+    try {
+      appendLaunchDiagnostic(input.logPath, "windows bootstrap differential", {
+        diagnosticsCollectionError: error instanceof Error ? error.message : String(error)
+      })
+    } catch {
+      // Differential diagnostics must not replace the primary launch failure.
+    }
+  } finally {
+    if (child?.pid && child.exitCode === null && child.signalCode === null) {
+      await terminateProcessTree(child.pid).catch(() => undefined)
+    }
+  }
+}
+
+async function waitForDevToolsPort(
+  port,
+  child,
+  getLaunchError,
+  jingleHome,
+  logPath,
+  diagnosticLaunch
+) {
   const deadline = Date.now() + APP_BOOT_TIMEOUT_MS
   let diagnosticsCollected = false
+  let differentialCollected = false
   const collectDiagnostics = () => {
     if (diagnosticsCollected) return
     diagnosticsCollected = true
     collectWindowsLaunchFailureDiagnostics(child, port, jingleHome, logPath)
+  }
+  const collectDifferential = async () => {
+    if (
+      differentialCollected ||
+      process.platform !== "win32" ||
+      existsSync(join(jingleHome, "release-smoke-bootstrap.jsonl"))
+    ) {
+      return
+    }
+    differentialCollected = true
+    await collectWindowsBootstrapDifferential({
+      ...diagnosticLaunch,
+      jingleHome,
+      logPath
+    })
   }
   while (Date.now() < deadline) {
     try {
@@ -857,6 +950,7 @@ async function waitForDevToolsPort(port, child, getLaunchError, jingleHome, logP
     }
     if (child.exitCode !== null || child.signalCode !== null) {
       collectDiagnostics()
+      await collectDifferential()
       fail(
         `installed executable exited before exposing CDP: code ${String(child.exitCode)} signal ${String(child.signalCode)}`
       )
@@ -864,11 +958,13 @@ async function waitForDevToolsPort(port, child, getLaunchError, jingleHome, logP
     const launchError = getLaunchError()
     if (launchError) {
       collectDiagnostics()
+      await collectDifferential()
       throw launchError
     }
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 100))
   }
   collectDiagnostics()
+  await collectDifferential()
   fail("installed executable did not expose CDP before the deadline")
 }
 
@@ -1089,6 +1185,7 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
   const launchArgs = createRemoteDebuggingLaunchArgs(
     remoteDebuggingPort,
     userDataPath,
+    jingleHome,
     options.launchArgs
   )
   const child = spawn(executablePath, launchArgs, {
@@ -1121,7 +1218,8 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
         child,
         () => launchError,
         jingleHome,
-        logPath
+        logPath,
+        { applicationArgs: options.launchArgs, executablePath }
       )
       browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, {
         timeout: APP_BOOT_TIMEOUT_MS
@@ -1393,6 +1491,10 @@ function preserveDiagnostics(sourceHome, diagnosticsRoot, manifest) {
   const electronLogPath = join(sourceHome, "electron.log")
   if (existsSync(electronLogPath)) {
     copyFileSync(electronLogPath, join(diagnosticsRoot, "electron.log"))
+  }
+  const bootstrapLogPath = join(sourceHome, "release-smoke-bootstrap.jsonl")
+  if (existsSync(bootstrapLogPath)) {
+    copyFileSync(bootstrapLogPath, join(diagnosticsRoot, "release-smoke-bootstrap.jsonl"))
   }
   writeFileSync(join(diagnosticsRoot, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`)
 }

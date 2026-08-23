@@ -116,9 +116,7 @@ export default defineConfig({
         "@extensions": resolve("src/extensions"),
         "@launcher-components": resolve("src/renderer/src/launcher-components"),
         "@launcher-shell": resolve("src/renderer/src/launcher-shell"),
-        "@jingle/extension-api/host-runtime": resolve(
-          "packages/extension-api/src/host-runtime.ts"
-        ),
+        "@jingle/extension-api/host-runtime": resolve("packages/extension-api/src/host-runtime.ts"),
         "@jingle/extension-api": resolve("packages/extension-api/src/index.ts"),
         "@jingle/extension-utils": resolve("packages/extension-utils/src/index.ts"),
         "@jingle/agent-client": resolve("packages/agent-client/src/index.ts"),
@@ -145,11 +143,10 @@ export default defineConfig({
       lib: {
         entry: {
           "database-bootstrap-audit": resolve("src/main/db/bootstrap-audit-entry.ts"),
-          "diagnostics-build-identity-audit": resolve(
-            "src/main/diagnostics/build-identity.ts"
-          ),
+          "diagnostics-build-identity-audit": resolve("src/main/diagnostics/build-identity.ts"),
           "extension-runtime-entry": resolve("src/extension-runtime/entry.ts"),
-          index: resolve("src/main/index.ts"),
+          index: resolve("src/main/bootstrap.ts"),
+          "main-application": resolve("src/main/index.ts"),
           "ripgrep-executable-audit": resolve(
             "packages/langchain-agent-harness/src/harness-runtime/ripgrep-executable.ts"
           )
@@ -170,9 +167,7 @@ export default defineConfig({
         "@extensions": resolve("src/extensions"),
         "@launcher-components": resolve("src/renderer/src/launcher-components"),
         "@launcher-shell": resolve("src/renderer/src/launcher-shell"),
-        "@jingle/extension-api/host-runtime": resolve(
-          "packages/extension-api/src/host-runtime.ts"
-        ),
+        "@jingle/extension-api/host-runtime": resolve("packages/extension-api/src/host-runtime.ts"),
         "@jingle/extension-api": resolve("packages/extension-api/src/index.ts"),
         "@jingle/extension-utils": resolve("packages/extension-utils/src/index.ts"),
         "@jingle/agent-client": resolve("packages/agent-client/src/index.ts"),
@@ -203,9 +198,7 @@ export default defineConfig({
         "@extensions": resolve("src/extensions"),
         "@launcher-components": resolve("src/renderer/src/launcher-components"),
         "@launcher-shell": resolve("src/renderer/src/launcher-shell"),
-        "@jingle/extension-api/host-runtime": resolve(
-          "packages/extension-api/src/host-runtime.ts"
-        ),
+        "@jingle/extension-api/host-runtime": resolve("packages/extension-api/src/host-runtime.ts"),
         "@jingle/extension-api": resolve("packages/extension-api/src/index.ts"),
         "@jingle/extension-utils": resolve("packages/extension-utils/src/index.ts"),
         "@jingle/agent-client": resolve("packages/agent-client/src/index.ts"),

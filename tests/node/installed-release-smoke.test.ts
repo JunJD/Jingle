@@ -10,11 +10,13 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { EventEmitter } from "node:events"
 import { pathToFileURL } from "node:url"
 import test from "node:test"
 
 interface InstalledSmokeModule {
   boundLaunchDiagnosticText(value: unknown, maximumCharacters?: number): string | null
+  observeChildProcessLaunchError(child: EventEmitter): () => Error | null
   closeApplication(
     browser: {
       close(): Promise<void>
@@ -53,6 +55,7 @@ interface InstalledSmokeModule {
   createRemoteDebuggingLaunchArgs(
     port: number,
     userDataPath: string,
+    jingleHome: string,
     applicationArgs?: string[]
   ): string[]
   createLinuxXdgEnvironment(root: string): Record<string, string>
@@ -107,6 +110,16 @@ test("bounds optional Windows launch diagnostics without changing primary failur
   assert.equal(smokeModule.boundLaunchDiagnosticText(null), null)
   assert.equal(smokeModule.boundLaunchDiagnosticText("short", 8), "short")
   assert.equal(smokeModule.boundLaunchDiagnosticText("0123456789", 8), "01234567...[truncated]")
+})
+
+test("observes asynchronous differential launch failures without an unhandled error", async () => {
+  const smokeModule = await smokeModulePromise
+  const child = new EventEmitter()
+  const getLaunchError = smokeModule.observeChildProcessLaunchError(child)
+  const launchError = new Error("CreateProcess rejected the differential probe")
+  assert.equal(getLaunchError(), null)
+  child.emit("error", launchError)
+  assert.equal(getLaunchError(), launchError)
 })
 
 test("uses capability-specific shutdown evidence for current and legacy packages", async () => {
@@ -288,14 +301,23 @@ test("builds fail-closed platform install plans", async () => {
 
 test("passes Chromium remote debugging ownership through the packaged process command line", async () => {
   const smokeModule = await smokeModulePromise
-  assert.deepEqual(smokeModule.createRemoteDebuggingLaunchArgs(43117, "C:\\Jingle Data", ["--x"]), [
-    "--x",
-    "--remote-debugging-port=43117",
-    "--remote-debugging-address=127.0.0.1",
-    "--user-data-dir=C:\\Jingle Data"
-  ])
+  assert.deepEqual(
+    smokeModule.createRemoteDebuggingLaunchArgs(
+      43117,
+      "/tmp/jingle/electron-user-data",
+      "/tmp/jingle",
+      ["--x"]
+    ),
+    [
+      "--x",
+      "--remote-debugging-port=43117",
+      "--remote-debugging-address=127.0.0.1",
+      "--jingle-release-smoke-bootstrap=/tmp/jingle/release-smoke-bootstrap.jsonl",
+      "--user-data-dir=/tmp/jingle/electron-user-data"
+    ]
+  )
   assert.throws(
-    () => smokeModule.createRemoteDebuggingLaunchArgs(0, "/tmp/jingle"),
+    () => smokeModule.createRemoteDebuggingLaunchArgs(0, "/tmp/jingle/data", "/tmp/jingle"),
     /invalid remote debugging port/
   )
 })
@@ -709,6 +731,10 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(smokeSource, /Get-CimInstance Win32_Process/)
   assert.match(smokeSource, /Windows Error Reporting/)
   assert.match(smokeSource, /defaultJingleHomeExists/)
+  assert.match(smokeSource, /windows bootstrap differential/)
+  assert.match(smokeSource, /no-debug-differential/)
+  assert.match(smokeSource, /--jingle-release-smoke-bootstrap=/)
+  assert.match(smokeSource, /release-smoke-bootstrap\.jsonl/)
   assert.match(smokeSource, /diagnostics\.session_started/)
   assert.match(smokeSource, /marker\?\.terminal\?\.kind !== "clean_exit"/)
   assert.match(smokeSource, /const child = spawn\(\s*executablePath/)
@@ -750,6 +776,15 @@ test("release workflow keeps candidates build-only and publishes only verified t
 
   const mainSource = readFileSync("src/main/index.ts", "utf8")
   assert.doesNotMatch(mainSource, /JINGLE_REMOTE_DEBUGGING_PORT/)
+  const bootstrapSource = readFileSync("src/main/bootstrap.ts", "utf8")
+  assert.match(bootstrapSource, /bootstrap_started/)
+  assert.match(bootstrapSource, /application_imported/)
+  assert.match(bootstrapSource, /application_import_failed/)
+  assert.match(bootstrapSource, /environmentJingleHome/)
+  assert.match(bootstrapSource, /mode: 0o600/)
+  const viteConfig = readFileSync("electron.vite.config.ts", "utf8")
+  assert.match(viteConfig, /index: resolve\("src\/main\/bootstrap\.ts"\)/)
+  assert.match(viteConfig, /"main-application": resolve\("src\/main\/index\.ts"\)/)
 
   const freshInventory = smokeSource.indexOf(
     "freshWindowsPayloadInventory = createWindowsPayloadInventory(installed.appRoot)"
