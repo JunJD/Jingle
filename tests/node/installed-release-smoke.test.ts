@@ -923,6 +923,7 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(smokeSource, /Windows Error Reporting/)
   assert.match(smokeSource, /defaultJingleHomeExists/)
   assert.match(smokeSource, /windows bootstrap differential/)
+  assert.match(smokeSource, /ELECTRON_ENABLE_STACK_DUMPING = "1"/)
   assert.match(smokeSource, /no-debug-differential/)
   assert.match(smokeSource, /--jingle-release-smoke-bootstrap=/)
   assert.match(smokeSource, /release-smoke-bootstrap\.jsonl/)

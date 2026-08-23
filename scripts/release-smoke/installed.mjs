@@ -1376,6 +1376,7 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
   const initialLogSize = existsSync(diagnosticsLogPath) ? statSync(diagnosticsLogPath).size : 0
   const launchEnvironment = createLaunchEnvironment(jingleHome, options.environment)
   launchEnvironment.ELECTRON_ENABLE_LOGGING = "1"
+  launchEnvironment.ELECTRON_ENABLE_STACK_DUMPING = "1"
   launchEnvironment.ELECTRON_LOG_FILE = join(jingleHome, "electron.log")
   const launchArgs = createRemoteDebuggingLaunchArgs(
     remoteDebuggingPort,
