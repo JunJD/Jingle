@@ -37,4 +37,4 @@ The package is intentionally a migration-time tool. Generated Jingle packages sh
 `jingle-package/tsconfig.check.json` is a migration verification config. Run TypeScript from the generated package directory to check the migrated package against the current Jingle facade packages.
 The generated config maps `@jingle/*`, React, and detected third-party dependencies back to the Jingle workspace so a preview package can be type-checked from its generated directory before it is wired into the monorepo.
 
-Generated packages also follow the extension package boundary contract. If the source extension has no assets, the tool writes `jingle-package/assets/.gitkeep` so `assets/` still exists. Boundary checks should run against the generated package mounted under `extensions/<id>`; symlinked package directories are supported.
+Generated packages also follow the extension package boundary contract. If the source extension has no assets, the tool writes `jingle-package/assets/.gitkeep` so `assets/` still exists. Boundary checks should run against the generated package mounted under `installable-extensions/<id>`; symlinked package directories are supported.
