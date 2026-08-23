@@ -30,6 +30,8 @@ import {
 
 const APP_BOOT_TIMEOUT_MS = 90_000
 const PROCESS_TIMEOUT_MS = 120_000
+const MAC_LSREGISTER_PATH =
+  "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 const currentPackageVersion = JSON.parse(readFileSync(resolve("package.json"), "utf8")).version
 const packageSuffixByPlatform = {
   darwin: ".dmg",
@@ -437,6 +439,7 @@ async function installMac(invocation, workspace, logPath) {
   try {
     const sourceApp = selectMountedMacApp(mountPath)
     await runProcess("ditto", [sourceApp, appPath], { cwd: workspace, logPath })
+    await runProcess(MAC_LSREGISTER_PATH, ["-f", appPath], { cwd: workspace, logPath })
   } catch (error) {
     installError = error
   }
@@ -460,7 +463,11 @@ async function installMac(invocation, workspace, logPath) {
       join(appPath, "Contents", "MacOS"),
       (path) => Boolean(statSync(path).mode & 0o111),
       "macOS app executable"
-    )
+    ),
+    protocolCleanup: {
+      args: ["-u", appPath],
+      command: MAC_LSREGISTER_PATH
+    }
   }
 }
 
@@ -493,39 +500,45 @@ async function installLinux(invocation, workspace, logPath) {
   const appRoot = join(extractRoot, "squashfs-root")
   if (!existsSync(join(appRoot, "AppRun"))) fail(`AppImage extraction missed ${appRoot}/AppRun`)
 
-  const desktopEntrySource = selectLinuxDesktopEntry(appRoot)
-  assertLinuxDesktopEntryLaunch(readFileSync(desktopEntrySource, "utf8"))
-  const desktopEntryName = basename(desktopEntrySource)
+  const requireProtocolEntry = invocation.requireProtocolEntry !== false
+  const desktopEntrySource = requireProtocolEntry ? selectLinuxDesktopEntry(appRoot) : null
+  if (desktopEntrySource) {
+    assertLinuxDesktopEntryLaunch(readFileSync(desktopEntrySource, "utf8"))
+  }
+  const desktopEntryName = desktopEntrySource ? basename(desktopEntrySource) : null
   const launchEnvironment = createLinuxXdgEnvironment(join(invocation.installRoot, "xdg"))
-  const applicationsDirectory = join(launchEnvironment.XDG_DATA_HOME, "applications")
-  mkdirSync(applicationsDirectory, { recursive: true })
   const environment = { ...process.env, ...launchEnvironment }
-  await runProcess(
-    "desktop-file-install",
-    [
-      `--dir=${applicationsDirectory}`,
-      "--set-key=Exec",
-      `--set-value=${invocation.artifactPath} --no-sandbox %U`,
-      desktopEntrySource
-    ],
-    { cwd: workspace, env: environment, logPath }
-  )
-  const installedDesktopEntry = join(applicationsDirectory, desktopEntryName)
-  await runProcess("desktop-file-validate", [installedDesktopEntry], {
-    cwd: workspace,
-    env: environment,
-    logPath
-  })
-  await runProcess("update-desktop-database", [applicationsDirectory], {
-    cwd: workspace,
-    env: environment,
-    logPath
-  })
-  await runProcess("xdg-mime", ["default", desktopEntryName, "x-scheme-handler/jingle"], {
-    cwd: workspace,
-    env: environment,
-    logPath
-  })
+  let installedDesktopEntry = null
+  if (desktopEntrySource && desktopEntryName) {
+    const applicationsDirectory = join(launchEnvironment.XDG_DATA_HOME, "applications")
+    mkdirSync(applicationsDirectory, { recursive: true })
+    await runProcess(
+      "desktop-file-install",
+      [
+        `--dir=${applicationsDirectory}`,
+        "--set-key=Exec",
+        `--set-value=${invocation.artifactPath} --no-sandbox %U`,
+        desktopEntrySource
+      ],
+      { cwd: workspace, env: environment, logPath }
+    )
+    installedDesktopEntry = join(applicationsDirectory, desktopEntryName)
+    await runProcess("desktop-file-validate", [installedDesktopEntry], {
+      cwd: workspace,
+      env: environment,
+      logPath
+    })
+    await runProcess("update-desktop-database", [applicationsDirectory], {
+      cwd: workspace,
+      env: environment,
+      logPath
+    })
+    await runProcess("xdg-mime", ["default", desktopEntryName, "x-scheme-handler/jingle"], {
+      cwd: workspace,
+      env: environment,
+      logPath
+    })
+  }
   return {
     appRoot,
     desktopEntryPath: installedDesktopEntry,
@@ -545,6 +558,16 @@ async function installArtifact(invocation, workspace, logPath) {
 async function cleanupInstalledArtifact(input) {
   const { installRoot, installed, installationCompleted, logPath, workspace } = input
   const errors = []
+  if (installed?.protocolCleanup) {
+    try {
+      await runProcess(installed.protocolCleanup.command, installed.protocolCleanup.args, {
+        cwd: workspace,
+        logPath
+      })
+    } catch (error) {
+      errors.push(error)
+    }
+  }
   if (process.platform === "win32" && existsSync(installRoot)) {
     try {
       const uninstallers = collectFiles(
@@ -598,6 +621,7 @@ async function withInstalledArtifact(input, operation) {
       input.artifactPath,
       input.installRoot
     )
+    invocation.requireProtocolEntry = input.requireProtocolEntry !== false
     installed = await installArtifact(invocation, input.workspace, input.logPath)
     installationCompleted = true
     result = await operation(installed)
@@ -1380,6 +1404,7 @@ async function run() {
           artifactPath: previousArtifact.path,
           installRoot: upgradeInstallRoot,
           logPath: commandLog,
+          requireProtocolEntry: false,
           workspace: upgradeWorkspace
         },
         runPrevious
