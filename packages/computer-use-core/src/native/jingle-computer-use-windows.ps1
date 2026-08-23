@@ -9,6 +9,120 @@ $JingleComputerUseUtf8 = New-Object System.Text.UTF8Encoding($false)
 [Console]::InputEncoding = $JingleComputerUseUtf8
 [Console]::OutputEncoding = $JingleComputerUseUtf8
 
+function New-ProbeResponse {
+    return [pscustomobject]@{
+        environment = $JingleComputerUseEnvironment
+        platform = "windows"
+        protocolVersion = $JingleComputerUseProtocolVersion
+        capabilities = @(
+            [pscustomobject]@{ action = "activate"; background = "unavailable"; foreground = "unavailable"; route = "unavailable" },
+            [pscustomobject]@{ action = "press"; background = "unavailable"; foreground = "unavailable"; route = "uia_action" },
+            [pscustomobject]@{ action = "set_value"; background = "unavailable"; foreground = "unavailable"; route = "uia_value" },
+            [pscustomobject]@{ action = "type_text"; background = "unavailable"; foreground = "unavailable"; route = "uia_value" },
+            [pscustomobject]@{ action = "keypress"; background = "unavailable"; foreground = "unavailable"; route = "uia_unavailable" },
+            [pscustomobject]@{ action = "scroll"; background = "unavailable"; foreground = "unavailable"; route = "uia_unavailable" }
+        )
+    }
+}
+
+function Write-NativeFailure {
+    param([object]$Failure)
+    [Console]::Error.WriteLine((ConvertTo-Json -Compress -InputObject ([ordered]@{
+        code = "native_failed"
+        message = $Failure.Exception.Message
+    })))
+}
+
+function Write-NativeResult {
+    param([object]$Result)
+    if ($null -eq $Result) {
+        [Console]::Out.WriteLine("null")
+        return
+    }
+    [Console]::Out.WriteLine((ConvertTo-Json -InputObject $Result -Compress -Depth 24))
+}
+
+function Get-OptionalProperty {
+    param([object]$Object, [string]$Name)
+    if ($null -eq $Object) { return $null }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) { return $null }
+    return $property.Value
+}
+
+function Assert-OperationProtocol {
+    param([object]$Envelope)
+    $environmentProperty = $Envelope.PSObject.Properties["environment"]
+    $protocolVersionProperty = $Envelope.PSObject.Properties["protocolVersion"]
+    if ($null -eq $environmentProperty -or $null -eq $protocolVersionProperty) {
+        throw "Computer-use request belongs to another environment or protocol."
+    }
+    $rawEnvironment = $environmentProperty.Value
+    $rawProtocolVersion = $protocolVersionProperty.Value
+    $protocolIsInteger = $rawProtocolVersion -is [int] -or $rawProtocolVersion -is [long]
+    if ($rawEnvironment -isnot [string] -or
+        $rawEnvironment -cne $JingleComputerUseEnvironment -or
+        -not $protocolIsInteger -or
+        $rawProtocolVersion -ne $JingleComputerUseProtocolVersion) {
+        throw "Computer-use request belongs to another environment or protocol."
+    }
+}
+
+function New-OperationResponse {
+    param([string]$Method, [object]$Result)
+    return [pscustomobject]@{
+        environment = $JingleComputerUseEnvironment
+        method = $Method
+        protocolVersion = $JingleComputerUseProtocolVersion
+        result = $Result
+    }
+}
+
+try {
+    if ($args.Count -gt 0) { throw "Computer Use requests must use stdin." }
+    $json = [Console]::In.ReadToEnd()
+    if (-not $json) { throw "A JSON request is required." }
+    $envelope = $json | ConvertFrom-Json
+    $methodProperty = $envelope.PSObject.Properties["method"]
+    if ($null -eq $methodProperty) { throw "Computer-use method must be a string." }
+    $method = $methodProperty.Value
+    if ($method -isnot [string]) { throw "Computer-use method must be a string." }
+} catch {
+    Write-NativeFailure $_
+    exit 1
+}
+
+try {
+    switch -CaseSensitive ($method) {
+        "probe" {
+            Assert-OperationProtocol $envelope
+            Write-NativeResult (New-ProbeResponse)
+            exit 0
+        }
+        "execute" {
+            Assert-OperationProtocol $envelope
+            $base = Get-OptionalProperty (Get-OptionalProperty $envelope "request") "base"
+            $baseStateId = [string](Get-OptionalProperty $base "stateId")
+            Write-NativeResult (New-OperationResponse "execute" ([pscustomobject]@{
+                baseStateId = $baseStateId
+                outcome = "unavailable"
+                steps = @()
+            }))
+            exit 0
+        }
+        "dispose_session" {
+            Write-NativeResult $null
+            exit 0
+        }
+        "identify" {}
+        "observe" {}
+        default { throw "Unsupported computer-use method: $method" }
+    }
+} catch {
+    Write-NativeFailure $_
+    exit 1
+}
+
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -TypeDefinition @"
@@ -56,14 +170,6 @@ public static class JingleComputerUseWin32 {
 
 $script:MaxElements = 750
 $script:MaxDepth = 12
-
-function Get-OptionalProperty {
-    param([object]$Object, [string]$Name)
-    if ($null -eq $Object) { return $null }
-    $property = $Object.PSObject.Properties[$Name]
-    if ($null -eq $property) { return $null }
-    return $property.Value
-}
 
 function Convert-ToIntPtr {
     param([object]$Value)
@@ -231,16 +337,13 @@ function Get-BoundedTree {
     $queue = New-Object Collections.Generic.Queue[object]
     $queue.Enqueue([pscustomobject]@{ Element = $Root; Depth = 0 })
     $records = New-Object Collections.Generic.List[object]
-    $elementsByRef = @{}
     $sourceTruncated = $false
     while ($queue.Count -gt 0 -and $records.Count -lt $script:MaxElements) {
         $entry = $queue.Dequeue()
         $element = [Windows.Automation.AutomationElement]$entry.Element
         try {
-            $ref = Get-ElementRef $element $NativeId
             $record = Get-ElementRecord $element $NativeId $records.Count
             $records.Add($record)
-            $elementsByRef[$ref] = $element
             if ([int]$entry.Depth -ge $script:MaxDepth) {
                 if ($null -ne $walker.GetFirstChild($element)) { $sourceTruncated = $true }
                 continue
@@ -257,82 +360,7 @@ function Get-BoundedTree {
     }
     return [pscustomobject]@{
         Records = [object[]]$records
-        ElementsByRef = $elementsByRef
         SourceTruncated = $sourceTruncated -or $queue.Count -gt 0
-    }
-}
-
-function New-UnavailableStep {
-    param([object]$Action, [string]$Route)
-    if (-not $Route) {
-        $Route = switch ([string](Get-OptionalProperty $Action "kind")) {
-            "press" { "uia_action" }
-            { $_ -eq "set_value" -or $_ -eq "type_text" } { "uia_value" }
-            default { "uia_unavailable" }
-        }
-    }
-    return [pscustomobject]@{
-        action = $Action
-        evidence = [pscustomobject]@{
-            delivery = "semantic"
-            noSideEffectProof = $true
-            route = $Route
-            verification = "failed"
-        }
-        outcome = "unavailable"
-    }
-}
-
-function Invoke-SemanticAction {
-    param([Windows.Automation.AutomationElement]$Element, [object]$Action)
-    $kind = [string]$Action.kind
-    $route = if ($kind -eq "press") { "uia_action" } elseif ($kind -eq "set_value" -or $kind -eq "type_text") { "uia_value" } else { "uia_unavailable" }
-    $verified = $true
-    try {
-        switch ($kind) {
-            "press" {
-                $pattern = Get-Pattern $Element ([Windows.Automation.InvokePattern]::Pattern)
-                if ($null -ne $pattern) { $pattern.Invoke(); $verified = $false }
-                else {
-                    $pattern = Get-Pattern $Element ([Windows.Automation.TogglePattern]::Pattern)
-                    if ($null -ne $pattern) { $before = $pattern.Current.ToggleState; $pattern.Toggle(); if ($pattern.Current.ToggleState -eq $before) { throw "Toggle state did not change." } }
-                    else {
-                        $pattern = Get-Pattern $Element ([Windows.Automation.SelectionItemPattern]::Pattern)
-                        if ($null -eq $pattern) { return New-UnavailableStep $Action }
-                        $pattern.Select(); if (-not $pattern.Current.IsSelected) { throw "Selection was not applied." }
-                    }
-                }
-            }
-            { $_ -eq "set_value" -or $_ -eq "type_text" } {
-                $pattern = Get-Pattern $Element ([Windows.Automation.ValuePattern]::Pattern)
-                if ($null -eq $pattern -or $pattern.Current.IsReadOnly) { return New-UnavailableStep $Action "uia_value" }
-                $value = [string](Get-OptionalProperty $Action "value")
-                $pattern.SetValue($value)
-                if ($pattern.Current.Value -ne $value) { throw "Value was not applied." }
-            }
-            default { return New-UnavailableStep $Action }
-        }
-        return [pscustomobject]@{
-            action = $Action
-            evidence = [pscustomobject]@{
-                delivery = "semantic"
-                noSideEffectProof = $false
-                route = $route
-                verification = if ($verified) { "verified" } else { "unverifiable" }
-            }
-            outcome = if ($verified) { "worked" } else { "unknown" }
-        }
-    } catch {
-        return [pscustomobject]@{
-            action = $Action
-            evidence = [pscustomobject]@{
-                delivery = "semantic"
-                noSideEffectProof = $false
-                route = $route
-                verification = "unverifiable"
-            }
-            outcome = "unknown"
-        }
     }
 }
 
@@ -372,110 +400,8 @@ function Invoke-Observe {
     }
 }
 
-function Invoke-Execute {
-    param([object]$Request)
-    $base = Get-OptionalProperty $Request "base"
-    $baseStateId = [string](Get-OptionalProperty $base "stateId")
-    # Windows UIA mutation remains packaged but unreachable until it has passed
-    # the Windows behavior matrix. Direct helper callers fail closed as well.
-    return [pscustomobject]@{ baseStateId = $baseStateId; outcome = "unavailable"; steps = @() }
-
-    <# The implementation below is retained for platform verification. It must
-       not become reachable until Invoke-Probe promotes the same action routes. #>
-    $baseWindow = Get-OptionalProperty $base "window"
-    $authorization = Get-OptionalProperty $Request "authorization"
-    $authorizationWindow = Get-OptionalProperty $authorization "window"
-    $expiresAt = [Int64](Get-OptionalProperty $authorization "expiresAt")
-    if ($expiresAt -le [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -or
-        [string](Get-OptionalProperty $authorizationWindow "nativeId") -ne [string](Get-OptionalProperty $baseWindow "nativeId") -or
-        [int](Get-OptionalProperty $authorizationWindow "pid") -ne [int](Get-OptionalProperty $baseWindow "pid") -or
-        [string](Get-OptionalProperty $authorizationWindow "generation") -ne [string](Get-OptionalProperty $baseWindow "generation")) {
-        return [pscustomobject]@{ baseStateId = $baseStateId; outcome = "refused"; steps = @() }
-    }
-    $window = Resolve-Window ([pscustomobject]@{ windowId = (Get-OptionalProperty $baseWindow "nativeId") }) $baseWindow
-    if ($null -eq $window) {
-        return [pscustomobject]@{ baseStateId = $baseStateId; outcome = "refused"; steps = @() }
-    }
-    $delivery = [string](Get-OptionalProperty $Request "delivery")
-    if ($delivery -ne "background") {
-        return [pscustomobject]@{ baseStateId = $baseStateId; outcome = "unavailable"; steps = @() }
-    }
-    $root = [Windows.Automation.AutomationElement]::FromHandle($window.Hwnd)
-    $tree = Get-BoundedTree $root $window.NativeId
-    $steps = New-Object Collections.Generic.List[object]
-    $actions = @(Get-OptionalProperty $Request "actions")
-    for ($index = 0; $index -lt $actions.Count; $index++) {
-        $action = $actions[$index]
-        $ref = [string](Get-OptionalProperty $action "ref")
-        if (-not $tree.ElementsByRef.ContainsKey($ref)) {
-            $steps.Add((New-UnavailableStep $action $null))
-            $aggregateOutcome = if ($index -eq 0) { "unavailable" } else { "unknown" }
-            return [pscustomobject]@{ baseStateId = $baseStateId; outcome = $aggregateOutcome; steps = [object[]]$steps; stoppedAt = $index }
-        }
-        $step = Invoke-SemanticAction $tree.ElementsByRef[$ref] $action
-        $steps.Add($step)
-        if ($step.outcome -ne "worked") {
-            return [pscustomobject]@{ baseStateId = $baseStateId; outcome = $step.outcome; steps = [object[]]$steps; stoppedAt = $index }
-        }
-    }
-    return [pscustomobject]@{ baseStateId = $baseStateId; outcome = "worked"; steps = [object[]]$steps }
-}
-
-function Invoke-Probe {
-    return [pscustomobject]@{
-        environment = $JingleComputerUseEnvironment
-        platform = "windows"
-        protocolVersion = $JingleComputerUseProtocolVersion
-        capabilities = @(
-            [pscustomobject]@{ action = "activate"; background = "unavailable"; foreground = "unavailable"; route = "unavailable" },
-            [pscustomobject]@{ action = "press"; background = "unavailable"; foreground = "unavailable"; route = "uia_action" },
-            [pscustomobject]@{ action = "set_value"; background = "unavailable"; foreground = "unavailable"; route = "uia_value" },
-            [pscustomobject]@{ action = "type_text"; background = "unavailable"; foreground = "unavailable"; route = "uia_value" },
-            [pscustomobject]@{ action = "keypress"; background = "unavailable"; foreground = "unavailable"; route = "uia_unavailable" },
-            [pscustomobject]@{ action = "scroll"; background = "unavailable"; foreground = "unavailable"; route = "uia_unavailable" }
-        )
-    }
-}
-
-function New-OperationResponse {
-    param([string]$Method, [object]$Result)
-    return [pscustomobject]@{
-        environment = $JingleComputerUseEnvironment
-        method = $Method
-        protocolVersion = $JingleComputerUseProtocolVersion
-        result = $Result
-    }
-}
-
-function Assert-OperationProtocol {
-    param([object]$Envelope)
-    $environmentProperty = $Envelope.PSObject.Properties["environment"]
-    $protocolVersionProperty = $Envelope.PSObject.Properties["protocolVersion"]
-    if ($null -eq $environmentProperty -or $null -eq $protocolVersionProperty) {
-        throw "Computer-use request belongs to another environment or protocol."
-    }
-    $rawEnvironment = $environmentProperty.Value
-    $rawProtocolVersion = $protocolVersionProperty.Value
-    $protocolIsInteger = $rawProtocolVersion -is [int] -or $rawProtocolVersion -is [long]
-    if ($rawEnvironment -isnot [string] -or
-        $rawEnvironment -cne $JingleComputerUseEnvironment -or
-        -not $protocolIsInteger -or
-        $rawProtocolVersion -ne $JingleComputerUseProtocolVersion) {
-        throw "Computer-use request belongs to another environment or protocol."
-    }
-}
-
 try {
-    if ($args.Count -gt 0) { throw "Computer Use requests must use stdin." }
-    $json = [Console]::In.ReadToEnd()
-    if (-not $json) { throw "A JSON request is required." }
-    $envelope = $json | ConvertFrom-Json
-    $methodProperty = $envelope.PSObject.Properties["method"]
-    if ($null -eq $methodProperty) { throw "Computer-use method must be a string." }
-    $method = $methodProperty.Value
-    if ($method -isnot [string]) { throw "Computer-use method must be a string." }
     switch -CaseSensitive ($method) {
-        "probe" { $result = Invoke-Probe }
         "identify" {
             Assert-OperationProtocol $envelope
             $result = New-OperationResponse "identify" (Invoke-Identify (Get-OptionalProperty $envelope "request"))
@@ -484,18 +410,10 @@ try {
             Assert-OperationProtocol $envelope
             $result = New-OperationResponse "observe" (Invoke-Observe (Get-OptionalProperty $envelope "request"))
         }
-        "execute" {
-            Assert-OperationProtocol $envelope
-            $result = New-OperationResponse "execute" (Invoke-Execute (Get-OptionalProperty $envelope "request"))
-        }
-        "dispose_session" { $result = $null }
         default { throw "Unsupported computer-use method: $method" }
     }
-    [Console]::Out.WriteLine((ConvertTo-Json -InputObject $result -Compress -Depth 24))
+    Write-NativeResult $result
 } catch {
-    [Console]::Error.WriteLine((ConvertTo-Json -Compress -InputObject ([ordered]@{
-        code = "native_failed"
-        message = $_.Exception.Message
-    })))
+    Write-NativeFailure $_
     exit 1
 }

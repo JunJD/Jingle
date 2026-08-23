@@ -403,6 +403,19 @@ test("Windows helper pins its JSON wire to UTF-8 before reading requests", () =>
   assert.ok(
     source.indexOf("[Console]::OutputEncoding") < source.indexOf("[Console]::In.ReadToEnd()")
   )
+  assert.ok(source.indexOf("[Console]::In.ReadToEnd()") < source.indexOf("Add-Type -AssemblyName"))
+  for (const method of ["probe", "execute", "dispose_session"]) {
+    assert.ok(source.indexOf(`\"${method}\"`) < source.indexOf("Add-Type -AssemblyName"))
+  }
+  assert.ok(
+    source.indexOf('default { throw "Unsupported computer-use method: $method" }') <
+      source.indexOf("Add-Type -AssemblyName")
+  )
+  assert.match(source, /if \(\$null -eq \$Result\) \{[\s\S]*?WriteLine\("null"\)/)
+  assert.doesNotMatch(source, /function Invoke-SemanticAction/)
+  assert.doesNotMatch(source, /function New-UnavailableStep/)
+  assert.doesNotMatch(source, /ElementsByRef/)
+  assert.doesNotMatch(source, /implementation below is retained/)
 })
 
 test(
@@ -576,7 +589,7 @@ test(
     ]
     const probe = runJson("powershell.exe", [
       ...powershellArgs,
-      JSON.stringify({ environment: "windows-win32", method: "probe" })
+      JSON.stringify({ environment: "windows-win32", method: "probe", protocolVersion: 1 })
     ])
     assertRawCapabilityMatrix(probe, {
       environment: "windows-win32",
@@ -585,6 +598,20 @@ test(
     assert.equal(
       probe.capabilities.some((capability) => capability.background === "verified"),
       false
+    )
+    assert.equal(
+      runJson("powershell.exe", [
+        ...powershellArgs,
+        JSON.stringify({ method: "dispose_session", sessionId: "session-test" })
+      ]),
+      null
+    )
+    assert.match(
+      runJsonFailure("powershell.exe", [
+        ...powershellArgs,
+        JSON.stringify({ environment: "macos-quartz", method: "probe", protocolVersion: 1 })
+      ]),
+      /another environment or protocol/
     )
 
     const execution = runJson("powershell.exe", [
