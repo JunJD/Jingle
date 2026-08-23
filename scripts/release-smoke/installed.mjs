@@ -165,9 +165,44 @@ export function createWindowsPayloadInventory(root) {
   }
 }
 
+export function describeWindowsPayloadMismatch(expected, actual) {
+  const expectedByPath = new Map(expected.payload.map((entry) => [entry.path, entry]))
+  const actualByPath = new Map(actual.payload.map((entry) => [entry.path, entry]))
+  const missingAll = expected.payload
+    .filter((entry) => !actualByPath.has(entry.path))
+    .map((entry) => entry.path)
+  const unexpectedAll = actual.payload
+    .filter((entry) => !expectedByPath.has(entry.path))
+    .map((entry) => entry.path)
+  const changedAll = expected.payload
+    .filter((entry) => {
+      const candidate = actualByPath.get(entry.path)
+      return candidate && JSON.stringify(candidate) !== JSON.stringify(entry)
+    })
+    .map((entry) => entry.path)
+  return {
+    actualPayloadCount: actual.payload.length,
+    changed: changedAll.slice(0, 50),
+    changedCount: changedAll.length,
+    expectedPayloadCount: expected.payload.length,
+    missing: missingAll.slice(0, 50),
+    missingCount: missingAll.length,
+    unexpected: unexpectedAll.slice(0, 50),
+    unexpectedCount: unexpectedAll.length,
+    uninstaller: {
+      actual: actual.uninstaller,
+      expected: expected.uninstaller
+    }
+  }
+}
+
 export function assertWindowsPayloadMatchesFreshInstall(expected, actual) {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    fail("Windows in-place upgrade payload differs from a fresh current installation")
+    fail(
+      `Windows in-place upgrade payload differs from a fresh current installation: ${JSON.stringify(
+        describeWindowsPayloadMismatch(expected, actual)
+      )}`
+    )
   }
   return actual
 }

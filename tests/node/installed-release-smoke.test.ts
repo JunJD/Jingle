@@ -64,6 +64,17 @@ interface InstalledSmokeModule {
     payload: Array<{ path: string; sha256: string; size: number }>
     uninstaller: { path: string; sha256: string; size: number }
   }
+  describeWindowsPayloadMismatch(
+    expected: unknown,
+    actual: unknown
+  ): {
+    changed: string[]
+    changedCount: number
+    missing: string[]
+    missingCount: number
+    unexpected: string[]
+    unexpectedCount: number
+  }
   ensureLinuxAppImageExecutable(artifactPath: string): void
   readDiagnosticsRuntimeIdentity(
     jingleHome: string,
@@ -426,7 +437,12 @@ test("rejects stale or ambiguous payload after a Windows in-place upgrade", asyn
           fresh,
           smokeModule.createWindowsPayloadInventory(upgradedRoot)
         ),
-      /differs from a fresh current installation/
+      (error) => {
+        assert.match(String(error), /differs from a fresh current installation/)
+        assert.match(String(error), /"uninstaller"/)
+        assert.match(String(error), /"changed":\[\]/)
+        return true
+      }
     )
     writeFileSync(join(upgradedRoot, "Uninstall old Jingle.exe"), "stale uninstaller")
     assert.throws(
@@ -436,6 +452,35 @@ test("rejects stale or ambiguous payload after a Windows in-place upgrade", asyn
   } finally {
     rmSync(root, { force: true, recursive: true })
   }
+})
+
+test("bounds Windows payload mismatch details while preserving exact counts", async () => {
+  const smokeModule = await smokeModulePromise
+  const expected = {
+    payload: [
+      { path: "changed.dll", sha256: "a", size: 1 },
+      { path: "missing.dll", sha256: "b", size: 1 }
+    ],
+    uninstaller: { path: "Uninstall Jingle.exe", sha256: "c", size: 1 }
+  }
+  const actual = {
+    payload: [
+      { path: "changed.dll", sha256: "different", size: 1 },
+      ...Array.from({ length: 51 }, (_, index) => ({
+        path: `unexpected-${String(index).padStart(2, "0")}.dll`,
+        sha256: "d",
+        size: 1
+      }))
+    ],
+    uninstaller: expected.uninstaller
+  }
+  const mismatch = smokeModule.describeWindowsPayloadMismatch(expected, actual)
+  assert.deepEqual(mismatch.changed, ["changed.dll"])
+  assert.equal(mismatch.changedCount, 1)
+  assert.deepEqual(mismatch.missing, ["missing.dll"])
+  assert.equal(mismatch.missingCount, 1)
+  assert.equal(mismatch.unexpected.length, 50)
+  assert.equal(mismatch.unexpectedCount, 51)
 })
 
 test("parses the exact Windows protocol command owner", async () => {
