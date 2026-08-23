@@ -109,9 +109,10 @@ function createDeferred<T>(): {
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  const deadline = Date.now() + 5_000
+  while (Date.now() < deadline) {
     if (predicate()) return
-    await new Promise<void>((resolve) => setImmediate(resolve))
+    await new Promise<void>((resolve) => setTimeout(resolve, 5))
   }
 
   assert.fail("Timed out waiting for async workspace search state")
