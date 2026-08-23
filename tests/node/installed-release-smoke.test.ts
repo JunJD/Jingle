@@ -975,6 +975,10 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(smokeSource, /--remote-debugging-port=\$\{port\}/)
   assert.match(smokeSource, /--remote-debugging-address=127\.0\.0\.1/)
   assert.match(smokeSource, /probeTransport: process\.platform === "win32" \? "main-file" : "cdp"/)
+  assert.match(
+    smokeSource,
+    /smokeLaunchArgs: process\.platform === "win32" \? \["--disable-gpu"\] : \[\]/
+  )
   assert.match(smokeSource, /probeTransport: "cdp"/)
   assert.match(smokeSource, /main-file probe transport requires a current main-window package/)
   assert.match(smokeSource, /MAIN_PROBE_REQUEST_FILE/)

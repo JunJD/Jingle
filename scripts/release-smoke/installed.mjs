@@ -1773,7 +1773,7 @@ async function launchInstalledAndProbe(installed, jingleHome, logPath, options) 
   const probe = await launchAndProbe(installed.executablePath, jingleHome, logPath, {
     ...options,
     environment: installed.launchEnvironment,
-    launchArgs: installed.launchArgs
+    launchArgs: [...installed.launchArgs, ...(options.smokeLaunchArgs ?? [])]
   })
   if (options.expectProtocolClient || installed.desktopEntryName) {
     await assertProtocolClientRegistration(installed, logPath)
@@ -1974,7 +1974,8 @@ async function run() {
           expectProtocolClient: process.platform === "win32",
           expectedVersion: currentPackageVersion,
           expectedWindowKind: "main",
-          probeTransport: process.platform === "win32" ? "main-file" : "cdp"
+          probeTransport: process.platform === "win32" ? "main-file" : "cdp",
+          smokeLaunchArgs: process.platform === "win32" ? ["--disable-gpu"] : []
         })
         setPhase("fresh-database-verification")
         await verifyFreshDatabase(freshHome)
@@ -2070,7 +2071,8 @@ async function run() {
           threadId: sentinel.threadId,
           title: sentinel.title,
           token: sentinel.token
-        }
+        },
+        smokeLaunchArgs: process.platform === "win32" ? ["--disable-gpu"] : []
       })
       if (upgradeMode === "nsis-in-place") {
         setPhase("upgrade-current-database-verification")
