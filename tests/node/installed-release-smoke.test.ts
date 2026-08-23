@@ -14,6 +14,7 @@ import { pathToFileURL } from "node:url"
 import test from "node:test"
 
 interface InstalledSmokeModule {
+  boundLaunchDiagnosticText(value: unknown, maximumCharacters?: number): string | null
   closeApplication(
     browser: {
       close(): Promise<void>
@@ -100,6 +101,13 @@ interface InstalledSmokeModule {
 
 const moduleUrl = pathToFileURL(join(process.cwd(), "scripts/release-smoke/installed.mjs")).href
 const smokeModulePromise = import(moduleUrl) as Promise<InstalledSmokeModule>
+
+test("bounds optional Windows launch diagnostics without changing primary failures", async () => {
+  const smokeModule = await smokeModulePromise
+  assert.equal(smokeModule.boundLaunchDiagnosticText(null), null)
+  assert.equal(smokeModule.boundLaunchDiagnosticText("short", 8), "short")
+  assert.equal(smokeModule.boundLaunchDiagnosticText("0123456789", 8), "01234567...[truncated]")
+})
 
 test("uses capability-specific shutdown evidence for current and legacy packages", async () => {
   const smokeModule = await smokeModulePromise
@@ -696,6 +704,11 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(smokeSource, /\/json\/version/)
   assert.match(smokeSource, /--remote-debugging-port=\$\{port\}/)
   assert.match(smokeSource, /--remote-debugging-address=127\.0\.0\.1/)
+  assert.match(smokeSource, /windows launch diagnostics/)
+  assert.match(smokeSource, /Get-NetTCPConnection -LocalPort/)
+  assert.match(smokeSource, /Get-CimInstance Win32_Process/)
+  assert.match(smokeSource, /Windows Error Reporting/)
+  assert.match(smokeSource, /defaultJingleHomeExists/)
   assert.match(smokeSource, /diagnostics\.session_started/)
   assert.match(smokeSource, /marker\?\.terminal\?\.kind !== "clean_exit"/)
   assert.match(smokeSource, /const child = spawn\(\s*executablePath/)

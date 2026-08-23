@@ -16,7 +16,7 @@ import {
   statSync,
   writeFileSync
 } from "node:fs"
-import { tmpdir } from "node:os"
+import { homedir, tmpdir } from "node:os"
 import { basename, join, relative, resolve } from "node:path"
 import { createServer } from "node:net"
 import { pathToFileURL } from "node:url"
@@ -770,8 +770,84 @@ async function reserveLoopbackPort() {
   return address.port
 }
 
-async function waitForDevToolsPort(port, child, getLaunchError) {
+function appendLaunchDiagnostic(logPath, event, payload) {
+  appendFileSync(logPath, `[${event}] ${JSON.stringify(payload)}\n`)
+}
+
+export function boundLaunchDiagnosticText(value, maximumCharacters = 65_536) {
+  if (typeof value !== "string") return null
+  if (value.length <= maximumCharacters) return value
+  return `${value.slice(0, maximumCharacters)}...[truncated]`
+}
+
+function collectWindowsLaunchFailureDiagnostics(child, port, jingleHome, logPath) {
+  if (process.platform !== "win32") return
+  try {
+    const script = [
+      "$ErrorActionPreference = 'Continue'",
+      "$rootPid = [int]$env:JINGLE_SMOKE_PID",
+      "$port = [int]$env:JINGLE_SMOKE_PORT",
+      "$all = @(Get-CimInstance Win32_Process)",
+      "$ids = [System.Collections.Generic.HashSet[int]]::new()",
+      "if ($rootPid -gt 0) { $null = $ids.Add($rootPid) }",
+      "do {",
+      "  $before = $ids.Count",
+      "  foreach ($process in $all) { if ($ids.Contains([int]$process.ParentProcessId)) { $null = $ids.Add([int]$process.ProcessId) } }",
+      "} while ($ids.Count -ne $before)",
+      "$processes = @($all | Where-Object { $ids.Contains([int]$_.ProcessId) } | Select-Object ProcessId, ParentProcessId, ExecutablePath, CommandLine, CreationDate)",
+      "$tcp = @(Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | Select-Object LocalAddress, LocalPort, State, OwningProcess)",
+      "$events = @(Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=(Get-Date).AddMinutes(-10)} -ErrorAction SilentlyContinue | Where-Object { ($_.ProviderName -eq 'Application Error' -or $_.ProviderName -eq 'Windows Error Reporting') -and $_.Message -match 'Jingle(?:\\.exe)?' } | Select-Object -First 12 TimeCreated, ProviderName, Id, LevelDisplayName, @{Name='Message'; Expression={ if ($_.Message.Length -gt 4096) { $_.Message.Substring(0, 4096) + '...[truncated]' } else { $_.Message } }})",
+      "[ordered]@{ processes = $processes; tcp = $tcp; events = $events } | ConvertTo-Json -Compress -Depth 5"
+    ].join("\n")
+    const result = spawnSync(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", script],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          JINGLE_SMOKE_PID: String(child.pid ?? 0),
+          JINGLE_SMOKE_PORT: String(port)
+        },
+        timeout: 15_000,
+        windowsHide: true
+      }
+    )
+    let jingleHomeEntries = []
+    try {
+      jingleHomeEntries = existsSync(jingleHome) ? readdirSync(jingleHome).sort() : []
+    } catch (error) {
+      jingleHomeEntries = [
+        `[unavailable: ${error instanceof Error ? error.message : String(error)}]`
+      ]
+    }
+    appendLaunchDiagnostic(logPath, "windows launch diagnostics", {
+      defaultJingleHomeExists: existsSync(join(homedir(), ".jingle")),
+      jingleHomeEntries,
+      powershellError: result.error?.message ?? null,
+      powershellExitCode: result.status,
+      snapshot: boundLaunchDiagnosticText(result.stdout?.trim()) || null,
+      stderr: boundLaunchDiagnosticText(result.stderr?.trim()) || null
+    })
+  } catch (error) {
+    try {
+      appendLaunchDiagnostic(logPath, "windows launch diagnostics", {
+        diagnosticsCollectionError: error instanceof Error ? error.message : String(error)
+      })
+    } catch {
+      // Diagnostics are best effort and must never replace the launch failure.
+    }
+  }
+}
+
+async function waitForDevToolsPort(port, child, getLaunchError, jingleHome, logPath) {
   const deadline = Date.now() + APP_BOOT_TIMEOUT_MS
+  let diagnosticsCollected = false
+  const collectDiagnostics = () => {
+    if (diagnosticsCollected) return
+    diagnosticsCollected = true
+    collectWindowsLaunchFailureDiagnostics(child, port, jingleHome, logPath)
+  }
   while (Date.now() < deadline) {
     try {
       const response = await fetch(`http://127.0.0.1:${port}/json/version`)
@@ -780,16 +856,19 @@ async function waitForDevToolsPort(port, child, getLaunchError) {
       // The packaged Chromium endpoint is not listening yet.
     }
     if (child.exitCode !== null || child.signalCode !== null) {
+      collectDiagnostics()
       fail(
         `installed executable exited before exposing CDP: code ${String(child.exitCode)} signal ${String(child.signalCode)}`
       )
     }
     const launchError = getLaunchError()
     if (launchError) {
+      collectDiagnostics()
       throw launchError
     }
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 100))
   }
+  collectDiagnostics()
   fail("installed executable did not expose CDP before the deadline")
 }
 
@@ -1017,6 +1096,16 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
     shell: false,
     windowsHide: true
   })
+  appendLaunchDiagnostic(logPath, "app launch context", {
+    args: launchArgs,
+    cwd: process.cwd(),
+    executablePath,
+    jingleHome,
+    pid: child.pid ?? null,
+    remoteDebuggingPort,
+    startedAt: new Date().toISOString(),
+    userDataPath
+  })
   let launchError = null
   child.once("error", (error) => {
     launchError = error
@@ -1027,7 +1116,13 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
   let browser = null
   return runProbeWithShutdown(
     async () => {
-      const port = await waitForDevToolsPort(remoteDebuggingPort, child, () => launchError)
+      const port = await waitForDevToolsPort(
+        remoteDebuggingPort,
+        child,
+        () => launchError,
+        jingleHome,
+        logPath
+      )
       browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, {
         timeout: APP_BOOT_TIMEOUT_MS
       })
