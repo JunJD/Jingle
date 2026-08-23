@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "fs"
 import { mkdirSync } from "fs"
 import { dirname } from "path"
+import { supportsPosixFileModes } from "../filesystem-permissions"
 import { getJingleAuthPath } from "./paths"
 import type { ProviderId } from "./types"
 
@@ -108,7 +109,9 @@ function writeAuthState(state: ProviderAuthState): void {
     encoding: "utf8",
     mode: 0o600
   })
-  chmodSync(path, 0o600)
+  if (supportsPosixFileModes()) {
+    chmodSync(path, 0o600)
+  }
 }
 
 function normalizeProviderAuth(

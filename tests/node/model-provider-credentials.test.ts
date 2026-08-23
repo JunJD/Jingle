@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
+import { supportsPosixFileModes } from "../../src/main/filesystem-permissions"
 
 const originalJingleHome = process.env.JINGLE_HOME
 const originalFetch = globalThis.fetch
@@ -52,7 +53,9 @@ test("model provider credentials can be read back for settings edits", async () 
   assert.deepEqual(authJson.providers?.deepseek?.apiKey, {
     value: "sk-local-user-key"
   })
-  assert.equal((await stat(paths.authPath)).mode & 0o777, 0o600)
+  if (supportsPosixFileModes()) {
+    assert.equal((await stat(paths.authPath)).mode & 0o777, 0o600)
+  }
   assert.equal(paths.configPath, join(jingleHome, "jingle-config", "config.yaml"))
   assert.equal(paths.authPath, join(jingleHome, "jingle-config", "auth.json"))
   assert.equal(paths.customProvidersDir, join(jingleHome, "jingle-config", "custom_providers"))
