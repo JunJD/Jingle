@@ -22,8 +22,14 @@ export function readMigrationManifest(migrationsRoot = repoMigrationsRoot) {
     .map((entry) => {
       const sqlPath = join(migrationsRoot, entry.name, "migration.sql")
       if (!existsSync(sqlPath)) fail(`migration SQL is missing: ${entry.name}`)
+      const sql = readFileSync(sqlPath)
+      if (sql.includes(13)) {
+        fail(
+          `migration SQL must use canonical LF line endings so its checksum is platform-independent: ${entry.name}`
+        )
+      }
       return {
-        checksum: createHash("sha256").update(readFileSync(sqlPath)).digest("hex"),
+        checksum: createHash("sha256").update(sql).digest("hex"),
         name: entry.name
       }
     })

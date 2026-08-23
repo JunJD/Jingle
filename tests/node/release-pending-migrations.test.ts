@@ -1,6 +1,14 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
@@ -113,11 +121,23 @@ test("reads one sorted migration manifest that matches the checked-in SQL", asyn
 
     assert.deepEqual(manifestModule.readMigrationManifest(root), [first, second])
 
-    mkdirSync(join(root, "20260303000000_without_sql"))
+    const missingSqlRoot = join(root, "20260303000000_without_sql")
+    mkdirSync(missingSqlRoot)
     assert.throws(() => manifestModule.readMigrationManifest(root), /migration SQL is missing/)
+    rmSync(missingSqlRoot, { recursive: true })
+
+    writeMigration(root, "20260404000000_windows_checkout", "SELECT 1;\r\n")
+    assert.throws(() => manifestModule.readMigrationManifest(root), /canonical LF line endings/)
   } finally {
     rmSync(root, { force: true, recursive: true })
   }
+})
+
+test("pins packaged Prisma migration SQL to LF on every Git checkout", () => {
+  assert.match(
+    readFileSync(join(process.cwd(), ".gitattributes"), "utf8"),
+    /^prisma\/migrations\/\*\*\/migration\.sql text eol=lf$/m
+  )
 })
 
 test("keeps the complete suffix after the reviewed release pending", async () => {
