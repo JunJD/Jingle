@@ -2562,7 +2562,14 @@ test("Raycast migration generated UI command uses Jingle runtime facade host req
         "        commandName: 'quick-capture',",
         "        commandPreferences: {},",
         "        dataIdentity: {",
-        "          cache: { kind: 'unavailable', reason: 'artifact-revision-unavailable' },",
+        "          cache: {",
+        "            commandConfigGeneration: 0,",
+        "            connectionConfigGeneration: 0,",
+        "            extensionConfigGeneration: 0,",
+        "            kind: 'available',",
+        `            runtimeArtifactRevision: 'sha256:${"a".repeat(64)}',`,
+        "            runtimePackageRevision: '0.0.0'",
+        "          },",
         "          kind: 'available',",
         "          localStorage: { connectionId: 'fixture', credentialGeneration: 0 }",
         "        },",
@@ -2760,15 +2767,10 @@ test("Raycast migration generated package passes native extension registry valid
       join(artifactDir, "jingle-package", "node_modules"),
       "dir"
     )
+    await mkdir(join(artifactDir, "installable-extensions"), { recursive: true })
     await symlink(
       join(artifactDir, "jingle-package"),
-      join(artifactDir, "fixture-generated"),
-      "dir"
-    )
-    await mkdir(join(artifactDir, "extensions"), { recursive: true })
-    await symlink(
-      join(artifactDir, "jingle-package"),
-      join(artifactDir, "extensions", "fixture-generated"),
+      join(artifactDir, "installable-extensions", "fixture-generated"),
       "dir"
     )
     assert.deepEqual(
@@ -2792,7 +2794,7 @@ test("Raycast migration generated package passes native extension registry valid
         'assert.equal(fixtureGeneratedRuntimeMetadata.extensionName, "fixture-generated")',
         "",
         "const result = validateNativeExtensionRegistry({",
-        `  assetRoots: [${JSON.stringify(artifactDir)}],`,
+        `  assetRoots: [${JSON.stringify(join(artifactDir, "installable-extensions"))}],`,
         "  mainDefinitions: new Map([[fixtureGeneratedManifest.name, fixtureGeneratedMain]]),",
         "  manifests: [fixtureGeneratedManifest],",
         "  runtimeMetadataPackages: [fixtureGeneratedRuntimeMetadata],",
@@ -3073,10 +3075,10 @@ test("Raycast migration generated Notion-style package keeps runtime contracts r
       join(artifactDir, "jingle-package", "node_modules"),
       "dir"
     )
-    await mkdir(join(artifactDir, "extensions"), { recursive: true })
+    await mkdir(join(artifactDir, "installable-extensions"), { recursive: true })
     await symlink(
       join(artifactDir, "jingle-package"),
-      join(artifactDir, "extensions", "fixture-generated"),
+      join(artifactDir, "installable-extensions", "fixture-generated"),
       "dir"
     )
     assert.deepEqual(
