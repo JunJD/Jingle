@@ -745,6 +745,15 @@ async function buildModuleFromSource(input) {
 }
 
 function resolveModuleBanner(input) {
+  if (input.installMainModuleUrl) {
+    return {
+      js: [
+        'import { createRequire as __jingleCreateRequire } from "node:module";',
+        "const require = __jingleCreateRequire(globalThis.__jingleExtensionMainModuleUrl);"
+      ].join("\n")
+    }
+  }
+
   if (!input.installRuntimeReactShim) {
     return undefined
   }
