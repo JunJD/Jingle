@@ -894,6 +894,17 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(workflow, /verify_update_metadata/)
 
   const smokeSource = readFileSync("scripts/release-smoke/installed.mjs", "utf8")
+  const crashBootstrapSource = readFileSync("src/main/bootstrap.ts", "utf8")
+  assert.match(
+    crashBootstrapSource,
+    /if \(bootstrapPath && expectedJingleHome\) \{[\s\S]*?const crashDumpsPath = join\(expectedJingleHome, "crash-dumps"\)[\s\S]*?mkdirSync\(crashDumpsPath, \{ recursive: true \}\)[\s\S]*?app\.setPath\("crashDumps", crashDumpsPath\)[\s\S]*?crashReporter\.start\(\{[\s\S]*?uploadToServer: false/
+  )
+  assert.doesNotMatch(crashBootstrapSource, /submitURL/)
+  assert.match(crashBootstrapSource, /recordReleaseSmokeBootstrapStage\("crash_reporter_started"\)/)
+  assert.ok(
+    crashBootstrapSource.indexOf('recordReleaseSmokeBootstrapStage("bootstrap_started")') <
+      crashBootstrapSource.indexOf("mkdirSync(crashDumpsPath")
+  )
   assert.match(smokeSource, /chromium\.connectOverCDP/)
   assert.match(smokeSource, /reserveLoopbackPort/)
   assert.match(smokeSource, /server\.listen\(\{ host: "127\.0\.0\.1", port: 0, signal:/)

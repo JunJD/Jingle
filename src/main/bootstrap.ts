@@ -1,5 +1,6 @@
 import { appendFileSync, mkdirSync } from "node:fs"
 import { dirname, isAbsolute, join, resolve } from "node:path"
+import { app, crashReporter } from "electron"
 
 const JINGLE_HOME_ENV = "JINGLE_HOME"
 const BOOTSTRAP_FILE_NAME = "release-smoke-bootstrap.jsonl"
@@ -64,6 +65,22 @@ function recordReleaseSmokeBootstrapStage(stage: string, error?: unknown): void 
 }
 
 recordReleaseSmokeBootstrapStage("bootstrap_started")
+
+if (bootstrapPath && expectedJingleHome) {
+  try {
+    const crashDumpsPath = join(expectedJingleHome, "crash-dumps")
+    mkdirSync(crashDumpsPath, { recursive: true })
+    app.setPath("crashDumps", crashDumpsPath)
+    crashReporter.start({
+      productName: "Jingle release smoke",
+      uploadToServer: false
+    })
+    recordReleaseSmokeBootstrapStage("crash_reporter_started")
+  } catch (error) {
+    recordReleaseSmokeBootstrapStage("crash_reporter_failed", error)
+    throw error
+  }
+}
 
 void import("./index")
   .then(() => {
