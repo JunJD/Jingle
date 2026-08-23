@@ -121,6 +121,16 @@ interface InstalledSmokeModule {
 const moduleUrl = pathToFileURL(join(process.cwd(), "scripts/release-smoke/installed.mjs")).href
 const smokeModulePromise = import(moduleUrl) as Promise<InstalledSmokeModule>
 
+test("pins the electron-builder toolchain with the guarded modern-Windows NSIS path", async () => {
+  const { assertElectronBuilderNsisContract } =
+    await import("../../scripts/electron-builder-nsis-contract.mjs")
+  assert.deepEqual(assertElectronBuilderNsisContract().versions, {
+    "app-builder-lib": "26.9.1",
+    "electron-builder": "26.9.1",
+    "electron-builder-squirrel-windows": "26.9.1"
+  })
+})
+
 test("bounds optional Windows launch diagnostics without changing primary failures", async () => {
   const smokeModule = await smokeModulePromise
   assert.equal(smokeModule.boundLaunchDiagnosticText(null), null)

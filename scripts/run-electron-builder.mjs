@@ -3,12 +3,16 @@ import { createHash } from "node:crypto"
 import { copyFileSync, existsSync, readFileSync, readdirSync, rmSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { assertElectronBuilderNsisContract } from "./electron-builder-nsis-contract.mjs"
 
 const args = process.argv.slice(2)
 
 if (args.length === 0) {
   throw new Error("Usage: node scripts/run-electron-builder.mjs <electron-builder args...>")
 }
+
+const nsisContract = assertElectronBuilderNsisContract()
+console.log(`[electron-builder] verified NSIS contract ${JSON.stringify(nsisContract.versions)}`)
 
 function hasMacTarget(args) {
   return args.some((arg) => arg === "--mac" || arg === "-m")
