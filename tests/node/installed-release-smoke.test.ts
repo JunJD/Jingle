@@ -26,7 +26,7 @@ interface InstalledSmokeModule {
     browser: {
       close(): Promise<void>
       newBrowserCDPSession(): Promise<{ send(command: string): Promise<void> }>
-    },
+    } | null,
     child: { exitCode: number | null; pid: number; signalCode: string | null },
     jingleHome: string,
     processClosed: Promise<void>,
@@ -320,16 +320,8 @@ test("uses capability-specific shutdown evidence for current and legacy packages
 test("closes current releases through the main-process quit lifecycle", async () => {
   const smokeModule = await smokeModulePromise
   const calls: string[] = []
-  const browser = {
-    close: async () => {
-      calls.push("disconnect")
-    },
-    newBrowserCDPSession: async () => {
-      throw new Error("non-macOS shutdown must not use Browser.close")
-    }
-  }
   await smokeModule.closeApplication(
-    browser,
+    null,
     { exitCode: null, pid: 42, signalCode: null },
     "/tmp/windows-jingle-home",
     Promise.resolve(),
@@ -351,13 +343,7 @@ test("closes current releases through the main-process quit lifecycle", async ()
       }
     }
   )
-  assert.deepEqual(calls, [
-    "quit-request",
-    "process-exit",
-    "logs-closed",
-    "clean-session",
-    "disconnect"
-  ])
+  assert.deepEqual(calls, ["quit-request", "process-exit", "logs-closed", "clean-session"])
 })
 
 test("preserves probe failures while applying capability-specific shutdown", async () => {
@@ -939,6 +925,7 @@ test("release workflow keeps candidates build-only and publishes only verified t
 
   const smokeSource = readFileSync("scripts/release-smoke/installed.mjs", "utf8")
   const crashBootstrapSource = readFileSync("src/main/bootstrap.ts", "utf8")
+  const mainProbeOwnerSource = readFileSync("src/main/release-smoke-probe-owner.ts", "utf8")
   assert.match(
     crashBootstrapSource,
     /if \(bootstrapPath && expectedJingleHome\) \{[\s\S]*?const crashDumpsPath = join\(expectedJingleHome, "crash-dumps"\)[\s\S]*?mkdirSync\(crashDumpsPath, \{ recursive: true \}\)[\s\S]*?app\.setPath\("crashDumps", crashDumpsPath\)[\s\S]*?crashReporter\.start\(\{[\s\S]*?uploadToServer: false/
@@ -957,6 +944,19 @@ test("release workflow keeps candidates build-only and publishes only verified t
     crashBootstrapSource,
     /recordReleaseSmokeBootstrapStage\("application_imported"\)[\s\S]*?startReleaseSmokeQuitOwner\(\)/
   )
+  assert.match(crashBootstrapSource, /import\("\.\/release-smoke-probe-owner"\)/)
+  assert.match(mainProbeOwnerSource, /MAX_FILE_BYTES = 64 \* 1024/)
+  assert.match(mainProbeOwnerSource, /assertExactKeys/)
+  assert.match(mainProbeOwnerSource, /contents\.getType\(\) !== "window"/)
+  assert.match(mainProbeOwnerSource, /app\.getAppPath\(\)/)
+  assert.match(mainProbeOwnerSource, /url\.pathname === expectedUrl\.pathname/)
+  assert.match(mainProbeOwnerSource, /candidates\.length > 1/)
+  assert.match(mainProbeOwnerSource, /executeJavaScript\(source, true\)/)
+  assert.match(mainProbeOwnerSource, /renderer probe execution timed out/)
+  assert.match(mainProbeOwnerSource, /timer\.unref\(\)/)
+  assert.match(mainProbeOwnerSource, /openSync\(temporaryPath, "wx", 0o600\)/)
+  assert.match(mainProbeOwnerSource, /renameSync\(temporaryPath, path\)/)
+  assert.match(mainProbeOwnerSource, /recordStage\("probe_result_failed", aggregate\)/)
   assert.match(
     crashBootstrapSource,
     /timer\.unref\(\)[\s\S]*?app\.once\("before-quit", \(\) => clearInterval\(timer\)\)[\s\S]*?recordReleaseSmokeBootstrapStage\("quit_owner_started"\)/
@@ -974,6 +974,10 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(smokeSource, /AbortSignal\.timeout\(CDP_PROBE_TIMEOUT_MS\)/)
   assert.match(smokeSource, /--remote-debugging-port=\$\{port\}/)
   assert.match(smokeSource, /--remote-debugging-address=127\.0\.0\.1/)
+  assert.match(smokeSource, /probeTransport: process\.platform === "win32" \? "main-file" : "cdp"/)
+  assert.match(smokeSource, /probeTransport: "cdp"/)
+  assert.match(smokeSource, /main-file probe transport requires a current main-window package/)
+  assert.match(smokeSource, /MAIN_PROBE_REQUEST_FILE/)
   assert.match(smokeSource, /windows launch diagnostics/)
   assert.match(smokeSource, /windows executable failure diagnostics/)
   assert.match(smokeSource, /Get-MpThreatDetection/)

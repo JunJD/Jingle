@@ -8,12 +8,14 @@ import {
   copyFileSync,
   cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
   statSync,
+  unlinkSync,
   writeFileSync
 } from "node:fs"
 import { homedir, tmpdir } from "node:os"
@@ -32,6 +34,9 @@ import {
 const APP_BOOT_TIMEOUT_MS = 90_000
 const CDP_PROBE_TIMEOUT_MS = 1_000
 const IPC_PROBE_TIMEOUT_MS = 20_000
+const MAIN_PROBE_REQUEST_FILE = "release-smoke-probe-request.json"
+const MAIN_PROBE_RESULT_FILE = "release-smoke-probe-result.json"
+const MAX_MAIN_PROBE_FILE_BYTES = 64 * 1024
 const PROCESS_TIMEOUT_MS = 120_000
 const currentPackageVersion = JSON.parse(readFileSync(resolve("package.json"), "utf8")).version
 const packageSuffixByPlatform = {
@@ -800,6 +805,77 @@ export function createRemoteDebuggingLaunchArgs(
   ]
 }
 
+function createMainProbeLaunchArgs(userDataPath, jingleHome, applicationArgs = []) {
+  return [
+    ...applicationArgs,
+    `--jingle-release-smoke-bootstrap=${join(jingleHome, "release-smoke-bootstrap.jsonl")}`,
+    `--user-data-dir=${userDataPath}`
+  ]
+}
+
+function writeMainProbeRequest(jingleHome, sentinelRequest) {
+  const requestPath = join(jingleHome, MAIN_PROBE_REQUEST_FILE)
+  writeFileSync(
+    requestPath,
+    JSON.stringify({
+      expectedWindowKind: "main",
+      schemaVersion: 1,
+      sentinelRequest: sentinelRequest ?? null
+    }),
+    { encoding: "utf8", flag: "wx", mode: 0o600 }
+  )
+}
+
+async function waitForMainProbeResult(jingleHome) {
+  const resultPath = join(jingleHome, MAIN_PROBE_RESULT_FILE)
+  const deadline = Date.now() + APP_BOOT_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    if (existsSync(resultPath)) {
+      const entry = lstatSync(resultPath)
+      if (
+        !entry.isFile() ||
+        entry.isSymbolicLink() ||
+        entry.size <= 0 ||
+        entry.size > MAX_MAIN_PROBE_FILE_BYTES
+      ) {
+        fail("main-process renderer probe result file is invalid")
+      }
+      const result = JSON.parse(readFileSync(resultPath, "utf8"))
+      unlinkSync(resultPath)
+      if (!result || result.schemaVersion !== 1 || typeof result.ok !== "boolean") {
+        fail("main-process renderer probe returned an invalid envelope")
+      }
+      const expectedKeys = result.ok
+        ? ["ok", "probe", "schemaVersion"]
+        : ["error", "ok", "schemaVersion"]
+      if (JSON.stringify(Object.keys(result).sort()) !== JSON.stringify(expectedKeys.sort())) {
+        fail("main-process renderer probe returned unexpected fields")
+      }
+      if (!result.ok) {
+        fail(`main-process renderer probe failed: ${String(result.error?.message ?? "unknown")}`)
+      }
+      const probeKeys = [
+        "platform",
+        "rendererReady",
+        "sentinelThread",
+        "themeAvailable",
+        "threadCount",
+        "windowKind"
+      ]
+      if (
+        !result.probe ||
+        typeof result.probe !== "object" ||
+        JSON.stringify(Object.keys(result.probe).sort()) !== JSON.stringify(probeKeys.sort())
+      ) {
+        fail("main-process renderer probe returned an invalid projection shape")
+      }
+      return result.probe
+    }
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 50))
+  }
+  fail("main-process renderer probe did not finish before the deadline")
+}
+
 async function resolveAppWindow(browser, expectedWindowKind) {
   const deadline = Date.now() + APP_BOOT_TIMEOUT_MS
   while (Date.now() < deadline) {
@@ -1281,6 +1357,7 @@ export async function closeApplication(
         : "Electron Browser.close",
       async () => {
         if (shutdownContract === "legacy-process-reaped") {
+          if (!browser) fail("legacy installed shutdown requires a CDP browser connection")
           const browserSession = await browser.newBrowserCDPSession()
           await browserSession.send("Browser.close")
           return
@@ -1344,9 +1421,13 @@ export async function closeApplication(
     if (errors.length === 1) throw errors[0]
     throw new AggregateError(errors, "Electron close and cleanup both failed")
   } finally {
-    await withReleaseSmokeDeadline("Playwright CDP disconnect", () => browser.close(), 5_000).catch(
-      () => undefined
-    )
+    if (browser) {
+      await withReleaseSmokeDeadline(
+        "Playwright CDP disconnect",
+        () => browser.close(),
+        5_000
+      ).catch(() => undefined)
+    }
   }
 }
 
@@ -1384,8 +1465,22 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
   const userDataPath = join(jingleHome, "electron-user-data")
   mkdirSync(userDataPath, { recursive: true })
   const recordStage = options.recordStage ?? (() => undefined)
-  recordStage("reserve-cdp-port")
-  const remoteDebuggingPort = await reserveLoopbackPort()
+  const probeTransport = options.probeTransport ?? "cdp"
+  if (probeTransport !== "cdp" && probeTransport !== "main-file") {
+    fail(`unsupported installed probe transport: ${String(probeTransport)}`)
+  }
+  if (probeTransport === "main-file") {
+    if (options.expectedWindowKind !== "main" || options.requireDiagnosticsIdentity === false) {
+      fail("main-file probe transport requires a current main-window package")
+    }
+    writeMainProbeRequest(jingleHome, options.sentinelRequest)
+    recordStage("main-probe-requested")
+  }
+  let remoteDebuggingPort = null
+  if (probeTransport === "cdp") {
+    recordStage("reserve-cdp-port")
+    remoteDebuggingPort = await reserveLoopbackPort()
+  }
   const previousSessionId = readProcessSessionId(jingleHome)
   const diagnosticsLogPath = join(jingleHome, "logs", "jingle.log")
   const initialLogSize = existsSync(diagnosticsLogPath) ? statSync(diagnosticsLogPath).size : 0
@@ -1393,12 +1488,15 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
   launchEnvironment.ELECTRON_ENABLE_LOGGING = "1"
   launchEnvironment.ELECTRON_ENABLE_STACK_DUMPING = "1"
   launchEnvironment.ELECTRON_LOG_FILE = join(jingleHome, "electron.log")
-  const launchArgs = createRemoteDebuggingLaunchArgs(
-    remoteDebuggingPort,
-    userDataPath,
-    jingleHome,
-    options.launchArgs
-  )
+  const launchArgs =
+    probeTransport === "cdp"
+      ? createRemoteDebuggingLaunchArgs(
+          remoteDebuggingPort,
+          userDataPath,
+          jingleHome,
+          options.launchArgs
+        )
+      : createMainProbeLaunchArgs(userDataPath, jingleHome, options.launchArgs)
   const child = spawn(executablePath, launchArgs, {
     env: launchEnvironment,
     shell: false,
@@ -1424,24 +1522,6 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
   let browser = null
   return runProbeWithShutdown(
     async () => {
-      recordStage("wait-cdp")
-      const port = await waitForDevToolsPort(
-        remoteDebuggingPort,
-        child,
-        () => launchError,
-        jingleHome,
-        logPath,
-        { applicationArgs: options.launchArgs, executablePath }
-      )
-      recordStage("connect-cdp")
-      browser = await withReleaseSmokeDeadline(
-        "Playwright CDP connection",
-        () =>
-          chromium.connectOverCDP(`http://127.0.0.1:${port}`, {
-            timeout: APP_BOOT_TIMEOUT_MS
-          }),
-        APP_BOOT_TIMEOUT_MS
-      )
       recordStage("runtime-identity")
       const identity =
         options.requireDiagnosticsIdentity === false
@@ -1460,6 +1540,53 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
           `installed executable reported platform ${identity.platform}, expected ${process.platform}`
         )
       }
+      if (probeTransport === "main-file") {
+        recordStage("wait-main-probe")
+        const probe = await waitForMainProbeResult(jingleHome)
+        if (
+          !probe?.rendererReady ||
+          !probe?.themeAvailable ||
+          probe?.windowKind !== options.expectedWindowKind
+        ) {
+          fail(
+            `main-process renderer probe returned an invalid projection: ${JSON.stringify(probe)}`
+          )
+        }
+        if (options.sentinelRequest) {
+          assertUpgradeSentinelThread(
+            probe.sentinelThread,
+            options.sentinelRequest,
+            "main-process sentinel IPC"
+          )
+        }
+        return {
+          electronVersion: identity?.electronVersion ?? null,
+          executablePath,
+          isPackaged: identity?.isPackaged ?? null,
+          protocolClientRegistered: null,
+          runtimeIdentityVerified: identity !== null,
+          version: identity?.appVersion ?? null,
+          ...probe
+        }
+      }
+      recordStage("wait-cdp")
+      const port = await waitForDevToolsPort(
+        remoteDebuggingPort,
+        child,
+        () => launchError,
+        jingleHome,
+        logPath,
+        { applicationArgs: options.launchArgs, executablePath }
+      )
+      recordStage("connect-cdp")
+      browser = await withReleaseSmokeDeadline(
+        "Playwright CDP connection",
+        () =>
+          chromium.connectOverCDP(`http://127.0.0.1:${port}`, {
+            timeout: APP_BOOT_TIMEOUT_MS
+          }),
+        APP_BOOT_TIMEOUT_MS
+      )
       recordStage("resolve-window")
       const page = await withReleaseSmokeDeadline(
         `${options.expectedWindowKind} window resolution`,
@@ -1590,7 +1717,10 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
     },
     async () => {
       recordStage("close-application")
-      if (browser) {
+      if (
+        (options.shutdownContract ?? "current-clean-session") === "current-clean-session" ||
+        browser
+      ) {
         await closeApplication(
           browser,
           child,
@@ -1843,7 +1973,8 @@ async function run() {
         const probe = await launchInstalledAndProbe(installed, freshHome, appLog, {
           expectProtocolClient: process.platform === "win32",
           expectedVersion: currentPackageVersion,
-          expectedWindowKind: "main"
+          expectedWindowKind: "main",
+          probeTransport: process.platform === "win32" ? "main-file" : "cdp"
         })
         setPhase("fresh-database-verification")
         await verifyFreshDatabase(freshHome)
@@ -1890,6 +2021,7 @@ async function run() {
       const probe = await launchInstalledAndProbe(installed, upgradeHome, appLog, {
         expectedVersion: "0.0.1",
         expectedWindowKind: baseline.windowKind,
+        probeTransport: "cdp",
         shutdownContract: "legacy-process-reaped",
         requireDiagnosticsIdentity: false,
         sentinelRequest: {
@@ -1924,6 +2056,7 @@ async function run() {
         expectProtocolClient: process.platform === "win32",
         expectedVersion: currentPackageVersion,
         expectedWindowKind: "main",
+        probeTransport: process.platform === "win32" ? "main-file" : "cdp",
         recordStage: (stage) => {
           if (stage === "close-application") {
             manifest.shutdownStage = stage
