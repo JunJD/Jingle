@@ -407,11 +407,13 @@ test("workspace file search ignores completions from evicted pending entries", a
         return deferred.promise
       }
     })
-    const originalSearches = workspacePaths.map((workspacePath) => {
+    const originalSearches: Array<ReturnType<typeof service.searchFiles>> = []
+    for (const workspacePath of workspacePaths) {
       repository.setWorkspacePath(workspacePath)
-      return service.searchFiles({ query: "file" })
-    })
-    await waitFor(() => collectorCallCount === workspacePaths.length)
+      originalSearches.push(service.searchFiles({ query: "file" }))
+      await waitFor(() => deferredByPath.has(workspacePath))
+    }
+    assert.equal(collectorCallCount, workspacePaths.length)
 
     const firstCalls = deferredByPath.get(workspacePaths[0])!
     repository.setWorkspacePath(workspacePaths[0])
