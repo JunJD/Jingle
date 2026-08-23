@@ -495,29 +495,6 @@ async function installWindows(invocation, workspace, logPath) {
     (path) => basename(path).toLowerCase() === "jingle.exe",
     "installed Jingle.exe"
   )
-  const stopInstallerLaunch = [
-    "$ErrorActionPreference = 'Stop'",
-    "$target = [IO.Path]::GetFullPath($env:JINGLE_SMOKE_EXECUTABLE)",
-    "Start-Sleep -Milliseconds 1000",
-    "$deadline = [DateTime]::UtcNow.AddSeconds(10)",
-    "do {",
-    "  $matches = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and [IO.Path]::GetFullPath($_.ExecutablePath) -eq $target })",
-    "  foreach ($process in $matches) { Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue }",
-    "  if ($matches.Count -eq 0) { break }",
-    "  Start-Sleep -Milliseconds 200",
-    "} while ([DateTime]::UtcNow -lt $deadline)",
-    "$remaining = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and [IO.Path]::GetFullPath($_.ExecutablePath) -eq $target })",
-    "if ($remaining.Count -ne 0) { throw 'Installer-launched Jingle process did not exit' }"
-  ].join("\n")
-  await runProcess(
-    "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-Command", stopInstallerLaunch],
-    {
-      cwd: workspace,
-      env: { ...process.env, JINGLE_SMOKE_EXECUTABLE: executablePath },
-      logPath
-    }
-  )
   return { appRoot: invocation.installRoot, executablePath }
 }
 
@@ -730,8 +707,7 @@ function createLaunchEnvironment(jingleHome, overrides = {}) {
     ...process.env,
     ...overrides,
     CI: "1",
-    JINGLE_HOME: jingleHome,
-    JINGLE_REMOTE_DEBUGGING_PORT: ""
+    JINGLE_HOME: jingleHome
   }
   delete env.ELECTRON_RUN_AS_NODE
   delete env.ELECTRON_RENDERER_URL
@@ -739,6 +715,18 @@ function createLaunchEnvironment(jingleHome, overrides = {}) {
   delete env.JINGLE_BDD_AGENT_RUNTIME
   delete env.JINGLE_BDD_EXTENSION_RUNTIME_FIXTURES
   return env
+}
+
+export function createRemoteDebuggingLaunchArgs(port, userDataPath, applicationArgs = []) {
+  if (!Number.isSafeInteger(port) || port <= 0 || port > 65_535) {
+    fail(`invalid remote debugging port: ${String(port)}`)
+  }
+  return [
+    ...applicationArgs,
+    `--remote-debugging-port=${port}`,
+    "--remote-debugging-address=127.0.0.1",
+    `--user-data-dir=${userDataPath}`
+  ]
 }
 
 async function resolveAppWindow(browser, expectedWindowKind) {
@@ -1019,16 +1007,16 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
   const launchEnvironment = createLaunchEnvironment(jingleHome, options.environment)
   launchEnvironment.ELECTRON_ENABLE_LOGGING = "1"
   launchEnvironment.ELECTRON_LOG_FILE = join(jingleHome, "electron.log")
-  launchEnvironment.JINGLE_REMOTE_DEBUGGING_PORT = String(remoteDebuggingPort)
-  const child = spawn(
-    executablePath,
-    [...(options.launchArgs ?? []), `--user-data-dir=${userDataPath}`],
-    {
-      env: launchEnvironment,
-      shell: false,
-      windowsHide: true
-    }
+  const launchArgs = createRemoteDebuggingLaunchArgs(
+    remoteDebuggingPort,
+    userDataPath,
+    options.launchArgs
   )
+  const child = spawn(executablePath, launchArgs, {
+    env: launchEnvironment,
+    shell: false,
+    windowsHide: true
+  })
   let launchError = null
   child.once("error", (error) => {
     launchError = error

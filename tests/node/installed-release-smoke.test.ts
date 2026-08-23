@@ -49,6 +49,11 @@ interface InstalledSmokeModule {
     artifactPath: string,
     installRoot: string
   ): Record<string, unknown>
+  createRemoteDebuggingLaunchArgs(
+    port: number,
+    userDataPath: string,
+    applicationArgs?: string[]
+  ): string[]
   createLinuxXdgEnvironment(root: string): Record<string, string>
   createUpgradeInstallMode(platform: string): "data-only-reinstall" | "nsis-in-place"
   createWindowsPayloadInventory(root: string): {
@@ -271,6 +276,20 @@ test("builds fail-closed platform install plans", async () => {
   assert.equal(smokeModule.createUpgradeInstallMode("darwin"), "data-only-reinstall")
   assert.equal(smokeModule.createUpgradeInstallMode("linux"), "data-only-reinstall")
   assert.throws(() => smokeModule.createUpgradeInstallMode("freebsd"), /unsupported/)
+})
+
+test("passes Chromium remote debugging ownership through the packaged process command line", async () => {
+  const smokeModule = await smokeModulePromise
+  assert.deepEqual(smokeModule.createRemoteDebuggingLaunchArgs(43117, "C:\\Jingle Data", ["--x"]), [
+    "--x",
+    "--remote-debugging-port=43117",
+    "--remote-debugging-address=127.0.0.1",
+    "--user-data-dir=C:\\Jingle Data"
+  ])
+  assert.throws(
+    () => smokeModule.createRemoteDebuggingLaunchArgs(0, "/tmp/jingle"),
+    /invalid remote debugging port/
+  )
 })
 
 test("isolates Linux desktop state and selects the packaged jingle protocol entry", async () => {
@@ -675,15 +694,15 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(smokeSource, /chromium\.connectOverCDP/)
   assert.match(smokeSource, /reserveLoopbackPort/)
   assert.match(smokeSource, /\/json\/version/)
-  assert.match(smokeSource, /JINGLE_REMOTE_DEBUGGING_PORT = String\(remoteDebuggingPort\)/)
+  assert.match(smokeSource, /--remote-debugging-port=\$\{port\}/)
+  assert.match(smokeSource, /--remote-debugging-address=127\.0\.0\.1/)
   assert.match(smokeSource, /diagnostics\.session_started/)
   assert.match(smokeSource, /marker\?\.terminal\?\.kind !== "clean_exit"/)
   assert.match(smokeSource, /const child = spawn\(\s*executablePath/)
   assert.match(smokeSource, /launchArgs: \["--no-sandbox"\]/)
   assert.match(smokeSource, /Exec=\$\{installed\.executablePath\} --no-sandbox %U/)
   assert.match(smokeSource, /HKCU\\\\Software\\\\Classes\\\\jingle/)
-  assert.match(smokeSource, /JINGLE_SMOKE_EXECUTABLE/)
-  assert.match(smokeSource, /Installer-launched Jingle process did not exit/)
+  assert.doesNotMatch(smokeSource, /JINGLE_SMOKE_EXECUTABLE/)
   assert.match(smokeSource, /CFBundleURLTypes/)
   assert.match(smokeSource, /assertMacProtocolDeclaration/)
   assert.match(smokeSource, /requireProtocolEntry: false/)
@@ -715,6 +734,9 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(smokeSource, /verifyUpgradeDatabase\(upgradeHome, sentinel\)/)
   assert.match(smokeSource, /FROM thread_workspace_bindings WHERE thread_id = \?/)
   assert.match(smokeSource, /expectedVersion: "0\.0\.1"/)
+
+  const mainSource = readFileSync("src/main/index.ts", "utf8")
+  assert.doesNotMatch(mainSource, /JINGLE_REMOTE_DEBUGGING_PORT/)
 
   const freshInventory = smokeSource.indexOf(
     "freshWindowsPayloadInventory = createWindowsPayloadInventory(installed.appRoot)"

@@ -71,13 +71,6 @@ if (bddJingleHome) {
   app.setPath("userData", join(bddJingleHome, "electron-user-data"))
 }
 
-const remoteDebuggingPort = process.env.JINGLE_REMOTE_DEBUGGING_PORT
-if (remoteDebuggingPort) {
-  // Expose Electron's Chromium target for external CDP clients like agent-browser.
-  app.commandLine.appendSwitch("remote-debugging-port", remoteDebuggingPort)
-  app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1")
-}
-
 let launcherWindow: BrowserWindow | null = null
 let ipcNetworkWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
