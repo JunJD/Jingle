@@ -1241,7 +1241,6 @@ export async function closeApplication(
   jingleHome,
   processClosed,
   shutdownContract,
-  rendererPage,
   operations = {}
 ) {
   if (
@@ -1255,7 +1254,15 @@ export async function closeApplication(
   const waitForLogs = operations.waitForLoggedProcessClose ?? waitForLoggedProcessClose
   const terminateTree = operations.terminateProcessTree ?? terminateProcessTree
   const assertCleanSession = operations.assertCleanProcessSession ?? assertCleanProcessSession
-  const platform = operations.platform ?? process.platform
+  const requestQuit =
+    operations.requestApplicationQuit ??
+    (() => {
+      writeFileSync(join(jingleHome, "release-smoke-quit"), "quit\n", {
+        encoding: "utf8",
+        flag: "wx",
+        mode: 0o600
+      })
+    })
   const processId = child.pid
   if (!processId) {
     fail("installed executable has no process id")
@@ -1269,19 +1276,16 @@ export async function closeApplication(
   }
   try {
     await withReleaseSmokeDeadline(
-      platform === "darwin" ? "Electron Browser.close" : "Electron window.close",
+      shutdownContract === "current-clean-session"
+        ? "Electron application quit request"
+        : "Electron Browser.close",
       async () => {
-        if (platform === "darwin") {
+        if (shutdownContract === "legacy-process-reaped") {
           const browserSession = await browser.newBrowserCDPSession()
           await browserSession.send("Browser.close")
           return
         }
-        if (!rendererPage) {
-          fail("installed renderer page is unavailable for graceful window close")
-        }
-        await rendererPage.evaluate(() => {
-          setTimeout(() => window.close(), 0)
-        })
+        await requestQuit()
       },
       10_000
     )
@@ -1418,7 +1422,6 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
   const processClosed = attachProcessLogging(child, logPath)
 
   let browser = null
-  let rendererPage = null
   return runProbeWithShutdown(
     async () => {
       recordStage("wait-cdp")
@@ -1463,7 +1466,6 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
         () => resolveAppWindow(browser, options.expectedWindowKind),
         APP_BOOT_TIMEOUT_MS
       )
-      rendererPage = page
       const observeProbeStep = (state, label) => {
         appendLaunchDiagnostic(logPath, "installed IPC probe", { label, state })
         recordStage(`preload-${label}-${state}`)
@@ -1594,8 +1596,7 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
           child,
           jingleHome,
           processClosed,
-          options.shutdownContract ?? "current-clean-session",
-          rendererPage
+          options.shutdownContract ?? "current-clean-session"
         )
       } else if (child.pid) {
         await terminateProcessTree(child.pid)

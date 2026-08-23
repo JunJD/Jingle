@@ -31,11 +31,10 @@ interface InstalledSmokeModule {
     jingleHome: string,
     processClosed: Promise<void>,
     shutdownContract: "current-clean-session" | "legacy-process-reaped",
-    rendererPage: { evaluate(callback: () => unknown): Promise<unknown> } | null,
     operations: {
       assertCleanProcessSession(): void
       snapshotProcessTree(pid: number): number[]
-      platform?: NodeJS.Platform
+      requestApplicationQuit?(): Promise<void> | void
       terminateProcessTree(pid: number): Promise<void>
       waitForLoggedProcessClose(closed: Promise<void>): Promise<void>
       waitForProcessExit(pids: number[], description: string): Promise<void>
@@ -299,7 +298,6 @@ test("uses capability-specific shutdown evidence for current and legacy packages
     "/tmp/legacy-jingle-home",
     Promise.resolve(),
     "legacy-process-reaped",
-    null,
     operations
   )
   assert.deepEqual(calls, ["terminate", "logs-closed", "disconnect"])
@@ -312,7 +310,6 @@ test("uses capability-specific shutdown evidence for current and legacy packages
       "/tmp/current-jingle-home",
       Promise.resolve(),
       "current-clean-session",
-      null,
       operations
     ),
     /Electron close and cleanup both failed/
@@ -320,7 +317,7 @@ test("uses capability-specific shutdown evidence for current and legacy packages
   assert.deepEqual(calls, ["clean-session", "terminate", "disconnect"])
 })
 
-test("closes non-macOS releases through the durable renderer window lifecycle", async () => {
+test("closes current releases through the main-process quit lifecycle", async () => {
   const smokeModule = await smokeModulePromise
   const calls: string[] = []
   const browser = {
@@ -331,23 +328,17 @@ test("closes non-macOS releases through the durable renderer window lifecycle", 
       throw new Error("non-macOS shutdown must not use Browser.close")
     }
   }
-  const rendererPage = {
-    evaluate: async (callback: () => unknown) => {
-      calls.push("window-close")
-      assert.equal(callback.toString().includes("window.close"), true)
-      assert.equal(callback.toString().includes("setTimeout"), true)
-    }
-  }
   await smokeModule.closeApplication(
     browser,
     { exitCode: null, pid: 42, signalCode: null },
     "/tmp/windows-jingle-home",
     Promise.resolve(),
     "current-clean-session",
-    rendererPage,
     {
       assertCleanProcessSession: () => calls.push("clean-session"),
-      platform: "win32",
+      requestApplicationQuit: () => {
+        calls.push("quit-request")
+      },
       snapshotProcessTree: () => [42],
       terminateProcessTree: async () => {
         calls.push("terminate")
@@ -361,7 +352,7 @@ test("closes non-macOS releases through the durable renderer window lifecycle", 
     }
   )
   assert.deepEqual(calls, [
-    "window-close",
+    "quit-request",
     "process-exit",
     "logs-closed",
     "clean-session",
@@ -954,6 +945,22 @@ test("release workflow keeps candidates build-only and publishes only verified t
   )
   assert.doesNotMatch(crashBootstrapSource, /submitURL/)
   assert.match(crashBootstrapSource, /recordReleaseSmokeBootstrapStage\("crash_reporter_started"\)/)
+  assert.match(
+    crashBootstrapSource,
+    /const quitRequestPath =[\s\S]*?join\(expectedJingleHome, QUIT_REQUEST_FILE_NAME\)/
+  )
+  assert.match(
+    crashBootstrapSource,
+    /unlinkSync\(quitRequestPath\)[\s\S]*?recordReleaseSmokeBootstrapStage\("quit_requested"\)[\s\S]*?app\.quit\(\)/
+  )
+  assert.match(
+    crashBootstrapSource,
+    /recordReleaseSmokeBootstrapStage\("application_imported"\)[\s\S]*?startReleaseSmokeQuitOwner\(\)/
+  )
+  assert.match(
+    crashBootstrapSource,
+    /timer\.unref\(\)[\s\S]*?app\.once\("before-quit", \(\) => clearInterval\(timer\)\)[\s\S]*?recordReleaseSmokeBootstrapStage\("quit_owner_started"\)/
+  )
   assert.ok(
     crashBootstrapSource.indexOf('recordReleaseSmokeBootstrapStage("bootstrap_started")') <
       crashBootstrapSource.indexOf("mkdirSync(crashDumpsPath")
@@ -991,6 +998,13 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(smokeSource, /no-debug-differential/)
   assert.match(smokeSource, /--jingle-release-smoke-bootstrap=/)
   assert.match(smokeSource, /release-smoke-bootstrap\.jsonl/)
+  assert.match(smokeSource, /join\(jingleHome, "release-smoke-quit"\)/)
+  assert.match(smokeSource, /flag: "wx"/)
+  assert.match(smokeSource, /mode: 0o600/)
+  assert.match(
+    smokeSource,
+    /shutdownContract === "legacy-process-reaped"[\s\S]*?newBrowserCDPSession\(\)[\s\S]*?await requestQuit\(\)/
+  )
   assert.match(smokeSource, /join\(diagnosticsRoot, "phase\.jsonl"\)/)
   assert.match(smokeSource, /setPhase\("upgrade-current-install"\)/)
   assert.match(smokeSource, /manifest\.probeStage = stage/)
