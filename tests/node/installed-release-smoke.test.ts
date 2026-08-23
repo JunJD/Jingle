@@ -86,6 +86,18 @@ interface InstalledSmokeModule {
     previousSessionId: string | null,
     initialLogSize: number
   ): Promise<Record<string, unknown>>
+  runReleaseSmokeProbeStep<T>(
+    label: string,
+    operation: () => Promise<T>,
+    timeoutMs?: number,
+    onTransition?: (state: string, label: string) => void
+  ): Promise<T>
+  withReleaseSmokeDeadline<T>(
+    label: string,
+    operation: () => Promise<T>,
+    timeoutMs: number,
+    onTransition?: (state: string, label: string) => void
+  ): Promise<T>
   runProbeWithShutdown<T>(runProbe: () => Promise<T>, runShutdown: () => Promise<void>): Promise<T>
   runProcess(
     command: string,
@@ -136,6 +148,68 @@ test("bounds optional Windows launch diagnostics without changing primary failur
   assert.equal(smokeModule.boundLaunchDiagnosticText(null), null)
   assert.equal(smokeModule.boundLaunchDiagnosticText("short", 8), "short")
   assert.equal(smokeModule.boundLaunchDiagnosticText("0123456789", 8), "01234567...[truncated]")
+})
+
+test("bounds and identifies each installed IPC probe step", async () => {
+  const smokeModule = await smokeModulePromise
+  const transitions: string[] = []
+  assert.equal(
+    await smokeModule.runReleaseSmokeProbeStep(
+      "threads.list",
+      async () => 3,
+      50,
+      (state, label) => transitions.push(`${state}:${label}`)
+    ),
+    3
+  )
+  assert.deepEqual(transitions, ["started:threads.list", "completed:threads.list"])
+
+  const timeoutTransitions: string[] = []
+  await assert.rejects(
+    smokeModule.runReleaseSmokeProbeStep(
+      "threads.getAgentThreadData",
+      () => new Promise(() => undefined),
+      5,
+      (state, label) => timeoutTransitions.push(`${state}:${label}`)
+    ),
+    /threads\.getAgentThreadData IPC probe timed out/
+  )
+  assert.deepEqual(timeoutTransitions, [
+    "started:threads.getAgentThreadData",
+    "failed:threads.getAgentThreadData"
+  ])
+
+  const originalError = new Error("original probe failure")
+  await assert.rejects(
+    smokeModule.withReleaseSmokeDeadline(
+      "renderer projection",
+      async () => {
+        throw originalError
+      },
+      50
+    ),
+    (error) => error === originalError
+  )
+})
+
+test("runs shutdown after a bounded renderer probe stops responding", async () => {
+  const smokeModule = await smokeModulePromise
+  let shutdownCalled = false
+  await assert.rejects(
+    smokeModule.runProbeWithShutdown(
+      () =>
+        smokeModule.withReleaseSmokeDeadline(
+          "renderer projection",
+          () => new Promise(() => undefined),
+          5
+        ),
+      async () => {
+        shutdownCalled = true
+      }
+    ),
+    /renderer projection timed out/
+  )
+  assert.equal(shutdownCalled, true)
 })
 
 test("appends complete release-smoke phase records without truncating prior evidence", async () => {
@@ -822,6 +896,9 @@ test("release workflow keeps candidates build-only and publishes only verified t
   const smokeSource = readFileSync("scripts/release-smoke/installed.mjs", "utf8")
   assert.match(smokeSource, /chromium\.connectOverCDP/)
   assert.match(smokeSource, /reserveLoopbackPort/)
+  assert.match(smokeSource, /server\.listen\(\{ host: "127\.0\.0\.1", port: 0, signal:/)
+  assert.match(smokeSource, /controller\.abort\(\)/)
+  assert.match(smokeSource, /server\.unref\(\)/)
   assert.match(smokeSource, /\/json\/version/)
   assert.match(smokeSource, /AbortSignal\.timeout\(CDP_PROBE_TIMEOUT_MS\)/)
   assert.match(smokeSource, /--remote-debugging-port=\$\{port\}/)
@@ -851,6 +928,8 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(smokeSource, /release-smoke-bootstrap\.jsonl/)
   assert.match(smokeSource, /join\(diagnosticsRoot, "phase\.jsonl"\)/)
   assert.match(smokeSource, /setPhase\("upgrade-current-install"\)/)
+  assert.match(smokeSource, /manifest\.probeStage = stage/)
+  assert.match(smokeSource, /manifest\.shutdownStage = stage/)
   assert.match(smokeSource, /diagnostics\.session_started/)
   assert.match(smokeSource, /marker\?\.terminal\?\.kind !== "clean_exit"/)
   assert.match(smokeSource, /const child = spawn\(\s*executablePath/)

@@ -31,6 +31,7 @@ import {
 
 const APP_BOOT_TIMEOUT_MS = 90_000
 const CDP_PROBE_TIMEOUT_MS = 1_000
+const IPC_PROBE_TIMEOUT_MS = 20_000
 const PROCESS_TIMEOUT_MS = 120_000
 const currentPackageVersion = JSON.parse(readFileSync(resolve("package.json"), "utf8")).version
 const packageSuffixByPlatform = {
@@ -805,7 +806,8 @@ async function resolveAppWindow(browser, expectedWindowKind) {
     for (const context of browser.contexts()) {
       for (const page of context.pages()) {
         const kind = await page
-          .evaluate(() => document.body?.dataset.window ?? null)
+          .locator("body")
+          .getAttribute("data-window", { timeout: 1_000 })
           .catch(() => null)
         if (kind === expectedWindowKind) return page
       }
@@ -825,19 +827,40 @@ function attachProcessLogging(child, logPath) {
 
 async function reserveLoopbackPort() {
   const server = createServer()
-  await new Promise((resolvePromise, reject) => {
-    server.once("error", reject)
-    server.listen(0, "127.0.0.1", resolvePromise)
-  })
-  const address = server.address()
-  if (!address || typeof address === "string") {
-    server.close()
-    fail("could not reserve a loopback port for CDP")
+  const controller = new AbortController()
+  try {
+    try {
+      await withReleaseSmokeDeadline(
+        "loopback port reservation",
+        () =>
+          new Promise((resolvePromise, reject) => {
+            server.once("error", reject)
+            server.listen({ host: "127.0.0.1", port: 0, signal: controller.signal }, resolvePromise)
+          }),
+        5_000
+      )
+    } catch (error) {
+      controller.abort()
+      throw error
+    }
+    const address = server.address()
+    if (!address || typeof address === "string") {
+      fail("could not reserve a loopback port for CDP")
+    }
+    await withReleaseSmokeDeadline(
+      "loopback port release",
+      () =>
+        new Promise((resolvePromise, reject) => {
+          server.close((error) => (error ? reject(error) : resolvePromise()))
+        }),
+      5_000
+    )
+    return address.port
+  } finally {
+    controller.abort()
+    server.unref()
+    if (server.listening) server.close()
   }
-  await new Promise((resolvePromise, reject) => {
-    server.close((error) => (error ? reject(error) : resolvePromise()))
-  })
-  return address.port
 }
 
 function appendLaunchDiagnostic(logPath, event, payload) {
@@ -864,6 +887,48 @@ export function appendReleaseSmokePhaseRecord(
   observedAt = new Date().toISOString()
 ) {
   appendFileSync(path, `${JSON.stringify({ ...manifest, observedAt })}\n`, "utf8")
+}
+
+export async function withReleaseSmokeDeadline(
+  label,
+  operation,
+  timeoutMs,
+  onTransition = () => undefined
+) {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+    fail(`invalid ${label} probe timeout: ${String(timeoutMs)}`)
+  }
+  onTransition("started", label)
+  let timer
+  try {
+    const result = await Promise.race([
+      operation(),
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Installed release smoke: ${label} timed out`)),
+          timeoutMs
+        )
+      })
+    ])
+    onTransition("completed", label)
+    return result
+  } catch (error) {
+    onTransition("failed", label)
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+export function runReleaseSmokeProbeStep(
+  label,
+  operation,
+  timeoutMs = IPC_PROBE_TIMEOUT_MS,
+  onTransition = () => undefined
+) {
+  return withReleaseSmokeDeadline(`${label} IPC probe`, operation, timeoutMs, (state) =>
+    onTransition(state, label)
+  )
 }
 
 function collectWindowsExecutableFailureDiagnostics(executablePath, logPath, owner) {
@@ -1200,15 +1265,15 @@ export async function closeApplication(
   } catch (error) {
     inspectionError = error
   }
-  let timer
   try {
-    const browserSession = await browser.newBrowserCDPSession()
-    await Promise.race([
-      browserSession.send("Browser.close"),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error("Electron close timed out")), 10_000)
-      })
-    ])
+    await withReleaseSmokeDeadline(
+      "Electron Browser.close",
+      async () => {
+        const browserSession = await browser.newBrowserCDPSession()
+        await browserSession.send("Browser.close")
+      },
+      10_000
+    )
     await waitForExit(processIds, `Electron process tree rooted at ${processId}`)
     await waitForLogs(processClosed)
     if (shutdownContract === "current-clean-session") {
@@ -1264,8 +1329,9 @@ export async function closeApplication(
     if (errors.length === 1) throw errors[0]
     throw new AggregateError(errors, "Electron close and cleanup both failed")
   } finally {
-    clearTimeout(timer)
-    await browser.close().catch(() => undefined)
+    await withReleaseSmokeDeadline("Playwright CDP disconnect", () => browser.close(), 5_000).catch(
+      () => undefined
+    )
   }
 }
 
@@ -1302,6 +1368,8 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
   }
   const userDataPath = join(jingleHome, "electron-user-data")
   mkdirSync(userDataPath, { recursive: true })
+  const recordStage = options.recordStage ?? (() => undefined)
+  recordStage("reserve-cdp-port")
   const remoteDebuggingPort = await reserveLoopbackPort()
   const previousSessionId = readProcessSessionId(jingleHome)
   const diagnosticsLogPath = join(jingleHome, "logs", "jingle.log")
@@ -1340,6 +1408,7 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
   let browser = null
   return runProbeWithShutdown(
     async () => {
+      recordStage("wait-cdp")
       const port = await waitForDevToolsPort(
         remoteDebuggingPort,
         child,
@@ -1348,9 +1417,16 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
         logPath,
         { applicationArgs: options.launchArgs, executablePath }
       )
-      browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, {
-        timeout: APP_BOOT_TIMEOUT_MS
-      })
+      recordStage("connect-cdp")
+      browser = await withReleaseSmokeDeadline(
+        "Playwright CDP connection",
+        () =>
+          chromium.connectOverCDP(`http://127.0.0.1:${port}`, {
+            timeout: APP_BOOT_TIMEOUT_MS
+          }),
+        APP_BOOT_TIMEOUT_MS
+      )
+      recordStage("runtime-identity")
       const identity =
         options.requireDiagnosticsIdentity === false
           ? null
@@ -1368,61 +1444,114 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
           `installed executable reported platform ${identity.platform}, expected ${process.platform}`
         )
       }
-      const page = await resolveAppWindow(browser, options.expectedWindowKind)
-      const probe = await page.evaluate(async (sentinelRequest) => {
-        const [theme, threads] = await Promise.all([
-          window.api.settings.getAppThemeSettings(),
-          window.api.threads.list()
-        ])
-        let sentinelThread = null
-        if (sentinelRequest?.mode === "create") {
-          const created = await window.api.threads.create({
-            metadata: {
-              releaseSmokeUpgradeSentinel: {
-                schemaVersion: 1,
-                sourceVersion: "0.0.1",
-                token: sentinelRequest.token
-              },
-              title: sentinelRequest.title
-            },
-            workspaceKind: "projectless",
-            workspacePath: sentinelRequest.workspacePath
-          })
-          sentinelThread = {
-            metadata: created.metadata ?? null,
-            threadId: created.thread_id,
-            title: created.title ?? null
-          }
-        } else if (sentinelRequest?.mode === "verify") {
-          const [persisted, refreshedThreads, hydrated] = await Promise.all([
-            window.api.threads.get(sentinelRequest.threadId),
-            window.api.threads.list(),
-            window.api.threads.getAgentThreadData(sentinelRequest.threadId)
-          ])
-          if (
-            !persisted ||
-            !refreshedThreads.some((thread) => thread.thread_id === persisted.thread_id) ||
-            hydrated.thread.thread_id !== persisted.thread_id
-          ) {
-            throw new Error(
-              "release upgrade sentinel is not visible through the current thread IPC projections"
-            )
-          }
-          sentinelThread = {
-            metadata: persisted.metadata ?? null,
-            threadId: persisted.thread_id,
-            title: persisted.title ?? null
-          }
+      recordStage("resolve-window")
+      const page = await withReleaseSmokeDeadline(
+        `${options.expectedWindowKind} window resolution`,
+        () => resolveAppWindow(browser, options.expectedWindowKind),
+        APP_BOOT_TIMEOUT_MS
+      )
+      const observeProbeStep = (state, label) => {
+        appendLaunchDiagnostic(logPath, "installed IPC probe", { label, state })
+        recordStage(`preload-${label}-${state}`)
+      }
+      const theme = await runReleaseSmokeProbeStep(
+        "settings.getAppThemeSettings",
+        () => page.evaluate(() => window.api.settings.getAppThemeSettings()),
+        IPC_PROBE_TIMEOUT_MS,
+        observeProbeStep
+      )
+      let threads = await runReleaseSmokeProbeStep(
+        "threads.list",
+        () => page.evaluate(() => window.api.threads.list()),
+        IPC_PROBE_TIMEOUT_MS,
+        observeProbeStep
+      )
+      let sentinelThread = null
+      if (options.sentinelRequest?.mode === "create") {
+        const created = await runReleaseSmokeProbeStep(
+          "threads.create",
+          () =>
+            page.evaluate(
+              (sentinelRequest) =>
+                window.api.threads.create({
+                  metadata: {
+                    releaseSmokeUpgradeSentinel: {
+                      schemaVersion: 1,
+                      sourceVersion: "0.0.1",
+                      token: sentinelRequest.token
+                    },
+                    title: sentinelRequest.title
+                  },
+                  workspaceKind: "projectless",
+                  workspacePath: sentinelRequest.workspacePath
+                }),
+              options.sentinelRequest
+            ),
+          IPC_PROBE_TIMEOUT_MS,
+          observeProbeStep
+        )
+        sentinelThread = {
+          metadata: created.metadata ?? null,
+          threadId: created.thread_id,
+          title: created.title ?? null
         }
-        return {
-          platform: window.electron.process.platform,
-          rendererReady: (document.getElementById("root")?.childElementCount ?? 0) > 0,
-          sentinelThread,
-          themeAvailable: typeof theme === "object" && theme !== null,
-          threadCount: threads.length,
-          windowKind: document.body?.dataset.window ?? null
+      } else if (options.sentinelRequest?.mode === "verify") {
+        const persisted = await runReleaseSmokeProbeStep(
+          "threads.get",
+          () =>
+            page.evaluate(
+              (threadId) => window.api.threads.get(threadId),
+              options.sentinelRequest.threadId
+            ),
+          IPC_PROBE_TIMEOUT_MS,
+          observeProbeStep
+        )
+        threads = await runReleaseSmokeProbeStep(
+          "threads.listAfterUpgrade",
+          () => page.evaluate(() => window.api.threads.list()),
+          IPC_PROBE_TIMEOUT_MS,
+          observeProbeStep
+        )
+        const hydrated = await runReleaseSmokeProbeStep(
+          "threads.getAgentThreadData",
+          () =>
+            page.evaluate(
+              (threadId) => window.api.threads.getAgentThreadData(threadId),
+              options.sentinelRequest.threadId
+            ),
+          IPC_PROBE_TIMEOUT_MS,
+          observeProbeStep
+        )
+        if (
+          !persisted ||
+          !threads.some((thread) => thread.thread_id === persisted.thread_id) ||
+          hydrated.thread.thread_id !== persisted.thread_id
+        ) {
+          fail("release upgrade sentinel is not visible through the current thread IPC projections")
         }
-      }, options.sentinelRequest ?? null)
+        sentinelThread = {
+          metadata: persisted.metadata ?? null,
+          threadId: persisted.thread_id,
+          title: persisted.title ?? null
+        }
+      }
+      const rendererProjection = await runReleaseSmokeProbeStep(
+        "renderer.projection",
+        () =>
+          page.evaluate(() => ({
+            platform: window.electron.process.platform,
+            rendererReady: (document.getElementById("root")?.childElementCount ?? 0) > 0,
+            windowKind: document.body?.dataset.window ?? null
+          })),
+        IPC_PROBE_TIMEOUT_MS,
+        observeProbeStep
+      )
+      const probe = {
+        ...rendererProjection,
+        sentinelThread,
+        themeAvailable: typeof theme === "object" && theme !== null,
+        threadCount: threads.length
+      }
       if (
         !probe.rendererReady ||
         !probe.themeAvailable ||
@@ -1444,6 +1573,7 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
       }
     },
     async () => {
+      recordStage("close-application")
       if (browser) {
         await closeApplication(
           browser,
@@ -1778,6 +1908,14 @@ async function run() {
         expectProtocolClient: process.platform === "win32",
         expectedVersion: currentPackageVersion,
         expectedWindowKind: "main",
+        recordStage: (stage) => {
+          if (stage === "close-application") {
+            manifest.shutdownStage = stage
+          } else {
+            manifest.probeStage = stage
+          }
+          setPhase("upgrade-current-ipc-verification")
+        },
         sentinelRequest: {
           mode: "verify",
           threadId: sentinel.threadId,
