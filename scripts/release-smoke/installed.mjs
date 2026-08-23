@@ -147,10 +147,6 @@ export function createUpgradeInstallMode(platform = process.platform) {
   return platform === "win32" ? "nsis-in-place" : "data-only-reinstall"
 }
 
-export function createInstalledLaunchArgs(installedLaunchArgs, smokeLaunchArgs) {
-  return [...(installedLaunchArgs ?? []), ...(smokeLaunchArgs ?? [])]
-}
-
 export function createWindowsPayloadInventory(root) {
   const resolvedRoot = resolve(root)
   const files = collectFiles(resolvedRoot, (path) => statSync(path).isFile()).sort()
@@ -1777,7 +1773,7 @@ async function launchInstalledAndProbe(installed, jingleHome, logPath, options) 
   const probe = await launchAndProbe(installed.executablePath, jingleHome, logPath, {
     ...options,
     environment: installed.launchEnvironment,
-    launchArgs: createInstalledLaunchArgs(installed.launchArgs, options.smokeLaunchArgs)
+    launchArgs: installed.launchArgs ?? []
   })
   if (options.expectProtocolClient || installed.desktopEntryName) {
     await assertProtocolClientRegistration(installed, logPath)
@@ -1978,8 +1974,7 @@ async function run() {
           expectProtocolClient: process.platform === "win32",
           expectedVersion: currentPackageVersion,
           expectedWindowKind: "main",
-          probeTransport: process.platform === "win32" ? "main-file" : "cdp",
-          smokeLaunchArgs: process.platform === "win32" ? ["--disable-gpu"] : []
+          probeTransport: process.platform === "win32" ? "main-file" : "cdp"
         })
         setPhase("fresh-database-verification")
         await verifyFreshDatabase(freshHome)
@@ -2075,8 +2070,7 @@ async function run() {
           threadId: sentinel.threadId,
           title: sentinel.title,
           token: sentinel.token
-        },
-        smokeLaunchArgs: process.platform === "win32" ? ["--disable-gpu"] : []
+        }
       })
       if (upgradeMode === "nsis-in-place") {
         setPhase("upgrade-current-database-verification")

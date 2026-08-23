@@ -58,7 +58,6 @@ interface InstalledSmokeModule {
     artifactPath: string,
     installRoot: string
   ): Record<string, unknown>
-  createInstalledLaunchArgs(installedLaunchArgs?: string[], smokeLaunchArgs?: string[]): string[]
   createRemoteDebuggingLaunchArgs(
     port: number,
     userDataPath: string,
@@ -260,18 +259,6 @@ test("observes asynchronous differential launch failures without an unhandled er
   assert.equal(getLaunchError(), null)
   child.emit("error", launchError)
   assert.equal(getLaunchError(), launchError)
-})
-
-test("combines optional installed and smoke launch arguments across platforms", async () => {
-  const smokeModule = await smokeModulePromise
-  assert.deepEqual(smokeModule.createInstalledLaunchArgs(undefined, undefined), [])
-  assert.deepEqual(smokeModule.createInstalledLaunchArgs(undefined, ["--disable-gpu"]), [
-    "--disable-gpu"
-  ])
-  assert.deepEqual(smokeModule.createInstalledLaunchArgs(["--no-sandbox"], ["--diagnostic-flag"]), [
-    "--no-sandbox",
-    "--diagnostic-flag"
-  ])
 })
 
 test("uses capability-specific shutdown evidence for current and legacy packages", async () => {
@@ -988,10 +975,8 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(smokeSource, /--remote-debugging-port=\$\{port\}/)
   assert.match(smokeSource, /--remote-debugging-address=127\.0\.0\.1/)
   assert.match(smokeSource, /probeTransport: process\.platform === "win32" \? "main-file" : "cdp"/)
-  assert.match(
-    smokeSource,
-    /smokeLaunchArgs: process\.platform === "win32" \? \["--disable-gpu"\] : \[\]/
-  )
+  assert.doesNotMatch(smokeSource, /--disable-gpu|smokeLaunchArgs/)
+  assert.match(smokeSource, /launchArgs: installed\.launchArgs \?\? \[\]/)
   assert.match(smokeSource, /probeTransport: "cdp"/)
   assert.match(smokeSource, /main-file probe transport requires a current main-window package/)
   assert.match(smokeSource, /MAIN_PROBE_REQUEST_FILE/)
