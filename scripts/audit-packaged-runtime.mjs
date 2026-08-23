@@ -33,6 +33,11 @@ const machOMagicHexValues = new Set([
 ])
 const supportedRuntimeArchitectures = new Set(["arm64", "x64"])
 const requiredExternalPackages = ["@prisma/client", "just-bash"]
+const requiredElectronLocales = {
+  darwin: ["en.lproj", "en_GB.lproj", "zh_CN.lproj", "zh_TW.lproj"],
+  linux: ["en-US.pak", "en-GB.pak", "zh-CN.pak", "zh-TW.pak"],
+  win32: ["en-US.pak", "en-GB.pak", "zh-CN.pak", "zh-TW.pak"]
+}
 const requiredPrismaMigrationNames = readdirSync(resolve("prisma/migrations"), {
   withFileTypes: true
 })
@@ -186,6 +191,54 @@ function findRootAppExecutable(appPath) {
   }
 
   return selectRootAppExecutableCandidate(candidates)
+}
+
+export function assertPackagedElectronLocales(packagedApp, platform = process.platform) {
+  const expectedLocales = requiredElectronLocales[platform]
+  if (!expectedLocales) {
+    throw new Error(`Unsupported packaged Electron locale platform: ${platform}`)
+  }
+
+  const localeRoot =
+    platform === "darwin"
+      ? join(
+          packagedApp.appPath,
+          "Contents",
+          "Frameworks",
+          "Electron Framework.framework",
+          "Versions",
+          "A",
+          "Resources"
+        )
+      : join(packagedApp.appPath, "locales")
+  if (!existsSync(localeRoot)) {
+    throw new Error("Packaged Electron locale root is missing or invalid")
+  }
+  const localeRootEntry = lstatSync(localeRoot)
+  if (localeRootEntry.isSymbolicLink() || !localeRootEntry.isDirectory()) {
+    throw new Error("Packaged Electron locale root is missing or invalid")
+  }
+  for (const locale of expectedLocales) {
+    const localeContainerPath = join(localeRoot, locale)
+    const localePayloadPath =
+      platform === "darwin" ? join(localeContainerPath, "locale.pak") : localeContainerPath
+    if (platform === "darwin") {
+      if (!existsSync(localeContainerPath)) {
+        throw new Error(`Packaged Electron locale is missing or empty: ${locale}`)
+      }
+      const localeContainer = lstatSync(localeContainerPath)
+      if (localeContainer.isSymbolicLink() || !localeContainer.isDirectory()) {
+        throw new Error(`Packaged Electron locale is missing or empty: ${locale}`)
+      }
+    }
+    if (!existsSync(localePayloadPath)) {
+      throw new Error(`Packaged Electron locale is missing or empty: ${locale}`)
+    }
+    const localePayload = lstatSync(localePayloadPath)
+    if (localePayload.isSymbolicLink() || !localePayload.isFile() || localePayload.size === 0) {
+      throw new Error(`Packaged Electron locale is missing or empty: ${locale}`)
+    }
+  }
 }
 
 function hasNativeFileExtension(path) {
@@ -752,6 +805,7 @@ function runPackagedRuntimeAudit() {
   }
 
   for (const packagedApp of packagedApps) {
+    assertPackagedElectronLocales(packagedApp)
     assertForbiddenRuntimeNotPackaged(packagedApp)
     assertPackagedComputerUseHelper(packagedApp)
     assertPackagedNativeArchitectures(packagedApp)

@@ -4,11 +4,6 @@ directories:
   output: dist
 npmRebuild: false
 afterPack: scripts/after-pack-audit.cjs
-electronLanguages:
-  - en
-  - en_GB
-  - zh_CN
-  - zh_TW
 files:
   - out/**
   - prisma/migrations/**
@@ -106,6 +101,11 @@ asarUnpack:
   - node_modules/.prisma/client/*.node
   - node_modules/@vscode/ripgrep-*/bin/*
 mac:
+  electronLanguages:
+    - en
+    - en_GB
+    - zh_CN
+    - zh_TW
   category: public.app-category.productivity
   icon: resources/icon.icns
   extendInfo:
@@ -134,10 +134,20 @@ dmg:
       path: /Applications
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 win:
+  electronLanguages:
+    - en-US
+    - en-GB
+    - zh-CN
+    - zh-TW
   icon: resources/icon.ico
   target:
     - nsis
 linux:
+  electronLanguages:
+    - en-US
+    - en-GB
+    - zh-CN
+    - zh-TW
   category: Utility
   icon: resources/icon.png
   protocols:

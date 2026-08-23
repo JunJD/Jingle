@@ -1,5 +1,13 @@
 import assert from "node:assert/strict"
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -11,6 +19,7 @@ import {
 import {
   assertMacNativeLinks,
   assertPackagedComputerUseHelper,
+  assertPackagedElectronLocales,
   assertPackagedNativeArchitectures,
   assertWindowsComputerUseHelperProbe,
   readNativeBinaryDescriptor,
@@ -71,6 +80,113 @@ test("runs packaged runtime audit only after electron-builder releases final exe
   assert.match(runnerSource, /join\(distRoot, "mac-universal"\)/)
   assert.match(runnerSource, /audit-packaged-runtime\.mjs/)
   assert.match(runnerSource, /timeout: 180_000/)
+})
+
+test("packages canonical Electron locales for each desktop platform", () => {
+  const builderConfig = readFileSync("electron-builder.yml", "utf8")
+  assert.doesNotMatch(builderConfig, /^electronLanguages:/m)
+  assert.ok(
+    builderConfig.includes(
+      "mac:\n  electronLanguages:\n    - en\n    - en_GB\n    - zh_CN\n    - zh_TW"
+    )
+  )
+  assert.ok(
+    builderConfig.includes(
+      "win:\n  electronLanguages:\n    - en-US\n    - en-GB\n    - zh-CN\n    - zh-TW"
+    )
+  )
+  assert.ok(
+    builderConfig.includes(
+      "linux:\n  electronLanguages:\n    - en-US\n    - en-GB\n    - zh-CN\n    - zh-TW"
+    )
+  )
+
+  for (const [platform, locales] of [
+    ["darwin", ["en.lproj", "en_GB.lproj", "zh_CN.lproj", "zh_TW.lproj"]],
+    ["win32", ["en-US.pak", "en-GB.pak", "zh-CN.pak", "zh-TW.pak"]],
+    ["linux", ["en-US.pak", "en-GB.pak", "zh-CN.pak", "zh-TW.pak"]]
+  ] as const) {
+    const root = mkdtempSync(join(tmpdir(), `jingle-electron-locales-${platform}-`))
+    const appPath = platform === "darwin" ? join(root, "Jingle.app") : root
+    const localeRoot =
+      platform === "darwin"
+        ? join(
+            appPath,
+            "Contents",
+            "Frameworks",
+            "Electron Framework.framework",
+            "Versions",
+            "A",
+            "Resources"
+          )
+        : join(appPath, "locales")
+    try {
+      for (const locale of locales) {
+        const localePath =
+          platform === "darwin" ? join(localeRoot, locale, "locale.pak") : join(localeRoot, locale)
+        mkdirSync(join(localePath, ".."), { recursive: true })
+        writeFileSync(localePath, "locale")
+      }
+      assert.doesNotThrow(() => assertPackagedElectronLocales({ appPath }, platform))
+
+      const lastLocale = locales.at(-1)!
+      const missingLocale =
+        platform === "darwin"
+          ? join(localeRoot, lastLocale, "locale.pak")
+          : join(localeRoot, lastLocale)
+      rmSync(missingLocale, { force: true, recursive: true })
+      assert.throws(
+        () => assertPackagedElectronLocales({ appPath }, platform),
+        /locale is missing or empty/
+      )
+
+      writeFileSync(missingLocale, "")
+      assert.throws(
+        () => assertPackagedElectronLocales({ appPath }, platform),
+        /locale is missing or empty/
+      )
+
+      const symlinkTarget = join(root, "foreign-locale.pak")
+      writeFileSync(symlinkTarget, "foreign")
+      rmSync(missingLocale, { force: true })
+      symlinkSync(symlinkTarget, missingLocale)
+      assert.throws(
+        () => assertPackagedElectronLocales({ appPath }, platform),
+        /locale is missing or empty/
+      )
+
+      if (platform === "darwin") {
+        const localeContainer = join(localeRoot, lastLocale)
+        const foreignContainer = join(root, "foreign-locale.lproj")
+        mkdirSync(foreignContainer, { recursive: true })
+        writeFileSync(join(foreignContainer, "locale.pak"), "foreign")
+        rmSync(localeContainer, { force: true, recursive: true })
+        symlinkSync(foreignContainer, localeContainer, "dir")
+        assert.throws(
+          () => assertPackagedElectronLocales({ appPath }, platform),
+          /locale is missing or empty/
+        )
+      }
+
+      const foreignLocaleRoot = join(root, "foreign-locales")
+      for (const locale of locales) {
+        const localePath =
+          platform === "darwin"
+            ? join(foreignLocaleRoot, locale, "locale.pak")
+            : join(foreignLocaleRoot, locale)
+        mkdirSync(join(localePath, ".."), { recursive: true })
+        writeFileSync(localePath, "foreign")
+      }
+      rmSync(localeRoot, { force: true, recursive: true })
+      symlinkSync(foreignLocaleRoot, localeRoot, "dir")
+      assert.throws(
+        () => assertPackagedElectronLocales({ appPath }, platform),
+        /locale root is missing or invalid/
+      )
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  }
 })
 
 test("packaged runtime requires the platform Computer Use helper", () => {
