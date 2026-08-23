@@ -589,8 +589,9 @@ function runPackagedRuntimeSmoke({ appAsarPath, appPath, executablePath, resourc
   }
 
   const smokeHome = mkdtempSync(join(tmpdir(), "jingle-packaged-runtime-"))
-  const smokeScript = `
+const smokeScript = `
 const { execFileSync } = await import("node:child_process")
+const { realpathSync } = await import("node:fs")
 const { createRequire, builtinModules } = await import("node:module")
 const { join, normalize, sep, isAbsolute } = await import("node:path")
 
@@ -602,8 +603,8 @@ const requiredPackages = ${JSON.stringify(requiredExternalPackages)}
 const Module = requireFromSmoke("node:module")
 
 function isInside(candidate, parent) {
-  const normalizedCandidate = normalize(candidate)
-  const normalizedParent = normalize(parent)
+  const normalizedCandidate = normalize(realpathSync(candidate))
+  const normalizedParent = normalize(realpathSync(parent))
   return normalizedCandidate === normalizedParent || normalizedCandidate.startsWith(normalizedParent + sep)
 }
 
