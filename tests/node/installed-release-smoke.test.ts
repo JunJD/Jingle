@@ -58,6 +58,7 @@ interface InstalledSmokeModule {
     artifactPath: string,
     installRoot: string
   ): Record<string, unknown>
+  createInstalledLaunchArgs(installedLaunchArgs?: string[], smokeLaunchArgs?: string[]): string[]
   createRemoteDebuggingLaunchArgs(
     port: number,
     userDataPath: string,
@@ -259,6 +260,18 @@ test("observes asynchronous differential launch failures without an unhandled er
   assert.equal(getLaunchError(), null)
   child.emit("error", launchError)
   assert.equal(getLaunchError(), launchError)
+})
+
+test("combines optional installed and smoke launch arguments across platforms", async () => {
+  const smokeModule = await smokeModulePromise
+  assert.deepEqual(smokeModule.createInstalledLaunchArgs(undefined, undefined), [])
+  assert.deepEqual(smokeModule.createInstalledLaunchArgs(undefined, ["--disable-gpu"]), [
+    "--disable-gpu"
+  ])
+  assert.deepEqual(smokeModule.createInstalledLaunchArgs(["--no-sandbox"], ["--diagnostic-flag"]), [
+    "--no-sandbox",
+    "--diagnostic-flag"
+  ])
 })
 
 test("uses capability-specific shutdown evidence for current and legacy packages", async () => {

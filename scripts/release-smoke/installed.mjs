@@ -147,6 +147,10 @@ export function createUpgradeInstallMode(platform = process.platform) {
   return platform === "win32" ? "nsis-in-place" : "data-only-reinstall"
 }
 
+export function createInstalledLaunchArgs(installedLaunchArgs, smokeLaunchArgs) {
+  return [...(installedLaunchArgs ?? []), ...(smokeLaunchArgs ?? [])]
+}
+
 export function createWindowsPayloadInventory(root) {
   const resolvedRoot = resolve(root)
   const files = collectFiles(resolvedRoot, (path) => statSync(path).isFile()).sort()
@@ -1773,7 +1777,7 @@ async function launchInstalledAndProbe(installed, jingleHome, logPath, options) 
   const probe = await launchAndProbe(installed.executablePath, jingleHome, logPath, {
     ...options,
     environment: installed.launchEnvironment,
-    launchArgs: [...installed.launchArgs, ...(options.smokeLaunchArgs ?? [])]
+    launchArgs: createInstalledLaunchArgs(installed.launchArgs, options.smokeLaunchArgs)
   })
   if (options.expectProtocolClient || installed.desktopEntryName) {
     await assertProtocolClientRegistration(installed, logPath)
