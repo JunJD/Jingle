@@ -272,24 +272,20 @@ test("parses the exact Windows protocol command owner", async () => {
   const smokeModule = await smokeModulePromise
   const executablePath = "C:\\Users\\runner\\Jingle\\Jingle.exe"
 
-  assert.deepEqual(smokeModule.assertWindowsProtocolCommand(`"${executablePath}" "%1"`, executablePath), {
-    argumentTemplate: '"%1"',
-    executablePath
-  })
+  assert.deepEqual(
+    smokeModule.assertWindowsProtocolCommand(`"${executablePath}" "%1"`, executablePath),
+    {
+      argumentTemplate: '"%1"',
+      executablePath
+    }
+  )
   assert.throws(
-    () =>
-      smokeModule.assertWindowsProtocolCommand(
-        `"${executablePath}.old" "%1"`,
-        executablePath
-      ),
+    () => smokeModule.assertWindowsProtocolCommand(`"${executablePath}.old" "%1"`, executablePath),
     /does not target the installed executable/
   )
   assert.throws(
     () =>
-      smokeModule.assertWindowsProtocolCommand(
-        `"${executablePath}" --extra "%1"`,
-        executablePath
-      ),
+      smokeModule.assertWindowsProtocolCommand(`"${executablePath}" --extra "%1"`, executablePath),
     /invalid URL argument template/
   )
 })
