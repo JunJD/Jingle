@@ -17,6 +17,7 @@ import {
   type DiagnosticScalar
 } from "./schema"
 import { isElectronChildProcessEventConsistent } from "./electron-child-process-identity"
+import { supportsPosixFileModes } from "../filesystem-permissions"
 
 const JOURNAL_NAME_PATTERN = /^jingle\.log(?:\.(\d+))?$/
 const EVENT_CODE_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)+$/
@@ -142,7 +143,7 @@ function isWithin(root: string, candidate: string): boolean {
 }
 
 function isPrivateMode(mode: number, expected: number): boolean {
-  return (mode & 0o777) === expected
+  return !supportsPosixFileModes() || (mode & 0o777) === expected
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -744,7 +745,9 @@ async function writePacketExclusively(
     fileCreated = true
     let committed = false
     try {
-      await handle.chmod(PRIVATE_FILE_MODE)
+      if (supportsPosixFileModes()) {
+        await handle.chmod(PRIVATE_FILE_MODE)
+      }
       await handle.writeFile(serialized, "utf8")
       await handle.sync()
       const openedStat = await handle.stat()

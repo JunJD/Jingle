@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto"
 import {
   closeSync,
   constants,
-  fchmodSync,
   fstatSync,
   fsyncSync,
   lstatSync,
@@ -16,7 +15,11 @@ import {
 } from "node:fs"
 import { basename, dirname, join } from "node:path"
 import { types } from "node:util"
-import { assertPrivateRegularFileSync, ensurePrivateDirectorySync } from "./private-files"
+import {
+  assertPrivateRegularFileSync,
+  enforcePrivateFileModeSync,
+  ensurePrivateDirectorySync
+} from "./private-files"
 import type { DiagnosticEventRef, DiagnosticGraphSink, DiagnosticResourceRef } from "./schema"
 
 const PROCESS_SESSION_SCHEMA_VERSION = 1
@@ -206,7 +209,7 @@ function readMarker(path: string): ProcessSessionMarker | null {
     if (!opened.isFile() || after.isSymbolicLink() || !after.isFile() || !sameFile(opened, after)) {
       throw new Error("Process session marker changed while it was being read.")
     }
-    fchmodSync(descriptor, PRIVATE_FILE_MODE)
+    enforcePrivateFileModeSync(descriptor)
     const serialized = readFileSync(descriptor, "utf8")
     if (Buffer.byteLength(serialized, "utf8") > PROCESS_SESSION_MAX_BYTES) {
       throw new Error("Process session marker exceeds its size limit.")

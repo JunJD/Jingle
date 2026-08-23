@@ -11,10 +11,21 @@ import {
 } from "node:fs"
 import { lstat, mkdir, open, realpath, type FileHandle } from "node:fs/promises"
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path"
+import { supportsPosixFileModes } from "../filesystem-permissions"
 
 const PRIVATE_DIRECTORY_MODE = 0o700
 const PRIVATE_FILE_MODE = 0o600
 const NO_FOLLOW = constants.O_NOFOLLOW ?? 0
+
+function enforcePrivateModeSync(descriptor: number, mode: number): void {
+  if (supportsPosixFileModes()) {
+    fchmodSync(descriptor, mode)
+  }
+}
+
+export function enforcePrivateFileModeSync(descriptor: number): void {
+  enforcePrivateModeSync(descriptor, PRIVATE_FILE_MODE)
+}
 
 function isMissingError(error: unknown): boolean {
   return Boolean(
@@ -67,7 +78,7 @@ function assertPrivateDirectorySync(path: string): string {
     ) {
       throw new Error("Diagnostics directory is not a private regular directory.")
     }
-    fchmodSync(fd, PRIVATE_DIRECTORY_MODE)
+    enforcePrivateModeSync(fd, PRIVATE_DIRECTORY_MODE)
     return realpathSync(absolutePath)
   } finally {
     closeSync(fd)
@@ -129,7 +140,9 @@ export async function assertPrivateDirectory(path: string): Promise<string> {
     ) {
       throw new Error("Diagnostics directory is not a private regular directory.")
     }
-    await handle.chmod(PRIVATE_DIRECTORY_MODE)
+    if (supportsPosixFileModes()) {
+      await handle.chmod(PRIVATE_DIRECTORY_MODE)
+    }
     return realpath(absolutePath)
   } finally {
     await handle.close()
@@ -180,7 +193,7 @@ export function assertPrivateRegularFileSync(path: string): Stats | null {
     if (!opened.isFile() || after.isSymbolicLink() || !after.isFile() || !sameFile(opened, after)) {
       throw new Error("Diagnostics file is not a private regular file.")
     }
-    fchmodSync(fd, PRIVATE_FILE_MODE)
+    enforcePrivateFileModeSync(fd)
     return opened
   } catch (error) {
     if (isMissingError(error)) {
@@ -218,7 +231,7 @@ async function openPrivateRegularFile(
     if (!stat.isFile()) {
       throw new Error("Diagnostics file is not a private regular file.")
     }
-    if (create || (stat.mode & 0o777) !== PRIVATE_FILE_MODE) {
+    if (supportsPosixFileModes() && (create || (stat.mode & 0o777) !== PRIVATE_FILE_MODE)) {
       await handle.chmod(PRIVATE_FILE_MODE)
     }
     const after = await lstat(absolutePath)

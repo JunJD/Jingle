@@ -28,6 +28,7 @@ import {
 import { isExpectedElectronShutdown } from "../../src/main/diagnostics/electron-shutdown"
 import { APPEND_DIAGNOSTIC_GRAPH_EVENT, DiagnosticsLogger } from "../../src/main/diagnostics/logger"
 import { DiagnosticsProcessSession } from "../../src/main/diagnostics/process-session"
+import { supportsPosixFileModes } from "../../src/main/filesystem-permissions"
 import type {
   DiagnosticGraphEventInput,
   DiagnosticGraphSink
@@ -65,6 +66,12 @@ const SECRET_VALUES = [
   "//server/private-share/customer/secret.txt",
   "///Users/alice/customer/secret.txt"
 ]
+
+test("uses POSIX modes only on platforms that implement descriptor chmod", () => {
+  assert.equal(supportsPosixFileModes("darwin"), true)
+  assert.equal(supportsPosixFileModes("linux"), true)
+  assert.equal(supportsPosixFileModes("win32"), false)
+})
 
 function createTempDir(label: string): string {
   const dir = join(tmpdir(), `jingle-${label}-${Date.now()}-${Math.random()}`)
@@ -600,7 +607,10 @@ test("Electron shutdown noise requires the main-owned lifecycle and a normal chi
   assert.equal(isExpectedElectronShutdown(false, details("utility", "killed", 137)), false)
   assert.equal(isExpectedElectronShutdown(true, details("pepper-plugin", "clean-exit", 0)), false)
   assert.equal(isExpectedElectronShutdown(true, details("pepper-plugin", "killed", 137)), false)
-  assert.equal(isExpectedElectronShutdown(true, details("pepper-plugin", "abnormal-exit", 15)), false)
+  assert.equal(
+    isExpectedElectronShutdown(true, details("pepper-plugin", "abnormal-exit", 15)),
+    false
+  )
   assert.equal(isExpectedElectronShutdown(true, details("utility", "crashed", 9)), false)
   assert.equal(isExpectedElectronShutdown(true, details("gpu", "crashed", 15)), false)
   assert.equal(isExpectedElectronShutdown(true, details("gpu", "oom", 15)), false)
