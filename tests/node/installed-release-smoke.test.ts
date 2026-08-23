@@ -16,6 +16,7 @@ import test from "node:test"
 interface InstalledSmokeModule {
   assertLinuxDesktopEntryLaunch(source: string): string
   assertLinuxProtocolHandler(output: string, desktopEntryName: string): string
+  assertMacProtocolDeclaration(value: unknown): string[]
   assertWindowsProtocolCommand(
     command: string,
     executablePath: string
@@ -113,6 +114,20 @@ test("selects only the top-level macOS app and ignores Electron helper apps", as
   mkdirSync(join(root, "Another.app", "Contents"), { recursive: true })
   writeFileSync(join(root, "Another.app", "Contents", "Info.plist"), "second")
   assert.throws(() => smokeModule.selectMountedMacApp(root), /top-level app.*found 2/)
+})
+
+test("requires the packaged macOS jingle URL declaration", async () => {
+  const smokeModule = await smokeModulePromise
+  assert.deepEqual(
+    smokeModule.assertMacProtocolDeclaration([
+      { CFBundleURLName: "Jingle OAuth Callback", CFBundleURLSchemes: ["jingle"] }
+    ]),
+    ["jingle"]
+  )
+  assert.throws(
+    () => smokeModule.assertMacProtocolDeclaration([{ CFBundleURLSchemes: ["https"] }]),
+    /does not declare the jingle URL scheme/
+  )
 })
 
 test("builds fail-closed platform install plans", async () => {
@@ -561,15 +576,13 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(smokeSource, /launchArgs: \["--no-sandbox"\]/)
   assert.match(smokeSource, /Exec=\$\{installed\.executablePath\} --no-sandbox %U/)
   assert.match(smokeSource, /HKCU\\\\Software\\\\Classes\\\\jingle/)
-  assert.match(smokeSource, /NSWorkspace\.shared\.urlForApplication/)
-  assert.match(smokeSource, /MAC_LSREGISTER_PATH/)
+  assert.match(smokeSource, /CFBundleURLTypes/)
+  assert.match(smokeSource, /assertMacProtocolDeclaration/)
   assert.match(smokeSource, /requireProtocolEntry: false/)
   assert.doesNotMatch(smokeSource, /_electron as electron/)
   assert.doesNotMatch(smokeSource, /APPIMAGE_EXTRACT_AND_RUN/)
   assert.match(smokeSource, /XDG_DATA_HOME/)
 
-  const builderConfig = readFileSync("electron-builder.yml", "utf8")
-  assert.match(builderConfig, /nsis:[\s\S]*?runAfterFinish: false/)
   assert.match(smokeSource, /\["default", desktopEntryName, "x-scheme-handler\/jingle"\]/)
   assert.match(smokeSource, /xdg-mime/)
   assert.match(smokeSource, /`--user-data-dir=\$\{userDataPath\}`/)

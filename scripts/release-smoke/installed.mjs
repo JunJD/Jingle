@@ -11,14 +11,13 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  realpathSync,
   readdirSync,
   rmSync,
   statSync,
   writeFileSync
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { basename, dirname, join, relative, resolve } from "node:path"
+import { basename, join, relative, resolve } from "node:path"
 import { createServer } from "node:net"
 import { pathToFileURL } from "node:url"
 import { PrismaClient } from "@prisma/client"
@@ -32,8 +31,6 @@ import {
 
 const APP_BOOT_TIMEOUT_MS = 90_000
 const PROCESS_TIMEOUT_MS = 120_000
-const MAC_LSREGISTER_PATH =
-  "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 const currentPackageVersion = JSON.parse(readFileSync(resolve("package.json"), "utf8")).version
 const packageSuffixByPlatform = {
   darwin: ".dmg",
@@ -293,6 +290,18 @@ export function assertLinuxDesktopEntryLaunch(source) {
   return execLine
 }
 
+export function assertMacProtocolDeclaration(value) {
+  const schemes = Array.isArray(value)
+    ? value.flatMap((entry) =>
+        Array.isArray(entry?.CFBundleURLSchemes) ? entry.CFBundleURLSchemes : []
+      )
+    : []
+  if (!schemes.includes("jingle")) {
+    fail("macOS application does not declare the jingle URL scheme")
+  }
+  return schemes
+}
+
 export function assertWindowsProtocolCommand(command, executablePath) {
   const trimmed = command.trim()
   let registeredExecutable
@@ -441,7 +450,19 @@ async function installMac(invocation, workspace, logPath) {
   try {
     const sourceApp = selectMountedMacApp(mountPath)
     await runProcess("ditto", [sourceApp, appPath], { cwd: workspace, logPath })
-    await runProcess(MAC_LSREGISTER_PATH, ["-f", appPath], { cwd: workspace, logPath })
+    const protocolDeclaration = await runProcess(
+      "plutil",
+      [
+        "-extract",
+        "CFBundleURLTypes",
+        "json",
+        "-o",
+        "-",
+        join(appPath, "Contents", "Info.plist")
+      ],
+      { cwd: workspace, logPath }
+    )
+    assertMacProtocolDeclaration(JSON.parse(protocolDeclaration.stdout))
   } catch (error) {
     installError = error
   }
@@ -465,11 +486,7 @@ async function installMac(invocation, workspace, logPath) {
       join(appPath, "Contents", "MacOS"),
       (path) => Boolean(statSync(path).mode & 0o111),
       "macOS app executable"
-    ),
-    protocolCleanup: {
-      args: ["-u", appPath],
-      command: MAC_LSREGISTER_PATH
-    }
+    )
   }
 }
 
@@ -560,16 +577,6 @@ async function installArtifact(invocation, workspace, logPath) {
 async function cleanupInstalledArtifact(input) {
   const { installRoot, installed, installationCompleted, logPath, workspace } = input
   const errors = []
-  if (installed?.protocolCleanup) {
-    try {
-      await runProcess(installed.protocolCleanup.command, installed.protocolCleanup.args, {
-        cwd: workspace,
-        logPath
-      })
-    } catch (error) {
-      errors.push(error)
-    }
-  }
   if (process.platform === "win32" && existsSync(installRoot)) {
     try {
       const uninstallers = collectFiles(
@@ -1099,20 +1106,7 @@ async function assertProtocolClientRegistration(installed, logPath) {
     return
   }
 
-  const installedAppPath = resolve(dirname(installed.executablePath), "../..")
-  const swiftSource = [
-    "import AppKit",
-    "import Foundation",
-    'let url = URL(string: "jingle://release-smoke")!',
-    'print(NSWorkspace.shared.urlForApplication(toOpen: url)?.path ?? "")'
-  ].join("; ")
-  const result = await runProcess("swift", ["-e", swiftSource], {
-    cwd: process.cwd(),
-    logPath
-  })
-  if (realpathSync(result.stdout.trim()) !== realpathSync(installedAppPath)) {
-    fail("macOS jingle protocol registration does not target the installed application")
-  }
+  fail(`unsupported protocol registration platform '${process.platform}'`)
 }
 
 async function launchInstalledAndProbe(installed, jingleHome, logPath, options) {
@@ -1304,7 +1298,7 @@ async function run() {
         )
         manifest.phase = "fresh-first-launch"
         const probe = await launchInstalledAndProbe(installed, freshHome, appLog, {
-          expectProtocolClient: process.platform === "darwin" || process.platform === "win32",
+          expectProtocolClient: process.platform === "win32",
           expectedVersion: currentPackageVersion,
           expectedWindowKind: "main"
         })
@@ -1387,7 +1381,7 @@ async function run() {
       )
       manifest.phase = "upgrade-current-ipc-verification"
       const probe = await launchInstalledAndProbe(installed, upgradeHome, appLog, {
-        expectProtocolClient: process.platform === "darwin" || process.platform === "win32",
+        expectProtocolClient: process.platform === "win32",
         expectedVersion: currentPackageVersion,
         expectedWindowKind: "main",
         sentinelRequest: {

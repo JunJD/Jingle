@@ -150,6 +150,5 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
-  runAfterFinish: false
 publish:
   provider: github
