@@ -853,6 +853,19 @@ async function closeApplication(browser, child, jingleHome, processClosed, requi
   } catch (error) {
     const errors = [error]
     if (inspectionError) errors.push(inspectionError)
+    if (child.exitCode !== null || child.signalCode !== null) {
+      try {
+        await waitForLoggedProcessClose(processClosed)
+        if (requireCleanSession) {
+          assertCleanProcessSession(jingleHome)
+        }
+        if (!inspectionError) {
+          return
+        }
+      } catch (verificationError) {
+        errors.push(verificationError)
+      }
+    }
     try {
       await terminateProcessTree(processId)
     } catch (cleanupError) {
