@@ -1,6 +1,5 @@
-const { spawnSync } = require("node:child_process")
 const { existsSync, lstatSync, readdirSync, rmSync } = require("node:fs")
-const { join, resolve } = require("node:path")
+const { join } = require("node:path")
 
 const retainedElectronLocalePrefixes = ["en", "en_GB", "zh_CN", "zh_TW"]
 
@@ -92,20 +91,5 @@ function pruneMacElectronLocales(appOutDir) {
 exports.default = function afterPack(context) {
   if (context.electronPlatformName === "darwin") {
     pruneMacElectronLocales(context.appOutDir)
-  }
-
-  const auditScriptPath = resolve(__dirname, "audit-packaged-runtime.mjs")
-  const result = spawnSync(process.execPath, [auditScriptPath, context.appOutDir], {
-    cwd: join(__dirname, ".."),
-    env: process.env,
-    stdio: "inherit"
-  })
-
-  if (result.error) {
-    throw result.error
-  }
-
-  if (result.status !== 0) {
-    throw new Error(`Packaged runtime audit failed for ${context.appOutDir}`)
   }
 }

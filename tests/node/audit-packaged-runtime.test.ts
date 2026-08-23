@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -44,6 +44,34 @@ function createValidWindowsProbe() {
     protocolVersion: 1
   }
 }
+
+test("runs packaged runtime audit only after electron-builder releases final executables", () => {
+  const afterPackSource = readFileSync("scripts/after-pack-audit.cjs", "utf8")
+  assert.match(afterPackSource, /pruneMacElectronLocales/)
+  assert.doesNotMatch(afterPackSource, /audit-packaged-runtime|spawnSync/)
+
+  const runnerSource = readFileSync("scripts/run-electron-builder.mjs", "utf8")
+  const resetRoots = runnerSource.lastIndexOf("resetPackagedAuditRoots(args)")
+  const builderSpawn = runnerSource.indexOf("const child = spawn(")
+  const builderClose = runnerSource.indexOf('child.on("close"')
+  const finalAudit = runnerSource.lastIndexOf("auditPackagedOutputs(args)")
+  assert.ok(resetRoots >= 0 && resetRoots < builderSpawn)
+  assert.ok(builderSpawn < builderClose && finalAudit > builderClose)
+  assert.match(
+    runnerSource,
+    /function resetPackagedAuditRoots[\s\S]*?rmSync\(candidate, \{ force: true, recursive: true \}\)/
+  )
+  assert.match(
+    runnerSource,
+    /const missingGroups = groups\.filter\([\s\S]*?missingGroups\.length > 0[\s\S]*?did not produce requested unpacked roots/
+  )
+  assert.match(runnerSource, /arch === "x64" \? "win-unpacked" : `win-\$\{arch\}-unpacked`/)
+  assert.match(runnerSource, /arch === "x64" \? "linux-unpacked" : `linux-\$\{arch\}-unpacked`/)
+  assert.match(runnerSource, /join\(distRoot, `mac-\$\{arch\}`\)/)
+  assert.match(runnerSource, /join\(distRoot, "mac-universal"\)/)
+  assert.match(runnerSource, /audit-packaged-runtime\.mjs/)
+  assert.match(runnerSource, /timeout: 180_000/)
+})
 
 test("packaged runtime requires the platform Computer Use helper", () => {
   const fixture = createResourcesFixture()
