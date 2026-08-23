@@ -187,6 +187,9 @@ export default defineConfig({
     }
   },
   renderer: {
+    build: {
+      assetsInlineLimit: 0
+    },
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version)
     },

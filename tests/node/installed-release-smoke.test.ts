@@ -1063,6 +1063,7 @@ test("release workflow keeps candidates build-only and publishes only verified t
   const viteConfig = readFileSync("electron.vite.config.ts", "utf8")
   assert.match(viteConfig, /index: resolve\("src\/main\/bootstrap\.ts"\)/)
   assert.match(viteConfig, /"main-application": resolve\("src\/main\/index\.ts"\)/)
+  assert.match(viteConfig, /renderer:[\s\S]*?assetsInlineLimit: 0/)
 
   const freshInventory = smokeSource.indexOf(
     "freshWindowsPayloadInventory = createWindowsPayloadInventory(installed.appRoot)"
