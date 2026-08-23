@@ -813,6 +813,7 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(smokeSource, /chromium\.connectOverCDP/)
   assert.match(smokeSource, /reserveLoopbackPort/)
   assert.match(smokeSource, /\/json\/version/)
+  assert.match(smokeSource, /AbortSignal\.timeout\(CDP_PROBE_TIMEOUT_MS\)/)
   assert.match(smokeSource, /--remote-debugging-port=\$\{port\}/)
   assert.match(smokeSource, /--remote-debugging-address=127\.0\.0\.1/)
   assert.match(smokeSource, /windows launch diagnostics/)

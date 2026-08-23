@@ -30,6 +30,7 @@ import {
 } from "./upgrade-baseline.mjs"
 
 const APP_BOOT_TIMEOUT_MS = 90_000
+const CDP_PROBE_TIMEOUT_MS = 1_000
 const PROCESS_TIMEOUT_MS = 120_000
 const currentPackageVersion = JSON.parse(readFileSync(resolve("package.json"), "utf8")).version
 const packageSuffixByPlatform = {
@@ -1067,7 +1068,9 @@ async function waitForDevToolsPort(
   }
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`http://127.0.0.1:${port}/json/version`)
+      const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
+        signal: AbortSignal.timeout(CDP_PROBE_TIMEOUT_MS)
+      })
       if (response.ok) return port
     } catch {
       // The packaged Chromium endpoint is not listening yet.
