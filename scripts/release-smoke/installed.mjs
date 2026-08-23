@@ -378,12 +378,19 @@ async function terminateProcessTree(processId) {
   } catch (error) {
     inspectionError = error
   }
+  let terminationError = null
   if (process.platform === "win32") {
-    spawnSync("taskkill", ["/pid", String(processId), "/t", "/f"], {
+    const result = spawnSync("taskkill", ["/pid", String(processId), "/t", "/f"], {
       shell: false,
       stdio: "ignore",
+      timeout: 15_000,
       windowsHide: true
     })
+    if (result.error) {
+      terminationError = new Error("Windows process-tree termination exceeded its deadline.", {
+        cause: result.error
+      })
+    }
   } else {
     for (const targetId of processIds) {
       try {
@@ -393,8 +400,17 @@ async function terminateProcessTree(processId) {
       }
     }
   }
-  await waitForProcessExit(processIds, `process tree rooted at ${processId}`)
-  if (inspectionError) throw inspectionError
+  let exitError = null
+  try {
+    await waitForProcessExit(processIds, `process tree rooted at ${processId}`)
+  } catch (error) {
+    exitError = error
+  }
+  const errors = [inspectionError, terminationError, exitError].filter((error) => error !== null)
+  if (errors.length === 1) throw errors[0]
+  if (errors.length > 1) {
+    throw new AggregateError(errors, "Process-tree termination and verification failed")
+  }
 }
 
 function readProcessParentPairs() {
@@ -407,9 +423,11 @@ function readProcessParentPairs() {
         "-Command",
         "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId | ConvertTo-Json -Compress"
       ],
-      { encoding: "utf8", shell: false, windowsHide: true }
+      { encoding: "utf8", shell: false, timeout: 15_000, windowsHide: true }
     )
-    if (result.status !== 0) fail("could not inspect the Windows process tree")
+    if (result.error || result.status !== 0) {
+      fail("could not inspect the Windows process tree within its deadline")
+    }
     const parsed = JSON.parse(result.stdout || "[]")
     return (Array.isArray(parsed) ? parsed : [parsed]).map((entry) => [
       Number(entry.ProcessId),
@@ -417,8 +435,13 @@ function readProcessParentPairs() {
     ])
   }
 
-  const result = spawnSync("ps", ["-axo", "pid=,ppid="], { encoding: "utf8" })
-  if (result.status !== 0) fail("could not inspect the POSIX process tree")
+  const result = spawnSync("ps", ["-axo", "pid=,ppid="], {
+    encoding: "utf8",
+    timeout: 15_000
+  })
+  if (result.error || result.status !== 0) {
+    fail("could not inspect the POSIX process tree within its deadline")
+  }
   return result.stdout.split("\n").map((line) => {
     const [rawProcessId, rawParentId] = line.trim().split(/\s+/)
     return [Number(rawProcessId), Number(rawParentId)]

@@ -781,6 +781,13 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.doesNotMatch(smokeSource, /CurrentThreatExecutionStatus, Resources/)
   assert.match(smokeSource, /Get-NetTCPConnection -LocalPort/)
   assert.match(smokeSource, /Get-CimInstance Win32_Process/)
+  assert.match(
+    smokeSource,
+    /Get-CimInstance Win32_Process[\s\S]*?timeout: 15_000[\s\S]*?within its deadline/
+  )
+  assert.match(smokeSource, /spawnSync\("taskkill"[\s\S]*?timeout: 15_000/)
+  assert.match(smokeSource, /spawnSync\("ps"[\s\S]*?timeout: 15_000/)
+  assert.match(smokeSource, /Process-tree termination and verification failed/)
   assert.match(smokeSource, /Windows Error Reporting/)
   assert.match(smokeSource, /defaultJingleHomeExists/)
   assert.match(smokeSource, /windows bootstrap differential/)
