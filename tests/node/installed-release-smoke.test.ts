@@ -977,10 +977,32 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(smokeSource, /AbortSignal\.timeout\(CDP_PROBE_TIMEOUT_MS\)/)
   assert.match(smokeSource, /--remote-debugging-port=\$\{port\}/)
   assert.match(smokeSource, /--remote-debugging-address=127\.0\.0\.1/)
-  assert.match(smokeSource, /probeTransport: process\.platform === "win32" \? "main-file" : "cdp"/)
+  assert.equal([...smokeSource.matchAll(/probeTransport: "main-file"/g)].length, 2)
+  assert.equal([...smokeSource.matchAll(/probeTransport: "cdp"/g)].length, 1)
+  assert.equal([...smokeSource.matchAll(/shutdownContract: "current-clean-session"/g)].length, 2)
+  assert.equal([...smokeSource.matchAll(/shutdownContract: "legacy-process-reaped"/g)].length, 1)
+  const freshCurrentTransport = smokeSource.indexOf('probeTransport: "main-file"')
+  const legacyTransport = smokeSource.indexOf('probeTransport: "cdp"')
+  const upgradeCurrentTransport = smokeSource.indexOf(
+    'probeTransport: "main-file"',
+    freshCurrentTransport + 1
+  )
+  assert.ok(
+    freshCurrentTransport >= 0 &&
+      freshCurrentTransport < legacyTransport &&
+      legacyTransport < upgradeCurrentTransport
+  )
+  assert.doesNotMatch(smokeSource, /probeTransport: process\.platform/)
+  assert.match(
+    smokeSource,
+    /probeTransport === "main-file" && shutdownContract !== "current-clean-session"/
+  )
+  assert.match(
+    smokeSource,
+    /probeTransport === "cdp" && shutdownContract !== "legacy-process-reaped"/
+  )
   assert.doesNotMatch(smokeSource, /--disable-gpu|smokeLaunchArgs/)
   assert.match(smokeSource, /launchArgs: installed\.launchArgs \?\? \[\]/)
-  assert.match(smokeSource, /probeTransport: "cdp"/)
   assert.match(smokeSource, /main-file probe transport requires a current main-window package/)
   assert.match(smokeSource, /MAIN_PROBE_REQUEST_FILE/)
   assert.match(smokeSource, /windows launch diagnostics/)

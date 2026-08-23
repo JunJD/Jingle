@@ -1466,8 +1466,15 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
   mkdirSync(userDataPath, { recursive: true })
   const recordStage = options.recordStage ?? (() => undefined)
   const probeTransport = options.probeTransport ?? "cdp"
+  const shutdownContract = options.shutdownContract ?? "current-clean-session"
   if (probeTransport !== "cdp" && probeTransport !== "main-file") {
     fail(`unsupported installed probe transport: ${String(probeTransport)}`)
+  }
+  if (
+    (probeTransport === "main-file" && shutdownContract !== "current-clean-session") ||
+    (probeTransport === "cdp" && shutdownContract !== "legacy-process-reaped")
+  ) {
+    fail(`installed probe transport and shutdown contract do not match: ${probeTransport}`)
   }
   if (probeTransport === "main-file") {
     if (options.expectedWindowKind !== "main" || options.requireDiagnosticsIdentity === false) {
@@ -1717,17 +1724,8 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
     },
     async () => {
       recordStage("close-application")
-      if (
-        (options.shutdownContract ?? "current-clean-session") === "current-clean-session" ||
-        browser
-      ) {
-        await closeApplication(
-          browser,
-          child,
-          jingleHome,
-          processClosed,
-          options.shutdownContract ?? "current-clean-session"
-        )
+      if (shutdownContract === "current-clean-session" || browser) {
+        await closeApplication(browser, child, jingleHome, processClosed, shutdownContract)
       } else if (child.pid) {
         await terminateProcessTree(child.pid)
         await waitForLoggedProcessClose(processClosed)
@@ -1974,7 +1972,8 @@ async function run() {
           expectProtocolClient: process.platform === "win32",
           expectedVersion: currentPackageVersion,
           expectedWindowKind: "main",
-          probeTransport: process.platform === "win32" ? "main-file" : "cdp"
+          probeTransport: "main-file",
+          shutdownContract: "current-clean-session"
         })
         setPhase("fresh-database-verification")
         await verifyFreshDatabase(freshHome)
@@ -2056,7 +2055,8 @@ async function run() {
         expectProtocolClient: process.platform === "win32",
         expectedVersion: currentPackageVersion,
         expectedWindowKind: "main",
-        probeTransport: process.platform === "win32" ? "main-file" : "cdp",
+        probeTransport: "main-file",
+        shutdownContract: "current-clean-session",
         recordStage: (stage) => {
           if (stage === "close-application") {
             manifest.shutdownStage = stage
