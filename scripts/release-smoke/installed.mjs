@@ -1592,6 +1592,9 @@ async function run() {
           [resolve("scripts/audit-packaged-runtime.mjs"), installed.appRoot],
           { cwd: process.cwd(), logPath: commandLog }
         )
+        if (upgradeMode === "nsis-in-place") {
+          freshWindowsPayloadInventory = createWindowsPayloadInventory(installed.appRoot)
+        }
         manifest.phase = "fresh-first-launch"
         const probe = await launchInstalledAndProbe(installed, freshHome, appLog, {
           expectProtocolClient: process.platform === "win32",
@@ -1600,9 +1603,6 @@ async function run() {
         })
         manifest.phase = "fresh-database-verification"
         await verifyFreshDatabase(freshHome)
-        if (upgradeMode === "nsis-in-place") {
-          freshWindowsPayloadInventory = createWindowsPayloadInventory(installed.appRoot)
-        }
         return probe
       }
     )

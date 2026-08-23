@@ -834,6 +834,7 @@ test("release workflow keeps candidates build-only and publishes only verified t
   const freshInventory = smokeSource.indexOf(
     "freshWindowsPayloadInventory = createWindowsPayloadInventory(installed.appRoot)"
   )
+  const freshFirstLaunch = smokeSource.indexOf('manifest.phase = "fresh-first-launch"')
   const currentOperation = smokeSource.indexOf("const runCurrent = async")
   const upgradedInventory = smokeSource.indexOf(
     "assertWindowsPayloadMatchesFreshInstall(",
@@ -847,7 +848,9 @@ test("release workflow keeps candidates build-only and publishes only verified t
     "const result = await withWindowsInPlaceUpgrade",
     currentOperation
   )
-  assert.ok(freshInventory >= 0 && freshInventory < currentOperation)
+  assert.ok(
+    freshInventory >= 0 && freshInventory < freshFirstLaunch && freshFirstLaunch < currentOperation
+  )
   assert.ok(upgradedInventory > currentOperation && upgradedInventory < windowsUpgrade)
   assert.ok(databaseVerification > currentOperation && databaseVerification < windowsUpgrade)
 })
