@@ -32,8 +32,9 @@ stable release.
 
 ## Rules
 
-- Keep `package.json` at the next public baseline version on `main`.
-- Validate release candidates only through the `Desktop Release Candidate`
+- The release workflow writes the candidate tag version into packaged apps;
+  do not edit source manifests only to cut a release.
+- Validate release candidates only through the `Desktop Release`
   workflow on the public default branch. Enter an unpublished candidate tag
   string and the full SHA currently published at `main`; the workflow refuses
   stale or non-default-branch sources.
@@ -41,9 +42,11 @@ stable release.
   uploads no workflow artifact, and publishes no packaged asset. A successful
   run proves only that the exact public `main` SHA packaged on all three hosted
   runners.
-- Do not push release tags from a local checkout. In particular, do not push or
-  reuse the retired local trial tag `v0.0.2-nightly.20260718.1`; the workflow
-  rejects it explicitly. Choose a new version.
+- After the exact candidate succeeds, freeze `main`, create an annotated release
+  tag at that same SHA, and push only that tag. The tag run repeats all package,
+  metadata, fresh-install, and upgrade checks before publishing.
+- Do not push or reuse the retired local trial tag
+  `v0.0.2-nightly.20260718.1`; the workflow rejects it explicitly.
 - Do not use the old `app-v*` tag family.
 - Do not create GitHub Releases by hand for unsupported tag names.
 - A candidate tag string does not reserve a version. Recheck tag and release
@@ -81,36 +84,28 @@ This check is not a substitute for the packaged smoke in
 `scripts/release-smoke/installed.mjs`, which still needs built artifacts and the
 reviewed `v0.0.1` release asset and therefore stays release-only.
 
-## Blocked Release Mutation
+## Tag Publication
 
-This repository intentionally has no workflow that creates release tags or
-publishes release assets. Before adding that mutation path, repository
-administrators must provide all of these external controls:
+The `Desktop Release` workflow publishes only when a supported tag points to the
+current public `main` SHA and that SHA's latest CI and CodeQL push runs succeeded.
+The three hosted runners must package one exact architecture, validate updater
+metadata, and pass fresh-install and `v0.0.1` upgrade smoke. Only the final job can
+create a marked draft, upload the exact eight release assets, and publish it.
+Failed package jobs create no release; a failed final job leaves its marked draft
+for a safe `--clobber` rerun and never deletes another owner's release.
 
-- an active tag ruleset targeting `refs/tags/v*`, with no exclusions, that
-  restricts creation, updates, and deletion
-- a protected release environment restricted to `main`, with required approval,
-  self-review disabled, and administrator bypass disabled
-- a dedicated release GitHub App actor whose short-lived token is available only
-  through that protected environment
-- a ruleset bypass granted only to that dedicated actor, never to the broad
-  GitHub Actions integration
+Current packages are unsigned and not notarized. macOS Gatekeeper and Windows
+SmartScreen may warn. These gaps, protected tag ownership, provenance, and
+attestation remain tracked by #108; installed and upgrade evidence remains
+tracked by #109.
 
-These controls are external GitHub state and are not configured by this
-repository. The public repository currently has no rulesets and no environments,
-so release mutation remains blocked.
+The Linux AppImage desktop integration uses `--no-sandbox` for Ubuntu 24.04
+compatibility. When launching the downloaded file directly instead of through a
+desktop integration tool, run:
 
-An administrator must separately verify that only a default-branch job approved
-through the protected environment can obtain the dedicated actor token and
-create a new tag. Direct human/API creation, tag updates, and tag deletion must
-be rejected. YAML self-checks and a broad GitHub Actions bypass are not proof of
-exclusive ownership.
+```bash
+chmod +x Jingle-*.AppImage
+./Jingle-*.AppImage --no-sandbox
+```
 
-The build-only candidate workflow requires successful CI and CodeQL push runs
-for the exact public `main` SHA. It has no tag-push trigger and requests only
-read permissions.
-
-Release publication also remains blocked on macOS signing/notarization, Windows
-Authenticode, provenance/attestation, and the remaining #108 gates. Fresh-install
-and upgrade smoke tests remain tracked by #109. A future checksum manifest would
-prove asset integrity only, not publisher identity or provenance.
+This is an explicit Chromium sandbox reduction, not a sandbox-on verification.

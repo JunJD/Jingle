@@ -29,15 +29,17 @@ Nightly 版是用于快速反馈的预览构建，可能包含未完成能力、
 
 ## 规则
 
-- `main` 上的 `package.json` 保持下一个公开基线版本。
-- 只能通过公开默认分支上的 `Desktop Release Candidate` workflow 验证发布候选。
+- 发布 workflow 会把候选 tag 的版本写入安装包；不要只为发布而修改源码 manifest。
+- 只能通过公开默认分支上的 `Desktop Release` workflow 验证发布候选。
   运行时输入未发布的候选 tag 字符串和当前公开 `main` 的完整 SHA；workflow 会
   拒绝过期提交和非默认分支来源。
 - 候选 workflow 只做构建：不创建 tag 或 GitHub Release，不上传 workflow
   artifact，也不公开任何打包资产。成功 run 只证明精确的公开 `main` SHA 能在三种
   hosted runner 上完成打包。
-- 不要从本地 checkout 推送 release tag。尤其不要推送或复用已废弃的本地试验 tag
-  `v0.0.2-nightly.20260718.1`；workflow 会明确拒绝它。必须选择新版本。
+- 精确候选通过后，冻结 `main`，在同一 SHA 创建 annotated release tag，并且只推送
+  这个 tag。tag run 会重新执行打包、更新元数据、全新安装和升级检查后才发布。
+- 不要推送或复用已废弃的本地试验 tag `v0.0.2-nightly.20260718.1`；workflow
+  会明确拒绝它。
 - 不再使用旧的 `app-v*` tag 族。
 - 不要为不支持的 tag 名手动创建 GitHub Releases。
 - 候选 tag 字符串不代表版本已被保留。未来受保护的发布路径在创建 tag 或 release
@@ -69,28 +71,25 @@ pnpm run release:smoke:pending-migrations
 这条检查不能替代 `scripts/release-smoke/installed.mjs` 的安装态 smoke：后者仍然
 需要构建产物和已审阅的 `v0.0.1` release 资产，因此只在发布流程里运行。
 
-## 被阻断的发布写入
+## Tag 发布
 
-当前仓库有意不提供创建 release tag 或公开发布资产的 workflow。新增这条写入路径
-前，仓库管理员必须先提供以下全部外部控制：
+`Desktop Release` workflow 只接受指向当前公开 `main` SHA 的合法 tag，并要求该 SHA
+最新的 CI 与 CodeQL push run 成功。三个 hosted runner 必须完成精确架构打包、更新
+元数据校验、全新安装以及从 `v0.0.1` 升级 smoke。只有最终 job 拥有发布权限：它创建
+带 source SHA 标记的 draft，上传精确八个资产后再公开。平台 job 失败不会创建
+Release；最终 job 失败会保留自己标记的 draft，供 `--clobber` 安全重跑，绝不删除
+其他 owner 的 Release。
 
-- active tag ruleset 精确覆盖 `refs/tags/v*`，没有 exclusions，并限制 creation、
-  updates 和 deletion
-- 受保护的 release environment，只允许 `main`，要求审批、禁止自审，并禁止
-  administrator bypass
-- 专用 release GitHub App actor，其短期 token 只能由该受保护 environment 提供
-- ruleset bypass 只授予该专用 actor，禁止放行整个 GitHub Actions integration
+当前安装包没有正式签名或公证，macOS Gatekeeper 与 Windows SmartScreen 可能提示
+风险。受保护 tag owner、provenance、attestation 等缺口仍由 #108 跟踪；安装和升级
+证据继续由 #109 跟踪。
 
-这些控制都属于 GitHub 外部状态，不能由仓库代码配置。公开仓库当前既没有 ruleset，
-也没有 environment，因此发布写入继续阻断。
+Linux AppImage 的桌面集成流程为了兼容 Ubuntu 24.04，会使用 `--no-sandbox`。如果不
+通过桌面集成工具，而是直接运行下载文件，请执行：
 
-管理员必须另行实测：只有经过受保护 environment 审批的默认分支 job 能取得专用
-actor token 并创建新 tag；人类或 API 直接创建、更新、删除 tag 都会被拒绝。
-YAML 自检和 GitHub Actions integration 的宽泛 bypass 都不能证明独占 owner。
+```bash
+chmod +x Jingle-*.AppImage
+./Jingle-*.AppImage --no-sandbox
+```
 
-build-only 候选 workflow 仍要求当前公开 `main` 的精确 SHA 已有成功的 CI 和
-CodeQL push run。它没有 tag-push trigger，并且只申请 read 权限。
-
-发布还继续受 macOS 签名/公证、Windows Authenticode、provenance/attestation 和
-#108 其余 gate 阻断；全新安装和升级 smoke 仍由 #109 跟踪。未来的 checksum 清单
-只能证明资产完整性，不能代表发布者身份或 provenance。
+这属于明确降低 Chromium sandbox 的支持边界，不能宣称已经验证 sandbox-on 启动。
