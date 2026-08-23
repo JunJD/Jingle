@@ -409,12 +409,20 @@ test("fails closed when any persisted upgrade sentinel fact drifts", async () =>
   )
 })
 
-test("release candidate workflow uses the installed smoke owner without uploading packages", () => {
+test("release workflow keeps candidates build-only and publishes only verified tag assets", () => {
   const workflow = readFileSync(".github/workflows/desktop-release.yml", "utf8")
   const smokeStep = workflow.indexOf("- name: Run installed first-launch smoke")
   const diagnosticsStep = workflow.indexOf("- name: Upload installed smoke diagnostics")
+  const stageAssetsStep = workflow.indexOf("- name: Stage verified release assets")
+  const publishReleaseJob = workflow.indexOf("publish-release:")
 
-  assert.ok(smokeStep >= 0 && diagnosticsStep > smokeStep)
+  assert.ok(
+    smokeStep >= 0 &&
+      diagnosticsStep > smokeStep &&
+      stageAssetsStep > diagnosticsStep &&
+      publishReleaseJob > stageAssetsStep
+  )
+  assert.match(workflow, /push:[\s\S]*?tags:[\s\S]*?- "v\*\.\*\.\*"/)
   assert.match(workflow, /pnpm run release:smoke:installed/)
   assert.match(workflow, /xvfb-run --auto-servernum/)
   assert.match(workflow, /runner: ubuntu-24\.04/)
@@ -425,7 +433,16 @@ test("release candidate workflow uses the installed smoke owner without uploadin
   assert.match(workflow, /GITHUB_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/)
   assert.match(workflow, /--upgrade-baseline v0\.0\.1/)
   assert.match(workflow, /if: failure\(\)[\s\S]*?path: release-smoke-diagnostics/)
-  assert.doesNotMatch(workflow, /path: [^\n]*(?:\.dmg|\.exe|\.AppImage)/)
+  assert.match(
+    workflow,
+    /- name: Stage verified release assets[\s\S]*?if: needs\.preflight\.outputs\.mode == 'publish'/
+  )
+  assert.match(workflow, /pattern: release-package-\*/)
+  assert.match(workflow, /gh release upload "\$RELEASE_TAG" "\$\{assets\[@\]\}" --clobber/)
+  assert.match(workflow, /gh release edit "\$RELEASE_TAG" --draft=false/)
+  assert.match(workflow, /jingle-release-source:\$RELEASE_SHA/)
+  assert.match(workflow, /This build is unsigned and not notarized/)
+  assert.doesNotMatch(workflow, /gh release delete/)
   assert.match(workflow, /expected_arch: arm64[\s\S]*?expected_artifact_arch: arm64/)
   assert.match(workflow, /expected_arch: x64[\s\S]*?expected_artifact_arch: x64/)
   assert.match(workflow, /expected_arch: x64[\s\S]*?expected_artifact_arch: x86_64/)
@@ -437,6 +454,9 @@ test("release candidate workflow uses the installed smoke owner without uploadin
   assert.match(workflow, /dist\/\*-mac-"\$EXPECTED_ARTIFACT_ARCH"\.dmg/)
   assert.match(workflow, /dist\/\*-win-"\$EXPECTED_ARTIFACT_ARCH"\.exe/)
   assert.match(workflow, /dist\/\*-linux-"\$EXPECTED_ARTIFACT_ARCH"\.AppImage/)
+  assert.match(workflow, /Jingle-\$RELEASE_VERSION-mac-arm64\.dmg\.blockmap/)
+  assert.match(workflow, /Jingle-\$RELEASE_VERSION-win-x64\.exe\.blockmap/)
+  assert.match(workflow, /verify_update_metadata/)
 
   const smokeSource = readFileSync("scripts/release-smoke/installed.mjs", "utf8")
   assert.match(smokeSource, /chromiumSandbox: true/)
