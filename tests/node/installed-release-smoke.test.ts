@@ -576,6 +576,8 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(smokeSource, /launchArgs: \["--no-sandbox"\]/)
   assert.match(smokeSource, /Exec=\$\{installed\.executablePath\} --no-sandbox %U/)
   assert.match(smokeSource, /HKCU\\\\Software\\\\Classes\\\\jingle/)
+  assert.match(smokeSource, /JINGLE_SMOKE_EXECUTABLE/)
+  assert.match(smokeSource, /Installer-launched Jingle process did not exit/)
   assert.match(smokeSource, /CFBundleURLTypes/)
   assert.match(smokeSource, /assertMacProtocolDeclaration/)
   assert.match(smokeSource, /requireProtocolEntry: false/)

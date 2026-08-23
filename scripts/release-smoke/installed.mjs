@@ -497,14 +497,31 @@ async function installWindows(invocation, workspace, logPath) {
     logPath,
     windowsVerbatimArguments: invocation.windowsVerbatimArguments
   })
-  return {
-    appRoot: invocation.installRoot,
-    executablePath: findSingle(
-      invocation.installRoot,
-      (path) => basename(path).toLowerCase() === "jingle.exe",
-      "installed Jingle.exe"
-    )
-  }
+  const executablePath = findSingle(
+    invocation.installRoot,
+    (path) => basename(path).toLowerCase() === "jingle.exe",
+    "installed Jingle.exe"
+  )
+  const stopInstallerLaunch = [
+    "$ErrorActionPreference = 'Stop'",
+    "$target = [IO.Path]::GetFullPath($env:JINGLE_SMOKE_EXECUTABLE)",
+    "Start-Sleep -Milliseconds 1000",
+    "$deadline = [DateTime]::UtcNow.AddSeconds(10)",
+    "do {",
+    "  $matches = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and [IO.Path]::GetFullPath($_.ExecutablePath) -eq $target })",
+    "  foreach ($process in $matches) { Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue }",
+    "  if ($matches.Count -eq 0) { break }",
+    "  Start-Sleep -Milliseconds 200",
+    "} while ([DateTime]::UtcNow -lt $deadline)",
+    "$remaining = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and [IO.Path]::GetFullPath($_.ExecutablePath) -eq $target })",
+    "if ($remaining.Count -ne 0) { throw 'Installer-launched Jingle process did not exit' }"
+  ].join("\n")
+  await runProcess("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", stopInstallerLaunch], {
+    cwd: workspace,
+    env: { ...process.env, JINGLE_SMOKE_EXECUTABLE: executablePath },
+    logPath
+  })
+  return { appRoot: invocation.installRoot, executablePath }
 }
 
 async function installLinux(invocation, workspace, logPath) {
