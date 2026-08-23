@@ -857,6 +857,14 @@ export function observeChildProcessLaunchError(child) {
   return () => launchError
 }
 
+export function appendReleaseSmokePhaseRecord(
+  path,
+  manifest,
+  observedAt = new Date().toISOString()
+) {
+  appendFileSync(path, `${JSON.stringify({ ...manifest, observedAt })}\n`, "utf8")
+}
+
 function collectWindowsExecutableFailureDiagnostics(executablePath, logPath, owner) {
   if (process.platform !== "win32") return
   try {
@@ -1653,9 +1661,15 @@ async function run() {
   let diagnosticHome = freshHome
   let freshWindowsPayloadInventory = null
   rmSync(diagnosticsRoot, { force: true, recursive: true })
+  mkdirSync(diagnosticsRoot, { recursive: true })
+  const setPhase = (phase) => {
+    manifest.phase = phase
+    appendReleaseSmokePhaseRecord(join(diagnosticsRoot, "phase.jsonl"), manifest)
+  }
   mkdirSync(upgradeWorkspace, { recursive: true })
   writeFileSync(commandLog, "")
   writeFileSync(appLog, "")
+  setPhase("fresh-install")
 
   let primaryError = null
   try {
@@ -1667,7 +1681,7 @@ async function run() {
         workspace
       },
       async (installed) => {
-        manifest.phase = "fresh-packaged-runtime-audit"
+        setPhase("fresh-packaged-runtime-audit")
         await runProcess(
           process.execPath,
           [resolve("scripts/audit-packaged-runtime.mjs"), installed.appRoot],
@@ -1676,20 +1690,20 @@ async function run() {
         if (upgradeMode === "nsis-in-place") {
           freshWindowsPayloadInventory = createWindowsPayloadInventory(installed.appRoot)
         }
-        manifest.phase = "fresh-first-launch"
+        setPhase("fresh-first-launch")
         const probe = await launchInstalledAndProbe(installed, freshHome, appLog, {
           expectProtocolClient: process.platform === "win32",
           expectedVersion: currentPackageVersion,
           expectedWindowKind: "main"
         })
-        manifest.phase = "fresh-database-verification"
+        setPhase("fresh-database-verification")
         await verifyFreshDatabase(freshHome)
         return probe
       }
     )
 
     diagnosticHome = upgradeHome
-    manifest.phase = "upgrade-baseline"
+    setPhase("upgrade-baseline")
     const baseline = readUpgradeBaseline()
     if (requestedBaselineTag !== baseline.tag) {
       fail(`upgrade baseline ${requestedBaselineTag} is not the reviewed ${baseline.tag}`)
@@ -1702,7 +1716,7 @@ async function run() {
     })
     const previousArtifactRoot = join(upgradeWorkspace, "previous-artifact")
     mkdirSync(previousArtifactRoot)
-    manifest.phase = "upgrade-previous-artifact-download"
+    setPhase("upgrade-previous-artifact-download")
     const previousArtifact = await downloadUpgradeAsset({
       arch: process.arch,
       baseline,
@@ -1723,7 +1737,7 @@ async function run() {
     }
     mkdirSync(sentinel.workspacePath)
     const runPrevious = async (installed) => {
-      manifest.phase = "upgrade-previous-ipc-sentinel"
+      setPhase("upgrade-previous-ipc-sentinel")
       const probe = await launchInstalledAndProbe(installed, upgradeHome, appLog, {
         expectedVersion: "0.0.1",
         expectedWindowKind: baseline.windowKind,
@@ -1750,13 +1764,13 @@ async function run() {
           createWindowsPayloadInventory(installed.appRoot)
         )
       }
-      manifest.phase = "upgrade-current-packaged-runtime-audit"
+      setPhase("upgrade-current-packaged-runtime-audit")
       await runProcess(
         process.execPath,
         [resolve("scripts/audit-packaged-runtime.mjs"), installed.appRoot],
         { cwd: process.cwd(), logPath: commandLog }
       )
-      manifest.phase = "upgrade-current-ipc-verification"
+      setPhase("upgrade-current-ipc-verification")
       const probe = await launchInstalledAndProbe(installed, upgradeHome, appLog, {
         expectProtocolClient: process.platform === "win32",
         expectedVersion: currentPackageVersion,
@@ -1769,20 +1783,20 @@ async function run() {
         }
       })
       if (upgradeMode === "nsis-in-place") {
-        manifest.phase = "upgrade-current-database-verification"
+        setPhase("upgrade-current-database-verification")
         await verifyUpgradeDatabase(upgradeHome, sentinel)
       }
       return probe
     }
 
-    manifest.phase = "upgrade-previous-install"
+    setPhase("upgrade-previous-install")
     appendFileSync(appLog, `[upgrade previous ${baseline.tag}]\n`)
     let previousProbe
     let currentProbe
     if (upgradeMode === "nsis-in-place") {
       const result = await withWindowsInPlaceUpgrade({
         beforeCurrent: async () => {
-          manifest.phase = "upgrade-current-install"
+          setPhase("upgrade-current-install")
           appendFileSync(appLog, `[upgrade current ${currentPackageVersion}]\n`)
         },
         currentArtifactPath: artifactPath,
@@ -1807,7 +1821,7 @@ async function run() {
         runPrevious
       )
       sentinel.threadId = previousProbe.sentinelThread.threadId
-      manifest.phase = "upgrade-current-install"
+      setPhase("upgrade-current-install")
       appendFileSync(appLog, `[upgrade current ${currentPackageVersion}]\n`)
       currentProbe = await withInstalledArtifact(
         {
@@ -1820,10 +1834,10 @@ async function run() {
       )
     }
     if (upgradeMode !== "nsis-in-place") {
-      manifest.phase = "upgrade-current-database-verification"
+      setPhase("upgrade-current-database-verification")
       await verifyUpgradeDatabase(upgradeHome, sentinel)
     }
-    manifest.phase = "complete"
+    setPhase("complete")
     console.log(
       `installed release smoke passed: ${JSON.stringify({ currentProbe, freshProbe, previousProbe, upgradeMode })}`
     )
@@ -1833,6 +1847,11 @@ async function run() {
 
   if (primaryError) {
     manifest.phase = `failed:${manifest.phase}`
+    try {
+      setPhase(manifest.phase)
+    } catch {
+      // The primary failure remains authoritative; preserveDiagnostics reports its own failures.
+    }
     const errors = [primaryError]
     manifest.errors = errors.flatMap((error) => describeError(error))
     try {

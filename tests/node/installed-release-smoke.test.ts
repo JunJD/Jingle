@@ -15,6 +15,11 @@ import { pathToFileURL } from "node:url"
 import test from "node:test"
 
 interface InstalledSmokeModule {
+  appendReleaseSmokePhaseRecord(
+    path: string,
+    manifest: Record<string, unknown>,
+    observedAt?: string
+  ): void
   boundLaunchDiagnosticText(value: unknown, maximumCharacters?: number): string | null
   observeChildProcessLaunchError(child: EventEmitter): () => Error | null
   closeApplication(
@@ -121,6 +126,44 @@ test("bounds optional Windows launch diagnostics without changing primary failur
   assert.equal(smokeModule.boundLaunchDiagnosticText(null), null)
   assert.equal(smokeModule.boundLaunchDiagnosticText("short", 8), "short")
   assert.equal(smokeModule.boundLaunchDiagnosticText("0123456789", 8), "01234567...[truncated]")
+})
+
+test("appends complete release-smoke phase records without truncating prior evidence", async () => {
+  const smokeModule = await smokeModulePromise
+  const root = mkdtempSync(join(tmpdir(), "jingle-release-smoke-phase-"))
+  const phasePath = join(root, "phase.jsonl")
+  try {
+    smokeModule.appendReleaseSmokePhaseRecord(
+      phasePath,
+      { phase: "fresh-install", platform: "win32" },
+      "2026-08-23T00:00:00.000Z"
+    )
+    smokeModule.appendReleaseSmokePhaseRecord(
+      phasePath,
+      { phase: "upgrade-current-install", platform: "win32" },
+      "2026-08-23T00:01:00.000Z"
+    )
+    assert.deepEqual(
+      readFileSync(phasePath, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line)),
+      [
+        {
+          observedAt: "2026-08-23T00:00:00.000Z",
+          phase: "fresh-install",
+          platform: "win32"
+        },
+        {
+          observedAt: "2026-08-23T00:01:00.000Z",
+          phase: "upgrade-current-install",
+          platform: "win32"
+        }
+      ]
+    )
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
 })
 
 test("observes asynchronous differential launch failures without an unhandled error", async () => {
@@ -731,6 +774,7 @@ test("release workflow keeps candidates build-only and publishes only verified t
   )
   assert.match(workflow, /push:[\s\S]*?tags:[\s\S]*?- "v\*\.\*\.\*"/)
   assert.match(workflow, /pnpm run release:smoke:installed/)
+  assert.match(workflow, /id: installed_smoke[\s\S]*?timeout-minutes: 15/)
   assert.match(workflow, /xvfb-run --auto-servernum/)
   assert.match(workflow, /runner: ubuntu-24\.04/)
   assert.match(workflow, /sudo apt-get install --no-install-recommends --yes/)
@@ -794,6 +838,8 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(smokeSource, /no-debug-differential/)
   assert.match(smokeSource, /--jingle-release-smoke-bootstrap=/)
   assert.match(smokeSource, /release-smoke-bootstrap\.jsonl/)
+  assert.match(smokeSource, /join\(diagnosticsRoot, "phase\.jsonl"\)/)
+  assert.match(smokeSource, /setPhase\("upgrade-current-install"\)/)
   assert.match(smokeSource, /diagnostics\.session_started/)
   assert.match(smokeSource, /marker\?\.terminal\?\.kind !== "clean_exit"/)
   assert.match(smokeSource, /const child = spawn\(\s*executablePath/)
@@ -848,7 +894,7 @@ test("release workflow keeps candidates build-only and publishes only verified t
   const freshInventory = smokeSource.indexOf(
     "freshWindowsPayloadInventory = createWindowsPayloadInventory(installed.appRoot)"
   )
-  const freshFirstLaunch = smokeSource.indexOf('manifest.phase = "fresh-first-launch"')
+  const freshFirstLaunch = smokeSource.indexOf('setPhase("fresh-first-launch")')
   const currentOperation = smokeSource.indexOf("const runCurrent = async")
   const upgradedInventory = smokeSource.indexOf(
     "assertWindowsPayloadMatchesFreshInstall(",

@@ -424,6 +424,7 @@ jobs:
       - name: Run installed first-launch smoke
         id: installed_smoke
         shell: bash
+        timeout-minutes: 15
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
