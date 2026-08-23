@@ -14,6 +14,23 @@ import { pathToFileURL } from "node:url"
 import test from "node:test"
 
 interface InstalledSmokeModule {
+  closeApplication(
+    browser: {
+      close(): Promise<void>
+      newBrowserCDPSession(): Promise<{ send(command: string): Promise<void> }>
+    },
+    child: { exitCode: number | null; pid: number; signalCode: string | null },
+    jingleHome: string,
+    processClosed: Promise<void>,
+    shutdownContract: "current-clean-session" | "legacy-process-reaped",
+    operations: {
+      assertCleanProcessSession(): void
+      snapshotProcessTree(pid: number): number[]
+      terminateProcessTree(pid: number): Promise<void>
+      waitForLoggedProcessClose(closed: Promise<void>): Promise<void>
+      waitForProcessExit(pids: number[], description: string): Promise<void>
+    }
+  ): Promise<void>
   assertLinuxDesktopEntryLaunch(source: string): string
   assertLinuxProtocolHandler(output: string, desktopEntryName: string): string
   assertMacProtocolDeclaration(value: unknown): string[]
@@ -44,6 +61,7 @@ interface InstalledSmokeModule {
     previousSessionId: string | null,
     initialLogSize: number
   ): Promise<Record<string, unknown>>
+  runProbeWithShutdown<T>(runProbe: () => Promise<T>, runShutdown: () => Promise<void>): Promise<T>
   runProcess(
     command: string,
     args: string[],
@@ -77,6 +95,94 @@ interface InstalledSmokeModule {
 
 const moduleUrl = pathToFileURL(join(process.cwd(), "scripts/release-smoke/installed.mjs")).href
 const smokeModulePromise = import(moduleUrl) as Promise<InstalledSmokeModule>
+
+test("uses capability-specific shutdown evidence for current and legacy packages", async () => {
+  const smokeModule = await smokeModulePromise
+  const calls: string[] = []
+  const browser = {
+    close: async () => {
+      calls.push("disconnect")
+    },
+    newBrowserCDPSession: async () => ({
+      send: async () => {
+        throw new Error("legacy target already closed")
+      }
+    })
+  }
+  const child = { exitCode: null, pid: 42, signalCode: null }
+  const operations = {
+    assertCleanProcessSession: () => {
+      calls.push("clean-session")
+      throw new Error("missing current clean-session evidence")
+    },
+    snapshotProcessTree: () => [42],
+    terminateProcessTree: async () => {
+      calls.push("terminate")
+    },
+    waitForLoggedProcessClose: async () => {
+      calls.push("logs-closed")
+    },
+    waitForProcessExit: async () => {
+      calls.push("process-exit")
+    }
+  }
+
+  await smokeModule.closeApplication(
+    browser,
+    child,
+    "/tmp/legacy-jingle-home",
+    Promise.resolve(),
+    "legacy-process-reaped",
+    operations
+  )
+  assert.deepEqual(calls, ["terminate", "logs-closed", "disconnect"])
+
+  calls.length = 0
+  await assert.rejects(
+    smokeModule.closeApplication(
+      browser,
+      child,
+      "/tmp/current-jingle-home",
+      Promise.resolve(),
+      "current-clean-session",
+      operations
+    ),
+    /Electron close and cleanup both failed/
+  )
+  assert.deepEqual(calls, ["clean-session", "terminate", "disconnect"])
+})
+
+test("preserves probe failures while applying capability-specific shutdown", async () => {
+  const smokeModule = await smokeModulePromise
+  const probeError = new Error("sentinel IPC failed")
+
+  await assert.rejects(
+    smokeModule.runProbeWithShutdown(
+      async () => {
+        throw probeError
+      },
+      async () => undefined
+    ),
+    (error) => error === probeError
+  )
+
+  const shutdownError = new Error("clean-session evidence missing")
+  await assert.rejects(
+    smokeModule.runProbeWithShutdown(
+      async () => {
+        throw probeError
+      },
+      async () => {
+        throw shutdownError
+      }
+    ),
+    (error) => {
+      assert.ok(error instanceof AggregateError)
+      assert.deepEqual(error.errors, [probeError, shutdownError])
+      return true
+    }
+  )
+})
 
 test("selects exactly one native installer and excludes update metadata", async () => {
   const smokeModule = await smokeModulePromise
@@ -572,7 +678,7 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(smokeSource, /JINGLE_REMOTE_DEBUGGING_PORT = String\(remoteDebuggingPort\)/)
   assert.match(smokeSource, /diagnostics\.session_started/)
   assert.match(smokeSource, /marker\?\.terminal\?\.kind !== "clean_exit"/)
-  assert.match(smokeSource, /spawn\(executablePath/)
+  assert.match(smokeSource, /const child = spawn\(\s*executablePath/)
   assert.match(smokeSource, /launchArgs: \["--no-sandbox"\]/)
   assert.match(smokeSource, /Exec=\$\{installed\.executablePath\} --no-sandbox %U/)
   assert.match(smokeSource, /HKCU\\\\Software\\\\Classes\\\\jingle/)

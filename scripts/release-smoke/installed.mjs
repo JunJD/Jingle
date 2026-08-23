@@ -452,14 +452,7 @@ async function installMac(invocation, workspace, logPath) {
     await runProcess("ditto", [sourceApp, appPath], { cwd: workspace, logPath })
     const protocolDeclaration = await runProcess(
       "plutil",
-      [
-        "-extract",
-        "CFBundleURLTypes",
-        "json",
-        "-o",
-        "-",
-        join(appPath, "Contents", "Info.plist")
-      ],
+      ["-extract", "CFBundleURLTypes", "json", "-o", "-", join(appPath, "Contents", "Info.plist")],
       { cwd: workspace, logPath }
     )
     assertMacProtocolDeclaration(JSON.parse(protocolDeclaration.stdout))
@@ -516,11 +509,15 @@ async function installWindows(invocation, workspace, logPath) {
     "$remaining = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and [IO.Path]::GetFullPath($_.ExecutablePath) -eq $target })",
     "if ($remaining.Count -ne 0) { throw 'Installer-launched Jingle process did not exit' }"
   ].join("\n")
-  await runProcess("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", stopInstallerLaunch], {
-    cwd: workspace,
-    env: { ...process.env, JINGLE_SMOKE_EXECUTABLE: executablePath },
-    logPath
-  })
+  await runProcess(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-Command", stopInstallerLaunch],
+    {
+      cwd: workspace,
+      env: { ...process.env, JINGLE_SMOKE_EXECUTABLE: executablePath },
+      logPath
+    }
+  )
   return { appRoot: invocation.installRoot, executablePath }
 }
 
@@ -846,9 +843,9 @@ export async function readDiagnosticsRuntimeIdentity(
     const sessionId = readProcessSessionId(jingleHome)
     if (sessionId && sessionId !== previousSessionId && existsSync(logPath)) {
       const log = readFileSync(logPath)
-      const currentLog = (log.length >= initialLogSize ? log.subarray(initialLogSize) : log).toString(
-        "utf8"
-      )
+      const currentLog = (
+        log.length >= initialLogSize ? log.subarray(initialLogSize) : log
+      ).toString("utf8")
       const records = currentLog
         .trim()
         .split("\n")
@@ -883,7 +880,25 @@ function assertCleanProcessSession(jingleHome) {
   }
 }
 
-async function closeApplication(browser, child, jingleHome, processClosed, requireCleanSession) {
+export async function closeApplication(
+  browser,
+  child,
+  jingleHome,
+  processClosed,
+  shutdownContract,
+  operations = {}
+) {
+  if (
+    shutdownContract !== "current-clean-session" &&
+    shutdownContract !== "legacy-process-reaped"
+  ) {
+    fail(`unsupported installed smoke shutdown contract: ${String(shutdownContract)}`)
+  }
+  const snapshotTree = operations.snapshotProcessTree ?? snapshotProcessTree
+  const waitForExit = operations.waitForProcessExit ?? waitForProcessExit
+  const waitForLogs = operations.waitForLoggedProcessClose ?? waitForLoggedProcessClose
+  const terminateTree = operations.terminateProcessTree ?? terminateProcessTree
+  const assertCleanSession = operations.assertCleanProcessSession ?? assertCleanProcessSession
   const processId = child.pid
   if (!processId) {
     fail("installed executable has no process id")
@@ -891,7 +906,7 @@ async function closeApplication(browser, child, jingleHome, processClosed, requi
   let inspectionError = null
   let processIds = [processId]
   try {
-    processIds = snapshotProcessTree(processId)
+    processIds = snapshotTree(processId)
   } catch (error) {
     inspectionError = error
   }
@@ -904,21 +919,21 @@ async function closeApplication(browser, child, jingleHome, processClosed, requi
         timer = setTimeout(() => reject(new Error("Electron close timed out")), 10_000)
       })
     ])
-    await waitForProcessExit(processIds, `Electron process tree rooted at ${processId}`)
-    await waitForLoggedProcessClose(processClosed)
-    if (requireCleanSession) {
-      assertCleanProcessSession(jingleHome)
+    await waitForExit(processIds, `Electron process tree rooted at ${processId}`)
+    await waitForLogs(processClosed)
+    if (shutdownContract === "current-clean-session") {
+      assertCleanSession(jingleHome)
     }
     if (inspectionError) throw inspectionError
   } catch (error) {
     const errors = [error]
     if (inspectionError) errors.push(inspectionError)
-    if (requireCleanSession) {
+    if (shutdownContract === "current-clean-session") {
       try {
-        assertCleanProcessSession(jingleHome)
+        assertCleanSession(jingleHome)
         if (child.pid) {
-          await terminateProcessTree(child.pid)
-          await waitForLoggedProcessClose(processClosed)
+          await terminateTree(child.pid)
+          await waitForLogs(processClosed)
         }
         if (!inspectionError) {
           return
@@ -929,9 +944,9 @@ async function closeApplication(browser, child, jingleHome, processClosed, requi
     }
     if (child.exitCode !== null || child.signalCode !== null) {
       try {
-        await waitForLoggedProcessClose(processClosed)
-        if (requireCleanSession) {
-          assertCleanProcessSession(jingleHome)
+        await waitForLogs(processClosed)
+        if (shutdownContract === "current-clean-session") {
+          assertCleanSession(jingleHome)
         }
         if (!inspectionError) {
           return
@@ -940,8 +955,19 @@ async function closeApplication(browser, child, jingleHome, processClosed, requi
         errors.push(verificationError)
       }
     }
+    if (shutdownContract === "legacy-process-reaped") {
+      try {
+        await terminateTree(processId)
+        await waitForLogs(processClosed)
+        if (!inspectionError) {
+          return
+        }
+      } catch (cleanupError) {
+        errors.push(cleanupError)
+      }
+    }
     try {
-      await terminateProcessTree(processId)
+      await terminateTree(processId)
     } catch (cleanupError) {
       errors.push(cleanupError)
     }
@@ -951,6 +977,33 @@ async function closeApplication(browser, child, jingleHome, processClosed, requi
     clearTimeout(timer)
     await browser.close().catch(() => undefined)
   }
+}
+
+export async function runProbeWithShutdown(runProbe, runShutdown) {
+  let probeResult
+  let probeError = null
+  try {
+    probeResult = await runProbe()
+  } catch (error) {
+    probeError = error
+  }
+
+  let shutdownError = null
+  try {
+    await runShutdown()
+  } catch (error) {
+    shutdownError = error
+  }
+
+  if (probeError && shutdownError) {
+    throw new AggregateError(
+      [probeError, shutdownError],
+      "Installed release probe and shutdown both failed"
+    )
+  }
+  if (probeError) throw probeError
+  if (shutdownError) throw shutdownError
+  return probeResult
 }
 
 async function launchAndProbe(executablePath, jingleHome, logPath, options = {}) {
@@ -967,14 +1020,15 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
   launchEnvironment.ELECTRON_ENABLE_LOGGING = "1"
   launchEnvironment.ELECTRON_LOG_FILE = join(jingleHome, "electron.log")
   launchEnvironment.JINGLE_REMOTE_DEBUGGING_PORT = String(remoteDebuggingPort)
-  const child = spawn(executablePath, [
-    ...(options.launchArgs ?? []),
-    `--user-data-dir=${userDataPath}`
-  ], {
-    env: launchEnvironment,
-    shell: false,
-    windowsHide: true
-  })
+  const child = spawn(
+    executablePath,
+    [...(options.launchArgs ?? []), `--user-data-dir=${userDataPath}`],
+    {
+      env: launchEnvironment,
+      shell: false,
+      windowsHide: true
+    }
+  )
   let launchError = null
   child.once("error", (error) => {
     launchError = error
@@ -983,114 +1037,119 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
   const processClosed = attachProcessLogging(child, logPath)
 
   let browser = null
-  try {
-    const port = await waitForDevToolsPort(remoteDebuggingPort, child, () => launchError)
-    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, {
-      timeout: APP_BOOT_TIMEOUT_MS
-    })
-    const identity =
-      options.requireDiagnosticsIdentity === false
-        ? null
-        : await readDiagnosticsRuntimeIdentity(jingleHome, previousSessionId, initialLogSize)
-    if (identity && identity.isPackaged !== true) {
-      fail("installed executable reported isPackaged=false")
-    }
-    if (identity && options.expectedVersion && identity.appVersion !== options.expectedVersion) {
-      fail(
-        `installed executable reported version ${identity.appVersion}, expected ${options.expectedVersion}`
-      )
-    }
-    if (identity && identity.platform !== process.platform) {
-      fail(`installed executable reported platform ${identity.platform}, expected ${process.platform}`)
-    }
-    const page = await resolveAppWindow(browser, options.expectedWindowKind)
-    const probe = await page.evaluate(async (sentinelRequest) => {
-      const [theme, threads] = await Promise.all([
-        window.api.settings.getAppThemeSettings(),
-        window.api.threads.list()
-      ])
-      let sentinelThread = null
-      if (sentinelRequest?.mode === "create") {
-        const created = await window.api.threads.create({
-          metadata: {
-            releaseSmokeUpgradeSentinel: {
-              schemaVersion: 1,
-              sourceVersion: "0.0.1",
-              token: sentinelRequest.token
-            },
-            title: sentinelRequest.title
-          },
-          workspaceKind: "projectless",
-          workspacePath: sentinelRequest.workspacePath
-        })
-        sentinelThread = {
-          metadata: created.metadata ?? null,
-          threadId: created.thread_id,
-          title: created.title ?? null
-        }
-      } else if (sentinelRequest?.mode === "verify") {
-        const [persisted, refreshedThreads, hydrated] = await Promise.all([
-          window.api.threads.get(sentinelRequest.threadId),
-          window.api.threads.list(),
-          window.api.threads.getAgentThreadData(sentinelRequest.threadId)
+  return runProbeWithShutdown(
+    async () => {
+      const port = await waitForDevToolsPort(remoteDebuggingPort, child, () => launchError)
+      browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, {
+        timeout: APP_BOOT_TIMEOUT_MS
+      })
+      const identity =
+        options.requireDiagnosticsIdentity === false
+          ? null
+          : await readDiagnosticsRuntimeIdentity(jingleHome, previousSessionId, initialLogSize)
+      if (identity && identity.isPackaged !== true) {
+        fail("installed executable reported isPackaged=false")
+      }
+      if (identity && options.expectedVersion && identity.appVersion !== options.expectedVersion) {
+        fail(
+          `installed executable reported version ${identity.appVersion}, expected ${options.expectedVersion}`
+        )
+      }
+      if (identity && identity.platform !== process.platform) {
+        fail(
+          `installed executable reported platform ${identity.platform}, expected ${process.platform}`
+        )
+      }
+      const page = await resolveAppWindow(browser, options.expectedWindowKind)
+      const probe = await page.evaluate(async (sentinelRequest) => {
+        const [theme, threads] = await Promise.all([
+          window.api.settings.getAppThemeSettings(),
+          window.api.threads.list()
         ])
-        if (
-          !persisted ||
-          !refreshedThreads.some((thread) => thread.thread_id === persisted.thread_id) ||
-          hydrated.thread.thread_id !== persisted.thread_id
-        ) {
-          throw new Error(
-            "release upgrade sentinel is not visible through the current thread IPC projections"
-          )
+        let sentinelThread = null
+        if (sentinelRequest?.mode === "create") {
+          const created = await window.api.threads.create({
+            metadata: {
+              releaseSmokeUpgradeSentinel: {
+                schemaVersion: 1,
+                sourceVersion: "0.0.1",
+                token: sentinelRequest.token
+              },
+              title: sentinelRequest.title
+            },
+            workspaceKind: "projectless",
+            workspacePath: sentinelRequest.workspacePath
+          })
+          sentinelThread = {
+            metadata: created.metadata ?? null,
+            threadId: created.thread_id,
+            title: created.title ?? null
+          }
+        } else if (sentinelRequest?.mode === "verify") {
+          const [persisted, refreshedThreads, hydrated] = await Promise.all([
+            window.api.threads.get(sentinelRequest.threadId),
+            window.api.threads.list(),
+            window.api.threads.getAgentThreadData(sentinelRequest.threadId)
+          ])
+          if (
+            !persisted ||
+            !refreshedThreads.some((thread) => thread.thread_id === persisted.thread_id) ||
+            hydrated.thread.thread_id !== persisted.thread_id
+          ) {
+            throw new Error(
+              "release upgrade sentinel is not visible through the current thread IPC projections"
+            )
+          }
+          sentinelThread = {
+            metadata: persisted.metadata ?? null,
+            threadId: persisted.thread_id,
+            title: persisted.title ?? null
+          }
         }
-        sentinelThread = {
-          metadata: persisted.metadata ?? null,
-          threadId: persisted.thread_id,
-          title: persisted.title ?? null
+        return {
+          platform: window.electron.process.platform,
+          rendererReady: (document.getElementById("root")?.childElementCount ?? 0) > 0,
+          sentinelThread,
+          themeAvailable: typeof theme === "object" && theme !== null,
+          threadCount: threads.length,
+          windowKind: document.body?.dataset.window ?? null
         }
+      }, options.sentinelRequest ?? null)
+      if (
+        !probe.rendererReady ||
+        !probe.themeAvailable ||
+        probe.windowKind !== options.expectedWindowKind
+      ) {
+        fail(`preload IPC probe returned an invalid projection: ${JSON.stringify(probe)}`)
+      }
+      if (options.sentinelRequest) {
+        assertUpgradeSentinelThread(probe.sentinelThread, options.sentinelRequest, "sentinel IPC")
       }
       return {
-        platform: window.electron.process.platform,
-        rendererReady: (document.getElementById("root")?.childElementCount ?? 0) > 0,
-        sentinelThread,
-        themeAvailable: typeof theme === "object" && theme !== null,
-        threadCount: threads.length,
-        windowKind: document.body?.dataset.window ?? null
+        electronVersion: identity?.electronVersion ?? null,
+        executablePath,
+        isPackaged: identity?.isPackaged ?? null,
+        protocolClientRegistered: null,
+        runtimeIdentityVerified: identity !== null,
+        version: identity?.appVersion ?? null,
+        ...probe
       }
-    }, options.sentinelRequest ?? null)
-    if (
-      !probe.rendererReady ||
-      !probe.themeAvailable ||
-      probe.windowKind !== options.expectedWindowKind
-    ) {
-      fail(`preload IPC probe returned an invalid projection: ${JSON.stringify(probe)}`)
+    },
+    async () => {
+      if (browser) {
+        await closeApplication(
+          browser,
+          child,
+          jingleHome,
+          processClosed,
+          options.shutdownContract ?? "current-clean-session"
+        )
+      } else if (child.pid) {
+        await terminateProcessTree(child.pid)
+        await waitForLoggedProcessClose(processClosed)
+      }
     }
-    if (options.sentinelRequest) {
-      assertUpgradeSentinelThread(probe.sentinelThread, options.sentinelRequest, "sentinel IPC")
-    }
-    return {
-      electronVersion: identity?.electronVersion ?? null,
-      executablePath,
-      isPackaged: identity?.isPackaged ?? null,
-      protocolClientRegistered: null,
-      runtimeIdentityVerified: identity !== null,
-      version: identity?.appVersion ?? null,
-      ...probe
-    }
-  } finally {
-    if (browser) {
-      await closeApplication(
-        browser,
-        child,
-        jingleHome,
-        processClosed,
-        options.requireCleanSession !== false
-      )
-    } else if (child.pid) {
-      await terminateProcessTree(child.pid)
-      await waitForLoggedProcessClose(processClosed)
-    }
-  }
+  )
 }
 
 async function assertProtocolClientRegistration(installed, logPath) {
@@ -1367,7 +1426,7 @@ async function run() {
       const probe = await launchInstalledAndProbe(installed, upgradeHome, appLog, {
         expectedVersion: "0.0.1",
         expectedWindowKind: baseline.windowKind,
-        requireCleanSession: false,
+        shutdownContract: "legacy-process-reaped",
         requireDiagnosticsIdentity: false,
         sentinelRequest: {
           mode: "create",
