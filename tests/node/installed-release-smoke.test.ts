@@ -552,8 +552,9 @@ test("release workflow keeps candidates build-only and publishes only verified t
 
   const smokeSource = readFileSync("scripts/release-smoke/installed.mjs", "utf8")
   assert.match(smokeSource, /chromium\.connectOverCDP/)
-  assert.match(smokeSource, /DevToolsActivePort/)
-  assert.match(smokeSource, /JINGLE_REMOTE_DEBUGGING_PORT = "0"/)
+  assert.match(smokeSource, /reserveLoopbackPort/)
+  assert.match(smokeSource, /\/json\/version/)
+  assert.match(smokeSource, /JINGLE_REMOTE_DEBUGGING_PORT = String\(remoteDebuggingPort\)/)
   assert.match(smokeSource, /diagnostics\.session_started/)
   assert.match(smokeSource, /marker\?\.terminal\?\.kind !== "clean_exit"/)
   assert.match(smokeSource, /spawn\(executablePath/)

@@ -11,6 +11,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   readdirSync,
   rmSync,
   statSync,
@@ -18,6 +19,7 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, dirname, join, relative, resolve } from "node:path"
+import { createServer } from "node:net"
 import { pathToFileURL } from "node:url"
 import { PrismaClient } from "@prisma/client"
 import { chromium } from "playwright"
@@ -742,18 +744,31 @@ function attachProcessLogging(child, logPath) {
   })
 }
 
-async function waitForDevToolsPort(userDataPath, child, getLaunchError) {
-  const activePortPath = join(userDataPath, "DevToolsActivePort")
+async function reserveLoopbackPort() {
+  const server = createServer()
+  await new Promise((resolvePromise, reject) => {
+    server.once("error", reject)
+    server.listen(0, "127.0.0.1", resolvePromise)
+  })
+  const address = server.address()
+  if (!address || typeof address === "string") {
+    server.close()
+    fail("could not reserve a loopback port for CDP")
+  }
+  await new Promise((resolvePromise, reject) => {
+    server.close((error) => (error ? reject(error) : resolvePromise()))
+  })
+  return address.port
+}
+
+async function waitForDevToolsPort(port, child, getLaunchError) {
   const deadline = Date.now() + APP_BOOT_TIMEOUT_MS
-  let lastInvalidPort = null
   while (Date.now() < deadline) {
-    if (existsSync(activePortPath)) {
-      const [rawPort] = readFileSync(activePortPath, "utf8").split(/\r?\n/)
-      const port = Number(rawPort)
-      if (Number.isSafeInteger(port) && port > 0 && port <= 65_535) {
-        return port
-      }
-      lastInvalidPort = rawPort ?? ""
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/json/version`)
+      if (response.ok) return port
+    } catch {
+      // The packaged Chromium endpoint is not listening yet.
     }
     if (child.exitCode !== null || child.signalCode !== null) {
       fail(
@@ -765,9 +780,6 @@ async function waitForDevToolsPort(userDataPath, child, getLaunchError) {
       throw launchError
     }
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 100))
-  }
-  if (lastInvalidPort !== null) {
-    fail(`DevToolsActivePort did not settle on a valid port: ${lastInvalidPort}`)
   }
   fail("installed executable did not expose CDP before the deadline")
 }
@@ -877,6 +889,20 @@ async function closeApplication(browser, child, jingleHome, processClosed, requi
   } catch (error) {
     const errors = [error]
     if (inspectionError) errors.push(inspectionError)
+    if (requireCleanSession) {
+      try {
+        assertCleanProcessSession(jingleHome)
+        if (child.pid) {
+          await terminateProcessTree(child.pid)
+          await waitForLoggedProcessClose(processClosed)
+        }
+        if (!inspectionError) {
+          return
+        }
+      } catch (verificationError) {
+        errors.push(verificationError)
+      }
+    }
     if (child.exitCode !== null || child.signalCode !== null) {
       try {
         await waitForLoggedProcessClose(processClosed)
@@ -909,14 +935,14 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
   }
   const userDataPath = join(jingleHome, "electron-user-data")
   mkdirSync(userDataPath, { recursive: true })
-  rmSync(join(userDataPath, "DevToolsActivePort"), { force: true })
+  const remoteDebuggingPort = await reserveLoopbackPort()
   const previousSessionId = readProcessSessionId(jingleHome)
   const diagnosticsLogPath = join(jingleHome, "logs", "jingle.log")
   const initialLogSize = existsSync(diagnosticsLogPath) ? statSync(diagnosticsLogPath).size : 0
   const launchEnvironment = createLaunchEnvironment(jingleHome, options.environment)
   launchEnvironment.ELECTRON_ENABLE_LOGGING = "1"
   launchEnvironment.ELECTRON_LOG_FILE = join(jingleHome, "electron.log")
-  launchEnvironment.JINGLE_REMOTE_DEBUGGING_PORT = "0"
+  launchEnvironment.JINGLE_REMOTE_DEBUGGING_PORT = String(remoteDebuggingPort)
   const child = spawn(executablePath, [
     ...(options.launchArgs ?? []),
     `--user-data-dir=${userDataPath}`
@@ -934,7 +960,7 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
 
   let browser = null
   try {
-    const port = await waitForDevToolsPort(userDataPath, child, () => launchError)
+    const port = await waitForDevToolsPort(remoteDebuggingPort, child, () => launchError)
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, {
       timeout: APP_BOOT_TIMEOUT_MS
     })
@@ -1084,7 +1110,7 @@ async function assertProtocolClientRegistration(installed, logPath) {
     cwd: process.cwd(),
     logPath
   })
-  if (resolve(result.stdout.trim()) !== installedAppPath) {
+  if (realpathSync(result.stdout.trim()) !== realpathSync(installedAppPath)) {
     fail("macOS jingle protocol registration does not target the installed application")
   }
 }
