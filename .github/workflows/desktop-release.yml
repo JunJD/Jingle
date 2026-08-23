@@ -422,16 +422,15 @@ jobs:
           done
 
       - name: Run installed first-launch smoke
+        id: installed_smoke
         shell: bash
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           JINGLE_BUILD_TARGET_ARCH: ${{ matrix.expected_arch }}
+          JINGLE_RELEASE_RUNNER_ARCH: ${{ runner.arch }}
+          JINGLE_RELEASE_RUNNER_OS: ${{ runner.os }}
         run: |
-          mkdir -p release-smoke-diagnostics
-          printf 'runner_os=%s\nrunner_arch=%s\n' \
-            '${{ runner.os }}' '${{ runner.arch }}' \
-            > release-smoke-diagnostics/workflow-context.txt
           if [[ "${{ runner.os }}" == "Linux" ]]; then
             xvfb-run --auto-servernum -- pnpm run release:smoke:installed -- \
               --current-dir dist \
@@ -445,12 +444,12 @@ jobs:
           fi
 
       - name: Upload installed smoke diagnostics
-        if: failure()
+        if: failure() && steps.installed_smoke.outcome == 'failure'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: installed-smoke-diagnostics-${{ matrix.name }}
           path: release-smoke-diagnostics
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 3
 
       - name: Stage verified release assets
@@ -568,7 +567,9 @@ jobs:
           release_marker="<!-- jingle-release-source:$RELEASE_SHA -->"
           release_notes="$release_marker
 
-          > This build is unsigned and not notarized. macOS Gatekeeper and Windows SmartScreen may show warnings."
+          > This build is unsigned and not notarized. macOS Gatekeeper and Windows SmartScreen may show warnings.
+
+          > The Linux AppImage desktop entry launches with \`--no-sandbox\` for Ubuntu 24.04 compatibility."
           if release_json="$(gh release view "$RELEASE_TAG" --json body,isDraft,tagName 2>/dev/null)"; then
             if [[ "$(jq -r '.isDraft' <<< "$release_json")" != "true" ]] ||
               [[ "$(jq -r '.body // ""' <<< "$release_json")" != *"$release_marker"* ]]; then

@@ -14,7 +14,12 @@ import { pathToFileURL } from "node:url"
 import test from "node:test"
 
 interface InstalledSmokeModule {
+  assertLinuxDesktopEntryLaunch(source: string): string
   assertLinuxProtocolHandler(output: string, desktopEntryName: string): string
+  assertWindowsProtocolCommand(
+    command: string,
+    executablePath: string
+  ): { argumentTemplate: string; executablePath: string }
   assertWindowsPayloadMatchesFreshInstall(expected: unknown, actual: unknown): unknown
   assertUpgradeSentinelThread(
     thread: unknown,
@@ -33,6 +38,11 @@ interface InstalledSmokeModule {
     uninstaller: { path: string; sha256: string; size: number }
   }
   ensureLinuxAppImageExecutable(artifactPath: string): void
+  readDiagnosticsRuntimeIdentity(
+    jingleHome: string,
+    previousSessionId: string | null,
+    initialLogSize: number
+  ): Promise<Record<string, unknown>>
   runProcess(
     command: string,
     args: string[],
@@ -163,6 +173,19 @@ test("isolates Linux desktop state and selects the packaged jingle protocol entr
   }
   assert.equal(smokeModule.selectLinuxDesktopEntry(appRoot), join(appRoot, "jingle.desktop"))
   assert.equal(
+    smokeModule.assertLinuxDesktopEntryLaunch(
+      "[Desktop Entry]\nExec=AppRun --no-sandbox %U\nMimeType=x-scheme-handler/jingle;\n"
+    ),
+    "Exec=AppRun --no-sandbox %U"
+  )
+  assert.throws(
+    () =>
+      smokeModule.assertLinuxDesktopEntryLaunch(
+        "[Desktop Entry]\nExec=AppRun %U\nMimeType=x-scheme-handler/jingle;\n"
+      ),
+    /invalid launch command/
+  )
+  assert.equal(
     smokeModule.assertLinuxProtocolHandler("jingle.desktop\n", "jingle.desktop"),
     "jingle.desktop"
   )
@@ -242,6 +265,79 @@ test("rejects stale or ambiguous payload after a Windows in-place upgrade", asyn
     )
   } finally {
     rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test("parses the exact Windows protocol command owner", async () => {
+  const smokeModule = await smokeModulePromise
+  const executablePath = "C:\\Users\\runner\\Jingle\\Jingle.exe"
+
+  assert.deepEqual(smokeModule.assertWindowsProtocolCommand(`"${executablePath}" "%1"`, executablePath), {
+    argumentTemplate: '"%1"',
+    executablePath
+  })
+  assert.throws(
+    () =>
+      smokeModule.assertWindowsProtocolCommand(
+        `"${executablePath}.old" "%1"`,
+        executablePath
+      ),
+    /does not target the installed executable/
+  )
+  assert.throws(
+    () =>
+      smokeModule.assertWindowsProtocolCommand(
+        `"${executablePath}" --extra "%1"`,
+        executablePath
+      ),
+    /invalid URL argument template/
+  )
+})
+
+test("binds diagnostics identity to the newly started process session", async () => {
+  const smokeModule = await smokeModulePromise
+  const jingleHome = mkdtempSync(join(tmpdir(), "jingle-release-session-identity-"))
+  const logsPath = join(jingleHome, "logs")
+  const logPath = join(logsPath, "jingle.log")
+  const markerPath = join(logsPath, "process-session.json")
+  mkdirSync(logsPath, { recursive: true })
+  try {
+    writeFileSync(
+      logPath,
+      `${JSON.stringify({
+        dimensions: { appVersion: "0.0.1" },
+        eventCode: "diagnostics.session_started",
+        sessionId: "session-old"
+      })}\n`
+    )
+    writeFileSync(
+      markerPath,
+      `${JSON.stringify({ schemaVersion: 1, sessionId: "session-old", startedAt: "old", terminal: null })}\n`
+    )
+    const initialLogSize = statSync(logPath).size
+    writeFileSync(
+      logPath,
+      `${JSON.stringify({
+        dimensions: { appVersion: "0.0.1" },
+        eventCode: "diagnostics.session_started",
+        sessionId: "session-old"
+      })}\n${JSON.stringify({
+        dimensions: { appVersion: "0.0.2", isPackaged: true, platform: process.platform },
+        eventCode: "diagnostics.session_started",
+        sessionId: "session-new"
+      })}\n`
+    )
+    writeFileSync(
+      markerPath,
+      `${JSON.stringify({ schemaVersion: 1, sessionId: "session-new", startedAt: "new", terminal: null })}\n`
+    )
+
+    assert.deepEqual(
+      await smokeModule.readDiagnosticsRuntimeIdentity(jingleHome, "session-old", initialLogSize),
+      { appVersion: "0.0.2", isPackaged: true, platform: process.platform }
+    )
+  } finally {
+    rmSync(jingleHome, { force: true, recursive: true })
   }
 })
 
@@ -459,19 +555,18 @@ test("release workflow keeps candidates build-only and publishes only verified t
   assert.match(workflow, /verify_update_metadata/)
 
   const smokeSource = readFileSync("scripts/release-smoke/installed.mjs", "utf8")
-  assert.match(smokeSource, /chromiumSandbox: true/)
-  assert.match(smokeSource, /protocolClientRegistered: expectProtocolClient/)
-  assert.match(smokeSource, /app\.isDefaultProtocolClient\("jingle"\)/)
-  assert.match(smokeSource, /installed executable is not the default jingle protocol client/)
-  assert.equal(
-    smokeSource.match(
-      /expectProtocolClient: process\.platform === "darwin" \|\| process\.platform === "win32"/g
-    )?.length,
-    2
-  )
-  assert.match(smokeSource, /executablePath: invocation\.artifactPath/)
+  assert.match(smokeSource, /chromium\.connectOverCDP/)
+  assert.match(smokeSource, /DevToolsActivePort/)
+  assert.match(smokeSource, /JINGLE_REMOTE_DEBUGGING_PORT = "0"/)
+  assert.match(smokeSource, /diagnostics\.session_started/)
+  assert.match(smokeSource, /marker\?\.terminal\?\.kind !== "clean_exit"/)
+  assert.match(smokeSource, /spawn\(executablePath/)
+  assert.match(smokeSource, /launchArgs: \["--no-sandbox"\]/)
+  assert.match(smokeSource, /Exec=\$\{installed\.executablePath\} --no-sandbox %U/)
+  assert.match(smokeSource, /HKCU\\\\Software\\\\Classes\\\\jingle/)
+  assert.match(smokeSource, /NSWorkspace\.shared\.urlForApplication/)
+  assert.doesNotMatch(smokeSource, /_electron as electron/)
   assert.doesNotMatch(smokeSource, /APPIMAGE_EXTRACT_AND_RUN/)
-  assert.doesNotMatch(smokeSource, /executablePath: join\(appRoot, "AppRun"\)/)
   assert.match(smokeSource, /XDG_DATA_HOME/)
   assert.match(smokeSource, /\["default", desktopEntryName, "x-scheme-handler\/jingle"\]/)
   assert.match(smokeSource, /xdg-mime/)

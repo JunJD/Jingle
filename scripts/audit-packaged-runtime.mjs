@@ -589,7 +589,7 @@ function runPackagedRuntimeSmoke({ appAsarPath, appPath, executablePath, resourc
   }
 
   const smokeHome = mkdtempSync(join(tmpdir(), "jingle-packaged-runtime-"))
-const smokeScript = `
+  const smokeScript = `
 const { execFileSync } = await import("node:child_process")
 const { realpathSync } = await import("node:fs")
 const { createRequire, builtinModules } = await import("node:module")

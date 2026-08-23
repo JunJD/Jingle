@@ -17,10 +17,10 @@ import {
   writeFileSync
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { basename, join, relative, resolve } from "node:path"
+import { basename, dirname, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import { PrismaClient } from "@prisma/client"
-import { _electron as electron } from "playwright"
+import { chromium } from "playwright"
 import { readMigrationManifest } from "./migration-manifest.mjs"
 import {
   downloadUpgradeAsset,
@@ -281,6 +281,39 @@ export function assertLinuxProtocolHandler(output, desktopEntryName) {
   return registeredDesktopEntry
 }
 
+export function assertLinuxDesktopEntryLaunch(source) {
+  const execLine = source.split(/\r?\n/).find((line) => line.startsWith("Exec="))
+  if (execLine !== "Exec=AppRun --no-sandbox %U") {
+    fail(`packaged Linux desktop entry has an invalid launch command: ${String(execLine)}`)
+  }
+  return execLine
+}
+
+export function assertWindowsProtocolCommand(command, executablePath) {
+  const trimmed = command.trim()
+  let registeredExecutable
+  let argumentTemplate
+  if (trimmed.startsWith('"')) {
+    const closingQuote = trimmed.indexOf('"', 1)
+    if (closingQuote <= 1) fail("Windows protocol command has invalid executable quoting")
+    registeredExecutable = trimmed.slice(1, closingQuote)
+    argumentTemplate = trimmed.slice(closingQuote + 1).trim()
+  } else {
+    const separator = trimmed.search(/\s/)
+    registeredExecutable = separator === -1 ? trimmed : trimmed.slice(0, separator)
+    argumentTemplate = separator === -1 ? "" : trimmed.slice(separator).trim()
+  }
+
+  const normalizeWindowsPath = (path) => resolve(path).toLowerCase().replaceAll("\\", "/")
+  if (normalizeWindowsPath(registeredExecutable) !== normalizeWindowsPath(executablePath)) {
+    fail("Windows jingle protocol registration does not target the installed executable")
+  }
+  if (argumentTemplate !== '"%1"' && argumentTemplate !== "%1") {
+    fail("Windows jingle protocol registration has an invalid URL argument template")
+  }
+  return { argumentTemplate, executablePath: registeredExecutable }
+}
+
 export function ensureLinuxAppImageExecutable(artifactPath) {
   const artifactStats = statSync(artifactPath)
   if (!(artifactStats.mode & 0o111)) chmodSync(artifactPath, artifactStats.mode | 0o111)
@@ -461,6 +494,7 @@ async function installLinux(invocation, workspace, logPath) {
   if (!existsSync(join(appRoot, "AppRun"))) fail(`AppImage extraction missed ${appRoot}/AppRun`)
 
   const desktopEntrySource = selectLinuxDesktopEntry(appRoot)
+  assertLinuxDesktopEntryLaunch(readFileSync(desktopEntrySource, "utf8"))
   const desktopEntryName = basename(desktopEntrySource)
   const launchEnvironment = createLinuxXdgEnvironment(join(invocation.installRoot, "xdg"))
   const applicationsDirectory = join(launchEnvironment.XDG_DATA_HOME, "applications")
@@ -471,7 +505,7 @@ async function installLinux(invocation, workspace, logPath) {
     [
       `--dir=${applicationsDirectory}`,
       "--set-key=Exec",
-      `--set-value=${invocation.artifactPath} %U`,
+      `--set-value=${invocation.artifactPath} --no-sandbox %U`,
       desktopEntrySource
     ],
     { cwd: workspace, env: environment, logPath }
@@ -494,8 +528,10 @@ async function installLinux(invocation, workspace, logPath) {
   })
   return {
     appRoot,
+    desktopEntryPath: installedDesktopEntry,
     desktopEntryName,
     executablePath: invocation.artifactPath,
+    launchArgs: ["--no-sandbox"],
     launchEnvironment
   }
 }
@@ -658,22 +694,140 @@ function createLaunchEnvironment(jingleHome, overrides = {}) {
   return env
 }
 
-async function resolveAppWindow(application, expectedWindowKind) {
+async function resolveAppWindow(browser, expectedWindowKind) {
   const deadline = Date.now() + APP_BOOT_TIMEOUT_MS
   while (Date.now() < deadline) {
-    for (const page of application.windows()) {
-      const kind = await page
-        .evaluate(() => document.body?.dataset.window ?? null)
-        .catch(() => null)
-      if (kind === expectedWindowKind) return page
+    for (const context of browser.contexts()) {
+      for (const page of context.pages()) {
+        const kind = await page
+          .evaluate(() => document.body?.dataset.window ?? null)
+          .catch(() => null)
+        if (kind === expectedWindowKind) return page
+      }
     }
-    await application.waitForEvent("window", { timeout: 250 }).catch(() => null)
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 100))
   }
   fail(`${expectedWindowKind} window did not become interactive before the deadline`)
 }
 
-async function closeApplication(application) {
-  const processId = application.process().pid
+function attachProcessLogging(child, logPath) {
+  child.stdout?.on("data", (chunk) => appendFileSync(logPath, `[app stdout] ${chunk}`))
+  child.stderr?.on("data", (chunk) => appendFileSync(logPath, `[app stderr] ${chunk}`))
+  return new Promise((resolvePromise) => {
+    child.once("close", (code, signal) => resolvePromise({ code, signal }))
+  })
+}
+
+async function waitForDevToolsPort(userDataPath, child, getLaunchError) {
+  const activePortPath = join(userDataPath, "DevToolsActivePort")
+  const deadline = Date.now() + APP_BOOT_TIMEOUT_MS
+  let lastInvalidPort = null
+  while (Date.now() < deadline) {
+    if (existsSync(activePortPath)) {
+      const [rawPort] = readFileSync(activePortPath, "utf8").split(/\r?\n/)
+      const port = Number(rawPort)
+      if (Number.isSafeInteger(port) && port > 0 && port <= 65_535) {
+        return port
+      }
+      lastInvalidPort = rawPort ?? ""
+    }
+    if (child.exitCode !== null || child.signalCode !== null) {
+      fail(
+        `installed executable exited before exposing CDP: code ${String(child.exitCode)} signal ${String(child.signalCode)}`
+      )
+    }
+    const launchError = getLaunchError()
+    if (launchError) {
+      throw launchError
+    }
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 100))
+  }
+  if (lastInvalidPort !== null) {
+    fail(`DevToolsActivePort did not settle on a valid port: ${lastInvalidPort}`)
+  }
+  fail("installed executable did not expose CDP before the deadline")
+}
+
+async function waitForLoggedProcessClose(processClosed) {
+  let timer
+  try {
+    return await Promise.race([
+      processClosed,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Electron log streams did not close")), 10_000)
+      })
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function readProcessSessionId(jingleHome) {
+  const markerPath = join(jingleHome, "logs", "process-session.json")
+  if (!existsSync(markerPath)) {
+    return null
+  }
+  try {
+    const marker = JSON.parse(readFileSync(markerPath, "utf8"))
+    return typeof marker?.sessionId === "string" ? marker.sessionId : null
+  } catch {
+    return null
+  }
+}
+
+export async function readDiagnosticsRuntimeIdentity(
+  jingleHome,
+  previousSessionId,
+  initialLogSize
+) {
+  const logPath = join(jingleHome, "logs", "jingle.log")
+  const deadline = Date.now() + APP_BOOT_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    const sessionId = readProcessSessionId(jingleHome)
+    if (sessionId && sessionId !== previousSessionId && existsSync(logPath)) {
+      const log = readFileSync(logPath)
+      const currentLog = (log.length >= initialLogSize ? log.subarray(initialLogSize) : log).toString(
+        "utf8"
+      )
+      const records = currentLog
+        .trim()
+        .split("\n")
+        .flatMap((line) => {
+          try {
+            return [JSON.parse(line)]
+          } catch {
+            return []
+          }
+        })
+      const session = records.findLast(
+        (record) =>
+          record?.eventCode === "diagnostics.session_started" && record?.sessionId === sessionId
+      )
+      if (session?.dimensions) {
+        return session.dimensions
+      }
+    }
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 100))
+  }
+  fail("installed executable did not persist its diagnostics runtime identity")
+}
+
+function assertCleanProcessSession(jingleHome) {
+  const markerPath = join(jingleHome, "logs", "process-session.json")
+  if (!existsSync(markerPath)) {
+    fail("installed executable did not persist a process session marker")
+  }
+  const marker = JSON.parse(readFileSync(markerPath, "utf8"))
+  if (marker?.terminal?.kind !== "clean_exit") {
+    fail(`installed executable did not exit cleanly: ${JSON.stringify(marker?.terminal ?? null)}`)
+  }
+}
+
+async function closeApplication(browser, child, jingleHome, processClosed, requireCleanSession) {
+  const processId = child.pid
+  if (!processId) {
+    fail("installed executable has no process id")
+  }
   let inspectionError = null
   let processIds = [processId]
   try {
@@ -683,12 +837,19 @@ async function closeApplication(application) {
   }
   let timer
   try {
+    const browserSession = await browser.newBrowserCDPSession()
     await Promise.race([
-      application.close(),
+      browserSession.send("Browser.close"),
       new Promise((_, reject) => {
         timer = setTimeout(() => reject(new Error("Electron close timed out")), 10_000)
       })
     ])
+    await waitForProcessExit(processIds, `Electron process tree rooted at ${processId}`)
+    await waitForLoggedProcessClose(processClosed)
+    if (requireCleanSession) {
+      assertCleanProcessSession(jingleHome)
+    }
+    if (inspectionError) throw inspectionError
   } catch (error) {
     const errors = [error]
     if (inspectionError) errors.push(inspectionError)
@@ -701,9 +862,8 @@ async function closeApplication(application) {
     throw new AggregateError(errors, "Electron close and cleanup both failed")
   } finally {
     clearTimeout(timer)
+    await browser.close().catch(() => undefined)
   }
-  await waitForProcessExit(processIds, `Electron process tree rooted at ${processId}`)
-  if (inspectionError) throw inspectionError
 }
 
 async function launchAndProbe(executablePath, jingleHome, logPath, options = {}) {
@@ -711,42 +871,52 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
     fail("launch probe requires an exact expected window kind")
   }
   const userDataPath = join(jingleHome, "electron-user-data")
-  const application = await electron.launch({
-    args: [`--user-data-dir=${userDataPath}`],
-    chromiumSandbox: true,
-    env: createLaunchEnvironment(jingleHome, options.environment),
-    executablePath,
-    timeout: APP_BOOT_TIMEOUT_MS
+  mkdirSync(userDataPath, { recursive: true })
+  rmSync(join(userDataPath, "DevToolsActivePort"), { force: true })
+  const previousSessionId = readProcessSessionId(jingleHome)
+  const diagnosticsLogPath = join(jingleHome, "logs", "jingle.log")
+  const initialLogSize = existsSync(diagnosticsLogPath) ? statSync(diagnosticsLogPath).size : 0
+  const launchEnvironment = createLaunchEnvironment(jingleHome, options.environment)
+  launchEnvironment.ELECTRON_ENABLE_LOGGING = "1"
+  launchEnvironment.ELECTRON_LOG_FILE = join(jingleHome, "electron.log")
+  launchEnvironment.JINGLE_REMOTE_DEBUGGING_PORT = "0"
+  const child = spawn(executablePath, [
+    ...(options.launchArgs ?? []),
+    `--user-data-dir=${userDataPath}`
+  ], {
+    env: launchEnvironment,
+    shell: false,
+    windowsHide: true
   })
-  application
-    .process()
-    .stdout?.on("data", (chunk) => appendFileSync(logPath, `[app stdout] ${chunk}`))
-  application
-    .process()
-    .stderr?.on("data", (chunk) => appendFileSync(logPath, `[app stderr] ${chunk}`))
+  let launchError = null
+  child.once("error", (error) => {
+    launchError = error
+    appendFileSync(logPath, `[app launch error] ${error.stack ?? error.message}\n`)
+  })
+  const processClosed = attachProcessLogging(child, logPath)
 
+  let browser = null
   try {
-    const identity = await application.evaluate(
-      ({ app }, expectProtocolClient) => ({
-        executablePath: process.execPath,
-        isPackaged: app.isPackaged,
-        protocolClientRegistered: expectProtocolClient
-          ? app.isDefaultProtocolClient("jingle")
-          : null,
-        version: app.getVersion()
-      }),
-      options.expectProtocolClient === true
-    )
-    if (!identity.isPackaged) fail("installed executable reported app.isPackaged=false")
-    if (options.expectProtocolClient && !identity.protocolClientRegistered) {
-      fail("installed executable is not the default jingle protocol client")
+    const port = await waitForDevToolsPort(userDataPath, child, () => launchError)
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, {
+      timeout: APP_BOOT_TIMEOUT_MS
+    })
+    const identity =
+      options.requireDiagnosticsIdentity === false
+        ? null
+        : await readDiagnosticsRuntimeIdentity(jingleHome, previousSessionId, initialLogSize)
+    if (identity && identity.isPackaged !== true) {
+      fail("installed executable reported isPackaged=false")
     }
-    if (options.expectedVersion && identity.version !== options.expectedVersion) {
+    if (identity && options.expectedVersion && identity.appVersion !== options.expectedVersion) {
       fail(
-        `installed executable reported version ${identity.version}, expected ${options.expectedVersion}`
+        `installed executable reported version ${identity.appVersion}, expected ${options.expectedVersion}`
       )
     }
-    const page = await resolveAppWindow(application, options.expectedWindowKind)
+    if (identity && identity.platform !== process.platform) {
+      fail(`installed executable reported platform ${identity.platform}, expected ${process.platform}`)
+    }
+    const page = await resolveAppWindow(browser, options.expectedWindowKind)
     const probe = await page.evaluate(async (sentinelRequest) => {
       const [theme, threads] = await Promise.all([
         window.api.settings.getAppThemeSettings(),
@@ -811,17 +981,87 @@ async function launchAndProbe(executablePath, jingleHome, logPath, options = {})
     if (options.sentinelRequest) {
       assertUpgradeSentinelThread(probe.sentinelThread, options.sentinelRequest, "sentinel IPC")
     }
-    return { ...identity, ...probe }
+    return {
+      electronVersion: identity?.electronVersion ?? null,
+      executablePath,
+      isPackaged: identity?.isPackaged ?? null,
+      protocolClientRegistered: null,
+      runtimeIdentityVerified: identity !== null,
+      version: identity?.appVersion ?? null,
+      ...probe
+    }
   } finally {
-    await closeApplication(application)
+    if (browser) {
+      await closeApplication(
+        browser,
+        child,
+        jingleHome,
+        processClosed,
+        options.requireCleanSession !== false
+      )
+    } else if (child.pid) {
+      await terminateProcessTree(child.pid)
+      await waitForLoggedProcessClose(processClosed)
+    }
+  }
+}
+
+async function assertProtocolClientRegistration(installed, logPath) {
+  if (process.platform === "linux") {
+    if (!installed.desktopEntryPath) {
+      fail("Linux installation did not return its desktop entry path")
+    }
+    const execLine = readFileSync(installed.desktopEntryPath, "utf8")
+      .split(/\r?\n/)
+      .find((line) => line.startsWith("Exec="))
+    const expected = `Exec=${installed.executablePath} --no-sandbox %U`
+    if (execLine !== expected) {
+      fail(`Linux desktop entry has an invalid launch command: ${String(execLine)}`)
+    }
+    return
+  }
+
+  if (process.platform === "win32") {
+    const result = await runProcess(
+      "reg.exe",
+      ["query", "HKCU\\Software\\Classes\\jingle\\shell\\open\\command", "/ve"],
+      { cwd: process.cwd(), logPath }
+    )
+    const commandLine = result.stdout
+      .split(/\r?\n/)
+      .find((line) => /\sREG_SZ\s/.test(line))
+      ?.replace(/^.*?\sREG_SZ\s+/, "")
+    if (!commandLine) fail("Windows jingle protocol registration has no default command")
+    assertWindowsProtocolCommand(commandLine, installed.executablePath)
+    return
+  }
+
+  const installedAppPath = resolve(dirname(installed.executablePath), "../..")
+  const swiftSource = [
+    "import AppKit",
+    "import Foundation",
+    'let url = URL(string: "jingle://release-smoke")!',
+    'print(NSWorkspace.shared.urlForApplication(toOpen: url)?.path ?? "")'
+  ].join("; ")
+  const result = await runProcess("swift", ["-e", swiftSource], {
+    cwd: process.cwd(),
+    logPath
+  })
+  if (resolve(result.stdout.trim()) !== installedAppPath) {
+    fail("macOS jingle protocol registration does not target the installed application")
   }
 }
 
 async function launchInstalledAndProbe(installed, jingleHome, logPath, options) {
   const probe = await launchAndProbe(installed.executablePath, jingleHome, logPath, {
     ...options,
-    environment: installed.launchEnvironment
+    environment: installed.launchEnvironment,
+    launchArgs: installed.launchArgs
   })
+  if (options.expectProtocolClient || installed.desktopEntryName) {
+    await assertProtocolClientRegistration(installed, logPath)
+    probe.protocolClientRegistered = true
+  }
   if (installed.desktopEntryName) {
     const environment = { ...process.env, ...installed.launchEnvironment }
     const result = await runProcess("xdg-mime", ["query", "default", "x-scheme-handler/jingle"], {
@@ -830,6 +1070,7 @@ async function launchInstalledAndProbe(installed, jingleHome, logPath, options) 
       logPath
     })
     assertLinuxProtocolHandler(result.stdout, installed.desktopEntryName)
+    probe.protocolClientRegistered = true
   }
   return probe
 }
@@ -933,6 +1174,10 @@ function preserveDiagnostics(sourceHome, diagnosticsRoot, manifest) {
     const sourcePath = join(sourceHome, fileName)
     if (existsSync(sourcePath)) copyFileSync(sourcePath, join(diagnosticsRoot, fileName))
   }
+  const electronLogPath = join(sourceHome, "electron.log")
+  if (existsSync(electronLogPath)) {
+    copyFileSync(electronLogPath, join(diagnosticsRoot, "electron.log"))
+  }
   writeFileSync(join(diagnosticsRoot, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`)
 }
 
@@ -967,6 +1212,8 @@ async function run() {
     artifact: basename(artifactPath),
     phase: "fresh-install",
     platform: process.platform,
+    runnerArch: process.env.JINGLE_RELEASE_RUNNER_ARCH ?? null,
+    runnerOs: process.env.JINGLE_RELEASE_RUNNER_OS ?? null,
     upgradeMode
   }
   let diagnosticHome = freshHome
@@ -1046,6 +1293,8 @@ async function run() {
       const probe = await launchInstalledAndProbe(installed, upgradeHome, appLog, {
         expectedVersion: "0.0.1",
         expectedWindowKind: baseline.windowKind,
+        requireCleanSession: false,
+        requireDiagnosticsIdentity: false,
         sentinelRequest: {
           mode: "create",
           title: sentinel.title,
