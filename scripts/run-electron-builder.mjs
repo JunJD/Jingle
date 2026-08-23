@@ -1,8 +1,7 @@
 import { execFileSync, spawn } from "node:child_process"
-import { createHash } from "node:crypto"
-import { copyFileSync, existsSync, readFileSync, readdirSync, rmSync } from "node:fs"
-import { homedir } from "node:os"
+import { existsSync, rmSync } from "node:fs"
 import { join } from "node:path"
+import { restoreVerifiedElectronBuilderCache } from "./electron-cache-contract.mjs"
 import { assertElectronBuilderNsisContract } from "./electron-builder-nsis-contract.mjs"
 
 const args = process.argv.slice(2)
@@ -126,67 +125,29 @@ function getTargetArchs(args) {
   return [...archs]
 }
 
-function sha256(path) {
-  return createHash("sha256").update(readFileSync(path)).digest("hex")
-}
-
-function findVerifiedElectronCache(cacheDir, zipName, expected, defaultCachePath) {
-  for (const entryName of readdirSync(cacheDir, { withFileTypes: true })) {
-    if (!entryName.isDirectory()) {
-      continue
+const nativeTargetRequested =
+  (process.platform === "darwin" && hasMacTarget(args)) ||
+  (process.platform === "win32" && hasTarget(args, "--win", "-w")) ||
+  (process.platform === "linux" && hasTarget(args, "--linux", "-l"))
+if (nativeTargetRequested) {
+  try {
+    const restoredCaches = restoreVerifiedElectronBuilderCache({
+      archs: getTargetArchs(args),
+      electronPackageRoot: join(process.cwd(), "node_modules", "electron"),
+      platform: process.platform
+    })
+    for (const cache of restoredCaches) {
+      console.log(
+        `[electron-builder] verified Electron cache ${JSON.stringify({ restored: cache.restored, zipName: cache.zipName })}`
+      )
     }
-
-    const candidate = join(cacheDir, entryName.name, zipName)
-    if (candidate !== defaultCachePath && existsSync(candidate) && sha256(candidate) === expected) {
-      return candidate
-    }
-  }
-
-  return null
-}
-
-function repairDefaultElectronCache(args) {
-  if (process.platform !== "darwin" || !hasMacTarget(args)) {
-    return
-  }
-
-  const electronPackageJsonPath = join(process.cwd(), "node_modules", "electron", "package.json")
-  const checksumsPath = join(process.cwd(), "node_modules", "electron", "checksums.json")
-  if (!existsSync(electronPackageJsonPath) || !existsSync(checksumsPath)) {
-    return
-  }
-
-  const electronPackageJson = JSON.parse(readFileSync(electronPackageJsonPath, "utf-8"))
-  const checksums = JSON.parse(readFileSync(checksumsPath, "utf-8"))
-
-  for (const arch of getTargetArchs(args)) {
-    const zipName = `electron-v${electronPackageJson.version}-darwin-${arch}.zip`
-    const expected = checksums[zipName]
-    const cacheDir = join(homedir(), "Library", "Caches", "electron")
-    const cachePath = join(cacheDir, zipName)
-    if (!expected) {
-      continue
-    }
-
-    if (existsSync(cachePath) && sha256(cachePath) === expected) {
-      continue
-    }
-
-    const verifiedCachePath = existsSync(cacheDir)
-      ? findVerifiedElectronCache(cacheDir, zipName, expected, cachePath)
-      : null
-    if (verifiedCachePath) {
-      copyFileSync(verifiedCachePath, cachePath)
-      console.warn(`[electron-builder] restored Electron cache from ${verifiedCachePath}`)
-      continue
-    }
-
-    rmSync(cachePath, { force: true })
-    console.warn(`[electron-builder] removed corrupt Electron cache: ${cachePath}`)
+  } catch (error) {
+    if (process.env.JINGLE_BUILD_PROVENANCE === "release-workflow") throw error
+    console.warn(
+      `[electron-builder] verified Electron cache unavailable; allowing a local builder download: ${error instanceof Error ? error.message : String(error)}`
+    )
   }
 }
-
-repairDefaultElectronCache(args)
 resetPackagedAuditRoots(args)
 
 let receivedSignal = false
