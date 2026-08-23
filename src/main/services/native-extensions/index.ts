@@ -16,6 +16,7 @@ import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-o
 import { getDefaultExtensionRegistryService } from "../../extensions/registry/default-registry"
 import { toNativeExtensionInstallDiagnostics } from "../../extensions/registry/diagnostics"
 import { loadExtensionMainDefinition } from "../../extensions/registry/main-loader"
+import { serializeProcessError } from "../../diagnostics/process-errors"
 import {
   ExtensionMainDefinitionRegistry,
   type ExtensionMainDefinitionRegistrySnapshot
@@ -110,7 +111,7 @@ const nativeExtensionMainDefinitionRegistry = new ExtensionMainDefinitionRegistr
   onError: ({ error, extensionName, phase }) => {
     console.error(
       `[NativeExtensions] Failed to ${phase} trusted main definition "${extensionName}".`,
-      error
+      serializeProcessError(error)
     )
   },
   validateDefinition: (extensionName, definition) => {

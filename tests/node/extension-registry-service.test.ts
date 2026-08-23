@@ -60,6 +60,15 @@ test("built-in extension registry resolves package-owned assets", () => {
   )
 })
 
+test("trusted main load failures use bounded diagnostic serialization", async () => {
+  const source = await readFile(
+    join(process.cwd(), "src/main/services/native-extensions/index.ts"),
+    "utf8"
+  )
+  assert.match(source, /serializeProcessError\(error\)/)
+  assert.doesNotMatch(source, /Failed to \$\{phase\} trusted main definition[\s\S]*?\n\s*error\n/)
+})
+
 test("extension CLI builds bundled trusted extensions as installed runtime packages", async () => {
   const rootDir = await mkdtemp(join(tmpdir(), "jingle-installed-packages-"))
   try {
