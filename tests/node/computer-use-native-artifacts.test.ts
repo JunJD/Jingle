@@ -405,7 +405,7 @@ test("Windows helper pins its JSON wire to UTF-8 before reading requests", () =>
   )
   assert.ok(source.indexOf("[Console]::In.ReadToEnd()") < source.indexOf("Add-Type -AssemblyName"))
   for (const method of ["probe", "execute", "dispose_session"]) {
-    assert.ok(source.indexOf(`\"${method}\"`) < source.indexOf("Add-Type -AssemblyName"))
+    assert.ok(source.indexOf(`"${method}"`) < source.indexOf("Add-Type -AssemblyName"))
   }
   assert.ok(
     source.indexOf('default { throw "Unsupported computer-use method: $method" }') <
