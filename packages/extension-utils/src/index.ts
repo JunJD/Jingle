@@ -393,6 +393,9 @@ export function useCachedPromise<TFn extends (...args: any[]) => unknown>(
         : undefined
   const cacheTimelineChanged =
     state.identity === cacheIdentity && state.cacheCommitToken !== cacheSnapshot
+  const waitingForFirstCacheMissResult =
+    cacheSnapshot.kind === "miss" &&
+    (state.identity !== cacheIdentity || (!state.hasResolvedData && state.error === undefined))
 
   const mutate = useCallback<CachedPromiseMutate<PromiseData<TFn>>>(
     async <TUpdate>(
@@ -483,7 +486,12 @@ export function useCachedPromise<TFn extends (...args: any[]) => unknown>(
   return {
     data: returnedData,
     error: cacheTimelineChanged ? undefined : state.error,
-    isLoading: resolvedOptions.execute === false ? false : cachePending ? true : state.isLoading,
+    isLoading:
+      resolvedOptions.execute === false
+        ? false
+        : cachePending || waitingForFirstCacheMissResult
+          ? true
+          : state.isLoading,
     mutate,
     pagination: returnedPagination,
     revalidate: state.revalidate

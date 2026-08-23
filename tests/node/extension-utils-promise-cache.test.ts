@@ -201,6 +201,50 @@ test("useCachedPromise reads the durable snapshot only after render commits", as
   }
 })
 
+test("useCachedPromise keeps a cache miss loading until its first result settles", async () => {
+  const memoryBackend = createMemoryBackend()
+  const uninstallBackend = installExtensionRuntimeCacheBackend(memoryBackend.backend)
+  const context = createHostContext("cache-miss-loading")
+  const latest = createDeferred<string>()
+  const snapshots: string[] = []
+
+  try {
+    const renderer = createExtensionRuntimeRenderer(
+      {
+        commandName: "cache-miss-loading",
+        extensionName: "notion"
+      },
+      {
+        onSnapshot(snapshot) {
+          if (snapshot.kind === "detail") snapshots.push(snapshot.markdown ?? "")
+        }
+      }
+    )
+    function Surface() {
+      const state = useCachedPromise(() => latest.promise)
+      return createElement(Detail, {
+        markdown: `${state.data ?? "missing"}:${state.isLoading ? "loading" : "ready"}`,
+        navigationTitle: "Cache miss loading"
+      })
+    }
+
+    renderer.render(withRuntimeProvider(context, createElement(Surface)))
+    await flushPromises()
+    await renderer.flushSnapshots()
+    assert.equal(snapshots.includes("missing:ready"), false)
+    assert.equal(getDetailMarkdown(renderer), "missing:loading")
+
+    latest.resolve("fresh")
+    await flushPromises()
+    await renderer.flushSnapshots()
+    assert.equal(getDetailMarkdown(renderer), "fresh:ready")
+    renderer.render(null)
+    await flushPromises()
+  } finally {
+    uninstallBackend()
+  }
+})
+
 test("promise cache binding closes the construction-to-subscribe race with an exact re-read", async () => {
   const memoryBackend = createMemoryBackend()
   const uninstallBackend = installExtensionRuntimeCacheBackend(memoryBackend.backend)
@@ -278,6 +322,42 @@ test("promise cache binding skips exact repeat writes without mutation or notifi
         value: cacheValue({ label: "changed" })
       })
       unsubscribe()
+    })
+  } finally {
+    uninstallBackend()
+  }
+})
+
+test("promise cache bindings coalesce exact writes across one shared store", async () => {
+  const memoryBackend = createMemoryBackend()
+  const uninstallBackend = installExtensionRuntimeCacheBackend(memoryBackend.backend)
+  const context = createSdkContext("shared-value-no-op")
+
+  try {
+    await runWithExtensionRuntimeSdk(context, async () => {
+      const identity = createPromiseCacheIdentity(loadScopedValue, ["page-shared"])
+      const first = createPromiseCacheBinding<{ label: string }>(identity)
+      const second = createPromiseCacheBinding<{ label: string }>(identity)
+      const unsubscribeFirst = first.subscribe(() => undefined)
+      const unsubscribeSecond = second.subscribe(() => undefined)
+      await flushPromises()
+
+      assert.equal(first.write(cacheValue({ label: "stable" })), true)
+      assert.equal(memoryBackend.mutationCount, 1)
+
+      for (let index = 0; index < 10_000; index += 1) {
+        const binding = index % 2 === 0 ? second : first
+        assert.equal(binding.write(cacheValue({ label: "stable" })), true)
+      }
+
+      assert.equal(memoryBackend.mutationCount, 1)
+      assert.deepEqual(first.getSnapshot(), {
+        kind: "value",
+        value: cacheValue({ label: "stable" })
+      })
+      assert.deepEqual(second.getSnapshot(), first.getSnapshot())
+      unsubscribeSecond()
+      unsubscribeFirst()
     })
   } finally {
     uninstallBackend()
@@ -400,7 +480,7 @@ test("promise cache binding waits for the first feed snapshot after a synchronou
   }
 })
 
-test("promise cache binding invalidates same-value ownership while replacing the backend", async () => {
+test("promise cache binding waits for replacement backend admission before writes", async () => {
   const replacementSnapshotReady = createDeferred<void>()
   const firstBackend = createMemoryBackend()
   const replacementBackend = createMemoryBackend({
@@ -459,7 +539,7 @@ test("promise cache binding invalidates same-value ownership while replacing the
   }
 })
 
-test("promise cache binding adopts a reentrant write before granting same-value ownership", async () => {
+test("promise cache binding adopts a reentrant write before reporting the outer write", async () => {
   const memoryBackend = createMemoryBackend()
   const uninstallBackend = installExtensionRuntimeCacheBackend(memoryBackend.backend)
   const context = createSdkContext("reentrant-write")

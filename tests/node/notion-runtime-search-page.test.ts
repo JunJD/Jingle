@@ -9,7 +9,7 @@ import {
   type ExtensionRuntimeSdkContextValue
 } from "@jingle/extension-api/host-runtime"
 import { notionRuntime } from "../../installable-extensions/notion/runtime"
-import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
+import { createExtensionRuntimeRenderer as createRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
 import type {
   ExtensionHostResponse,
   ExtensionRuntimeLaunchContext,
@@ -42,6 +42,22 @@ const NOTION_VIEW_COMMAND_NAMES = [
   "add-text-to-page",
   "quick-capture"
 ] as const
+let runtimeIdentity = 0
+const activeRenderers = new Set<ReturnType<typeof createRuntimeRenderer>>()
+
+function createExtensionRuntimeRenderer(...args: Parameters<typeof createRuntimeRenderer>) {
+  const renderer = createRuntimeRenderer(...args)
+  activeRenderers.add(renderer)
+  return renderer
+}
+
+test.afterEach(async () => {
+  for (const renderer of activeRenderers) {
+    renderer.render(null)
+    await renderer.flushSnapshots()
+  }
+  activeRenderers.clear()
+})
 
 interface ShortcutPlatformExpectation {
   modifier: "cmd" | "ctrl"
@@ -3223,6 +3239,8 @@ function withRuntimeProvider(
     registerToastAction?: ExtensionRuntimeSdkContextValue["registerToastAction"]
   } = {}
 ): ReactElement {
+  runtimeIdentity += 1
+  const runtimeIdentityHex = runtimeIdentity.toString(16).padStart(64, "0")
   const requestHost: ExtensionRuntimeSdkContextValue["requestHost"] = (request) =>
     resolveNotionHostRequest(request, hostRequests, storage)
   const value: Omit<ExtensionRuntimeHostContextValue, "navigation"> = {
@@ -3234,12 +3252,12 @@ function withRuntimeProvider(
         connectionConfigGeneration: 0,
         extensionConfigGeneration: 0,
         kind: "available",
-        runtimeArtifactRevision: "sha256:notion-runtime-test",
+        runtimeArtifactRevision: `sha256:${runtimeIdentityHex}`,
         runtimePackageRevision: "0.0.0"
       },
       kind: "available",
       localStorage: {
-        connectionId: "notion-runtime-test",
+        connectionId: `notion-runtime-test-${runtimeIdentity}`,
         credentialGeneration: 0
       }
     },

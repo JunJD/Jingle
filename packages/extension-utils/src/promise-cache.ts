@@ -107,8 +107,6 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
   #snapshot: PromiseCacheSnapshot<TResult> = { kind: "pending" }
   #subscriptionGeneration = 0
   #unsubscribeCache: ReturnType<Cache["subscribe"]> | null = null
-  #writeOwnedRawValue: string | null = null
-  #writeOwnedSynchronizationRevision: number | null = null
 
   constructor(identity: PromiseCacheIdentity, options: PromiseCacheBindingOptions) {
     this.identity = identity.identity
@@ -123,7 +121,6 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
     this.#listeners.add(listener)
 
     if (!this.#unsubscribeCache) {
-      this.#clearWriteOwnership()
       this.#beginPendingGeneration()
       let unsubscribeCache: ReturnType<Cache["subscribe"]> | null = null
       try {
@@ -144,7 +141,6 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
         this.#unsubscribeCache?.()
         this.#unsubscribeCache = null
         this.#beginPendingGeneration(false)
-        this.#clearWriteOwnership()
       }
     }
   }
@@ -165,17 +161,8 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
       return false
     }
 
-    const synchronizationRevision = this.#unsubscribeCache
-      ? this.#cache.synchronizationRevision
-      : null
-    if (
-      this.#unsubscribeCache &&
-      synchronizationRevision !== null &&
-      synchronizationRevision === this.#writeOwnedSynchronizationRevision &&
-      encoded === this.#writeOwnedRawValue &&
-      encoded === this.#rawValue &&
-      this.#cache.has(this.#key)
-    ) {
+    if (this.#hasStoredValue() && this.#readCurrentValue() === encoded) {
+      this.#replaceRawValue(encoded)
       return true
     }
 
@@ -192,17 +179,7 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
     const storedRawValue = this.#readCurrentValue()
     this.#replaceRawValue(storedRawValue)
     if (storedRawValue !== encoded) {
-      this.#clearWriteOwnership()
       return false
-    }
-    const committedSynchronizationRevision = this.#unsubscribeCache
-      ? this.#cache.synchronizationRevision
-      : null
-    if (committedSynchronizationRevision !== null) {
-      this.#writeOwnedRawValue = encoded
-      this.#writeOwnedSynchronizationRevision = committedSynchronizationRevision
-    } else {
-      this.#clearWriteOwnership()
     }
     return true
   }
@@ -225,11 +202,7 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
       return
     }
 
-    const nextRawValue = changedKey === undefined ? undefined : data
-    if (nextRawValue !== this.#writeOwnedRawValue) {
-      this.#clearWriteOwnership()
-    }
-    this.#replaceRawValue(nextRawValue)
+    this.#replaceRawValue(changedKey === undefined ? undefined : data)
     this.#discardInvalidSnapshot()
   }
 
@@ -242,12 +215,6 @@ class RuntimePromiseCacheBinding<TResult> implements PromiseCacheBinding<TResult
     this.#replaceRawValue(undefined)
     this.#onFailure?.(failure)
   }
-
-  #clearWriteOwnership(): void {
-    this.#writeOwnedRawValue = null
-    this.#writeOwnedSynchronizationRevision = null
-  }
-
   #admitSubscription(subscription: ReturnType<Cache["subscribe"]>, generation: number): void {
     void subscription.admission
       .then((admission) => {
