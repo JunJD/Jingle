@@ -31,9 +31,11 @@ interface InstalledSmokeModule {
     jingleHome: string,
     processClosed: Promise<void>,
     shutdownContract: "current-clean-session" | "legacy-process-reaped",
+    rendererPage: { evaluate(callback: () => unknown): Promise<unknown> } | null,
     operations: {
       assertCleanProcessSession(): void
       snapshotProcessTree(pid: number): number[]
+      platform?: NodeJS.Platform
       terminateProcessTree(pid: number): Promise<void>
       waitForLoggedProcessClose(closed: Promise<void>): Promise<void>
       waitForProcessExit(pids: number[], description: string): Promise<void>
@@ -297,6 +299,7 @@ test("uses capability-specific shutdown evidence for current and legacy packages
     "/tmp/legacy-jingle-home",
     Promise.resolve(),
     "legacy-process-reaped",
+    null,
     operations
   )
   assert.deepEqual(calls, ["terminate", "logs-closed", "disconnect"])
@@ -309,11 +312,61 @@ test("uses capability-specific shutdown evidence for current and legacy packages
       "/tmp/current-jingle-home",
       Promise.resolve(),
       "current-clean-session",
+      null,
       operations
     ),
     /Electron close and cleanup both failed/
   )
   assert.deepEqual(calls, ["clean-session", "terminate", "disconnect"])
+})
+
+test("closes non-macOS releases through the durable renderer window lifecycle", async () => {
+  const smokeModule = await smokeModulePromise
+  const calls: string[] = []
+  const browser = {
+    close: async () => {
+      calls.push("disconnect")
+    },
+    newBrowserCDPSession: async () => {
+      throw new Error("non-macOS shutdown must not use Browser.close")
+    }
+  }
+  const rendererPage = {
+    evaluate: async (callback: () => unknown) => {
+      calls.push("window-close")
+      assert.equal(callback.toString().includes("window.close"), true)
+      assert.equal(callback.toString().includes("setTimeout"), true)
+    }
+  }
+  await smokeModule.closeApplication(
+    browser,
+    { exitCode: null, pid: 42, signalCode: null },
+    "/tmp/windows-jingle-home",
+    Promise.resolve(),
+    "current-clean-session",
+    rendererPage,
+    {
+      assertCleanProcessSession: () => calls.push("clean-session"),
+      platform: "win32",
+      snapshotProcessTree: () => [42],
+      terminateProcessTree: async () => {
+        calls.push("terminate")
+      },
+      waitForLoggedProcessClose: async () => {
+        calls.push("logs-closed")
+      },
+      waitForProcessExit: async () => {
+        calls.push("process-exit")
+      }
+    }
+  )
+  assert.deepEqual(calls, [
+    "window-close",
+    "process-exit",
+    "logs-closed",
+    "clean-session",
+    "disconnect"
+  ])
 })
 
 test("preserves probe failures while applying capability-specific shutdown", async () => {
