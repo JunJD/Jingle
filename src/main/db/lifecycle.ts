@@ -286,9 +286,47 @@ async function getAppliedMigrations(): Promise<Map<string, MigrationRow>> {
   const rows = await getPrismaClient().$queryRawUnsafe<MigrationRow[]>(`
     SELECT "checksum", "finished_at", "migration_name", "rolled_back_at"
     FROM "_prisma_migrations"
+    ORDER BY "migration_name"
   `)
 
+  const seenNames = new Set<string>()
+  for (const row of rows) {
+    if (seenNames.has(row.migration_name)) {
+      throw new Error(
+        `Prisma migration ledger for ${getDbPath()} contains duplicate migration ${row.migration_name}. ${DATABASE_SCHEMA_RECOVERY_HINT}`
+      )
+    }
+    seenNames.add(row.migration_name)
+  }
+
   return new Map(rows.map((row) => [row.migration_name, row]))
+}
+
+function assertMigrationLedgerIsKnown(
+  migrations: readonly MigrationFile[],
+  appliedMigrations: ReadonlyMap<string, MigrationRow>
+): void {
+  const packagedNames = new Set(migrations.map((migration) => migration.name))
+  const unknown = [...appliedMigrations.keys()].filter((name) => !packagedNames.has(name))
+  if (unknown.length > 0) {
+    throw new Error(
+      `Prisma migration ledger for ${getDbPath()} contains migrations that are not packaged in this build: ${unknown.join(", ")}. ${DATABASE_SCHEMA_RECOVERY_HINT}`
+    )
+  }
+
+  let foundPending = false
+  for (const migration of migrations) {
+    const applied = appliedMigrations.get(migration.name)
+    if (!applied) {
+      foundPending = true
+      continue
+    }
+    if (foundPending) {
+      throw new Error(
+        `Prisma migration ledger for ${getDbPath()} is out of order: ${migration.name} is applied while an earlier migration is missing. ${DATABASE_SCHEMA_RECOVERY_HINT}`
+      )
+    }
+  }
 }
 
 function assertMigrationCanBeSkipped(migration: MigrationFile, row: MigrationRow): void {
@@ -355,6 +393,7 @@ async function applyPendingPrismaMigrations(): Promise<void> {
 
   const migrations = readMigrationFiles()
   const appliedMigrations = await getAppliedMigrations()
+  assertMigrationLedgerIsKnown(migrations, appliedMigrations)
 
   for (const migration of migrations) {
     const applied = appliedMigrations.get(migration.name)
@@ -365,6 +404,23 @@ async function applyPendingPrismaMigrations(): Promise<void> {
 
     await applyMigration(migration)
   }
+
+  const completedMigrations = await getAppliedMigrations()
+  if (completedMigrations.size !== migrations.length) {
+    throw new Error(
+      `Prisma migration check for ${getDbPath()} did not apply the complete packaged migration set. ${DATABASE_SCHEMA_RECOVERY_HINT}`
+    )
+  }
+  for (const migration of migrations) {
+    const applied = completedMigrations.get(migration.name)
+    if (!applied) {
+      throw new Error(
+        `Prisma migration check for ${getDbPath()} is missing ${migration.name}. ${DATABASE_SCHEMA_RECOVERY_HINT}`
+      )
+    }
+    assertMigrationCanBeSkipped(migration, applied)
+  }
+  console.info(`[DB] Verified ${migrations.length} packaged Prisma migration(s) for ${getDbPath()}`)
 }
 
 const COMPUTER_USE_RESTART_BEFORE_DISPATCH_FAILURE: AgentRunFailure = {

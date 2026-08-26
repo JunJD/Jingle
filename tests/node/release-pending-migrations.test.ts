@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import {
   existsSync,
@@ -12,6 +13,7 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
+import { PrismaClient } from "@prisma/client"
 import test from "node:test"
 
 interface MigrationEntry {
@@ -339,4 +341,96 @@ test("upgrades a previous-state database through the main process and keeps its 
     title: sentinel.title,
     updatedAt: String(sentinel.updatedAt)
   })
+})
+
+test("startup rejects migration ledgers that cannot belong to this build", async (t) => {
+  const { closeDatabase, initializeDatabase } = await import("../../src/main/db")
+
+  async function assertRejectedLedger(
+    name: string,
+    mutate: (prisma: PrismaClient) => Promise<unknown>,
+    expected: RegExp
+  ): Promise<void> {
+    await closeDatabase()
+    const jingleHome = join(workspace, `invalid-ledger-${name}`)
+    process.env.JINGLE_HOME = jingleHome
+    execFileSync(process.execPath, ["scripts/run-prisma-jingle-db.mjs", "migrate", "deploy"], {
+      cwd: process.cwd(),
+      env: { ...process.env, JINGLE_HOME: jingleHome },
+      stdio: "ignore"
+    })
+    const prisma = new PrismaClient({
+      datasources: { db: { url: `file:${join(jingleHome, "jingle.sqlite")}` } }
+    })
+    try {
+      await mutate(prisma)
+    } finally {
+      await prisma.$disconnect()
+    }
+
+    try {
+      await assert.rejects(initializeDatabase(), expected)
+    } finally {
+      await closeDatabase()
+    }
+  }
+
+  await t.test("unknown migration", () =>
+    assertRejectedLedger(
+      "unknown",
+      (prisma) =>
+        prisma.$executeRawUnsafe(
+          `INSERT INTO "_prisma_migrations"
+             ("id", "checksum", "finished_at", "migration_name", "started_at", "applied_steps_count")
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          "unknown-migration-id",
+          "0".repeat(64),
+          Date.now(),
+          "99999999999999_unknown",
+          Date.now(),
+          1
+        ),
+      /contains migrations that are not packaged/
+    )
+  )
+
+  await t.test("duplicate migration", () =>
+    assertRejectedLedger(
+      "duplicate",
+      async (prisma) => {
+        const [first] = await prisma.$queryRawUnsafe<
+          Array<{ checksum: string; migration_name: string }>
+        >(
+          `SELECT "checksum", "migration_name" FROM "_prisma_migrations" ORDER BY "migration_name" LIMIT 1`
+        )
+        assert.ok(first)
+        await prisma.$executeRawUnsafe(
+          `INSERT INTO "_prisma_migrations"
+             ("id", "checksum", "finished_at", "migration_name", "started_at", "applied_steps_count")
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          "duplicate-migration-id",
+          first.checksum,
+          Date.now(),
+          first.migration_name,
+          Date.now(),
+          1
+        )
+      },
+      /contains duplicate migration/
+    )
+  )
+
+  await t.test("out-of-order migration", () =>
+    assertRejectedLedger(
+      "out-of-order",
+      (prisma) =>
+        prisma.$executeRawUnsafe(
+          `DELETE FROM "_prisma_migrations"
+           WHERE "migration_name" = (
+             SELECT "migration_name" FROM "_prisma_migrations" ORDER BY "migration_name" LIMIT 1
+           )`
+        ),
+      /is out of order/
+    )
+  )
 })
