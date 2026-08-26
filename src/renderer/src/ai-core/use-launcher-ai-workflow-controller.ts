@@ -158,6 +158,7 @@ export function useLauncherAiWorkflowController(threadId: string): LauncherAiWor
     () =>
       window.api.threadWorkflow.onChanged((event) => {
         if (event.scope === "thread" && event.threadId !== threadId) {
+          void refreshSidebarProjection()
           return
         }
         if (mutationInFlightRef.current) {

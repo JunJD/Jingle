@@ -93,6 +93,10 @@ test("workflow events refresh each durable window sidebar through one owner", as
   assert.ok(durableWindowWorkflowListener)
   assert.equal(durableWindowWorkflowListener[0].match(/loadSidebarView\(\)/g)?.length, 1)
   assert.ok(workflowEventListener)
+  assert.match(
+    workflowEventListener[0],
+    /event\.threadId !== threadId\) \{\s*void refreshSidebarProjection\(\)\s*return/
+  )
   assert.match(workflowEventListener[0], /void refresh\(\)/)
   assert.ok(sidebarProjection)
   assert.match(sidebarProjection[0], /if \(mode === "main"\) \{\s*return\s*\}/)
