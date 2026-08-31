@@ -262,6 +262,60 @@ test("agent thread data snapshot service composes persisted and live snapshots",
   )
 })
 
+test("agent thread data snapshot service preserves persisted tool results missing from live state", async () => {
+  const persistedTool = {
+    content: "tool result",
+    created_at: new Date("2026-01-01T00:00:02.000Z"),
+    id: "persisted-tool-result",
+    role: "tool" as const,
+    tool_call_id: "tool-call-1"
+  }
+  const persistedSnapshot = createThreadDataSnapshot({
+    messages: [
+      {
+        content: "question",
+        created_at: new Date("2026-01-01T00:00:00.000Z"),
+        id: "persisted-user",
+        role: "user"
+      },
+      persistedTool
+    ]
+  })
+  const liveSnapshot = createThreadDataSnapshot({
+    messages: [
+      {
+        content: "question",
+        created_at: new Date("2026-01-01T00:00:00.000Z"),
+        id: "persisted-user",
+        role: "user"
+      },
+      {
+        content: [{ text: "call", type: "text" }],
+        created_at: new Date("2026-01-01T00:00:01.000Z"),
+        id: "live-assistant",
+        role: "assistant",
+        tool_calls: [{ args: {}, id: "tool-call-1", name: "read_file", type: "tool_call" }]
+      }
+    ],
+    status: "busy"
+  })
+  const service = new AgentThreadDataSnapshotService(
+    {
+      getPersistedAgentThreadData: async () => persistedSnapshot
+    },
+    {
+      readLiveThreadDataSnapshot: () => liveSnapshot
+    }
+  )
+
+  const snapshot = await service.readAgentThreadDataSnapshot("thread-1")
+
+  assert.deepEqual(
+    snapshot.messages.messages.map((message) => message.id),
+    ["persisted-user", "live-assistant", "persisted-tool-result"]
+  )
+})
+
 test("agent thread data snapshot service returns persisted snapshot without live runtime", async () => {
   const persistedSnapshot = createThreadDataSnapshot({
     messages: [
