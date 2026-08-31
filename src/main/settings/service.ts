@@ -1,5 +1,5 @@
 import { BrowserWindow } from "electron"
-import type { AppThemeSettings } from "@shared/app-theme"
+import { resolveAppThemeWindowChrome, type AppThemeSettings } from "@shared/app-theme"
 import type { LauncherSettings } from "@shared/launcher-settings"
 import type { AgentConfig } from "../types"
 import {
@@ -88,7 +88,7 @@ export class SettingsService {
 
       if (hasThemeAwareNativeChrome) {
         try {
-          window.setBackgroundColor(settings.config.theme.surface)
+          window.setBackgroundColor(resolveAppThemeWindowChrome(settings.config).background)
           if (process.platform !== "darwin") {
             updateThemeTitleBarOverlay(window, settings)
           }

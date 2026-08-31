@@ -1,6 +1,7 @@
 import { BrowserWindow, screen, type Rectangle } from "electron"
 import { join } from "path"
 import { THREAD_WINDOW_KIND } from "@shared/durable-window"
+import { resolveAppThemeWindowChrome } from "@shared/app-theme"
 import { attachWindowDiagnostics } from "../diagnostics/electron-events"
 import { getAppThemeSettings } from "../preferences"
 import { installExternalWindowOpenHandler } from "./external-window-open"
@@ -59,7 +60,7 @@ export function createThreadWindow(
     minHeight: 520,
     show: false,
     autoHideMenuBar: !isMac,
-    backgroundColor: appThemeSettings.config.theme.surface,
+    backgroundColor: resolveAppThemeWindowChrome(appThemeSettings.config).background,
     title: "Jingle",
     titleBarStyle: "hidden",
     ...(isMac

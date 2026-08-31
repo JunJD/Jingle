@@ -1,6 +1,7 @@
 import { BrowserWindow } from "electron"
 import { join } from "path"
 import { PRIMARY_MAIN_WINDOW_ID } from "@shared/durable-window"
+import { resolveAppThemeWindowChrome } from "@shared/app-theme"
 import { attachWindowDiagnostics } from "../diagnostics/electron-events"
 import { getAppThemeSettings } from "../preferences"
 import { installExternalWindowOpenHandler } from "./external-window-open"
@@ -21,7 +22,7 @@ export function createMainWindow(threadId: string | null): BrowserWindow {
     minHeight: 520,
     show: false,
     autoHideMenuBar: !isMac,
-    backgroundColor: appThemeSettings.config.theme.surface,
+    backgroundColor: resolveAppThemeWindowChrome(appThemeSettings.config).background,
     title: "Jingle",
     titleBarStyle: "hidden",
     ...(isMac

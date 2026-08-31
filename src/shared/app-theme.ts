@@ -353,6 +353,10 @@ function mixHexColors(foreground: string, foregroundAmount: number, background: 
 }
 
 export function resolveAppThemeWindowChrome(config: JingleThemeV1): AppThemeWindowChrome {
+  if (config.variant === "dark") {
+    return { background: "#171c21", foreground: "#eff2f5" }
+  }
+
   const raisedMix = Math.round(2 + config.theme.contrast * 0.08)
 
   return {

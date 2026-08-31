@@ -9,6 +9,7 @@ import {
   type SettingsWindowNavigationDelivery
 } from "@shared/settings-window"
 import { getAppThemeSettings } from "../preferences"
+import { resolveAppThemeWindowChrome } from "@shared/app-theme"
 import { createThemeTitleBarOverlay } from "./title-bar-overlay"
 import { installWindowPresentation, requestWindowPresentation } from "./window-presentation"
 import { registerWindowIdentity } from "./window-identity"
@@ -27,7 +28,7 @@ export function createSettingsWindow(): BrowserWindow {
     minHeight: 680,
     show: false,
     autoHideMenuBar: !isMac,
-    backgroundColor: appThemeSettings.config.theme.surface,
+    backgroundColor: resolveAppThemeWindowChrome(appThemeSettings.config).background,
     title: "Settings",
     titleBarStyle: "hidden",
     ...(isMac
