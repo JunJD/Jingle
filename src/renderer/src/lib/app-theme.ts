@@ -16,6 +16,10 @@ function setThemeVariable(targets: Array<HTMLElement | null>, name: string, valu
   }
 }
 
+function clearThemeVariable(targets: Array<HTMLElement | null>, name: string): void {
+  for (const target of targets) target?.style.removeProperty(name)
+}
+
 export function applyJingleTheme(config: JingleThemeV1): void {
   const root = document.documentElement
   const body = document.body
@@ -92,6 +96,42 @@ export function applyJingleTheme(config: JingleThemeV1): void {
     "--jingle-font-code-family",
     theme.fonts.code ?? DEFAULT_CODE_FONT_FAMILY
   )
+
+  if (variant === "dark") {
+    for (const name of [
+      "--background",
+      "--background-elevated",
+      "--background-secondary",
+      "--background-interactive",
+      "--foreground",
+      "--border",
+      "--border-emphasis",
+      "--input",
+      "--muted",
+      "--muted-foreground",
+      "--tertiary-foreground",
+      "--card",
+      "--card-foreground",
+      "--popover",
+      "--popover-foreground",
+      "--primary-foreground",
+      "--secondary",
+      "--secondary-foreground",
+      "--accent-foreground",
+      "--sidebar",
+      "--sidebar-foreground",
+      "--sidebar-primary-foreground",
+      "--sidebar-accent",
+      "--sidebar-accent-foreground",
+      "--sidebar-border",
+      "--window-chrome",
+      "--window-divider",
+      "--window-chrome-foreground",
+      "--window-chrome-muted"
+    ]) {
+      clearThemeVariable(targets, name)
+    }
+  }
 }
 
 export function applyAppThemeSettings(settings: AppThemeSettings): void {
